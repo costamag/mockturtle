@@ -52,6 +52,7 @@
 #include "print.hpp"
 #include "properties.hpp"
 #include "spectral.hpp"
+#include "traits.hpp"
 
 /*
          /\___/\
