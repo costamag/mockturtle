@@ -33,9 +33,6 @@
 #include <mockturtle/algorithms/resubstitution.hpp>
 #include <mockturtle/io/aiger_reader.hpp>
 #include <mockturtle/networks/aig.hpp>
-#include <mockturtle/views/depth_view.hpp>
-#include <mockturtle/views/fanout_view.hpp>
-#include <mockturtle/views/fanout_view2.hpp>
 
 #include <experiments.hpp>
 
@@ -55,19 +52,16 @@ int main()
     resubstitution_params ps;
     resubstitution_stats st;
 
-    using view_t = fanout_view2<depth_view<aig_network>>;
-    depth_view depth_view{aig};
-    view_t resub_view{depth_view};
     ps.max_pis = 8u;
     ps.max_inserts = 1u;
     ps.progress = false;
 
     const uint32_t size_before = aig.num_gates();
-    aig_resubstitution( resub_view, ps, &st );
+    aig_resubstitution( aig, ps, &st );
 
     aig = cleanup_dangling( aig );
 
-    const auto cec = abc_cec( aig, benchmark );
+    const auto cec = benchmark == "hyp" ? true : abc_cec( aig, benchmark );
 
     exp( benchmark, size_before, aig.num_gates(), to_seconds( st.time_total ), cec );
   }
