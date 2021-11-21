@@ -41,12 +41,9 @@
 #include "events.hpp"
 #include "storage.hpp"
 
-//#include <kitty/constructors.hpp>
-
 #include <kitty/cube.hpp>
 
 #include <algorithm>
-//#include <memory>
 
 namespace mockturtle
 {

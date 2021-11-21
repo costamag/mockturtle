@@ -6,6 +6,7 @@
 
 #include <mockturtle/io/cover_to_graph.hpp>
 #include <mockturtle/algorithms/simulation.hpp>
+
 #include <mockturtle/networks/cover.hpp>
 #include <mockturtle/networks/aig.hpp>
 #include <mockturtle/networks/klut.hpp>
@@ -651,3 +652,4 @@ TEST_CASE( "read a combinational BLIF file into cover network and map it to aig:
   auto const sim_reference = ( simulate<kitty::static_truth_table<2u>>( aig )[0]._bits );
   CHECK( simulate<kitty::static_truth_table<2u>>( aig_cp )[0]._bits == sim_reference );
 }
+

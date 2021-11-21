@@ -59,9 +59,11 @@ struct signals_connector
 };
 
 
+
 /*! \brief cover_to_graph_converter
  * This data type is equipped with the main operations involved in the cover to graph conversion.
  */
+
 template<class Ntk>
 class cover_to_graph_converter
 {
@@ -78,7 +80,6 @@ public:
 #pragma region recursive functions
   signal<Ntk> recursive_or( const std::vector<signal<Ntk>>& signals )
   {
-    
     if ( signals.size() == 1 )
     {
       return signals[0];
@@ -95,12 +96,12 @@ public:
       std::vector<signal<Ntk>> vector_r( signals.begin() + half_size, signals.end() );
 
       return _ntk.create_or( recursive_or( vector_l ), recursive_or( vector_r ) );
-
     }
   }
 
   signal<Ntk> recursive_and( std::vector<signal<Ntk>> const& signals )
   {
+
     if ( signals.size() == 1 )
     {
       return signals[0];
@@ -117,11 +118,13 @@ public:
       std::vector<signal<Ntk>> vector_r( signals.begin() + half_size, signals.end() );
       
       return _ntk.create_and( recursive_and( vector_l ), recursive_and( vector_r ) );
+
     }
   }
 #pragma endregion
 
 #pragma region converter functions
+  
   signal<Ntk> convert_cube_to_graph( const mockturtle::cover_storage_node& Nde, const kitty::cube& cb, const bool& is_sop )
   {
     std::vector<signal<Ntk>> signals;
@@ -129,6 +132,7 @@ public:
     for ( auto j = 0u; j < Nde.children.size(); j++ )
     {
       if ( cb.get_mask( j ) == 1 )
+
       {
         if ( cb.get_bit( j ) == 1 )
         {
@@ -142,11 +146,11 @@ public:
     }
 
     return is_sop ? recursive_and( signals ) : recursive_or( signals );
+
   }
 
   signal<Ntk> convert_cover_to_graph( const mockturtle::cover_storage_node& Nde )
-  {
-    
+  {  
     auto& cbs = _cover_ntk._storage->data.covers[Nde.data[1].h1].first;
   
     std::vector<signal<Ntk>> signals_internal;
@@ -158,6 +162,7 @@ public:
     }
 
     return ( is_sop ? recursive_or( signals_internal ) : recursive_and( signals_internal ) );
+
   }
 
   void run()
@@ -173,11 +178,11 @@ public:
       bool condition1 = ( std::find( _cover_ntk._storage->inputs.begin(), _cover_ntk._storage->inputs.end(), index ) != _cover_ntk._storage->inputs.end() );
       bool condition2 = nde.data[1].h1 == 0 || nde.data[1].h1 == 1;
 
-
       if ( !condition1 && !condition2 )
       {
         _connector.insert( convert_cover_to_graph( nde ), _cover_ntk._storage->hash[nde] );
       }
+
       else if ( nde.data[1].h1 == 0 )
       {
         _connector.insert( _ntk.get_constant( false ), _cover_ntk._storage->hash[nde]  );

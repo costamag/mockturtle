@@ -257,6 +257,7 @@ public:
         assert( signals.find( i ) != signals.end() );
         input_signals.push_back( signals.at( i ) );
       }
+
       if ( cubes.size() != 0 )
       {
         signals[output] = ntk_.create_node( input_signals, std::make_pair( cubes, is_sop ) );
@@ -264,8 +265,10 @@ public:
     }
     else
     {
+
       std::vector<kitty::cube> minterms;
       std::vector<kitty::cube> maxterms;
+
       for ( const auto& c : cover )
       {
         assert( c.second.size() == 1 );
@@ -284,6 +287,7 @@ public:
           maxterms.emplace_back( ~kitty::cube( c.first ) );
         }
       }
+
       assert( minterms.size() == 0u || maxterms.size() == 0u );
 
       kitty::dynamic_truth_table tt( int( inputs.size() ) );
@@ -295,7 +299,6 @@ public:
       {
         kitty::create_from_clauses( tt, maxterms, false );
       }
-
       std::vector<signal<Ntk>> input_signals;
       for ( const auto& i : inputs )
       {

@@ -303,5 +303,4 @@ TEST_CASE( "read a combinational BLIF file into cover network", "[blif_reader]" 
   CHECK( cover.num_gates() == 4 );
 }
 
-
 // missing write blif from cover network
