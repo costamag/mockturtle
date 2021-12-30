@@ -1,0 +1,10 @@
+.model monitorBLIF
+.inputs a b c d
+.outputs t1
+.names a b internal1
+10 1
+.names internal1 c internal2
+11 1
+.names internal2 d t1
+01 1
+.end

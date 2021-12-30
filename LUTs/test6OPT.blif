@@ -1,0 +1,424 @@
+.model top
+.inputs a1 a2 b1 b2 c1 c2 d1 d2 m uvwState0 uvwState1 uvwState2 uvwState3 uvwState4 uvwState5 uvwState6 uvwState7 uvwState8 uvwState9 uvwState10 uvwState11 uvwState12 uvwState13 uvwState14 uvwState15 uvwState16 uvwState17 uvwState18 uvwState19 uvwState20 uvwState21 
+.outputs uvwState0incoming0 uvwState0incoming1 uvwState0incoming2 uvwState0incoming3 uvwState0incoming4 uvwState0incoming5 uvwState0incoming6 uvwState0incoming7 uvwState0incoming8 uvwState0incoming9 uvwState0incoming10 uvwState0incoming11 uvwState0incoming12 uvwState0incoming13 uvwState0incoming14 uvwState0incoming15 uvwState0incoming16 uvwState0incoming17 uvwState0incoming18 uvwState0incoming19 uvwState0incoming20 uvwState0incoming21 uvwState0Next uvwState1incoming0 uvwState1incoming1 uvwState1Next uvwState2incoming0 uvwState2incoming1 uvwState2Next uvwState3incoming0 uvwState3incoming1 uvwState3Next uvwState4incoming0 uvwState4incoming1 uvwState4Next uvwState5incoming0 uvwState5incoming1 uvwState5Next uvwState6incoming0 uvwState6incoming1 uvwState6Next uvwState7incoming0 uvwState7incoming1 uvwState7Next uvwState8incoming0 uvwState8incoming1 uvwState8Next uvwState9incoming0 uvwState9incoming1 uvwState9Next uvwState10incoming0 uvwState10incoming1 uvwState10Next uvwState11incoming0 uvwState11incoming1 uvwState11Next uvwState12incoming0 uvwState12incoming1 uvwState12Next uvwState13incoming0 uvwState13incoming1 uvwState13Next uvwState14incoming0 uvwState14incoming1 uvwState14Next uvwState15incoming0 uvwState15incoming1 uvwState15Next uvwState16incoming0 uvwState16incoming1 uvwState16Next uvwState17incoming0 uvwState17Next uvwState18incoming0 uvwState18Next uvwState19incoming0 uvwState19incoming1 uvwState19incoming2 uvwState19Next uvwState20incoming0 uvwState20Next uvwState21incoming0 uvwState21Next 
+.names new_n0
+0
+.names new_n1
+1
+.names a1 a2 new_n32
+11 1
+.names uvwState1 new_n32  new_n33
+11 1
+.names a1 a2 new_n34
+10 1
+.names a1 a2 new_n35
+01 1
+.names new_n34  new_n35  new_n36
+00 1
+.names uvwState2 new_n36  new_n37
+11 1
+.names b1 b2 new_n38
+11 1
+.names uvwState3 new_n38  new_n39
+11 1
+.names b1 b2 new_n40
+10 1
+.names b1 b2 new_n41
+01 1
+.names new_n40  new_n41  new_n42
+00 1
+.names uvwState4 new_n42  new_n43
+11 1
+.names c1 c2 new_n44
+11 1
+.names uvwState5 new_n44  new_n45
+11 1
+.names c1 c2 new_n46
+10 1
+.names c1 c2 new_n47
+01 1
+.names new_n46  new_n47  new_n48
+00 1
+.names uvwState6 new_n48  new_n49
+11 1
+.names d1 d2 new_n50
+11 1
+.names uvwState7 new_n50  new_n51
+11 1
+.names d1 d2 new_n52
+10 1
+.names d1 d2 new_n53
+01 1
+.names new_n52  new_n53  new_n54
+00 1
+.names uvwState8 new_n54  new_n55
+11 1
+.names uvwState9 new_n34  new_n56
+11 1
+.names uvwState10 new_n36  new_n57
+10 1
+.names uvwState11 new_n40  new_n58
+11 1
+.names uvwState12 new_n42  new_n59
+10 1
+.names uvwState13 new_n46  new_n60
+11 1
+.names uvwState14 new_n48  new_n61
+10 1
+.names uvwState15 new_n52  new_n62
+11 1
+.names uvwState16 new_n54  new_n63
+10 1
+.names new_n34  new_n40  new_n64
+11 1
+.names new_n41  new_n53  new_n65
+00 1
+.names new_n35  new_n65  new_n66
+10 1
+.names new_n64  new_n66  new_n67
+00 1
+.names new_n34  new_n52  new_n68
+11 1
+.names new_n67  new_n68  new_n69
+10 1
+.names new_n41  new_n47  new_n70
+11 1
+.names new_n69  new_n70  new_n71
+10 1
+.names new_n40  new_n46  new_n72
+11 1
+.names new_n71  new_n72  new_n73
+10 1
+.names new_n47  new_n53  new_n74
+11 1
+.names new_n73  new_n74  new_n75
+10 1
+.names new_n46  new_n52  new_n76
+11 1
+.names new_n75  new_n76  new_n77
+10 1
+.names m new_n35  new_n79
+10 1
+.names uvwState18 new_n79  new_n80
+11 1
+.names uvwState19 new_n35  new_n81
+10 1
+.names m new_n34  new_n82
+10 1
+.names new_n81  new_n82  new_n83
+10 1
+.names uvwState20 new_n82  new_n84
+11 1
+.names uvwState21 new_n35  new_n85
+10 1
+.names new_n82  new_n85  new_n86
+11 1
+.names new_n84  new_n86  new_n87
+00 1
+.names new_n83  new_n87  new_n88
+01 1
+.names new_n80  new_n88  new_n89
+01 1
+.names new_n77  new_n89  new_n90
+11 1
+.names new_n63  new_n90  new_n91
+01 1
+.names new_n62  new_n91  new_n92
+01 1
+.names new_n61  new_n92  new_n93
+01 1
+.names new_n60  new_n93  new_n94
+01 1
+.names new_n59  new_n94  new_n95
+01 1
+.names new_n58  new_n95  new_n96
+01 1
+.names new_n57  new_n96  new_n97
+01 1
+.names new_n56  new_n97  new_n98
+01 1
+.names new_n55  new_n98  new_n99
+01 1
+.names new_n51  new_n99  new_n100
+01 1
+.names new_n49  new_n100  new_n101
+01 1
+.names new_n45  new_n101  new_n102
+01 1
+.names new_n43  new_n102  new_n103
+01 1
+.names new_n39  new_n103  new_n104
+01 1
+.names new_n37  new_n104  new_n105
+01 1
+.names new_n33  new_n105  new_n106
+01 1
+.names uvwState1 new_n35  new_n108
+10 1
+.names a1 a2 new_n109
+00 1
+.names new_n108  new_n109  new_n110
+00 1
+.names a1 uvwState1 new_n111
+11 1
+.names uvwState2 new_n35  new_n112
+10 1
+.names new_n111  new_n112  new_n113
+00 1
+.names uvwState3 new_n41  new_n114
+10 1
+.names b1 b2 new_n115
+00 1
+.names new_n114  new_n115  new_n116
+00 1
+.names b1 uvwState3 new_n117
+11 1
+.names uvwState4 new_n41  new_n118
+10 1
+.names new_n117  new_n118  new_n119
+00 1
+.names uvwState5 new_n47  new_n120
+10 1
+.names c1 c2 new_n121
+00 1
+.names new_n120  new_n121  new_n122
+00 1
+.names c1 uvwState5 new_n123
+11 1
+.names uvwState6 new_n47  new_n124
+10 1
+.names new_n123  new_n124  new_n125
+00 1
+.names uvwState7 new_n53  new_n126
+10 1
+.names d1 d2 new_n127
+00 1
+.names new_n126  new_n127  new_n128
+00 1
+.names d1 uvwState7 new_n129
+11 1
+.names uvwState8 new_n53  new_n130
+10 1
+.names new_n129  new_n130  new_n131
+00 1
+.names uvwState9 new_n109  new_n132
+10 1
+.names new_n35  new_n132  new_n133
+00 1
+.names a1 uvwState9 new_n134
+11 1
+.names uvwState10 new_n109  new_n135
+10 1
+.names new_n134  new_n135  new_n136
+00 1
+.names uvwState11 new_n115  new_n137
+10 1
+.names new_n41  new_n137  new_n138
+00 1
+.names b1 uvwState11 new_n139
+11 1
+.names uvwState12 new_n115  new_n140
+10 1
+.names new_n139  new_n140  new_n141
+00 1
+.names uvwState13 new_n121  new_n142
+10 1
+.names new_n47  new_n142  new_n143
+00 1
+.names c1 uvwState13 new_n144
+11 1
+.names uvwState14 new_n121  new_n145
+10 1
+.names new_n144  new_n145  new_n146
+00 1
+.names uvwState15 new_n127  new_n147
+10 1
+.names new_n53  new_n147  new_n148
+00 1
+.names d1 uvwState15 new_n149
+11 1
+.names uvwState16 new_n127  new_n150
+10 1
+.names new_n149  new_n150  new_n151
+00 1
+.names new_n35  new_n82  new_n152
+11 1
+.names new_n34  new_n79  new_n153
+11 1
+.names uvwState20 new_n153  new_n154
+11 1
+.names uvwState21 new_n153  new_n155
+11 1
+.names new_n154  new_n155  new_n156
+00 1
+.names new_n81  new_n156  new_n157
+01 1
+.names uvwState20 new_n34  new_n158
+10 1
+.names new_n0 uvwState0incoming0
+1 1
+.names new_n33 uvwState0incoming1
+1 1
+.names new_n37 uvwState0incoming2
+1 1
+.names new_n39 uvwState0incoming3
+1 1
+.names new_n43 uvwState0incoming4
+1 1
+.names new_n45 uvwState0incoming5
+1 1
+.names new_n49 uvwState0incoming6
+1 1
+.names new_n51 uvwState0incoming7
+1 1
+.names new_n55 uvwState0incoming8
+1 1
+.names new_n56 uvwState0incoming9
+1 1
+.names new_n57 uvwState0incoming10
+1 1
+.names new_n58 uvwState0incoming11
+1 1
+.names new_n59 uvwState0incoming12
+1 1
+.names new_n60 uvwState0incoming13
+1 1
+.names new_n61 uvwState0incoming14
+1 1
+.names new_n62 uvwState0incoming15
+1 1
+.names new_n63 uvwState0incoming16
+1 1
+.names new_n77 uvwState0incoming17
+0 1
+.names new_n80 uvwState0incoming18
+1 1
+.names new_n83 uvwState0incoming19
+1 1
+.names new_n84 uvwState0incoming20
+1 1
+.names new_n86 uvwState0incoming21
+1 1
+.names new_n106 uvwState0Next
+0 1
+.names new_n108 uvwState1incoming0
+1 1
+.names new_n109 uvwState1incoming1
+1 1
+.names new_n110 uvwState1Next
+0 1
+.names new_n111 uvwState2incoming0
+1 1
+.names new_n112 uvwState2incoming1
+1 1
+.names new_n113 uvwState2Next
+0 1
+.names new_n114 uvwState3incoming0
+1 1
+.names new_n115 uvwState3incoming1
+1 1
+.names new_n116 uvwState3Next
+0 1
+.names new_n117 uvwState4incoming0
+1 1
+.names new_n118 uvwState4incoming1
+1 1
+.names new_n119 uvwState4Next
+0 1
+.names new_n120 uvwState5incoming0
+1 1
+.names new_n121 uvwState5incoming1
+1 1
+.names new_n122 uvwState5Next
+0 1
+.names new_n123 uvwState6incoming0
+1 1
+.names new_n124 uvwState6incoming1
+1 1
+.names new_n125 uvwState6Next
+0 1
+.names new_n126 uvwState7incoming0
+1 1
+.names new_n127 uvwState7incoming1
+1 1
+.names new_n128 uvwState7Next
+0 1
+.names new_n129 uvwState8incoming0
+1 1
+.names new_n130 uvwState8incoming1
+1 1
+.names new_n131 uvwState8Next
+0 1
+.names new_n132 uvwState9incoming0
+1 1
+.names new_n35 uvwState9incoming1
+1 1
+.names new_n133 uvwState9Next
+0 1
+.names new_n134 uvwState10incoming0
+1 1
+.names new_n135 uvwState10incoming1
+1 1
+.names new_n136 uvwState10Next
+0 1
+.names new_n137 uvwState11incoming0
+1 1
+.names new_n41 uvwState11incoming1
+1 1
+.names new_n138 uvwState11Next
+0 1
+.names new_n139 uvwState12incoming0
+1 1
+.names new_n140 uvwState12incoming1
+1 1
+.names new_n141 uvwState12Next
+0 1
+.names new_n142 uvwState13incoming0
+1 1
+.names new_n47 uvwState13incoming1
+1 1
+.names new_n143 uvwState13Next
+0 1
+.names new_n144 uvwState14incoming0
+1 1
+.names new_n145 uvwState14incoming1
+1 1
+.names new_n146 uvwState14Next
+0 1
+.names new_n147 uvwState15incoming0
+1 1
+.names new_n53 uvwState15incoming1
+1 1
+.names new_n148 uvwState15Next
+0 1
+.names new_n149 uvwState16incoming0
+1 1
+.names new_n150 uvwState16incoming1
+1 1
+.names new_n151 uvwState16Next
+0 1
+.names new_n0 uvwState17incoming0
+0 1
+.names new_n0 uvwState17Next
+0 1
+.names new_n152 uvwState18incoming0
+1 1
+.names new_n152 uvwState18Next
+1 1
+.names new_n81 uvwState19incoming0
+1 1
+.names new_n154 uvwState19incoming1
+1 1
+.names new_n155 uvwState19incoming2
+1 1
+.names new_n157 uvwState19Next
+0 1
+.names new_n158 uvwState20incoming0
+1 1
+.names new_n158 uvwState20Next
+1 1
+.names new_n85 uvwState21incoming0
+1 1
+.names new_n85 uvwState21Next
+1 1
+.end

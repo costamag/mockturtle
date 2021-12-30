@@ -1,0 +1,442 @@
+.model monitorBlif
+.inputs a1 a2 b1 b2 c1 c2 d1 d2 m uvwState0 uvwState1 uvwState2 uvwState3 uvwState4 uvwState5 uvwState6 uvwState7 uvwState8 uvwState9 uvwState10 uvwState11 uvwState12 uvwState13 uvwState14 uvwState15 uvwState16 uvwState17 uvwState18 uvwState19 uvwState20 uvwState21
+.outputs uvwState0incoming0 uvwState0incoming1 uvwState0incoming2 uvwState0incoming3 uvwState0incoming4 uvwState0incoming5 uvwState0incoming6 uvwState0incoming7 uvwState0incoming8 uvwState0incoming9 uvwState0incoming10 uvwState0incoming11 uvwState0incoming12 uvwState0incoming13 uvwState0incoming14 uvwState0incoming15 uvwState0incoming16 uvwState0incoming17 uvwState0incoming18 uvwState0incoming19 uvwState0incoming20 uvwState0incoming21 uvwState0Next uvwState1incoming0 uvwState1incoming1 uvwState1Next uvwState2incoming0 uvwState2incoming1 uvwState2Next uvwState3incoming0 uvwState3incoming1 uvwState3Next uvwState4incoming0 uvwState4incoming1 uvwState4Next uvwState5incoming0 uvwState5incoming1 uvwState5Next uvwState6incoming0 uvwState6incoming1 uvwState6Next uvwState7incoming0 uvwState7incoming1 uvwState7Next uvwState8incoming0 uvwState8incoming1 uvwState8Next uvwState9incoming0 uvwState9incoming1 uvwState9Next uvwState10incoming0 uvwState10incoming1 uvwState10Next uvwState11incoming0 uvwState11incoming1 uvwState11Next uvwState12incoming0 uvwState12incoming1 uvwState12Next uvwState13incoming0 uvwState13incoming1 uvwState13Next uvwState14incoming0 uvwState14incoming1 uvwState14Next uvwState15incoming0 uvwState15incoming1 uvwState15Next uvwState16incoming0 uvwState16incoming1 uvwState16Next uvwState17incoming0 uvwState17Next uvwState18incoming0 uvwState18Next uvwState19incoming0 uvwState19incoming1 uvwState19incoming2 uvwState19Next uvwState20incoming0 uvwState20Next uvwState21incoming0 uvwState21Next
+.names internalc0
+ 1
+.names internalc0 internald1
+1 1
+.names internald1 uvwState0 uvwState0incoming0
+11 1
+.names a1 a2 internalc3
+11 1
+.names internalc3 internald4
+1 1
+.names internald4 uvwState1 uvwState0incoming1
+11 1
+.names a1 internal6
+0 1
+.names a2 internal7
+0 1
+.names internal6 internal7 internalc8
+11 1
+.names internalc3 internalc8 internald9
+1- 1
+-1 1
+.names internald9 uvwState2 uvwState0incoming2
+11 1
+.names b1 b2 internalc11
+11 1
+.names internalc11 internald12
+1 1
+.names internald12 uvwState3 uvwState0incoming3
+11 1
+.names b1 internal14
+0 1
+.names b2 internal15
+0 1
+.names internal14 internal15 internalc16
+11 1
+.names internalc11 internalc16 internald17
+1- 1
+-1 1
+.names internald17 uvwState4 uvwState0incoming4
+11 1
+.names c1 c2 internalc19
+11 1
+.names internalc19 internald20
+1 1
+.names internald20 uvwState5 uvwState0incoming5
+11 1
+.names c1 internal22
+0 1
+.names c2 internal23
+0 1
+.names internal22 internal23 internalc24
+11 1
+.names internalc19 internalc24 internald25
+1- 1
+-1 1
+.names internald25 uvwState6 uvwState0incoming6
+11 1
+.names d1 d2 internalc27
+11 1
+.names internalc27 internald28
+1 1
+.names internald28 uvwState7 uvwState0incoming7
+11 1
+.names d1 internal30
+0 1
+.names d2 internal31
+0 1
+.names internal30 internal31 internalc32
+11 1
+.names internalc27 internalc32 internald33
+1- 1
+-1 1
+.names internald33 uvwState8 uvwState0incoming8
+11 1
+.names a1 internal7 internalc35
+11 1
+.names internalc35 internald36
+1 1
+.names internald36 uvwState9 uvwState0incoming9
+11 1
+.names internal6 a2 internalc38
+11 1
+.names internalc35 internalc38 internald39
+1- 1
+-1 1
+.names internald39 uvwState10 uvwState0incoming10
+11 1
+.names b1 internal15 internalc41
+11 1
+.names internalc41 internald42
+1 1
+.names internald42 uvwState11 uvwState0incoming11
+11 1
+.names internal14 b2 internalc44
+11 1
+.names internalc41 internalc44 internald45
+1- 1
+-1 1
+.names internald45 uvwState12 uvwState0incoming12
+11 1
+.names c1 internal23 internalc47
+11 1
+.names internalc47 internald48
+1 1
+.names internald48 uvwState13 uvwState0incoming13
+11 1
+.names internal22 c2 internalc50
+11 1
+.names internalc47 internalc50 internald51
+1- 1
+-1 1
+.names internald51 uvwState14 uvwState0incoming14
+11 1
+.names d1 internal31 internalc53
+11 1
+.names internalc53 internald54
+1 1
+.names internald54 uvwState15 uvwState0incoming15
+11 1
+.names internal30 d2 internalc56
+11 1
+.names internalc53 internalc56 internald57
+1- 1
+-1 1
+.names internald57 uvwState16 uvwState0incoming16
+11 1
+.names c1 internal23 d1 internal31 internalc59
+1111 1
+.names internal22 c2 internal30 d2 internalc60
+1111 1
+.names b1 internal15 c1 internal23 internalc61
+1111 1
+.names internal14 b2 internal22 c2 internalc62
+1111 1
+.names a1 internal7 d1 internal31 internalc63
+1111 1
+.names a1 internal7 b1 internal15 internalc64
+1111 1
+.names internal6 a2 internal30 d2 internalc65
+1111 1
+.names internal6 a2 internal14 b2 internalc66
+1111 1
+.names internalc59 internalc60 internalc61 internalc62 internalc63 internalc64 internalc65 internalc66 internald67
+1------- 1
+-1------ 1
+--1----- 1
+---1---- 1
+----1--- 1
+-----1-- 1
+------1- 1
+-------1 1
+.names internald67 uvwState17 uvwState0incoming17
+11 1
+.names a1 m internalc69
+11 1
+.names internal7 m internalc70
+11 1
+.names internalc69 internalc70 internald71
+1- 1
+-1 1
+.names internald71 uvwState18 uvwState0incoming18
+11 1
+.names m internal73
+0 1
+.names a1 internal73 internalc74
+11 1
+.names internal7 internal73 internalc75
+11 1
+.names internalc74 internalc35 internalc75 internald76
+1-- 1
+-1- 1
+--1 1
+.names internald76 uvwState19 uvwState0incoming19
+11 1
+.names a2 m internalc78
+11 1
+.names internal6 m internalc79
+11 1
+.names internalc78 internalc79 internald80
+1- 1
+-1 1
+.names internald80 uvwState20 uvwState0incoming20
+11 1
+.names a1 a2 m internalc82
+111 1
+.names internal6 internal7 m internalc83
+111 1
+.names internalc82 internalc83 internald84
+1- 1
+-1 1
+.names internald84 uvwState21 uvwState0incoming21
+11 1
+.names uvwState0incoming0 uvwState0incoming1 uvwState0incoming2 uvwState0incoming3 uvwState0incoming4 uvwState0incoming5 uvwState0incoming6 uvwState0incoming7 uvwState0incoming8 uvwState0incoming9 uvwState0incoming10 uvwState0incoming11 uvwState0incoming12 uvwState0incoming13 uvwState0incoming14 uvwState0incoming15 uvwState0incoming16 uvwState0incoming17 uvwState0incoming18 uvwState0incoming19 uvwState0incoming20 uvwState0incoming21 uvwState0Next
+1--------------------- 1
+-1-------------------- 1
+--1------------------- 1
+---1------------------ 1
+----1----------------- 1
+-----1---------------- 1
+------1--------------- 1
+-------1-------------- 1
+--------1------------- 1
+---------1------------ 1
+----------1----------- 1
+-----------1---------- 1
+------------1--------- 1
+-------------1-------- 1
+--------------1------- 1
+---------------1------ 1
+----------------1----- 1
+-----------------1---- 1
+------------------1--- 1
+-------------------1-- 1
+--------------------1- 1
+---------------------1 1
+.names a1 internalc87
+1 1
+.names internal7 internalc88
+1 1
+.names internalc87 internalc88 internald89
+1- 1
+-1 1
+.names internald89 uvwState1 uvwState1incoming0
+11 1
+.names internalc8 internald91
+1 1
+.names internald91 uvwState17 uvwState1incoming1
+11 1
+.names uvwState1incoming0 uvwState1incoming1 uvwState1Next
+1- 1
+-1 1
+.names internalc87 internald94
+1 1
+.names internald94 uvwState1 uvwState2incoming0
+11 1
+.names internald89 uvwState2 uvwState2incoming1
+11 1
+.names uvwState2incoming0 uvwState2incoming1 uvwState2Next
+1- 1
+-1 1
+.names b1 internalc98
+1 1
+.names internal15 internalc99
+1 1
+.names internalc98 internalc99 internald100
+1- 1
+-1 1
+.names internald100 uvwState3 uvwState3incoming0
+11 1
+.names internalc16 internald102
+1 1
+.names internald102 uvwState17 uvwState3incoming1
+11 1
+.names uvwState3incoming0 uvwState3incoming1 uvwState3Next
+1- 1
+-1 1
+.names internalc98 internald105
+1 1
+.names internald105 uvwState3 uvwState4incoming0
+11 1
+.names internald100 uvwState4 uvwState4incoming1
+11 1
+.names uvwState4incoming0 uvwState4incoming1 uvwState4Next
+1- 1
+-1 1
+.names c1 internalc109
+1 1
+.names internal23 internalc110
+1 1
+.names internalc109 internalc110 internald111
+1- 1
+-1 1
+.names internald111 uvwState5 uvwState5incoming0
+11 1
+.names internalc24 internald113
+1 1
+.names internald113 uvwState17 uvwState5incoming1
+11 1
+.names uvwState5incoming0 uvwState5incoming1 uvwState5Next
+1- 1
+-1 1
+.names internalc109 internald116
+1 1
+.names internald116 uvwState5 uvwState6incoming0
+11 1
+.names internald111 uvwState6 uvwState6incoming1
+11 1
+.names uvwState6incoming0 uvwState6incoming1 uvwState6Next
+1- 1
+-1 1
+.names d1 internalc120
+1 1
+.names internal31 internalc121
+1 1
+.names internalc120 internalc121 internald122
+1- 1
+-1 1
+.names internald122 uvwState7 uvwState7incoming0
+11 1
+.names internalc32 internald124
+1 1
+.names internald124 uvwState17 uvwState7incoming1
+11 1
+.names uvwState7incoming0 uvwState7incoming1 uvwState7Next
+1- 1
+-1 1
+.names internalc120 internald127
+1 1
+.names internald127 uvwState7 uvwState8incoming0
+11 1
+.names internald122 uvwState8 uvwState8incoming1
+11 1
+.names uvwState8incoming0 uvwState8incoming1 uvwState8Next
+1- 1
+-1 1
+.names a2 internalc131
+1 1
+.names internalc131 internalc87 internald132
+1- 1
+-1 1
+.names internald132 uvwState9 uvwState9incoming0
+11 1
+.names internalc38 internald134
+1 1
+.names internald134 uvwState17 uvwState9incoming1
+11 1
+.names uvwState9incoming0 uvwState9incoming1 uvwState9Next
+1- 1
+-1 1
+.names internald94 uvwState9 uvwState10incoming0
+11 1
+.names internald132 uvwState10 uvwState10incoming1
+11 1
+.names uvwState10incoming0 uvwState10incoming1 uvwState10Next
+1- 1
+-1 1
+.names b2 internalc140
+1 1
+.names internalc140 internalc98 internald141
+1- 1
+-1 1
+.names internald141 uvwState11 uvwState11incoming0
+11 1
+.names internalc44 internald143
+1 1
+.names internald143 uvwState17 uvwState11incoming1
+11 1
+.names uvwState11incoming0 uvwState11incoming1 uvwState11Next
+1- 1
+-1 1
+.names internald105 uvwState11 uvwState12incoming0
+11 1
+.names internald141 uvwState12 uvwState12incoming1
+11 1
+.names uvwState12incoming0 uvwState12incoming1 uvwState12Next
+1- 1
+-1 1
+.names c2 internalc149
+1 1
+.names internalc149 internalc109 internald150
+1- 1
+-1 1
+.names internald150 uvwState13 uvwState13incoming0
+11 1
+.names internalc50 internald152
+1 1
+.names internald152 uvwState17 uvwState13incoming1
+11 1
+.names uvwState13incoming0 uvwState13incoming1 uvwState13Next
+1- 1
+-1 1
+.names internald116 uvwState13 uvwState14incoming0
+11 1
+.names internald150 uvwState14 uvwState14incoming1
+11 1
+.names uvwState14incoming0 uvwState14incoming1 uvwState14Next
+1- 1
+-1 1
+.names d2 internalc158
+1 1
+.names internalc158 internalc120 internald159
+1- 1
+-1 1
+.names internald159 uvwState15 uvwState15incoming0
+11 1
+.names internalc56 internald161
+1 1
+.names internald161 uvwState17 uvwState15incoming1
+11 1
+.names uvwState15incoming0 uvwState15incoming1 uvwState15Next
+1- 1
+-1 1
+.names internald127 uvwState15 uvwState16incoming0
+11 1
+.names internald159 uvwState16 uvwState16incoming1
+11 1
+.names uvwState16incoming0 uvwState16incoming1 uvwState16Next
+1- 1
+-1 1
+.names internald1 uvwState17 uvwState17incoming0
+11 1
+.names uvwState17incoming0 uvwState17Next
+1 1
+.names internal6 a2 m internalc169
+111 1
+.names internalc169 internald170
+1 1
+.names internald170 uvwState17 uvwState18incoming0
+11 1
+.names uvwState18incoming0 uvwState18Next
+1 1
+.names internald89 uvwState19 uvwState19incoming0
+11 1
+.names a1 internal7 m internalc174
+111 1
+.names internalc174 internald175
+1 1
+.names internald175 uvwState20 uvwState19incoming1
+11 1
+.names internald175 uvwState21 uvwState19incoming2
+11 1
+.names uvwState19incoming0 uvwState19incoming1 uvwState19incoming2 uvwState19Next
+1-- 1
+-1- 1
+--1 1
+.names internal6 internalc179
+1 1
+.names internalc131 internalc179 internald180
+1- 1
+-1 1
+.names internald180 uvwState20 uvwState20incoming0
+11 1
+.names uvwState20incoming0 uvwState20Next
+1 1
+.names internald89 uvwState21 uvwState21incoming0
+11 1
+.names uvwState21incoming0 uvwState21Next
+1 1
+.end

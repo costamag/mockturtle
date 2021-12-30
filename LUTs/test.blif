@@ -1,0 +1,186 @@
+.model monitorBlif
+.inputs a1 a2 b1 b2 c1 c2 d1 d2 m uvwState0 uvwState1 uvwState2 uvwState3 uvwState4 uvwState5 uvwState6 uvwState7 uvwState8 uvwState9
+.outputs uvwState0incoming1 uvwState0incoming2 uvwState0incoming3 uvwState0incoming4 uvwState0incoming5 uvwState0Next uvwState1incoming1 uvwState1Next uvwState2incoming1 uvwState2Next uvwState3incoming1 uvwState3Next uvwState4incoming1 uvwState4Next uvwState5incoming1 uvwState5Next uvwState6incoming1 uvwState6Next uvwState7incoming1 uvwState7Next uvwState8incoming1 uvwState8Next uvwState9Next
+.names a1 a2 internalc0
+11 1
+.names a1 internal1
+0 1
+.names a2 internal2
+0 1
+.names internal1 internal2 internalc3
+11 1
+.names internalc0 internalc3 internald4
+1- 1
+-1 1
+.names internald4 uvwState5 uvwState0incoming1
+11 1
+.names b1 b2 internalc6
+11 1
+.names b1 internal7
+0 1
+.names b2 internal8
+0 1
+.names internal7 internal8 internalc9
+11 1
+.names internalc6 internalc9 internald10
+1- 1
+-1 1
+.names internald10 uvwState6 uvwState0incoming2
+11 1
+.names c1 c2 internalc12
+11 1
+.names c1 internal13
+0 1
+.names c2 internal14
+0 1
+.names internal13 internal14 internalc15
+11 1
+.names internalc12 internalc15 internald16
+1- 1
+-1 1
+.names internald16 uvwState7 uvwState0incoming3
+11 1
+.names d1 d2 internalc18
+11 1
+.names d1 internal19
+0 1
+.names d2 internal20
+0 1
+.names internal19 internal20 internalc21
+11 1
+.names internalc18 internalc21 internald22
+1- 1
+-1 1
+.names internald22 uvwState8 uvwState0incoming4
+11 1
+.names c1 internal14 d1 internal20 internalc24
+1111 1
+.names b1 internal8 c1 internal14 internalc25
+1111 1
+.names a1 internal2 d1 internal20 internalc26
+1111 1
+.names a1 internal2 b1 internal8 internalc27
+1111 1
+.names internalc24 internalc25 internalc26 internalc27 internald28
+1--- 1
+-1-- 1
+--1- 1
+---1 1
+.names internald28 uvwState9 uvwState0incoming5
+11 1
+.names internalc30
+ 1
+.names internalc30 internald31
+1 1
+.names internald31 uvwState0 internalc32
+11 1
+.names internalc32 uvwState0incoming1 uvwState0incoming2 uvwState0incoming3 uvwState0incoming4 uvwState0incoming5 uvwState0Next
+1----- 1
+-1---- 1
+--1--- 1
+---1-- 1
+----1- 1
+-----1 1
+.names internald31 uvwState9 uvwState1incoming1
+11 1
+.names a1 internalc35
+1 1
+.names internal2 internalc36
+1 1
+.names internalc35 internalc36 internald37
+1- 1
+-1 1
+.names internald37 uvwState1 internalc38
+11 1
+.names internalc38 uvwState1incoming1 uvwState1Next
+1- 1
+-1 1
+.names internald31 uvwState9 uvwState2incoming1
+11 1
+.names b1 internalc40
+1 1
+.names internal8 internalc41
+1 1
+.names internalc40 internalc41 internald42
+1- 1
+-1 1
+.names internald42 uvwState2 internalc43
+11 1
+.names internalc43 uvwState2incoming1 uvwState2Next
+1- 1
+-1 1
+.names internald31 uvwState9 uvwState3incoming1
+11 1
+.names c1 internalc45
+1 1
+.names internal14 internalc46
+1 1
+.names internalc45 internalc46 internald47
+1- 1
+-1 1
+.names internald47 uvwState3 internalc48
+11 1
+.names internalc48 uvwState3incoming1 uvwState3Next
+1- 1
+-1 1
+.names internald31 uvwState9 uvwState4incoming1
+11 1
+.names d1 internalc50
+1 1
+.names internal20 internalc51
+1 1
+.names internalc50 internalc51 internald52
+1- 1
+-1 1
+.names internald52 uvwState4 internalc53
+11 1
+.names internalc53 uvwState4incoming1 uvwState4Next
+1- 1
+-1 1
+.names a1 internal2 internalc55
+11 1
+.names internalc55 internald56
+1 1
+.names internald56 uvwState9 uvwState5incoming1
+11 1
+.names internald37 uvwState5 internalc58
+11 1
+.names internalc58 uvwState5incoming1 uvwState5Next
+1- 1
+-1 1
+.names b1 internal8 internalc60
+11 1
+.names internalc60 internald61
+1 1
+.names internald61 uvwState9 uvwState6incoming1
+11 1
+.names internald42 uvwState6 internalc63
+11 1
+.names internalc63 uvwState6incoming1 uvwState6Next
+1- 1
+-1 1
+.names c1 internal14 internalc65
+11 1
+.names internalc65 internald66
+1 1
+.names internald66 uvwState9 uvwState7incoming1
+11 1
+.names internald47 uvwState7 internalc68
+11 1
+.names internalc68 uvwState7incoming1 uvwState7Next
+1- 1
+-1 1
+.names d1 internal20 internalc70
+11 1
+.names internalc70 internald71
+1 1
+.names internald71 uvwState9 uvwState8incoming1
+11 1
+.names internald52 uvwState8 internalc73
+11 1
+.names internalc73 uvwState8incoming1 uvwState8Next
+1- 1
+-1 1
+.names uvwState4incoming1 uvwState9Next
+1 1
+.end

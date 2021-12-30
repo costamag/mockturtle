@@ -1,0 +1,110 @@
+.model top
+.inputs a1 a2 b1 b2 c1 c2 d1 d2 m uvwState0 uvwState1 uvwState2 uvwState3 uvwState4 uvwState5 uvwState6 uvwState7 uvwState8 uvwState9 
+.outputs uvwState0incoming1 uvwState0incoming2 uvwState0incoming3 uvwState0incoming4 uvwState0incoming5 uvwState0Next uvwState1incoming1 uvwState1Next uvwState2incoming1 uvwState2Next uvwState3incoming1 uvwState3Next uvwState4incoming1 uvwState4Next uvwState5incoming1 uvwState5Next uvwState6incoming1 uvwState6Next uvwState7incoming1 uvwState7Next uvwState8incoming1 uvwState8Next uvwState9Next 
+.names new_n0
+0
+.names new_n1
+1
+.names a1 a2 new_n20
+01 1
+.names uvwState5 new_n20  new_n21
+10 1
+.names a1 a2 new_n22
+10 1
+.names new_n21  new_n22  new_n23
+10 1
+.names b1 b2 new_n24
+01 1
+.names uvwState6 new_n24  new_n25
+10 1
+.names b1 b2 new_n26
+10 1
+.names new_n25  new_n26  new_n27
+10 1
+.names c1 c2 new_n28
+01 1
+.names uvwState7 new_n28  new_n29
+10 1
+.names c1 c2 new_n30
+10 1
+.names new_n29  new_n30  new_n31
+10 1
+.names d1 d2 new_n32
+01 1
+.names uvwState8 new_n32  new_n33
+10 1
+.names d1 d2 new_n34
+10 1
+.names new_n33  new_n34  new_n35
+10 1
+.names new_n22  new_n30  new_n36
+00 1
+.names new_n26  new_n34  new_n37
+00 1
+.names new_n36  new_n37  new_n38
+00 1
+.names new_n35  new_n38  new_n39
+00 1
+.names new_n31  new_n39  new_n40
+01 1
+.names new_n27  new_n40  new_n41
+01 1
+.names new_n23  new_n41  new_n42
+01 1
+.names uvwState0 new_n42  new_n43
+01 1
+.names new_n21  new_n22  new_n44
+00 1
+.names new_n25  new_n26  new_n45
+00 1
+.names new_n29  new_n30  new_n46
+00 1
+.names new_n33  new_n34  new_n47
+00 1
+.names new_n23 uvwState0incoming1
+1 1
+.names new_n27 uvwState0incoming2
+1 1
+.names new_n31 uvwState0incoming3
+1 1
+.names new_n35 uvwState0incoming4
+1 1
+.names new_n38 uvwState0incoming5
+1 1
+.names new_n43 uvwState0Next
+0 1
+.names new_n0 uvwState1incoming1
+0 1
+.names new_n0 uvwState1Next
+0 1
+.names new_n0 uvwState2incoming1
+0 1
+.names new_n0 uvwState2Next
+0 1
+.names new_n0 uvwState3incoming1
+0 1
+.names new_n0 uvwState3Next
+0 1
+.names new_n0 uvwState4incoming1
+0 1
+.names new_n0 uvwState4Next
+0 1
+.names new_n22 uvwState5incoming1
+1 1
+.names new_n44 uvwState5Next
+0 1
+.names new_n26 uvwState6incoming1
+1 1
+.names new_n45 uvwState6Next
+0 1
+.names new_n30 uvwState7incoming1
+1 1
+.names new_n46 uvwState7Next
+0 1
+.names new_n34 uvwState8incoming1
+1 1
+.names new_n47 uvwState8Next
+0 1
+.names new_n0 uvwState9Next
+0 1
+.end
