@@ -444,8 +444,11 @@ struct index_to_signal
           {
             eps_I_H =  MI( {_num_nodes}, {0} )/H({},{0});
             std::cout << "true: mi(f^;f)/H(f)=" << eps_I_H << std::endl;
-            _act++;
-          }
+            _act++;              
+          }          
+          if ( eps_I_H > eps_th )
+            break;
+
         }
         while( success == true )
         {
@@ -456,7 +459,8 @@ struct index_to_signal
             eps_I_H =  MI( {_num_nodes}, {0} )/H({},{0});
 
           std::cout << "still true: mi(f^;f)/H(f)=" << eps_I_H << std::endl;
-
+          if ( eps_I_H > eps_th )
+            break;
         }
       }
       fill_active_list( );
@@ -464,6 +468,268 @@ struct index_to_signal
     }
     #pragma endregion
 
+    #pragma region details_muesli_preprocessing
+    template<typename T>
+    void swap( T& a, T& b)
+    {
+      T t = a;
+      a = b;
+      b = t;
+    }
+
+    int partition ( std::vector<uint32_t>& support, std::vector<double>& attribute , uint32_t low, uint32_t high )
+    {
+    double pivot = attribute[high];    // pivot
+    int i = (low-1);  // Index of smaller element
+ 
+    for (int j = low; j < high; j++)
+      {
+        // If current element is smaller than or
+        // equal to pivot
+        if ( attribute[j] >= pivot)
+        {
+            i++;    // increment index of smaller element
+            swap(attribute[i], attribute[j]);
+            swap(support[i], support[j]);
+        }
+      }
+      swap(attribute[i + 1], attribute[high]);
+      swap(support[i + 1], support[high]);
+      return (i + 1);
+    }
+
+    void quicksort_by_attribute( std::vector<uint32_t>& support, std::vector<double>& attribute,  int low, int high )
+    {
+      if (low < high)
+      {
+        /* pi is partitioning index, arr[p] is now
+           at right place */
+        auto pi = partition( support, attribute, low, high);
+ 
+        // Separately sort elements before
+        // partition and after partition
+        quicksort_by_attribute( support, attribute, low, pi - 1);
+        quicksort_by_attribute( support, attribute, pi + 1, high);
+      }
+    }
+
+    std::vector<std::vector<uint32_t>> group_by_mi( std::vector<uint32_t> const& support, std::vector<double> const& mi_v, double dI = 0 )
+    {
+      std::vector<std::vector<uint32_t>> Pi;
+      std::vector<double> miP;
+      uint32_t idxPi = 0;
+      Pi.push_back({support[0]});
+      miP.push_back(mi_v[0]);
+      for( uint32_t k{1u}; k<support.size(); ++k )
+      {
+        if( mi_v[k] >= ( miP[idxPi] - miP[idxPi]*dI) )
+        {
+          Pi[idxPi].push_back( support[k] );
+        }
+        else
+        {
+          idxPi++;
+          Pi.push_back( {support[k]} );
+          miP.push_back(mi_v[k]);
+        }
+      }
+      return Pi;
+    }
+
+    uint32_t r_create_fn_from_support( std::vector<uint32_t> p, uint32_t kmax, std::vector<uint32_t> given_klg = {}, uint64_t o_idx = 0 )
+    {
+      std::cout << "\n{ ";
+        for( uint32_t j{0u}; j <p.size(); ++j )
+        {
+          std::cout << p[j] << " ";
+        }
+        std::cout << "}\n";
+      if( given_klg.size() == 0 )
+      {
+        if ( p.size() == 1 )
+        {
+          return p[0];
+        }
+        else if( p.size() <= kmax )
+        {
+          auto tt_new = create_fn( p );
+          create_klut_node( p, tt_new );
+          return ( _num_nodes - 1 );
+        }
+        else // |pi| > kmax
+        {
+          auto x = p[0];
+          std::vector<double> mi_v;
+          std::vector<uint32_t> p1;
+
+          for( uint32_t k{1u}; k < p.size(); ++k )
+          {
+            mi_v.emplace_back( MI( { p[k], x }, { o_idx }) );
+            p1.emplace_back( p[k] );
+          }
+          auto P1 = group_by_mi( p1, mi_v, 0 );
+          std::vector<uint32_t> Fns;
+          std::vector<double> mi_Fns;
+
+          Fns.push_back( r_create_fn_from_support( P1[0], kmax, {x}, 0 ) );
+          mi_Fns.push_back( MI( {Fns[0]}, {o_idx} ) );
+          for ( uint32_t k {1u}; k<P1.size(); ++k )
+          {
+            Fns.push_back( r_create_fn_from_support( P1[k], kmax, {}, 0 ) );
+            mi_Fns.push_back( MI( {Fns[k]}, {o_idx} ) );
+          }
+          quicksort_by_attribute( Fns, mi_Fns, 0, (Fns.size()-1) );
+          if( Fns.size() == 1 )
+          {
+            return Fns[0];
+          }
+          else
+          {
+            auto Fold = Fns[0];
+            for( uint32_t j{1u}; j < Fns.size(); ++j )
+            {
+              auto tt_new = create_fn( {Fold, Fns[j]} );
+              create_klut_node( {Fold, Fns[j]}, tt_new );
+              Fold = ( _num_nodes - 1 );
+            }
+            return Fold;
+          }
+        }
+
+      }
+      else
+      {
+        if ( p.size()+given_klg.size() <= kmax )
+        {
+          for ( uint32_t k{0u}; k<given_klg.size(); ++k )
+            p.push_back( given_klg[k] );
+
+          return r_create_fn_from_support( p, kmax, {}, 0 );
+        }
+        else // |p|+|given| > kmax
+        {
+          auto y = p[0];
+          p.erase(p.begin());
+          auto f0 = r_create_fn_from_support( p, kmax, {y}, 0 );
+          return r_create_fn_from_support( {f0}, kmax, given_klg, 0 );
+        }
+      }
+    }
+
+    void group_by_symmetry( std::vector<uint32_t>& support, uint32_t kmax, uint32_t o_idx = 0 )
+    {
+      /* compute the MI of all the nodes */
+      std::vector<double> mi_v;
+      for( uint32_t k{0u}; k < support.size(); ++k )
+        mi_v.emplace_back( MI( { support[k] }, { o_idx }) );
+
+      for( uint32_t i{0u}; i<support.size(); ++i )
+        std::cout << support[i] << " " << mi_v[i] << std::endl;
+
+      quicksort_by_attribute( support, mi_v, 0, (support.size()-1) );
+
+      for( uint32_t i{0u}; i<support.size(); ++i )
+        std::cout << support[i] << " " << mi_v[i] << std::endl;
+
+      auto Pi = group_by_mi( support, mi_v );
+      for (uint32_t k{0u}; k<Pi.size(); ++k )
+      {
+        auto p = Pi[k];
+        std::cout << "\n{ ";
+        for( uint32_t j{0u}; j <p.size(); ++j )
+        {
+          std::cout << p[j] << " ";
+        }
+        std::cout << "}\n";
+        if ( p.size() > 1 )
+        {
+          if( p.size() <= kmax )
+          {
+            auto tt_new = create_fn( p );
+            create_klut_node( p, tt_new );
+          }
+          else
+          {
+            r_create_fn_from_support( p, kmax, {}, 0 );
+          }
+        }
+      }
+    }
+    #pragma endregion
+
+    #pragma region preprocess_muesli
+    void preprocess_muesli( uint32_t kmax )
+    {
+      std::vector<uint32_t> support;
+      for( auto k = 0u; k < _num_nodes; ++k )
+        support.push_back(k);
+      group_by_symmetry( support, kmax );
+
+
+    }
+    #pragma endregion
+
+    /* return klut signal */
+    #pragma region it_shannon_decomposition
+    uint64_t it_shannon_decomposition_step( std::vector<uint32_t> support, dbs_storage nodes_remaining, uint32_t o_idx = 0 )
+    {
+      double mi_max = 0;
+      double mi_new;
+      uint32_t x_s;
+
+      for( uint32_t k{0u}; k < support.size(); ++k )
+      {
+        mi_new = MI( { support[k] },{o_idx});
+        if( mi_new >= mi_max )
+        {
+          mi_max = mi_new;
+          x_s = support[k];
+        }
+      }
+      dbs_storage nodes0, nodes1;   /* storage element: value of the output at each example */
+      dbs_storage * ptr_nodes;
+      std::vector<uint32_t> new_support;
+      dyn_bitset mask ( _num_nodes + 1, 1u );
+      mask = mask << x_s;
+      for (uint32_t k {0u}; k < nodes_remaining.size(); ++k )
+      {
+        if ( ( mask & nodes_remaining[k] ) == mask ) /* f1 */
+          ptr_nodes = &nodes1;
+        else /* f0 */
+          ptr_nodes = &nodes0;
+          
+        boost::dynamic_bitset<> new_bs;
+        for ( uint32_t j{0u}; j < support.size(); ++j )
+        {
+          if( support[j] != support[x_s] )
+          {
+            new_bs.push_back( nodes_remaining[k][j] );
+          } 
+        }
+        (*ptr_nodes).push_back( new_bs );
+      }
+      for ( uint32_t j{0u}; j < support.size(); ++j )
+      {
+        if( support[j] != support[x_s] )
+          new_support.push_back( support[j] );
+      }
+      auto f1 = klut.create_and( _itos.storage[support[x_s]], it_shannon_decomposition_step( new_support, nodes1, 0) );
+      auto f0 = klut.create_and( !_itos.storage[support[x_s]], it_shannon_decomposition_step( new_support, nodes0, 0) );
+
+      return klut.create_or( f1, f0 );
+      /* construct the substorage blocks */
+    }
+
+    void it_shannon_decomposition( uint32_t o_idx = 0 )
+    {
+      std::vector<uint32_t> initial_support;
+      for( uint32_t k{0u}; k < _num_nodes; ++k )
+        initial_support.push_back( k );
+      
+      auto f0 = it_shannon_decomposition_step( initial_support, _nodes, 0 );
+      klut.create_po( f0 );
+    }
+    #pragma endregion
 
     public:
       dbs_storage _nodes;   /* storage element: value of the output at each example */
