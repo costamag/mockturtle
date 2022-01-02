@@ -121,7 +121,10 @@ int main()
   {
     std::cout << k << "[" << pla1.MI({k},{0}) << "] " << std::endl;
   }
+
   //pla_network pla1( train_ds.X, train_ds.Y, 3 );
+  pla1.it_shannon_decomposition(3, 0);
+  
   //pla1.muesli(2);
 
 

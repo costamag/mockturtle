@@ -296,7 +296,7 @@ std::cout << "\nclass 1" << std::endl;
 
     pla_network pla7( inodes, onodes, 4 );
   pla7.print_pla();
-  pla7.it_shannon_decomposition(0);
+  pla7.it_shannon_decomposition(2, 0);
 
 
   return 0;

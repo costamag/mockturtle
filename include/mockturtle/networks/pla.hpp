@@ -219,6 +219,206 @@ struct index_to_signal
 
     #pragma endregion
 
+    #pragma region basic_function_given_data
+    std::vector<double> Pr_gd( std::vector<uint64_t> indeces_nodes, std::vector<uint64_t> indeces_outputs, 
+                            dbs_storage nodes, dbs_storage outputs, 
+                            uint32_t num_nodes )
+    {
+      uint32_t size_P_space = std::pow( 2, indeces_nodes.size() + indeces_outputs.size() );
+      std::vector<double> probabilities;
+      double_t proba;
+      double eq_flag_nodes, eq_flag_outputs;
+      dyn_bitset b1_nodes ( num_nodes+1, 1u );
+      dyn_bitset b1_outputs ( _num_outputs, 1u );
+      auto num_data = nodes.size();
+
+
+      for ( uint64_t x_u64_t {0u}; x_u64_t < size_P_space; ++x_u64_t )
+      {
+        dyn_bitset xin ( num_nodes+1, x_u64_t );
+        dyn_bitset mask_nodes ( num_nodes+1, 0u );
+        dyn_bitset X_nodes ( num_nodes+1, 0u );
+        uint32_t jeff;
+        //std::cout << "z1 "<<std::endl;
+        for ( uint32_t j {0u}; j < indeces_nodes.size(); ++j )
+        {
+          jeff = indeces_outputs.size() + j;
+          mask_nodes |= ( b1_nodes << indeces_nodes.at(j) );
+          X_nodes |= ( ( ( ( b1_nodes << jeff ) & xin ) >> jeff ) << indeces_nodes.at(j) );
+        }
+        //std::cout << "z2 "<<std::endl;
+
+        dyn_bitset mask_outputs ( _num_outputs, 0u );
+        uint64_t u64_t_X_outputs {0u};
+
+        //std::cout << "z3 "<<std::endl;
+        for ( uint32_t j {0u}; j < indeces_outputs.size(); ++j )
+        {
+          mask_outputs |= ( b1_outputs << indeces_outputs.at(j) );
+          u64_t_X_outputs |= ( ( ( ( 1u << j ) & x_u64_t ) >> j ) << indeces_outputs.at(j) );
+        }
+        dyn_bitset X_outputs( _num_outputs, u64_t_X_outputs );
+
+        proba = 0;
+        //std::cout << "z4 "<<std::endl;
+        for ( uint32_t i {0u}; i < num_data; ++i )
+        {
+
+          if ( ( indeces_nodes.size() != 0 ) && ( indeces_outputs.size() != 0 ) )
+          {
+            eq_flag_nodes = ( X_nodes == ( mask_nodes & nodes.at(i) ) ) ? 1 : 0;
+            eq_flag_outputs = ( X_outputs == ( mask_outputs & outputs.at(i) ) ) ? 1 : 0;
+          }
+          else if ( indeces_nodes.size() == 0 )
+          {
+            eq_flag_nodes = 1;
+            eq_flag_outputs = ( X_outputs == ( mask_outputs & outputs.at(i) ) ) ? 1 : 0;
+
+          }
+          else if ( indeces_outputs.size() == 0 )
+          {
+            eq_flag_nodes = ( X_nodes == ( mask_nodes & nodes.at(i) ) ) ? 1 : 0;
+            eq_flag_outputs = 1;
+          }
+          proba += eq_flag_outputs*eq_flag_nodes/num_data;
+
+        }
+        //std::cout << "z5 "<<std::endl;
+        probabilities.push_back( proba );
+      }
+
+      return probabilities;
+
+    }
+
+    double H_gd( std::vector<uint64_t> indeces_nodes, std::vector<uint64_t> indeces_outputs, 
+                            dbs_storage nodes, dbs_storage outputs, 
+                            uint32_t num_nodes )
+    {
+      /*std::cout << "a1: " << num_nodes << std::endl;
+      for( uint32_t k{0u}; k<indeces_nodes.size(); ++k )
+        std::cout << indeces_nodes[k] << std::endl;
+      for( uint32_t k{0u}; k<indeces_outputs.size(); ++k )
+        std::cout << indeces_outputs[k] << std::endl;
+      for( uint32_t k{0u}; k<nodes.size(); ++k )
+        std::cout << nodes[k] << ": " << outputs[k] << std::endl;*/
+
+      auto proba = Pr_gd( indeces_nodes, indeces_outputs, nodes, outputs, num_nodes );
+      //std::cout << "a2" << std::endl;
+      uint32_t size_P_space = proba.size();
+      //std::cout << "a2" << std::endl;
+      double entropy { 0 };
+      double deltaH { 0 };
+
+      for ( uint64_t xin {0u}; xin < size_P_space; ++xin )
+      {
+        deltaH = ( proba[xin] == 0 ) ? 0 : -1*proba[xin]*log2( proba[xin] );
+        entropy += deltaH;
+      } 
+      return entropy;
+    }
+
+    double MI_gd ( std::vector<uint64_t> Xindeces, std::vector<uint64_t> Yindeces,
+                   dbs_storage nodes, dbs_storage outputs, uint32_t num_nodes )
+    {
+      //std::cout << "a" << std::endl;
+      auto Hx = H_gd( Xindeces, {}, nodes, outputs, num_nodes );
+      //std::cout << "b" << std::endl;
+      auto Hy = H_gd( {}, Yindeces, nodes, outputs, num_nodes );
+      //std::cout << "c" << std::endl;
+      auto Hxy = H_gd( Xindeces, Yindeces, nodes, outputs, num_nodes ); 
+
+      return ( Hx + Hy - Hxy );
+    }
+
+    std::string create_fn_gd( std::vector<uint32_t> support, dbs_storage nodes, dbs_storage outputs )
+    {
+      uint32_t num_nodes = support.size();
+      uint32_t num_data = nodes.size();
+      uint32_t nin_node = support.size();
+      std::cout << "supp size = " << nin_node << std::endl;
+      uint32_t domain_size = pow( 2, nin_node );
+      uint32_t Ci0, Ci1;
+      dyn_bitset mask ( num_nodes + 1, 0u );
+      dyn_bitset X ( num_nodes + 1, 0u );
+      dyn_bitset Bit1 ( num_nodes + 1, 1u );
+      dyn_bitset Bit0 ( num_nodes + 1, 0u );
+
+      dyn_bitset Bit1_outputs ( _num_outputs, 1u );
+
+      std::default_random_engine generator;
+      std::bernoulli_distribution distribution(0.5);
+      std::string tt_str;
+      
+      auto mask0 = ~( Bit1 << num_nodes );
+      //std::cout << "mask " << mask0 << " domain size " << domain_size << std::endl;
+
+      for ( uint32_t j {0u}; j < nodes.size(); ++j )
+      {
+        nodes.at(j) &= mask0; 
+      }
+      //std::cout << "nodes " << nodes[0] << std::endl;
+
+
+      for ( uint32_t x_u64_t {0u}; x_u64_t < domain_size; ++x_u64_t )
+      {
+        dyn_bitset xin ( num_nodes+1, x_u64_t );
+        Ci0 = 0;
+        Ci1 = 0;
+        mask = Bit0;
+        X = Bit0;
+        //std::cout << "pre " << std::endl;
+        for ( uint32_t j {0u}; j < support.size(); ++j )
+        {
+          mask |= ( Bit1 << support.at(j) );
+          X |= ( ( ( ( Bit1 << j ) & xin ) >> j ) << support.at(j) );
+        }
+        //std::cout << "mask " << mask << " X "<< X << std::endl;
+
+        for ( uint32_t j {0u}; j < nodes.size(); ++j )
+        {
+          if ( X == ( mask & nodes.at(j) ) )
+            ( ( outputs.at(j) & Bit1_outputs ) == Bit1_outputs ) ? Ci1++ : Ci0++;
+        }
+        //std::cout << "C1 " << Ci1<< " C0 " << Ci0 << std::endl; 
+
+        auto new_val = Bit0;
+        if( Ci1 > Ci0 )
+        {
+          new_val = Bit1 << ( num_nodes );
+          tt_str = "1" + tt_str;
+        }
+        else if( Ci1 == Ci0 )
+        {
+          if (distribution(generator))
+          {
+            new_val = Bit1 << ( num_nodes );
+            tt_str = "1" + tt_str;
+          }
+          else
+          {
+            tt_str = "0" + tt_str;
+          }
+        }
+        else
+        {
+          tt_str = "0" + tt_str;
+        }
+
+        for ( uint32_t j {0u}; j < num_data; ++j )
+        {
+          if ( X == ( mask & nodes.at(j) ) )
+            nodes.at(j) |= new_val;
+        }
+      }
+      //std::cout << "str: " << tt_str << std::endl;
+      
+      return tt_str;
+
+    }
+
+    #pragma endregion
+
     #pragma region new_node
     void fill_active_list( )
     {
@@ -270,7 +470,7 @@ struct index_to_signal
     {
 
       uint32_t nin_node = support.size();
-      std::cout << "supp size = " << nin_node << std::endl;
+      //std::cout << "supp size = " << nin_node << std::endl;
       uint32_t domain_size = pow( 2, nin_node );
       uint32_t Ci0, Ci1;
       dyn_bitset mask ( _num_nodes + 1, 0u );
@@ -390,7 +590,7 @@ struct index_to_signal
       std::cout << std::endl;
       //
       std::vector<uint64_t> first_act;
-      std::cout << "a ";
+      //std::cout << "a ";
       for (uint32_t k {0u}; k <= _act; ++k )
       {
         std::cout << k << std::endl;
@@ -671,62 +871,137 @@ struct index_to_signal
 
     /* return klut signal */
     #pragma region it_shannon_decomposition
-    uint64_t it_shannon_decomposition_step( std::vector<uint32_t> support, dbs_storage nodes_remaining, uint32_t o_idx = 0 )
+    uint64_t it_shannon_decomposition_step( std::vector<uint32_t> support, dbs_storage nodes_remaining, dbs_storage outputs_remaining, uint32_t kmax = 2, uint32_t o_idx = 0 )
     {
+      //std::cout << 1 << std::endl;
+      uint32_t num_nodes = nodes_remaining[0].size() - 1;
       double mi_max = 0;
       double mi_new;
       uint32_t x_s;
 
+      bool all_ones = true;
+      bool all_zeros = true;
+      //std::cout << 2 << std::endl;
+
+      for( uint32_t k{0u}; k < outputs_remaining.size(); ++k )
+      {
+        if( outputs_remaining[k][o_idx] == 0 )
+          all_ones = false;
+        else if ( outputs_remaining[k][o_idx] == 1 )
+          all_zeros = false;
+        else
+          std::cerr << "none valid " << std::endl;
+      }
+      //std::cout << 3 << std::endl;
+
+      if( all_ones == true )
+        return klut.get_constant( true );
+      
+      if( all_zeros == true )
+        return klut.get_constant( false );
+
+      //std::cout << 4 << std::endl;
+
+
+      for( uint32_t k{0u}; k<nodes_remaining.size(); ++k )
+        //std::cout << nodes_remaining[k] << ": " << outputs_remaining[k] << std::endl;
+
+      if( support.size() < kmax )
+      {
+        auto tt_tmp = create_fn_gd( support, nodes_remaining, outputs_remaining );
+        //std::cout << tt_tmp << std::endl;
+        create_klut_node( support, tt_tmp );
+        return _itos.storage[_num_nodes];
+      }
+
+      //std::cout << 5 << std::endl;
+
       for( uint32_t k{0u}; k < support.size(); ++k )
       {
-        mi_new = MI( { support[k] },{o_idx});
+        /* print */
+        //std::cout << "supp el: " << support[k] << " " << k << "/" << support.size() << std::endl;
+        //std::cout << nodes_remaining.size() << " " << outputs_remaining.size() << std::endl;
+        //for( uint32_t jj {0u}; jj<nodes_remaining.size(); ++jj )
+          //std::cout << nodes_remaining[jj] << ":" << outputs_remaining[jj]<< std::endl;
+        /* print */
+        mi_new = MI_gd( { support[k] },{o_idx}, nodes_remaining, outputs_remaining, support.size() );
+        //std::cout << 5.1 << std::endl;
+
         if( mi_new >= mi_max )
         {
           mi_max = mi_new;
           x_s = support[k];
         }
       }
-      dbs_storage nodes0, nodes1;   /* storage element: value of the output at each example */
-      dbs_storage * ptr_nodes;
+      dbs_storage nodes0, nodes1, outputs0, outputs1;   /* storage element: value of the output at each example */
+
+      //std::cout << 6 << std::endl;
+
       std::vector<uint32_t> new_support;
-      dyn_bitset mask ( _num_nodes + 1, 1u );
+      dyn_bitset mask ( num_nodes + 1, 1u );
       mask = mask << x_s;
       for (uint32_t k {0u}; k < nodes_remaining.size(); ++k )
       {
+        //std::cout << 7 << std::endl;
+        //std::cout << mask << std::endl;
+        //std::cout << nodes_remaining[k] << std::endl;
+
+
         if ( ( mask & nodes_remaining[k] ) == mask ) /* f1 */
-          ptr_nodes = &nodes1;
-        else /* f0 */
-          ptr_nodes = &nodes0;
-          
-        boost::dynamic_bitset<> new_bs;
-        for ( uint32_t j{0u}; j < support.size(); ++j )
         {
-          if( support[j] != support[x_s] )
+          //std::cout << 8 << std::endl;
+          boost::dynamic_bitset<> new_bs;
+          for ( uint32_t j{0u}; j < support.size(); ++j )
           {
-            new_bs.push_back( nodes_remaining[k][j] );
-          } 
+            //std::cout << 9 << std::endl;
+            if( support[j] != support[x_s] )
+            {
+              new_bs.push_back( nodes_remaining[k][j] );
+            } 
+          }
+          new_bs.push_back( 0 );
+          nodes1.push_back( new_bs );
+          outputs1.push_back( outputs_remaining[k] );
         }
-        (*ptr_nodes).push_back( new_bs );
+        else /* f0 */
+        {
+          //std::cout << 10 << std::endl;
+          boost::dynamic_bitset<> new_bs;
+          for ( uint32_t j{0u}; j < support.size(); ++j )
+          {
+            //std::cout << 11 << std::endl;
+            if( support[j] != support[x_s] )
+            {
+              new_bs.push_back( nodes_remaining[k][j] );
+            } 
+          }
+          new_bs.push_back( 0 );
+
+          nodes0.push_back( new_bs );
+          outputs0.push_back( outputs_remaining[k] );
+        }
       }
       for ( uint32_t j{0u}; j < support.size(); ++j )
       {
+        //std::cout << 12 << std::endl;
         if( support[j] != support[x_s] )
           new_support.push_back( support[j] );
       }
-      auto f1 = klut.create_and( _itos.storage[support[x_s]], it_shannon_decomposition_step( new_support, nodes1, 0) );
-      auto f0 = klut.create_and( !_itos.storage[support[x_s]], it_shannon_decomposition_step( new_support, nodes0, 0) );
+      //std::cout << 13 << std::endl;
+      auto f1 = klut.create_and( _itos.storage[support[x_s]], it_shannon_decomposition_step( new_support, nodes1, outputs1, kmax, 0) );
+      auto f0 = klut.create_and( klut.create_not(_itos.storage[support[x_s]]), it_shannon_decomposition_step( new_support, nodes0, outputs0, kmax, 0) );
 
       return klut.create_or( f1, f0 );
       /* construct the substorage blocks */
     }
 
-    void it_shannon_decomposition( uint32_t o_idx = 0 )
+    void it_shannon_decomposition( uint32_t kmax = 2, uint32_t o_idx = 0 )
     {
       std::vector<uint32_t> initial_support;
       for( uint32_t k{0u}; k < _num_nodes; ++k )
         initial_support.push_back( k );
       
-      auto f0 = it_shannon_decomposition_step( initial_support, _nodes, 0 );
+      auto f0 = it_shannon_decomposition_step( initial_support, _nodes, _outputs, kmax, 0 );
       klut.create_po( f0 );
     }
     #pragma endregion
