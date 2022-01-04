@@ -35,12 +35,14 @@
 //#include <catch.hpp>
 
 #include <sstream>
+#include <algorithm>
 #include <string>
 #include <vector>
 #include <bitset>
 #include <cmath>
 #include <random>
 #include <boost/dynamic_bitset.hpp>
+#include <unordered_map>
 
 #include <mockturtle/networks/klut.hpp>
 #include <kitty/constructors.hpp>
@@ -87,11 +89,13 @@ struct index_to_signal
     protected:
       inline void _init()
       {
-
-        for ( uint32_t i {1u}; i < _num_nodes ; ++i )
+        std::vector<uint64_t> Xindeces;
+        for ( uint32_t i {0u}; i < _num_nodes ; ++i )
         {
           auto pi = klut.create_pi();
           _itos.insert( i, pi );
+
+          MI({i},{0});
         }
         _act = 0;
 
@@ -210,13 +214,30 @@ struct index_to_signal
       return entropy;
     }
 
-    double MI ( std::vector<uint64_t> Xindeces, std::vector<uint64_t> Yindeces )
+    double MI ( std::vector<uint64_t> Xindeces, std::vector<uint64_t> Yindeces, bool overwrite = false )
     {
-      auto Hx = H( Xindeces, {} );
-      auto Hy = H( {}, Yindeces );
-      auto Hxy = H( Xindeces, Yindeces ); 
+      std::stringstream ss;
+      std::copy( Xindeces.begin(), Xindeces.end(), std::ostream_iterator<int>(ss, " "));
+      std::string s = ss.str();
+      s = s.substr(0, s.length()-1);
+      bool not_present = (_mi_storage.find(s) == _mi_storage.end());
+      if ( not_present || overwrite )
+      {
+        auto Hx = H( Xindeces, {} );
+        auto Hy = H( {}, Yindeces );
+        auto Hxy = H( Xindeces, Yindeces ); 
 
-      return ( Hx + Hy - Hxy );
+        if( not_present )
+          _mi_storage.insert(std::make_pair(s,(Hx + Hy - Hxy)));
+        else
+          _mi_storage.at(s)=Hx + Hy - Hxy;
+          
+        return _mi_storage.at(s);
+      }
+      else
+      {
+        return _mi_storage.at(s);
+      }
     }
 
     #pragma endregion
@@ -600,14 +621,13 @@ struct index_to_signal
       }
       //
       //auto mi_old = MI( {support.at( 0 )}, {0} );
-      auto mi_old = MI( first_act, {0} );
+      auto mi_old = MI( first_act, {0} ); //#########################################################################
       
       tt_str = create_fn( support );
       std::cout << "truth table: " <<tt_str << std::endl;
-      std::cout << _act << std::endl;
       first_act.at(_act) = _num_nodes;
-     // auto mi_new = MI( {_num_nodes}, {0} );
-     auto mi_new = MI( first_act , {0} );
+      //print_pla();
+      auto mi_new = MI( first_act , {0}, true );
       
       std::cout << "mi_new " << mi_new << std::endl;
       std::cout << "mi_old " << mi_old << std::endl;
@@ -617,6 +637,14 @@ struct index_to_signal
         std::cout << "new node created. Stored at: " << _num_nodes << std::endl;
         create_klut_node( support, tt_str );
         return true;
+      }
+      else
+      {
+      std::stringstream ss;
+      std::copy( first_act.begin(), first_act.end(), std::ostream_iterator<int>(ss, " "));
+      std::string s = ss.str();
+      s = s.substr(0, s.length()-1);
+        _mi_storage.at(s) = mi_old;
       }
       std::cout << "Node is not kept. Remove new function " << std::endl;
       return false;
@@ -666,7 +694,9 @@ struct index_to_signal
           success = improve_fn();
           best_idx = _num_nodes;
           if (success)
+          {
             best_idx -= 1;
+          }
                
           std::cout << "best idx = " << best_idx << std::endl;
           std::cout << MI( {best_idx}, {0} )/H({},{0}) << std::endl;
@@ -867,6 +897,7 @@ struct index_to_signal
             mi_v.emplace_back( MI( { p[k], x }, { o_idx }) );
             p1.emplace_back( p[k] );
           }
+          quicksort_by_attribute( p1, mi_v, 0, (p1.size()-1) );
           auto P1 = group_by_mi( p1, mi_v, 0 );
           std::vector<uint32_t> Fns;
           std::vector<double> mi_Fns;
@@ -1042,10 +1073,6 @@ struct index_to_signal
       mask = mask << x_s;
       for (uint32_t k {0u}; k < nodes_remaining.size(); ++k )
       {
-        //std::cout << 7 << std::endl;
-        //std::cout << mask << std::endl;
-        //std::cout << nodes_remaining[k] << std::endl;
-
 
         if ( ( mask & nodes_remaining[k] ) == mask ) /* f1 */
         {
@@ -1123,8 +1150,7 @@ struct index_to_signal
       double _eps_th;
       double _eps_best;
       uint32_t _idx_fn;
-
-
+      std::unordered_map<std::string, double> _mi_storage;
 
   };
 

@@ -10,7 +10,7 @@
 #include <boost/dynamic_bitset.hpp>
 
 #include <mockturtle/networks/klut.hpp>
-#include <mockturtle/networks/pla.hpp>
+#include <mockturtle/networks/plaT.hpp>
 
 #include <fstream>
 #include <string>
@@ -115,7 +115,7 @@ int main()
   std::cout << "nout = " << test_ds.nout << std::endl;
   std::cout << "ndata = " << test_ds.ndata << std::endl;
 
-  pla_network pla1( train_ds.X, train_ds.Y, 3 );
+  pla_network pla1( train_ds.X, train_ds.Y, 4, 4 );
 
   for ( uint32_t k{0u}; k<train_ds.nin; k++ )
   {
@@ -123,9 +123,9 @@ int main()
   }
 
   //pla_network pla1( train_ds.X, train_ds.Y, 3 );
-  pla1.it_shannon_decomposition(3, 0);
+  //pla1.it_shannon_decomposition(0);
   
-  //pla1.muesli(2);
+  pla1.muesli();
 
 
   std::vector<boost::dynamic_bitset<>> input_nodes;

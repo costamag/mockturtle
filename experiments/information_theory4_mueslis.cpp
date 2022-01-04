@@ -65,7 +65,7 @@ int main()
   pla_pre.print_pla();
   pla_pre.preprocess_muesli();
   pla_pre.muesli();
-
+/*
   std::cout << "########################################" << std::endl;
   std::cout << "--------------- ab + cd ---------------" << std::endl;
   std::cout << "########################################" << std::endl;
@@ -79,5 +79,11 @@ int main()
   pla_network pla4_mod( inodes, onodes, 4, 2 );
   pla4_mod.print_pla();
   pla4_mod.muesli_modified();
+  
+  std::cout << " MUESLI PREPROCESSED: " << std::endl;
+  pla_network pla4_pre( inodes, onodes, 4,2 );
+  pla4_pre.print_pla();
+  pla4_pre.preprocess_muesli();
+  pla4_pre.muesli();*/
   return 0;
 }
