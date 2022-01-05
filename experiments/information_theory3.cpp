@@ -115,19 +115,21 @@ int main()
   std::cout << "nout = " << test_ds.nout << std::endl;
   std::cout << "ndata = " << test_ds.ndata << std::endl;
 
-  pla_network pla1( train_ds.X, train_ds.Y, 4, 4 );
+  plaT_network pla1( train_ds.X, train_ds.Y, 4, 4 );
 
   for ( uint32_t k{0u}; k<train_ds.nin; k++ )
   {
     std::cout << k << "[" << pla1.MI({k},{0}) << "] " << std::endl;
   }
 
-  //pla_network pla1( train_ds.X, train_ds.Y, 3 );
-  //pla1.it_shannon_decomposition(0);
-  
-  pla1.muesli();
+  pla1.it_shannon_decomposition(0);
+  //pla1.preprocess_muesli(0.1);
+  //pla1.muesli();
+  std::cout << "test accuracy: " << pla1.compute_accuracy( test_ds.X, test_ds.Y ) << "%" << std::endl;
 
+  //plaT_network pla_sh( inodes, onodes, 5, 3 );
 
+/*
   std::vector<boost::dynamic_bitset<>> input_nodes;
   for ( uint32_t i {0u}; i < 16; ++i )
   {
@@ -136,8 +138,7 @@ int main()
   }
 
   std::vector<boost::dynamic_bitset<>> output_nodes;
-  std::vector Voutput_nodes = {0,0,0,1,0,0,0,1,0,0,0,1,1,1,1,1}; /* ab + cde */
-
+  std::vector Voutput_nodes = {0,0,0,1,0,0,0,1,0,0,0,1,1,1,1,1}; /* ab + cde 
 
 
   for( uint32_t k {0u}; k < Voutput_nodes.size(); ++k )
@@ -146,10 +147,10 @@ int main()
     output_nodes.push_back( odata );
   }
 
-  pla_network pla( input_nodes, output_nodes, 5 );
+  plaT_network pla( input_nodes, output_nodes, 5 );
   pla.print_pla();
   pla.muesli(2);
-  pla.print_pla();
+  pla.print_pla();*/
 
 
   return 0;
