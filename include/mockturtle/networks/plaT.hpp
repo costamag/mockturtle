@@ -69,6 +69,7 @@ struct index_to_signal
   std::unordered_map<uint64_t, uint64_t> storage;
 };
 
+
   class plaT_network
   {
     #pragma region Types and constructors
@@ -238,10 +239,12 @@ struct index_to_signal
         else
           _mi_storage.at(s)=Hx + Hy - Hxy;
           
+        std::cout << "I(" << s << ";f)=" << _mi_storage.at(s) << std::endl;
         return _mi_storage.at(s);
       }
       else
       {
+        std::cout << "I(" << s << ";f)=" << _mi_storage.at(s) << std::endl;
         return _mi_storage.at(s);
       }
     }
@@ -599,7 +602,7 @@ struct index_to_signal
       dbs_storage dbs_nodes;
       dbs_storage dbs_outputs;
       
-      //print_pla();
+      print_pla();
 
       for ( uint32_t k {0u}; k < _num_data; ++k )
       {
@@ -1028,9 +1031,11 @@ struct index_to_signal
 
     /* return klut signal */
     #pragma region it_shannon_decomposition
-    uint64_t it_shannon_decomposition_step( std::vector<uint32_t> support, dbs_storage nodes_remaining, dbs_storage outputs_remaining, uint32_t o_idx = 0 )
+    uint64_t it_shannon_decomposition_step( std::vector<uint32_t> support, dbs_storage nodes_remaining, dbs_storage outputs_remaining, bool is_dec_naive = false, uint32_t o_idx = 0 )
     {
-      //std::cout << 1 << std::endl;
+      if( nodes_remaining.size() == 0 )
+        return klut.get_constant( false );
+
       uint32_t num_nodes = nodes_remaining[0].size();
       double mi_max = 0;
       double mi_new;
@@ -1038,8 +1043,13 @@ struct index_to_signal
 
       bool all_ones = true;
       bool all_zeros = true;
-      //std::cout << 2 << std::endl;
-
+      // COMMENT
+      for( uint32_t k{0u}; k<nodes_remaining.size(); ++k)
+      {
+        std::cout << outputs_remaining[k] << ":" << nodes_remaining[k] << std::endl;
+      }
+      std::cout << std::endl;
+      // END COMMENT
       for( uint32_t k{0u}; k < outputs_remaining.size(); ++k )
       {
         if( outputs_remaining[k][o_idx] == 0 )
@@ -1061,7 +1071,7 @@ struct index_to_signal
 
 
       //for( uint32_t k{0u}; k<nodes_remaining.size(); ++k )
-        //std::cout << nodes_remaining[k] << ": " << outputs_remaining[k] << std::endl;
+        ////std::cout << nodes_remaining[k] << ": " << outputs_remaining[k] << std::endl;
 
       if( support.size() <= _max_sup )
       {
@@ -1072,26 +1082,25 @@ struct index_to_signal
       }
 
       //std::cout << 5 << std::endl;
-
-      for( uint32_t k{0u}; k < support.size(); ++k )
+      if ( is_dec_naive )
       {
-        /* print */
-        //std::cout << "supp el: " << support[k] << " " << k << "/" << support.size() << std::endl;
-        //std::cout << nodes_remaining.size() << " " << outputs_remaining.size() << std::endl;
-        //for( uint32_t jj {0u}; jj<nodes_remaining.size(); ++jj )
-          //std::cout << nodes_remaining[jj] << ":" << outputs_remaining[jj]<< std::endl;
-        /* print */
-        //std::cout << 5 << "a" << std::endl;
-        //std::cout << support.size() << "=?=" << nodes_remaining[0].size() << std::endl;
-        mi_new = MI_gd( { support[k] },{o_idx}, nodes_remaining, outputs_remaining, support.size() );
-        //std::cout << 5.1 << std::endl;
-
-        if( mi_new >= mi_max )
-        {
-          mi_max = mi_new;
-          x_s = support[k];
-        }
+        x_s = support[0];
       }
+      else
+      {
+        for( uint32_t k{0u}; k < support.size(); ++k )
+        {
+          mi_new = MI_gd( { support[k] },{o_idx}, nodes_remaining, outputs_remaining, support.size() );
+          if( mi_new >= mi_max )
+          {
+            mi_max = mi_new;
+            x_s = support[k];
+          }
+        }
+        std::cout << "mi max = " << "I(" << support[x_s] << ";f)="<< mi_max << std::endl;
+
+      }
+
       dbs_storage nodes0, nodes1, outputs0, outputs1;   /* storage element: value of the output at each example */
 
       //std::cout << 6 << std::endl;
@@ -1141,15 +1150,19 @@ struct index_to_signal
           new_support.push_back( support[j] );
       }
       //std::cout << 13 << std::endl;
-      auto f1 = klut.create_and( _itos.storage[support[x_s]], it_shannon_decomposition_step( new_support, nodes1, outputs1, 0) );
-      auto f0 = klut.create_and( klut.create_not(_itos.storage[support[x_s]]), it_shannon_decomposition_step( new_support, nodes0, outputs0, 0) );
+      auto f1 = klut.create_and( _itos.storage[support[x_s]], it_shannon_decomposition_step( new_support, nodes1, outputs1,is_dec_naive, 0) );
+      auto f0 = klut.create_and( klut.create_not(_itos.storage[support[x_s]]), it_shannon_decomposition_step( new_support, nodes0, outputs0,is_dec_naive, 0) );
 
-      return klut.create_or( f1, f0 );
+      auto fn = klut.create_or( f1, f0 );
+      
+      return fn;
       /* construct the substorage blocks */
     }
 
-    void it_shannon_decomposition( uint32_t o_idx = 0 )
+    void it_shannon_decomposition( bool is_dec_naive = false, uint32_t o_idx = 0 )
     {
+      //std::cout << 777 << std::endl;
+
       std::vector<uint32_t> initial_support;
       dbs_storage nodes;
       for( uint32_t k{0u}; k < _num_nodes; ++k )
@@ -1164,8 +1177,10 @@ struct index_to_signal
         } 
         nodes.push_back(dtmp); 
       }
-      //std::cout << nodes.size() << " x " << nodes[0].size() << std::endl;
-      auto f0 = it_shannon_decomposition_step( initial_support, nodes, _outputs, 0 );
+      ////std::cout << nodes.size() << " x " << nodes[0].size() << std::endl;
+      //std::cout << 999 << std::endl;
+
+      auto f0 = it_shannon_decomposition_step( initial_support, nodes, _outputs, is_dec_naive, 0 );
       klut.create_po( f0 );
       _training_accuracy = compute_accuracy( _input_nodes, _outputs );
       std::cout << "training accuracy: " << _training_accuracy << "%" << std::endl;

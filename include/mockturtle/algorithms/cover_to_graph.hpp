@@ -91,6 +91,13 @@ public:
   */
   signal<Ntk> recursive_or( const std::vector<signal<Ntk>>& signals )
   {
+
+    /*//////////////////////////////////////////////////////7
+    std::cout << "OR of ";
+    for( uint32_t k{0u}; k < signals.size(); ++k )
+      std::cout << signals[k].index << " ";
+    std::cout << std::endl;
+//////////////////////////////////////////////////////*/
     if ( signals.size() == 0u )
     {
       std::cerr << "signals size is zero in recursive or\n";
@@ -126,6 +133,12 @@ public:
   */
   signal<Ntk> recursive_and( std::vector<signal<Ntk>> const& signals )
   {
+/*/////////////////////////////////////////////////////7
+    std::cout << "AND of ";
+    for( uint32_t k{0u}; k < signals.size(); ++k )
+      std::cout << signals[k].index << " ";
+    std::cout << std::endl;
+//////////////////////////////////////////////////////*/
     if ( signals.size() == 0u )
     {
       std::cerr << "signals size is zero in recursive and\n";
@@ -222,6 +235,7 @@ public:
     /* convert the nodes */
     for ( auto const& nde : _cover_ntk._storage->nodes )
     {
+
       uint64_t index = _cover_ntk._storage->hash[nde];
       bool condition1 = ( std::find( _cover_ntk._storage->inputs.begin(), _cover_ntk._storage->inputs.end(), index ) != _cover_ntk._storage->inputs.end() );
       bool condition2 = nde.data[1].h1 == 0 || nde.data[1].h1 == 1;

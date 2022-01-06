@@ -68,7 +68,9 @@ int main()
 
   plaT_network pla( inodes, onodes, 5, 2 );
   pla.print_pla();
-  pla.muesli();
+  //pla.muesli();
+  pla.it_shannon_decomposition();
+
 
   std::cout << "functionality equivalence check" << std::endl;
   aig_network aig = convert_klut_to_graph<aig_network>( pla.klut );
