@@ -78,7 +78,7 @@ struct index_to_signal
 
 
     public:
-      plaT_network( dbs_storage input_nodes, dbs_storage output_nodes, uint32_t max_act, uint32_t max_sup = 2, uint32_t init_sup = 2 )
+      plaT_network( dbs_storage input_nodes, dbs_storage output_nodes, uint64_t max_act, uint64_t max_sup = 2, uint64_t init_sup = 2 )
       : _input_nodes( input_nodes ),
         _nodes( input_nodes ),
         _outputs( output_nodes ),
@@ -96,7 +96,7 @@ struct index_to_signal
       inline void _init()
       {
         std::vector<uint64_t> Xindeces;
-        for ( uint32_t i {0u}; i < _num_nodes ; ++i )
+        for ( uint64_t i {0u}; i < _num_nodes ; ++i )
         {
           auto pi = klut.create_pi();
           _itos.insert( i, pi );
@@ -112,17 +112,17 @@ struct index_to_signal
     public:
       void print_pla()
       {
-        for ( uint32_t i {0u}; i < _num_data; ++i )
+        for ( uint64_t i {0u}; i < _num_data; ++i )
             std::cout << _outputs.at(i) << ":" << _nodes.at(i)  << std::endl ;
       }
 
       void print_probabilities( std::vector<double> probabilities )
       {
-        uint32_t num_vars = probabilities.size();
+        uint64_t num_vars = probabilities.size();
         std::cout << std::endl;
-        for ( uint32_t mask {0u}; mask < num_vars; ++mask )
+        for ( uint64_t mask {0u}; mask < num_vars; ++mask )
         {
-          dyn_bitset BS ( (uint32_t)log2(num_vars), mask );
+          dyn_bitset BS ( (uint64_t)log2(num_vars), mask );
           std::cout << "|P(" << BS << ") = " << probabilities.at(mask) << std::endl ;
         }
         std::cout << std::endl;
@@ -132,7 +132,7 @@ struct index_to_signal
       void print_active_list()
       {
         std::cout << "\nactive list:";
-        for(uint32_t k{0u}; k<_active_list.size(); ++k)
+        for(uint64_t k{0u}; k<_active_list.size(); ++k)
         {
           std::cout << "k:";
           std::cout << _active_list[k] << "] ";
@@ -144,7 +144,7 @@ struct index_to_signal
     #pragma region basic_function
     std::vector<double> Pr( std::vector<uint64_t> indeces_nodes, std::vector<uint64_t> indeces_outputs )
     {
-      uint32_t size_P_space = std::pow( 2, indeces_nodes.size() + indeces_outputs.size() );
+      uint64_t size_P_space = std::pow( 2, indeces_nodes.size() + indeces_outputs.size() );
       std::vector<double> probabilities;
       double_t proba;
       double eq_flag_nodes, eq_flag_outputs;
@@ -157,8 +157,8 @@ struct index_to_signal
         dyn_bitset xin ( _num_nodes+1, x_u64_t );
         dyn_bitset mask_nodes ( _num_nodes+1, 0u );
         dyn_bitset X_nodes ( _num_nodes+1, 0u );
-        uint32_t jeff;
-        for ( uint32_t j {0u}; j < indeces_nodes.size(); ++j )
+        uint64_t jeff;
+        for ( uint64_t j {0u}; j < indeces_nodes.size(); ++j )
         {
           jeff = indeces_outputs.size() + j;
           mask_nodes |= ( b1_nodes << indeces_nodes.at(j) );
@@ -168,7 +168,7 @@ struct index_to_signal
         dyn_bitset mask_outputs ( _num_outputs, 0u );
         uint64_t u64_t_X_outputs {0u};
 
-        for ( uint32_t j {0u}; j < indeces_outputs.size(); ++j )
+        for ( uint64_t j {0u}; j < indeces_outputs.size(); ++j )
         {
           mask_outputs |= ( b1_outputs << indeces_outputs.at(j) );
           u64_t_X_outputs |= ( ( ( ( 1u << j ) & x_u64_t ) >> j ) << indeces_outputs.at(j) );
@@ -177,7 +177,7 @@ struct index_to_signal
 
         proba = 0;
 
-        for ( uint32_t i {0u}; i < _num_data; ++i )
+        for ( uint64_t i {0u}; i < _num_data; ++i )
         {
 
           if ( ( indeces_nodes.size() != 0 ) && ( indeces_outputs.size() != 0 ) )
@@ -209,7 +209,7 @@ struct index_to_signal
     double H( std::vector<uint64_t> indeces_nodes, std::vector<uint64_t> indeces_outputs )
     {
       auto proba = Pr( indeces_nodes, indeces_outputs );
-      uint32_t size_P_space = proba.size();
+      uint64_t size_P_space = proba.size();
       double entropy { 0 };
       double deltaH { 0 };
 
@@ -239,12 +239,12 @@ struct index_to_signal
         else
           _mi_storage.at(s)=Hx + Hy - Hxy;
           
-        std::cout << "I(" << s << ";f)=" << _mi_storage.at(s) << std::endl;
+        //std::cout << "I(" << s << ";f)=" << _mi_storage.at(s) << std::endl;
         return _mi_storage.at(s);
       }
       else
       {
-        std::cout << "I(" << s << ";f)=" << _mi_storage.at(s) << std::endl;
+        //std::cout << "I(" << s << ";f)=" << _mi_storage.at(s) << std::endl;
         return _mi_storage.at(s);
       }
     }
@@ -252,11 +252,11 @@ struct index_to_signal
     #pragma endregion
 
     #pragma region basic_function_given_data
-    std::vector<double> Pr_gd( std::vector<uint64_t> indeces_nodes, std::vector<uint64_t> indeces_outputs, 
-                            dbs_storage nodes, dbs_storage outputs, 
-                            uint32_t num_nodes )
+    std::vector<double> Pr_gd( std::vector<uint64_t> const& indeces_nodes, std::vector<uint64_t> const& indeces_outputs, 
+                            dbs_storage const& nodes, dbs_storage const& outputs, 
+                            uint64_t const& num_nodes )
     {
-      uint32_t size_P_space = std::pow( 2, indeces_nodes.size() + indeces_outputs.size() );
+      uint64_t size_P_space = std::pow( 2, indeces_nodes.size() + indeces_outputs.size() );
       std::vector<double> probabilities;
       double_t proba;
       double eq_flag_nodes, eq_flag_outputs;
@@ -270,21 +270,18 @@ struct index_to_signal
         dyn_bitset xin ( num_nodes, x_u64_t );
         dyn_bitset mask_nodes ( num_nodes, 0u );
         dyn_bitset X_nodes ( num_nodes, 0u );
-        uint32_t jeff;
-        //std::cout << "z1 "<<std::endl;
-        for ( uint32_t j {0u}; j < indeces_nodes.size(); ++j )
+        uint64_t jeff;
+        for ( uint64_t j {0u}; j < indeces_nodes.size(); ++j )
         {
           jeff = indeces_outputs.size() + j;
           mask_nodes |= ( b1_nodes << indeces_nodes.at(j) );
           X_nodes |= ( ( ( ( b1_nodes << jeff ) & xin ) >> jeff ) << indeces_nodes.at(j) );
         }
-        //std::cout << "z2 "<<std::endl;
 
         dyn_bitset mask_outputs ( _num_outputs, 0u );
         uint64_t u64_t_X_outputs {0u};
 
-        //std::cout << "z3 "<<std::endl;
-        for ( uint32_t j {0u}; j < indeces_outputs.size(); ++j )
+        for ( uint64_t j {0u}; j < indeces_outputs.size(); ++j )
         {
           mask_outputs |= ( b1_outputs << indeces_outputs.at(j) );
           u64_t_X_outputs |= ( ( ( ( 1u << j ) & x_u64_t ) >> j ) << indeces_outputs.at(j) );
@@ -292,30 +289,22 @@ struct index_to_signal
         dyn_bitset X_outputs( _num_outputs, u64_t_X_outputs );
 
         proba = 0;
-        //std::cout << "z4 "<<std::endl;
-        for ( uint32_t i {0u}; i < num_data; ++i )
+        for ( uint64_t i {0u}; i < num_data; ++i )
         {
 
           if ( ( indeces_nodes.size() != 0 ) && ( indeces_outputs.size() != 0 ) )
           {
-            //std::cout << "y1 "<<std::endl;
             eq_flag_nodes = ( X_nodes == ( mask_nodes & nodes.at(i) ) ) ? 1 : 0;
             eq_flag_outputs = ( X_outputs == ( mask_outputs & outputs.at(i) ) ) ? 1 : 0;
           }
           else if ( indeces_nodes.size() == 0 )
           {
-            //std::cout << "y2 "<<std::endl;
-
             eq_flag_nodes = 1;
             eq_flag_outputs = ( X_outputs == ( mask_outputs & outputs.at(i) ) ) ? 1 : 0;
 
           }
           else if ( indeces_outputs.size() == 0 )
           {
-            //std::cout << "y3 "<<std::endl;
-            //std::cout << "M:" << mask_nodes<<std::endl;
-            //std::cout << "X:" <<X_nodes<<std::endl;
-            //std::cout << "N:" <<nodes.at(i) <<std::endl;
 
             eq_flag_nodes = ( X_nodes == ( mask_nodes & nodes.at(i) ) ) ? 1 : 0;
             eq_flag_outputs = 1;
@@ -323,7 +312,6 @@ struct index_to_signal
           proba += eq_flag_outputs*eq_flag_nodes/num_data;
 
         }
-        //std::cout << "z5 "<<std::endl;
         probabilities.push_back( proba );
       }
 
@@ -331,22 +319,13 @@ struct index_to_signal
 
     }
 
-    double H_gd( std::vector<uint64_t> indeces_nodes, std::vector<uint64_t> indeces_outputs, 
-                            dbs_storage nodes, dbs_storage outputs, 
-                            uint32_t num_nodes )
+    double H_gd( std::vector<uint64_t>  const& indeces_nodes, std::vector<uint64_t> const& indeces_outputs, 
+                            dbs_storage const& nodes, dbs_storage const& outputs, 
+                            uint64_t const& num_nodes )
     {
-      /*std::cout << "a1: " << num_nodes << std::endl;
-      for( uint32_t k{0u}; k<indeces_nodes.size(); ++k )
-        std::cout << indeces_nodes[k] << std::endl;
-      for( uint32_t k{0u}; k<indeces_outputs.size(); ++k )
-        std::cout << indeces_outputs[k] << std::endl;
-      for( uint32_t k{0u}; k<nodes.size(); ++k )
-        std::cout << nodes[k] << ": " << outputs[k] << std::endl;*/
 
       auto proba = Pr_gd( indeces_nodes, indeces_outputs, nodes, outputs, num_nodes );
-      //std::cout << "a2" << std::endl;
-      uint32_t size_P_space = proba.size();
-      //std::cout << "a2" << std::endl;
+      uint64_t size_P_space = proba.size();
       double entropy { 0 };
       double deltaH { 0 };
 
@@ -359,30 +338,32 @@ struct index_to_signal
     }
 
     double MI_gd ( std::vector<uint64_t> Xindeces, std::vector<uint64_t> Yindeces,
-                   dbs_storage nodes, dbs_storage outputs, uint32_t num_nodes )
+                   dbs_storage nodes, dbs_storage outputs, uint64_t num_nodes )
     {
-      //std::cout << "a" << std::endl;
       auto Hx = H_gd( Xindeces, {}, nodes, outputs, num_nodes );
-      //std::cout << "b" << std::endl;
       auto Hy = H_gd( {}, Yindeces, nodes, outputs, num_nodes );
-      //std::cout << "c" << std::endl;
       auto Hxy = H_gd( Xindeces, Yindeces, nodes, outputs, num_nodes ); 
 
       return ( Hx + Hy - Hxy );
     }
 
-    std::string create_fn_gd( std::vector<uint32_t> support, dbs_storage nodes, dbs_storage outputs )
+    std::string create_fn_gd( std::vector<uint64_t> support, dbs_storage& nodes, dbs_storage outputs )
     {
-      uint32_t num_nodes = support.size();
-      uint32_t num_data = nodes.size();
-      uint32_t nin_node = support.size();
-      std::cout << "supp size = " << nin_node << std::endl;
-      uint32_t domain_size = pow( 2, nin_node );
-      uint32_t Ci0, Ci1;
-      dyn_bitset mask ( num_nodes, 0u );
-      dyn_bitset X ( num_nodes, 0u );
-      dyn_bitset Bit1 ( num_nodes, 1u );
-      dyn_bitset Bit0 ( num_nodes, 0u );
+      uint64_t num_nodes = nodes[0].size();
+      uint64_t num_data = nodes.size();
+      uint64_t nin_node = support.size();
+      //std::cout << "supp size = " << nin_node << std::endl;
+      uint64_t domain_size = pow( 2, nin_node );
+      uint64_t Ci0, Ci1;
+      for( uint64_t k{0u}; k < nodes.size(); ++k )
+      {
+        nodes[k].push_back(0);
+      }
+
+      dyn_bitset mask ( num_nodes+1, 0u );
+      dyn_bitset X ( num_nodes+1, 0u );
+      dyn_bitset Bit1 ( num_nodes+1, 1u );
+      dyn_bitset Bit0 ( num_nodes+1, 0u );
 
       dyn_bitset Bit1_outputs ( _num_outputs, 1u );
 
@@ -391,36 +372,31 @@ struct index_to_signal
       std::string tt_str;
       
       auto mask0 = ~( Bit1 << num_nodes );
-      //std::cout << "mask " << mask0 << " domain size " << domain_size << std::endl;
 
-      for ( uint32_t j {0u}; j < nodes.size(); ++j )
+      for ( uint64_t j {0u}; j < nodes.size(); ++j )
       {
         nodes.at(j) &= mask0; 
       }
-      //std::cout << "nodes " << nodes[0] << std::endl;
 
 
-      for ( uint32_t x_u64_t {0u}; x_u64_t < domain_size; ++x_u64_t )
+      for ( uint64_t x_u64_t {0u}; x_u64_t < domain_size; ++x_u64_t )
       {
-        dyn_bitset xin ( num_nodes, x_u64_t );
+        dyn_bitset xin ( num_nodes+1, x_u64_t );
         Ci0 = 0;
         Ci1 = 0;
         mask = Bit0;
         X = Bit0;
-        //std::cout << "pre " << std::endl;
-        for ( uint32_t j {0u}; j < support.size(); ++j )
+        for ( uint64_t j {0u}; j < support.size(); ++j )
         {
           mask |= ( Bit1 << support.at(j) );
           X |= ( ( ( ( Bit1 << j ) & xin ) >> j ) << support.at(j) );
         }
-        //std::cout << "mask " << mask << " X "<< X << std::endl;
 
-        for ( uint32_t j {0u}; j < nodes.size(); ++j )
+        for ( uint64_t j {0u}; j < nodes.size(); ++j )
         {
           if ( X == ( mask & nodes.at(j) ) )
             ( ( outputs.at(j) & Bit1_outputs ) == Bit1_outputs ) ? Ci1++ : Ci0++;
         }
-        //std::cout << "C1 " << Ci1<< " C0 " << Ci0 << std::endl; 
 
         auto new_val = Bit0;
         if( Ci1 > Ci0 )
@@ -445,10 +421,11 @@ struct index_to_signal
           tt_str = "0" + tt_str;
         }
 
-        for ( uint32_t j {0u}; j < num_data; ++j )
+        for ( uint64_t j {0u}; j < num_data; ++j )
         {
           if ( X == ( mask & nodes.at(j) ) )
-            nodes.at(j) |= new_val;
+            nodes[j] |= new_val ;
+
         }
       }
       //std::cout << "str: " << tt_str << std::endl;
@@ -458,35 +435,85 @@ struct index_to_signal
     }
 
     #pragma endregion
+//########################################################################################################
+    #pragma region new_node_given_data
+    std::vector<uint64_t> active_list_gd( dbs_storage const& nodes_remaining, dbs_storage const& outputs_remaining )
+    {
+      double mi_loc;
+      double mi_max = 0;
+      uint64_t idx;
+      std::vector<uint64_t> active_list;
+      /* first active variable */
+      for( uint64_t i {0u}; i < nodes_remaining[0].size(); ++i )
+      {
+        mi_loc = MI_gd( {i}, {0}, nodes_remaining, outputs_remaining, nodes_remaining[0].size() );
+        uint64_t idx; 
+
+        if ( mi_loc >= mi_max )
+        {
+          mi_max = mi_loc;
+          idx = i;
+          active_list = {idx};
+        }
+      }
+
+      std::vector<uint64_t> inv_indeces;
+
+      for ( uint64_t i {1u}; i < _max_act; ++i )
+      {
+        mi_max = 0;
+        inv_indeces = active_list;
+        inv_indeces.emplace_back(0);
+        for ( uint64_t j {0u}; j < nodes_remaining[0].size(); ++j )
+        { 
+          if ( std::find( active_list.begin(), active_list.end(), j ) != active_list.end() )
+            continue;
+          
+          inv_indeces.at(i) = j;
+
+          mi_loc = MI_gd( inv_indeces, {0}, nodes_remaining, outputs_remaining, nodes_remaining[0].size() );
+          if ( mi_loc >= mi_max )
+          {
+            mi_max = mi_loc;
+            idx = j;
+          }
+        }
+      active_list.push_back(idx);
+      }
+      return active_list;
+    }
+    #pragma endregion
+//########################################################################################################
+
 
     #pragma region new_node
     void fill_active_list( )
     {
       double mi_loc;
       double mi_max = 0;
-      uint32_t idx;
+      uint64_t idx;
       /* first active variable */
-      for( uint32_t i {0u}; i < _num_nodes; ++i )
+      for( uint64_t i {0u}; i < _num_nodes; ++i )
       {
         mi_loc = MI( {i}, {0} );
-        uint32_t idx; 
+        uint64_t idx; 
 
         if ( mi_loc >= mi_max )
         {
           mi_max = mi_loc;
           idx = i;
+          _active_list = {idx};
         }
-        _active_list = {idx};
       }
 
       std::vector<uint64_t> inv_indeces;
 
-      for ( uint32_t i {1u}; i < _max_act; ++i )
+      for ( uint64_t i {1u}; i < _max_act; ++i )
       {
         mi_max = 0;
         inv_indeces = _active_list;
         inv_indeces.emplace_back(0);
-        for ( uint32_t j {0u}; j < _num_nodes; ++j )
+        for ( uint64_t j {0u}; j < _num_nodes; ++j )
         { 
 
           if ( std::find( _active_list.begin(), _active_list.end(), j ) != _active_list.end() )
@@ -506,13 +533,12 @@ struct index_to_signal
       }
     }
 
-    std::string create_fn( std::vector<uint32_t> support )
+    std::string create_fn( std::vector<uint64_t> support )
     {
 
-      uint32_t nin_node = support.size();
-      //std::cout << "supp size = " << nin_node << std::endl;
-      uint32_t domain_size = pow( 2, nin_node );
-      uint32_t Ci0, Ci1;
+      uint64_t nin_node = support.size();
+      uint64_t domain_size = pow( 2, nin_node );
+      uint64_t Ci0, Ci1;
       dyn_bitset mask ( _num_nodes + 1, 0u );
       dyn_bitset X ( _num_nodes + 1, 0u );
       dyn_bitset Bit1 ( _num_nodes + 1, 1u );
@@ -526,12 +552,12 @@ struct index_to_signal
       
       auto mask0 = ~( Bit1 << _num_nodes );
 
-      for ( uint32_t j {0u}; j < _num_data; ++j )
+      for ( uint64_t j {0u}; j < _num_data; ++j )
       {
         _nodes.at(j) &= mask0; 
       }
 
-      for ( uint32_t x_u64_t {0u}; x_u64_t < domain_size; ++x_u64_t )
+      for ( uint64_t x_u64_t {0u}; x_u64_t < domain_size; ++x_u64_t )
       {
         dyn_bitset xin ( _num_nodes+1, x_u64_t );
         Ci0 = 0;
@@ -539,13 +565,13 @@ struct index_to_signal
         mask = Bit0;
         X = Bit0;
 
-        for ( uint32_t j {0u}; j < support.size(); ++j )
+        for ( uint64_t j {0u}; j < support.size(); ++j )
         {
           mask |= ( Bit1 << support.at(j) );
           X |= ( ( ( ( Bit1 << j ) & xin ) >> j ) << support.at(j) );
         }
 
-        for ( uint32_t j {0u}; j < _num_data; ++j )
+        for ( uint64_t j {0u}; j < _num_data; ++j )
         {
           if ( X == ( mask & _nodes.at(j) ) )
             ( ( _outputs.at(j) & Bit1_outputs ) == Bit1_outputs ) ? Ci1++ : Ci0++;
@@ -574,7 +600,7 @@ struct index_to_signal
           tt_str = "0" + tt_str;
         }
 
-        for ( uint32_t j {0u}; j < _num_data; ++j )
+        for ( uint64_t j {0u}; j < _num_data; ++j )
         {
           if ( X == ( mask & _nodes.at(j) ) )
             _nodes.at(j) |= new_val;
@@ -585,13 +611,13 @@ struct index_to_signal
 
     }
 
-    void create_klut_node( std::vector<uint32_t> support, std::string tt_str )
+    void create_klut_node( std::vector<uint64_t> support, std::string tt_str )
     {
       auto supp_size = support.size();
       kitty::dynamic_truth_table tt( supp_size );
       create_from_binary_string( tt, tt_str );
       std::vector<uint64_t> klut_signals;
-      for ( uint32_t i {0u}; i < supp_size; ++i )
+      for ( uint64_t i {0u}; i < supp_size; ++i )
         {
           klut_signals.push_back( _itos.storage[support[i]] );
         }
@@ -602,63 +628,54 @@ struct index_to_signal
       dbs_storage dbs_nodes;
       dbs_storage dbs_outputs;
       
-      print_pla();
+      //print_pla();
 
-      for ( uint32_t k {0u}; k < _num_data; ++k )
+      for ( uint64_t k {0u}; k < _num_data; ++k )
       {
         _nodes.at(k).push_back(0);
       }
-
-
     }
 
     bool improve_fn( )
     {
-      std::vector<uint32_t> support;
+      std::vector<uint64_t> support;
       std::string tt_str;
       
 
       fill_active_list( );
-      //std::cout << 1 << std::endl;
       print_active_list( );
-      //std::cout << 2 << std::endl;
       support = {};
       if( _act+_sup > _active_list.size() )
       {
-        //std::cout << "AM I SAFE?" << std::endl;
         return false;
       }
-      std::cout << "support: ";
-      for ( uint32_t k{0u}; k < _sup; ++k )
+      //std::cout << "support: ";
+      for ( uint64_t k{0u}; k < _sup; ++k )
       {
-        std::cout << _active_list.at( _act + k ) << " ";
+        //std::cout << _active_list.at( _act + k ) << " ";
         support.push_back( _active_list.at( _act + k ));
       }
-      std::cout << std::endl;
-      //
+      //std::cout << std::endl;
+      
       std::vector<uint64_t> first_act;
-      //std::cout << "a ";
-      for (uint32_t k {0u}; k <= _act; ++k )
+      for (uint64_t k {0u}; k <= _act; ++k )
       {
-        //std::cout << k << std::endl;
         first_act.push_back(_active_list.at(k));
       }
-      //
-      //auto mi_old = MI( {support.at( 0 )}, {0} );
       auto mi_old = MI( first_act, {0} ); //#########################################################################
       
       tt_str = create_fn( support );
-      std::cout << "truth table: " <<tt_str << std::endl;
+      //std::cout << "truth table: " <<tt_str << std::endl;
       first_act.at(_act) = _num_nodes;
       //print_pla();
       auto mi_new = MI( first_act , {0}, true );
       
-      std::cout << "mi_new " << mi_new << std::endl;
-      std::cout << "mi_old " << mi_old << std::endl;
+      //std::cout << "mi_new " << mi_new << std::endl;
+      //std::cout << "mi_old " << mi_old << std::endl;
 
       if ( mi_new > mi_old )
       {
-        std::cout << "new node created. Stored at: " << _num_nodes << std::endl;
+        //std::cout << "new node created. Stored at: " << _num_nodes << std::endl;
         create_klut_node( support, tt_str );
         return true;
       }
@@ -670,14 +687,14 @@ struct index_to_signal
       s = s.substr(0, s.length()-1);
         _mi_storage.at(s) = mi_old;
       }
-      std::cout << "Node is not kept. Remove new function " << std::endl;
+      //std::cout << "Node is not kept. Remove new function " << std::endl;
       return false;
     }
 
-    bool not_done( uint32_t best_idx )
+    bool not_done( uint64_t best_idx )
     {
       double eps_I_H = MI( {best_idx}, {0} )/H({},{0});
-      std::cout << "I(n*;f)/H(f)= " << eps_I_H << std::endl;
+      //std::cout << "I(n*;f)/H(f)= " << eps_I_H << std::endl;
       if ( eps_I_H >= _eps_th )
         return false;
       else
@@ -695,8 +712,8 @@ struct index_to_signal
 
       bool success; /* true if found a function improving the mi */
       std::string tt_str; /* contains the tt of the new node */
-      std::vector<uint32_t> support; /* contains the support of the new function */
-      uint32_t best_idx; /* used to keep track of the new best approximation */
+      std::vector<uint64_t> support; /* contains the support of the new function */
+      uint64_t best_idx; /* used to keep track of the new best approximation */
 
       /* nlist <- sort_nlist_by_I(nlist,1) */
       _eps_th = eps_th;
@@ -723,7 +740,7 @@ struct index_to_signal
             best_idx -= 1;
           }
                
-          std::cout << "best idx = " << best_idx << std::endl;
+          //std::cout << "best idx = " << best_idx << std::endl;
           std::cout << MI( {best_idx}, {0} )/H({},{0}) << std::endl;
           if ( not_done( best_idx ) == false )
             break;
@@ -742,7 +759,7 @@ struct index_to_signal
             best_idx = _num_nodes;
             if (success)
               best_idx -= 1;
-            std::cout << "best idx = " << best_idx << std::endl;
+            //std::cout << "best idx = " << best_idx << std::endl;
             std::cout << MI( {best_idx}, {0} )/H({},{0}) << std::endl;
           }
         }
@@ -769,8 +786,8 @@ struct index_to_signal
 
       bool success; /* true if found a function improving the mi */
       std::string tt_str; /* contains the tt of the new node */
-      std::vector<uint32_t> support; /* contains the support of the new function */
-      uint32_t best_idx; /* used to keep track of the new best approximation */
+      std::vector<uint64_t> support; /* contains the support of the new function */
+      uint64_t best_idx; /* used to keep track of the new best approximation */
 
       /* nlist <- sort_nlist_by_I(nlist,1) */
       _eps_th = eps_th;
@@ -835,7 +852,7 @@ struct index_to_signal
       b = t;
     }
 
-    int partition ( std::vector<uint32_t>& support, std::vector<double>& attribute , uint32_t low, uint32_t high )
+    int partition ( std::vector<uint64_t>& support, std::vector<double>& attribute , uint64_t low, uint64_t high )
     {
     double pivot = attribute[high];    // pivot
     int i = (low-1);  // Index of smaller element
@@ -856,7 +873,7 @@ struct index_to_signal
       return (i + 1);
     }
 
-    void quicksort_by_attribute( std::vector<uint32_t>& support, std::vector<double>& attribute,  int low, int high )
+    void quicksort_by_attribute( std::vector<uint64_t>& support, std::vector<double>& attribute,  int low, int high )
     {
       if (low < high)
       {
@@ -871,14 +888,14 @@ struct index_to_signal
       }
     }
 
-    std::vector<std::vector<uint32_t>> group_by_mi( std::vector<uint32_t> const& support, std::vector<double> const& mi_v )
+    std::vector<std::vector<uint64_t>> group_by_mi( std::vector<uint64_t> const& support, std::vector<double> const& mi_v )
     {
-      std::vector<std::vector<uint32_t>> Pi;
+      std::vector<std::vector<uint64_t>> Pi;
       std::vector<double> miP;
-      uint32_t idxPi = 0;
+      uint64_t idxPi = 0;
       Pi.push_back({support[0]});
       miP.push_back(mi_v[0]);
-      for( uint32_t k{1u}; k<support.size(); ++k )
+      for( uint64_t k{1u}; k<support.size(); ++k )
       {
         if( mi_v[k] >= ( miP[idxPi] - miP[idxPi]*_dI) )
         {
@@ -894,10 +911,10 @@ struct index_to_signal
       return Pi;
     }
 
-    uint32_t r_create_fn_from_support( std::vector<uint32_t> p, std::vector<uint32_t> given_klg = {}, uint64_t o_idx = 0 )
+    uint64_t r_create_fn_from_support( std::vector<uint64_t> p, std::vector<uint64_t> given_klg = {}, uint64_t o_idx = 0 )
     {
       std::cout << "\n{ ";
-        for( uint32_t j{0u}; j <p.size(); ++j )
+        for( uint64_t j{0u}; j <p.size(); ++j )
         {
           std::cout << p[j] << " ";
         }
@@ -918,21 +935,21 @@ struct index_to_signal
         {
           auto x = p[0];
           std::vector<double> mi_v;
-          std::vector<uint32_t> p1;
+          std::vector<uint64_t> p1;
 
-          for( uint32_t k{1u}; k < p.size(); ++k )
+          for( uint64_t k{1u}; k < p.size(); ++k )
           {
             mi_v.emplace_back( MI( { p[k], x }, { o_idx }) );
             p1.emplace_back( p[k] );
           }
           quicksort_by_attribute( p1, mi_v, 0, (p1.size()-1) );
           auto P1 = group_by_mi( p1, mi_v );
-          std::vector<uint32_t> Fns;
+          std::vector<uint64_t> Fns;
           std::vector<double> mi_Fns;
 
           Fns.push_back( r_create_fn_from_support( P1[0], {x}, 0 ) );
           mi_Fns.push_back( MI( {Fns[0]}, {o_idx} ) );
-          for ( uint32_t k {1u}; k<P1.size(); ++k )
+          for ( uint64_t k {1u}; k<P1.size(); ++k )
           {
             Fns.push_back( r_create_fn_from_support( P1[k], {}, 0 ) );
             mi_Fns.push_back( MI( {Fns[k]}, {o_idx} ) );
@@ -945,7 +962,7 @@ struct index_to_signal
           else
           {
             auto Fold = Fns[0];
-            for( uint32_t j{1u}; j < Fns.size(); ++j )
+            for( uint64_t j{1u}; j < Fns.size(); ++j )
             {
               auto tt_new = create_fn( {Fold, Fns[j]} );
               create_klut_node( {Fold, Fns[j]}, tt_new );
@@ -960,7 +977,7 @@ struct index_to_signal
       {
         if ( p.size()+given_klg.size() <= _max_sup )
         {
-          for ( uint32_t k{0u}; k<given_klg.size(); ++k )
+          for ( uint64_t k{0u}; k<given_klg.size(); ++k )
             p.push_back( given_klg[k] );
 
           return r_create_fn_from_support( p, {}, 0 );
@@ -975,27 +992,27 @@ struct index_to_signal
       }
     }
 
-    void group_by_symmetry( std::vector<uint32_t>& support, uint32_t o_idx = 0 )
+    void group_by_symmetry( std::vector<uint64_t>& support, uint64_t o_idx = 0 )
     {
       /* compute the MI of all the nodes */
       std::vector<double> mi_v;
-      for( uint32_t k{0u}; k < support.size(); ++k )
+      for( uint64_t k{0u}; k < support.size(); ++k )
         mi_v.emplace_back( MI( { support[k] }, { o_idx }) );
 
-      for( uint32_t i{0u}; i<support.size(); ++i )
+      for( uint64_t i{0u}; i<support.size(); ++i )
         std::cout << support[i] << " " << mi_v[i] << std::endl;
 
       quicksort_by_attribute( support, mi_v, 0, (support.size()-1) );
 
-      for( uint32_t i{0u}; i<support.size(); ++i )
+      for( uint64_t i{0u}; i<support.size(); ++i )
         std::cout << support[i] << " " << mi_v[i] << std::endl;
 
       auto Pi = group_by_mi( support, mi_v );
-      for (uint32_t k{0u}; k<Pi.size(); ++k )
+      for (uint64_t k{0u}; k<Pi.size(); ++k )
       {
         auto p = Pi[k];
         std::cout << "\n{ ";
-        for( uint32_t j{0u}; j <p.size(); ++j )
+        for( uint64_t j{0u}; j <p.size(); ++j )
         {
           std::cout << p[j] << " ";
         }
@@ -1020,7 +1037,7 @@ struct index_to_signal
     void preprocess_muesli( double dI = 0 )
     {
       _dI = dI;
-      std::vector<uint32_t> support;
+      std::vector<uint64_t> support;
       for( auto k = 0u; k < _num_nodes; ++k )
         support.push_back(k);
       group_by_symmetry( support );
@@ -1031,26 +1048,23 @@ struct index_to_signal
 
     /* return klut signal */
     #pragma region it_shannon_decomposition
-    uint64_t it_shannon_decomposition_step( std::vector<uint32_t> support, dbs_storage nodes_remaining, dbs_storage outputs_remaining, bool is_dec_naive = false, uint32_t o_idx = 0 )
+    uint64_t it_shannon_decomposition_step( std::vector<uint64_t> support, dbs_storage nodes_remaining, dbs_storage outputs_remaining, bool is_dec_naive = false, uint64_t o_idx = 0 )
     {
       if( nodes_remaining.size() == 0 )
         return klut.get_constant( false );
+      
+      if( nodes_remaining[0].size() == 0 )
+        return klut.get_constant( false );
 
-      uint32_t num_nodes = nodes_remaining[0].size();
+      uint64_t num_nodes = nodes_remaining[0].size();
       double mi_max = 0;
       double mi_new;
-      uint32_t x_s;
+      uint64_t x_s;
 
       bool all_ones = true;
       bool all_zeros = true;
-      // COMMENT
-      for( uint32_t k{0u}; k<nodes_remaining.size(); ++k)
-      {
-        std::cout << outputs_remaining[k] << ":" << nodes_remaining[k] << std::endl;
-      }
-      std::cout << std::endl;
-      // END COMMENT
-      for( uint32_t k{0u}; k < outputs_remaining.size(); ++k )
+
+      for( uint64_t k{0u}; k < outputs_remaining.size(); ++k )
       {
         if( outputs_remaining[k][o_idx] == 0 )
           all_ones = false;
@@ -1059,7 +1073,6 @@ struct index_to_signal
         else
           std::cerr << "none valid " << std::endl;
       }
-      //std::cout << 3 << std::endl;
 
       if( all_ones == true )
         return klut.get_constant( true );
@@ -1067,57 +1080,44 @@ struct index_to_signal
       if( all_zeros == true )
         return klut.get_constant( false );
 
-      //std::cout << 4 << std::endl;
-
-
-      //for( uint32_t k{0u}; k<nodes_remaining.size(); ++k )
-        ////std::cout << nodes_remaining[k] << ": " << outputs_remaining[k] << std::endl;
-
       if( support.size() <= _max_sup )
       {
         auto tt_tmp = create_fn_gd( support, nodes_remaining, outputs_remaining );
-        std::cout << tt_tmp << std::endl;
+        //std::cout << tt_tmp << std::endl;
         create_klut_node( support, tt_tmp );
         return _itos.storage[_num_nodes-1];
       }
 
-      //std::cout << 5 << std::endl;
       if ( is_dec_naive )
       {
-        x_s = support[0];
+        x_s = 0;//support[0];
       }
       else
       {
-        for( uint32_t k{0u}; k < support.size(); ++k )
+        for( uint64_t k{0u}; k < support.size(); ++k )
         {
-          mi_new = MI_gd( { support[k] },{o_idx}, nodes_remaining, outputs_remaining, support.size() );
+          mi_new = MI_gd( { k },{o_idx}, nodes_remaining, outputs_remaining, support.size() ); // chanched support[k] -> k
           if( mi_new >= mi_max )
           {
             mi_max = mi_new;
-            x_s = support[k];
+            x_s = k;//support[k];
           }
         }
-        std::cout << "mi max = " << "I(" << support[x_s] << ";f)="<< mi_max << std::endl;
-
       }
 
       dbs_storage nodes0, nodes1, outputs0, outputs1;   /* storage element: value of the output at each example */
 
-      //std::cout << 6 << std::endl;
-
-      std::vector<uint32_t> new_support;
+      std::vector<uint64_t> new_support;
       dyn_bitset mask ( num_nodes, 1u );
       mask = mask << x_s;
-      for (uint32_t k {0u}; k < nodes_remaining.size(); ++k )
+      for (uint64_t k {0u}; k < nodes_remaining.size(); ++k )
       {
 
         if ( ( mask & nodes_remaining[k] ) == mask ) /* f1 */
         {
-          //std::cout << 8 << std::endl;
           boost::dynamic_bitset<> new_bs;
-          for ( uint32_t j{0u}; j < support.size(); ++j )
+          for ( uint64_t j{0u}; j < support.size(); ++j )
           {
-            //std::cout << 9 << std::endl;
             if( support[j] != support[x_s] )
             {
               new_bs.push_back( nodes_remaining[k][j] );
@@ -1128,11 +1128,9 @@ struct index_to_signal
         }
         else /* f0 */
         {
-          //std::cout << 10 << std::endl;
           boost::dynamic_bitset<> new_bs;
-          for ( uint32_t j{0u}; j < support.size(); ++j )
+          for ( uint64_t j{0u}; j < support.size(); ++j )
           {
-            //std::cout << 11 << std::endl;
             if( support[j] != support[x_s] )
             {
               new_bs.push_back( nodes_remaining[k][j] );
@@ -1143,15 +1141,15 @@ struct index_to_signal
           outputs0.push_back( outputs_remaining[k] );
         }
       }
-      for ( uint32_t j{0u}; j < support.size(); ++j )
+      for ( uint64_t j{0u}; j < support.size(); ++j )
       {
-        //std::cout << 12 << std::endl;
         if( support[j] != support[x_s] )
           new_support.push_back( support[j] );
       }
-      //std::cout << 13 << std::endl;
-      auto f1 = klut.create_and( _itos.storage[support[x_s]], it_shannon_decomposition_step( new_support, nodes1, outputs1,is_dec_naive, 0) );
-      auto f0 = klut.create_and( klut.create_not(_itos.storage[support[x_s]]), it_shannon_decomposition_step( new_support, nodes0, outputs0,is_dec_naive, 0) );
+      auto fa1 = it_shannon_decomposition_step( new_support, nodes1, outputs1,is_dec_naive, 0);
+      auto f1 = klut.create_and( _itos.storage[support[x_s]], fa1 );
+      auto fa0 = it_shannon_decomposition_step( new_support, nodes0, outputs0, is_dec_naive, 0);
+      auto f0 = klut.create_and( klut.create_not(_itos.storage[support[x_s]]), fa0 );
 
       auto fn = klut.create_or( f1, f0 );
       
@@ -1159,42 +1157,289 @@ struct index_to_signal
       /* construct the substorage blocks */
     }
 
-    void it_shannon_decomposition( bool is_dec_naive = false, uint32_t o_idx = 0 )
+    void it_shannon_decomposition( bool is_dec_naive = false, uint64_t o_idx = 0 )
     {
-      //std::cout << 777 << std::endl;
 
-      std::vector<uint32_t> initial_support;
+      std::vector<uint64_t> initial_support;
       dbs_storage nodes;
-      for( uint32_t k{0u}; k < _num_nodes; ++k )
+      for( uint64_t k{0u}; k < _num_nodes; ++k )
         initial_support.push_back( k );
       
-      for( uint32_t d{0u}; d < _nodes.size(); ++d )
+      for( uint64_t d{0u}; d < _nodes.size(); ++d )
       {
         boost::dynamic_bitset<> dtmp;
-        for( uint32_t k{0u}; k < _num_nodes; ++k )
+        for( uint64_t k{0u}; k < _num_nodes; ++k )
         {
           dtmp.push_back(_nodes[d][k]);
         } 
         nodes.push_back(dtmp); 
       }
-      ////std::cout << nodes.size() << " x " << nodes[0].size() << std::endl;
-      //std::cout << 999 << std::endl;
 
       auto f0 = it_shannon_decomposition_step( initial_support, nodes, _outputs, is_dec_naive, 0 );
       klut.create_po( f0 );
       _training_accuracy = compute_accuracy( _input_nodes, _outputs );
       std::cout << "training accuracy: " << _training_accuracy << "%" << std::endl;
+      std::cout << "number of gates: " << aig.num_gates();
     }
     #pragma endregion
 
+    // ##############################################################################################
+
+#pragma region dsd_shannon
+
+struct res_BD_type
+{
+  bool is_created;
+  uint64_t signal;
+  std::vector<uint64_t> Supp;
+  std::vector<uint64_t> A;
+  uint64_t idx_node;
+  uint64_t idx_newFn;
+
+
+};
+
+res_BD_type try_bottom_decomposition( std::vector<uint64_t>& support, dbs_storage& nodes_remaining, dbs_storage& outputs_remaining)
+{
+  // is_created = true if a new node is worth being added due to bottom decomposition
+  // signal = signal of the klut node created 
+
+  res_BD_type res_BD;
+  res_BD.is_created = false;
+
+  dbs_storage nodes_tmp = nodes_remaining;
+  std::vector<uint64_t> Apart;
+  std::vector<uint64_t> Spart;
+
+  std::vector<uint64_t> A = active_list_gd( nodes_remaining, outputs_remaining );
+  for ( uint64_t sup = 2; sup <= std::min( _max_act, _max_sup ); ++sup )
+  {
+    nodes_tmp;
+    Apart = {};
+    Spart = {};
+    for( uint64_t k {0u}; k < sup; ++k )
+    {
+      Apart.push_back( A[k] );
+      Spart.push_back( support[A[k]] );
+    }
+    auto tt_tmp = create_fn_gd( Apart, nodes_tmp, outputs_remaining );
+
+    //std::cout << tt_tmp << std::endl;
+    auto mi_supp = MI_gd( Apart, { 0 }, nodes_tmp, outputs_remaining, nodes_tmp[0].size() ); // support[k] -> k
+    auto mi_Fnew = MI_gd( { nodes_tmp[0].size() - 1 }, { 0 }, nodes_tmp, outputs_remaining, nodes_tmp[0].size() ); // support[k] -> k
+    if ( mi_supp == mi_Fnew )
+    {
+      res_BD.is_created = true;
+      std::cout << "bottom_decomposed" << std::endl;
+      res_BD.idx_node = _num_nodes;
+      res_BD.idx_newFn = nodes_tmp[0].size()-1;
+      create_klut_node( Spart, tt_tmp );
+
+      res_BD.signal = _itos.storage[_num_nodes-1];
+      res_BD.Supp = Spart;
+      res_BD.A = Apart;
+    }
+  }
+  if( res_BD.is_created )
+    nodes_remaining = nodes_tmp;
+
+  return res_BD;
+}
+
+    uint64_t it_dsd_shannon_decomposition_step( std::vector<uint64_t> support, dbs_storage nodes_remaining, dbs_storage outputs_remaining, bool is_dec_naive = false, uint64_t o_idx = 0 )
+    {
+      if( nodes_remaining.size() == 0 )
+        return klut.get_constant( false );
+      if( nodes_remaining[0].size() == 0 )
+        return klut.get_constant( false );
+
+      uint64_t num_nodes = nodes_remaining[0].size();
+      double mi_max = 0;
+      double mi_new;
+      uint64_t x_s;
+
+      bool all_ones = true;
+      bool all_zeros = true;
+
+      for( uint64_t k{0u}; k < outputs_remaining.size(); ++k )
+      {
+        if( outputs_remaining[k][o_idx] == 0 )
+          all_ones = false;
+        else if ( outputs_remaining[k][o_idx] == 1 )
+          all_zeros = false;
+        else
+          std::cerr << "none valid " << std::endl;
+      }
+
+      if( all_ones == true )
+        return klut.get_constant( true );
+      
+      if( all_zeros == true )
+        return klut.get_constant( false );
+
+      if( support.size() <= _max_sup )
+      {
+        auto tt_tmp = create_fn_gd( support, nodes_remaining, outputs_remaining );
+        //std::cout << tt_tmp << std::endl;
+        create_klut_node( support, tt_tmp );
+        return _itos.storage[_num_nodes-1];
+      }
+
+      if ( is_dec_naive )
+      {
+        x_s = 0;//support[0];
+      }
+      else
+      {
+        for( uint64_t k{0u}; k < support.size(); ++k )
+        {
+          mi_new = MI_gd( { k }, { o_idx }, nodes_remaining, outputs_remaining, support.size() ); // support[k] -> k
+          if( mi_new >= mi_max )
+          {
+            mi_max = mi_new;
+            x_s = k;//support[k];
+          }
+        }
+      }
+
+      dbs_storage nodes0, nodes1, outputs0, outputs1;   /* storage element: value of the output at each example */
+
+      std::vector<uint64_t> new_support;
+      std::vector<uint64_t> support_UP;
+
+      dyn_bitset mask ( num_nodes, 1u );
+      mask = mask << x_s;
+      for (uint64_t k {0u}; k < nodes_remaining.size(); ++k )
+      {
+
+        if ( ( mask & nodes_remaining[k] ) == mask ) /* f1 */
+        {
+          boost::dynamic_bitset<> new_bs;
+          for ( uint64_t j{0u}; j < support.size(); ++j )
+          {
+            if( support[j] != support[x_s] )
+            {
+              new_bs.push_back( nodes_remaining[k][j] );
+            } 
+          }
+          nodes1.push_back( new_bs );
+          outputs1.push_back( outputs_remaining[k] );
+        }
+        else /* f0 */
+        {
+          boost::dynamic_bitset<> new_bs;
+          for ( uint64_t j{0u}; j < support.size(); ++j )
+          {
+            if( support[j] != support[x_s] )
+            {
+              new_bs.push_back( nodes_remaining[k][j] );
+            } 
+          }
+
+          nodes0.push_back( new_bs );
+          outputs0.push_back( outputs_remaining[k] );
+        }
+      }
+      for ( uint64_t j{0u}; j < support.size(); ++j )
+      {
+        if( support[j] != support[x_s] )
+          new_support.push_back( support[j] );
+      }
+      auto F1 = it_dsd_shannon_decomposition_step( new_support, nodes1, outputs1, is_dec_naive, 0 );
+      auto F0 = it_dsd_shannon_decomposition_step( new_support, nodes0, outputs0, is_dec_naive, 0 );
+      auto original_support = support;
+      /* TOP DECOMPOSITION */
+      if ( F1 == klut.get_constant(true) )
+        return klut.create_or( _itos.storage[support[x_s]], F0 );
+      else if ( F0 == klut.get_constant(true) )
+        return klut.create_or( klut.create_not( _itos.storage[support[x_s]] ), F1 );
+      else if ( F1 == klut.get_constant(false) )
+        return klut.create_and( klut.create_not( _itos.storage[support[x_s]] ), F0 );
+      else if ( F0 == klut.get_constant(false) )
+        return klut.create_and( _itos.storage[support[x_s]], F1 );
+      else
+      {
+        res_BD_type res_BD = try_bottom_decomposition( support, nodes_remaining, outputs_remaining ); 
+
+        if ( res_BD.is_created )
+        {
+
+          new_support = {};
+          dbs_storage new_nodes_remaining;
+          std::vector<uint64_t> new_support;
+
+          for( uint64_t j{0u}; j < (nodes_remaining[0].size()-1); ++j )
+          {
+            if ( std::find( res_BD.A.begin(), res_BD.A.end(), j ) == res_BD.A.end() )
+            {
+              new_support.push_back( support[j] );
+            }
+          }
+
+          for( uint64_t dt{ 0u }; dt < nodes_remaining.size(); ++dt )
+          {
+            dyn_bitset newdbs;
+            for( uint64_t j{0u}; j < nodes_remaining[0].size(); ++j )
+            {
+              if ( std::find( res_BD.A.begin(), res_BD.A.end(), j ) == res_BD.A.end() )
+              {
+                newdbs.push_back( nodes_remaining[dt][j] );
+              }
+            }
+            new_nodes_remaining.push_back(newdbs);
+          }
+
+          new_support.push_back( res_BD.idx_node );
+
+          return it_dsd_shannon_decomposition_step( new_support, new_nodes_remaining, outputs_remaining, is_dec_naive, 0 );
+        }
+
+      }
+      // NO TOP DECOMPOSTION - BOTTOM DECOMPOSITION
+      //for now only shannon
+      auto f0 = klut.create_and( klut.create_not(_itos.storage[original_support[x_s]]), F0 );
+      auto f1 = klut.create_and(_itos.storage[original_support[x_s]], F1 );
+
+      return klut.create_or( f1, f0 );
+      /* construct the substorage blocks */
+    }
+
+    void it_dsd_shannon_decomposition( bool is_dec_naive = false, uint64_t o_idx = 0 )
+    {
+
+      std::vector<uint64_t> initial_support;
+      dbs_storage nodes;
+      for( uint64_t k{0u}; k < _num_nodes; ++k )
+        initial_support.push_back( k );
+      
+      for( uint64_t d{0u}; d < _nodes.size(); ++d )
+      {
+        boost::dynamic_bitset<> dtmp;
+        for( uint64_t k{0u}; k < _num_nodes; ++k )
+        {
+          dtmp.push_back(_nodes[d][k]);
+        } 
+        nodes.push_back(dtmp); 
+      }
+
+      auto f0 = it_dsd_shannon_decomposition_step( initial_support, nodes, _outputs, is_dec_naive, 0 );
+      klut.create_po( f0 );
+      _training_accuracy = compute_accuracy( _input_nodes, _outputs );
+      std::cout << "training accuracy: " << _training_accuracy << "%" << std::endl;
+      std::cout << "number of gates: " << aig.num_gates();
+    }
+    #pragma endregion // top dsd + shannon
+
+    // ##############################################################################################
+
     #pragma region simulate
-    bool simulate_input( dyn_bitset input_pattern, bool convertToAig = true )
+    bool simulate_input( dyn_bitset const& input_pattern, bool convertToAig = true )
     {
       if( convertToAig )
         aig = convert_klut_to_graph<aig_network>( klut );
 
       std::vector<bool> inpt_v;
-      for( uint32_t k{0u}; k<input_pattern.size();++k )
+      for( uint64_t k{0u}; k<input_pattern.size();++k )
       {
         inpt_v.push_back( ( ( input_pattern[k] == 1 ) ? true : false ) );
       }
@@ -1202,15 +1447,15 @@ struct index_to_signal
       return simulate<bool>( aig, default_simulator<bool>( inpt_v ) )[0];
     }
 
-    double compute_accuracy( dbs_storage nodes, dbs_storage outputs )
+    double compute_accuracy( dbs_storage const& nodes, dbs_storage const& outputs )
     {
       aig = convert_klut_to_graph<aig_network>( klut );
       double acc = 0;
       double delta_acc;
-      for( uint32_t k {0u}; k < nodes.size(); ++k )
+      for( uint64_t k {0u}; k < nodes.size(); ++k )
       {
         dyn_bitset ipattern;
-        for ( uint32_t j {0u}; j < _num_nodes-1; ++j )
+        for ( uint64_t j {0u}; j < (nodes[0].size()-1); ++j )
           ipattern.push_back( nodes[k][j] );
         
         delta_acc = ( ( simulate_input( ipattern, false ) == outputs[k][0] ) ? (double)1.0/nodes.size() : 0.0 );
@@ -1218,27 +1463,68 @@ struct index_to_signal
       }
       return 100*acc;
     }
+
+    bool simulate_at_node( dyn_bitset const& input_pattern, klut_network const& klut_node )
+    {
+      aig_network aig_node = convert_klut_to_graph<aig_network>( klut_node );
+
+      std::vector<bool> inpt_v;
+      for( uint64_t k{0u}; k<input_pattern.size();++k )
+      {
+        inpt_v.push_back( ( ( input_pattern[k] == 1 ) ? true : false ) );
+      }
+
+      return simulate<bool>( aig_node, default_simulator<bool>( inpt_v ) )[0];
+    }
+
+    bool compare_nodes( dbs_storage const& nodes, klut_network const& klut_cec, bool is_same_sign )
+    {
+      bool equal = true;
+      std::cout << "same? " << is_same_sign << std::endl;
+      
+      for( uint64_t k {0u}; k < nodes.size(); ++k )
+      {
+        dyn_bitset ipattern;
+        for ( uint64_t j {0u}; j < nodes[0].size(); ++j )
+          ipattern.push_back( nodes[k][j] );
+        
+        std::cout << simulate_at_node( ipattern, klut_cec ) << " ";
+
+        if( is_same_sign )
+        {
+          if ( simulate_at_node( ipattern, klut_cec ) == 1 )
+            return false;
+        }
+        else
+        {
+          
+          if ( simulate_at_node( ipattern, klut_cec ) == 0 )
+            return false;
+        }
+      }
+      return true;
+    }
     #pragma endregion
 
     public:
       dbs_storage _input_nodes;
       dbs_storage _nodes;   /* storage element: value of the output at each example */
       dbs_storage _outputs; /* storage element: value of the output at each example */
-      uint32_t _num_data;   /* number of examples */
-      uint32_t _num_nodes;
-      uint32_t _num_outputs;
+      uint64_t _num_data;   /* number of examples */
+      uint64_t _num_nodes;
+      uint64_t _num_outputs;
       klut_network klut;
       aig_network aig;
       std::vector<uint64_t> _active_list;
       index_to_signal _itos;
-      uint32_t _act;
-      uint32_t _sup = 0;
-      uint32_t _max_act;
-      uint32_t _max_sup;
-      uint32_t _init_sup;
+      uint64_t _act;
+      uint64_t _sup = 0;
+      uint64_t _max_act;
+      uint64_t _max_sup;
+      uint64_t _init_sup;
       double _eps_th;
       double _eps_best;
-      uint32_t _idx_fn;
+      uint64_t _idx_fn;
       double _training_accuracy;
       double _dI = 0;
       std::unordered_map<std::string, double> _mi_storage;

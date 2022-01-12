@@ -146,7 +146,7 @@ double computeAcc(std::vector<boost::dynamic_bitset<>> inputs,std::vector<boost:
 
 int main()
 {  
-  std::string str_code = "00";
+  std::string str_code = "80";
   std::string path_train = "/home/acostama/PhD/mockturtle/benchmarks/iwls2020-lsml-contest/benchmarks/train/train_txt/ex"+str_code+".train.txt";
   std::string path_test = "/home/acostama/PhD/mockturtle/benchmarks/iwls2020-lsml-contest/benchmarks/test/test_txt/ex"+str_code+".test.txt";
   
@@ -231,9 +231,25 @@ std::vector<boost::dynamic_bitset<>> input_nodes;
   std::cout << "TRAIN acc = " <<  train_acc << "%" << std::endl;
 
 //########################################################################*/
+  std::cout << "not informed shannon " << std::endl; 
+  plaT_network pla3( train_ds.X, train_ds.Y, 4, 4 );
+  pla3.it_shannon_decomposition(true, 0);
+  std::cout << "\n test accuracy: " << pla3.compute_accuracy( test_ds.X, test_ds.Y ) << "%" << std::endl;
+
+  std::cout << "informed shannon " << std::endl; 
+  pla1.it_shannon_decomposition(false, 0);
+  std::cout << "\n test accuracy: " << pla1.compute_accuracy( test_ds.X, test_ds.Y ) << "%" << std::endl;
+
+
+  std::cout << "informed shannon + dsd " << std::endl; 
+  plaT_network pla2( train_ds.X, train_ds.Y, 4, 4 );
+  pla2.it_dsd_shannon_decomposition(false, 0);
+  std::cout << "\n test accuracy: " << pla2.compute_accuracy( test_ds.X, test_ds.Y ) << "%" << std::endl;
+
+
 
   /* informed SHANNON */
-  pla1.it_shannon_decomposition(false, 0);
+
   /* not informed SHANNON TODO*/
 
   /* MUESLI */
@@ -241,7 +257,10 @@ std::vector<boost::dynamic_bitset<>> input_nodes;
   //pla1.muesli();
 
   /* MUESLI MODIFIED TODO*/
-  std::cout << "test accuracy: " << pla1.compute_accuracy( test_ds.X, test_ds.Y ) << "%" << std::endl;
+
+  
+
+
 
   //plaT_network pla_sh( inodes, onodes, 5, 3 );
 

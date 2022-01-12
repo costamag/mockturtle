@@ -29,13 +29,14 @@ std::vector<boost::dynamic_bitset<>> prepare_inodes( uint32_t nin )
   return input_nodes;
 }
 
-std::vector<boost::dynamic_bitset<>> prepare_onodes( std::vector<uint32_t> Voutput_nodes )
+
+std::vector<boost::dynamic_bitset<>> prepare_onodes( std::vector<uint32_t> Voutput_nodes, uint32_t nin = 1 )
 {
   std::vector<boost::dynamic_bitset<>> output_nodes;
 
   for( uint32_t k {0u}; k < Voutput_nodes.size(); ++k )
   {
-    boost::dynamic_bitset<> odata( 1, Voutput_nodes.at(k) );
+    boost::dynamic_bitset<> odata( nin, Voutput_nodes.at(k) );
     output_nodes.push_back( odata );
   }
   return output_nodes;
@@ -44,6 +45,19 @@ std::vector<boost::dynamic_bitset<>> prepare_onodes( std::vector<uint32_t> Voutp
 void an_binary_fn(std::vector<uint32_t> vFn )
 {
   auto input_nodes = prepare_inodes((uint32_t)log2(vFn.size()));
+  auto output_nodes = prepare_onodes( vFn );
+  pla_network pla( input_nodes, output_nodes, 3 );
+
+  pla.print_pla();
+
+  std::cout << "mi(x1;f)=" << pla.MI({0},{0}) << std::endl;
+  std::cout << "mi(x2;f)=" << pla.MI({1},{0}) << std::endl;
+  std::cout << "mi(x1,x2;f)=" << pla.MI({0,1},{0}) << std::endl;
+}
+
+void an_binary_fn_V( std::vector<uint32_t> vIpt, std::vector<uint32_t> vFn )
+{
+  auto input_nodes = prepare_onodes( vIpt, 3 );
   auto output_nodes = prepare_onodes( vFn );
   pla_network pla( input_nodes, output_nodes, 3 );
 
@@ -96,6 +110,36 @@ void an_quaternary_fn(std::vector<uint32_t> vFn )
   std::cout << "mi(x2,x3;f)=" << pla.MI({2,3},{0}) << std::endl;
 
   std::cout << "mi(x1,x2,x3;f)=" << pla.MI({0,1,2},{0}) << std::endl;
+
+}
+
+void an_quaternary_fn_fV( std::vector<uint32_t> vIpt, std::vector<uint32_t> vFn )
+{
+  auto input_nodes = prepare_onodes( vIpt, 5 );
+  auto output_nodes = prepare_onodes( vFn );
+  pla_network pla( input_nodes, output_nodes, 3 );
+
+  pla.print_pla();
+
+  std::cout << "mi(x0;f)=" << pla.MI({0},{0}) << std::endl;
+  std::cout << "mi(x1;f)=" << pla.MI({1},{0}) << std::endl;
+  std::cout << "mi(x2;f)=" << pla.MI({2},{0}) << std::endl;
+  std::cout << "mi(x3;f)=" << pla.MI({3},{0}) << std::endl;
+
+
+  std::cout << "mi(x0,x1;f)=" << pla.MI({0,1},{0}) << std::endl;
+  std::cout << "mi(x0,x2;f)=" << pla.MI({0,2},{0}) << std::endl;
+  std::cout << "mi(x0,x3;f)=" << pla.MI({0,3},{0}) << std::endl;
+  std::cout << "mi(x1,x2;f)=" << pla.MI({1,2},{0}) << std::endl;
+  std::cout << "mi(x1,x3;f)=" << pla.MI({1,3},{0}) << std::endl;
+  std::cout << "mi(x2,x3;f)=" << pla.MI({2,3},{0}) << std::endl;
+
+  std::cout << "mi(x0,x1,x2;f)=" << pla.MI({0,1,2},{0}) << std::endl;
+  std::cout << "mi(x0,x1,x3;f)=" << pla.MI({0,1,3},{0}) << std::endl;
+  std::cout << "mi(x1,x2,x3;f)=" << pla.MI({1,2,3},{0}) << std::endl;
+
+  std::cout << "mi(x0,x1,x3,x4;f)=" << pla.MI({0,1,2,4},{0}) << std::endl;
+
 
 }
 
@@ -285,7 +329,17 @@ std::cout << "\nclass 1" << std::endl;
   pla5.preprocess_muesli(3);
   pla5.muesli(5);
 
-    std::cout << "--------------- ab + cd ---------------" << std::endl;
+    pla_network pla7( inodes, onodes, 4 );
+  pla7.print_pla();
+  pla7.it_shannon_decomposition(2, 0);
+
+  std::cout << "--------------- 2-XOR ---------------" << std::endl;
+  an_binary_fn_V( {1,2,3}, {1,1,0} );
+
+  std::cout << "--------------- ab + cd ---------------" << std::endl;
+  an_quaternary_fn_fV( {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}, {0,0,0,1,0,0,0,1,0,0,0,1,1,1,1,1} );
+  an_quaternary_fn_fV( {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}, {0,0,0,1,0,0,0,1,0,0,0,1,1,1,1,1} );
+      std::cout << "--------------- ab + cd ---------------" << std::endl;
    inodes = prepare_inodes(4);
   an_quaternary_fn( {0,0,0,1,0,0,0,1,0,0,0,1,1,1,1,1} );
    onodes =prepare_onodes({0,0,0,1,0,0,0,1,0,0,0,1,1,1,1,1});
@@ -294,9 +348,44 @@ std::cout << "\nclass 1" << std::endl;
   pla6.preprocess_muesli(3);
   pla6.muesli(5);
 
-    pla_network pla7( inodes, onodes, 4 );
-  pla7.print_pla();
-  pla7.it_shannon_decomposition(2, 0);
+  std::cout << "0   " << pla6.MI({0},{0}) << std::endl;
+  std::cout << "1   " << pla6.MI({1},{0}) << std::endl;
+  std::cout << "2   " << pla6.MI({2},{0}) << std::endl;
+  std::cout << "3   " << pla6.MI({3},{0}) << std::endl;
+  std::cout << "4   " << pla6.MI({4},{0}) << std::endl;
+  std::cout << "5   " << pla6.MI({5},{0}) << std::endl;
+
+  std::cout << "04  " << pla6.MI({0,4},{0}) << std::endl;
+  std::cout << "14  " << pla6.MI({1,4},{0}) << std::endl;
+  std::cout << "10  " << pla6.MI({0,1},{0}) << std::endl;
+
+  std::cout << "05  " << pla6.MI({0,5},{0}) << std::endl;
+  std::cout << "15  " << pla6.MI({1,5},{0}) << std::endl;
+  std::cout << "014 " << pla6.MI({0,1,4},{0}) << std::endl;
+  std::cout << "015 " << pla6.MI({0,1,5},{0}) << std::endl;
+  auto tt = pla6.create_fn({0,1,2});
+  pla6.create_klut_node( {0,1,2}, tt );
+  std::cout << "26 " << pla6.MI({6},{0}) << std::endl;
+  std::cout << "26 " << pla6.MI({2,6},{0}) << std::endl;
+  std::cout << "16 " << pla6.MI({1,6},{0}) << std::endl;
+  std::cout << "016 " << pla6.MI({0,1,6},{0}) << std::endl;
+  std::cout << "0126 " << pla6.MI({0,1,2,6},{0}) << std::endl;
+  std::cout << "012 " << pla6.MI({0,1,2},{0}) << std::endl;
+
+
+
+
+  
+  std::cout << "24  " << pla6.MI({2,4},{0}) << std::endl;
+  std::cout << "34  " << pla6.MI({3,4},{0}) << std::endl;
+  std::cout << "25  " << pla6.MI({2,5},{0}) << std::endl;
+  std::cout << "35  " << pla6.MI({3,5},{0}) << std::endl;
+  std::cout << "234  " << pla6.MI({2,3,4},{0}) << std::endl;
+  std::cout << "235  " << pla6.MI({2,3,5},{0}) << std::endl;
+
+  std::cout << "024 " << pla6.MI({0,2,4},{0}) << std::endl;
+  std::cout << "014 " << pla6.MI({0,2,4},{0}) << std::endl;
+
 
 
   return 0;
