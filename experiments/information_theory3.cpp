@@ -146,147 +146,67 @@ double computeAcc(std::vector<boost::dynamic_bitset<>> inputs,std::vector<boost:
 
 int main()
 {  
-  std::string str_code = "80";
+  for( uint32_t it = 0; it < 10; ++it )
+  {
+  std::string str_code;
+  if( it < 10 )
+    str_code = "0"+std::to_string(it);
+  else
+    str_code = std::to_string(it);
+
   std::string path_train = "/home/acostama/PhD/mockturtle/benchmarks/iwls2020-lsml-contest/benchmarks/train/train_txt/ex"+str_code+".train.txt";
   std::string path_test = "/home/acostama/PhD/mockturtle/benchmarks/iwls2020-lsml-contest/benchmarks/test/test_txt/ex"+str_code+".test.txt";
-  
-  //std::ifstream myfile ( path_train + "/ex00.train.txt" );
-  
+  std::string path_valid = "/home/acostama/PhD/mockturtle/benchmarks/iwls2020-lsml-contest/benchmarks/validation/validation_txt/ex"+str_code+".valid.txt";
+
+    
   using dyn_bitset = boost::dynamic_bitset<>;
   using dbs_storage = std::vector<dyn_bitset>;
   auto train_ds = dataset_loader( path_train );
-  std::cout << "nin = " << train_ds.nin << std::endl;
-  std::cout << "nout = " << train_ds.nout << std::endl;
-  std::cout << "ndata = " << train_ds.ndata << std::endl;
+  //std::cout << "nin = " << train_ds.nin << std::endl;
+  //std::cout << "nout = " << train_ds.nout << std::endl;
+  //std::cout << "ndata = " << train_ds.ndata << std::endl;
 
   auto test_ds = dataset_loader( path_test );
-  std::cout << "nin = " << test_ds.nin << std::endl;
-  std::cout << "nout = " << test_ds.nout << std::endl;
-  std::cout << "ndata = " << test_ds.ndata << std::endl;
+  auto valid_ds = dataset_loader( path_valid );
 
-  plaT_network pla1( train_ds.X, train_ds.Y, 4, 4 );
-
-  for ( uint32_t k{0u}; k<train_ds.nin; k++ )
-  {
-    std::cout << k << "[" << pla1.MI({k},{0}) << "] " << std::endl;
-  }
-
-  /* Espresso STILL COVER TO ADJUST
-  std::string path_train_blif = "../LUTs/ex"+str_code+"train.blif";//"../benchmarks/iwls2020-lsml-contest/benchmarks/train/train_txt/ex"+str_code+"train.blif";
-  names_view<cover_network> cover_ntk;
+  //std::cout << "nin = " << test_ds.nin << std::endl;
+  //std::cout << "nout = " << test_ds.nout << std::endl;
+  //std::cout << "ndata = " << test_ds.ndata << std::endl;
+  std::cout << "* * * * * * * * * * * * * * * *  " << std::endl;
+  std::cout << "              " << str_code << "            " << std::endl;
+  std::cout << "* * * * * * * * * * * * * * * *  " << std::endl;
   
-  if ( lorina::read_blif( path_train_blif, blif_reader( cover_ntk ) ) != lorina::return_code::success )
-  {
-    std::cout << "read <testcase>.blif failed!\n";
-    return -1;
-  }
-
-  aig_network aig_cv;
-  convert_cover_to_graph( aig_cv, cover_ntk );
-  double train_acc = computeAcc( train_ds.X, train_ds.Y, aig_cv );
-  double test_acc = computeAcc( test_ds.X, test_ds.Y, aig_cv );
-  std::cout << "TEST acc = " <<  test_acc << "%" << std::endl;
-  std::cout << "TRAIN acc = " <<  train_acc << "%" << std::endl;
-*/
-/*#####################################################################
-TEST WIT 3AND
-std::vector<boost::dynamic_bitset<>> input_nodes;
-  for ( uint32_t i {0u}; i < 8; ++i )
-  {
-    boost::dynamic_bitset<> idata( 3, i );
-    input_nodes.push_back( idata );
-    input_nodes[i].push_back(0);
-  }
+  dyn_bitset N1 ( 5, 1u );
+  dyn_bitset N2 ( 5, 3u );
+  dyn_bitset N3 ( 5, 8u );
 
 
-  std::vector<boost::dynamic_bitset<>> output_nodes;
-  std::vector Voutput_nodes = {0,0,0,0,0,0,0,1};
+  std::cout << std::endl;
+  std::cout << "INFORMED SHANNON + DSD " << std::endl; 
+  plaT_network pla3( train_ds.X, train_ds.Y, 2, 4, 2 );
+  //pla3.preprocess_muesli(0.3);
 
+  //std::cout << "HD: " << pla3.HammingDistance(N1,N1)<< pla3.HammingDistance(N1,N2) << " " << pla3.HammingDistance(N1,N3) << std::endl ;
+  pla3.it_dsd_shannon_decomposition(false, 0);
+  std::cout << "test accuracy: " << pla3.compute_accuracy( test_ds.X, test_ds.Y ) << "%" << std::endl;
+  std::cout << "valid accuracy: " << pla3.compute_accuracy( valid_ds.X, valid_ds.Y ) << "%" << std::endl;
 
-  for( uint32_t k {0u}; k < Voutput_nodes.size(); ++k )
-  {
-    boost::dynamic_bitset<> odata( 1, Voutput_nodes.at(k) );
-    output_nodes.push_back( odata );
-  }
-  str_code = "AA";
-    std::string path_train_blif = "../LUTs/ex"+str_code+"train.blif";//"../benchmarks/iwls2020-lsml-contest/benchmarks/train/train_txt/ex"+str_code+"train.blif";
-  cover_network cover_ntk;
+  std::cout << std::endl;
+  /*std::cout << "NOT INFORMED SHANNON " << std::endl; 
+  plaT_network pla1( train_ds.X, train_ds.Y, 2, 4, 2 );
+  pla1.it_shannon_decomposition(true, 0);
+  std::cout << "test accuracy: " << pla1.compute_accuracy( test_ds.X, test_ds.Y ) << "%" << std::endl;
+  std::cout << "valid accuracy: " << pla1.compute_accuracy( valid_ds.X, valid_ds.Y ) << "%" << std::endl;
+  std::cout << std::endl;
+  std::cout << "INFORMED SHANNON " << std::endl; 
+  plaT_network pla2( train_ds.X, train_ds.Y, 2, 4, 2 );
+  pla2.it_shannon_decomposition(false, 0);
+  std::cout << "test accuracy: " << pla2.compute_accuracy( test_ds.X, test_ds.Y ) << "%" << std::endl;
+  std::cout << "valid accuracy: " << pla2.compute_accuracy( valid_ds.X, valid_ds.Y ) << "%" << std::endl;
   
-  if ( lorina::read_blif( path_train_blif, blif_reader( cover_ntk ) ) != lorina::return_code::success )
-  {
-    std::cout << "read <testcase>.blif failed!\n";
-    return -1;
+  std::cout << std::endl;*/
+
   }
-
-  aig_network aig_cv;
-
-  //convert_cover_to_graph( aig_cv, cover_ntk );
-  aig_cv = convert_cover_to_graph<aig_network>( cover_ntk );
-  std::cout << aig_cv.size() << std::endl;
-  std::cout << aig_cv.num_gates() << std::endl;
-
-  double train_acc = computeAcc( input_nodes, output_nodes, aig_cv );
-  //double test_acc = computeAcc( test_ds.X, test_ds.Y, aig_cv );
-  //std::cout << "TEST acc = " <<  test_acc << "%" << std::endl;
-  std::cout << "TRAIN acc = " <<  train_acc << "%" << std::endl;
-
-//########################################################################*/
-  std::cout << "not informed shannon " << std::endl; 
-  plaT_network pla3( train_ds.X, train_ds.Y, 4, 4 );
-  pla3.it_shannon_decomposition(true, 0);
-  std::cout << "\n test accuracy: " << pla3.compute_accuracy( test_ds.X, test_ds.Y ) << "%" << std::endl;
-
-  std::cout << "informed shannon " << std::endl; 
-  pla1.it_shannon_decomposition(false, 0);
-  std::cout << "\n test accuracy: " << pla1.compute_accuracy( test_ds.X, test_ds.Y ) << "%" << std::endl;
-
-
-  std::cout << "informed shannon + dsd " << std::endl; 
-  plaT_network pla2( train_ds.X, train_ds.Y, 4, 4 );
-  pla2.it_dsd_shannon_decomposition(false, 0);
-  std::cout << "\n test accuracy: " << pla2.compute_accuracy( test_ds.X, test_ds.Y ) << "%" << std::endl;
-
-
-
-  /* informed SHANNON */
-
-  /* not informed SHANNON TODO*/
-
-  /* MUESLI */
-  //pla1.preprocess_muesli(0.1);
-  //pla1.muesli();
-
-  /* MUESLI MODIFIED TODO*/
-
-  
-
-
-
-  //plaT_network pla_sh( inodes, onodes, 5, 3 );
-
-/*
-  std::vector<boost::dynamic_bitset<>> input_nodes;
-  for ( uint32_t i {0u}; i < 16; ++i )
-  {
-    boost::dynamic_bitset<> idata( 5, i );
-    input_nodes.push_back( idata );
-  }
-
-  std::vector<boost::dynamic_bitset<>> output_nodes;
-  std::vector Voutput_nodes = {0,0,0,1,0,0,0,1,0,0,0,1,1,1,1,1}; /* ab + cde 
-
-
-  for( uint32_t k {0u}; k < Voutput_nodes.size(); ++k )
-  {
-    boost::dynamic_bitset<> odata( 1, Voutput_nodes.at(k) );
-    output_nodes.push_back( odata );
-  }
-
-  plaT_network pla( input_nodes, output_nodes, 5 );
-  pla.print_pla();
-  pla.muesli(2);
-  pla.print_pla();*/
-
 
   return 0;
 }

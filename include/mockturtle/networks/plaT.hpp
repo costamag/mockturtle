@@ -52,6 +52,9 @@
 #include <kitty/constructors.hpp>
 #include <kitty/dynamic_truth_table.hpp>
 
+#include <mockturtle/views/depth_view.hpp>
+
+
 namespace mockturtle
 {
 
@@ -1179,13 +1182,19 @@ struct index_to_signal
       klut.create_po( f0 );
       _training_accuracy = compute_accuracy( _input_nodes, _outputs );
       std::cout << "training accuracy: " << _training_accuracy << "%" << std::endl;
-      std::cout << "number of gates: " << aig.num_gates();
+      std::cout << "number of gates: " << aig.num_gates()<< std::endl;
+      std::cout << "size: " << aig.size()<< std::endl;
+      depth_view_params ps;
+      ps.count_complements = true;
+      depth_view depth_aig{aig, {}, ps};
+      std::cout << "num levels: " << depth_aig.depth()<< std::endl;
     }
     #pragma endregion
 
     // ##############################################################################################
 
 #pragma region dsd_shannon
+
 
 struct res_BD_type
 {
@@ -1195,7 +1204,8 @@ struct res_BD_type
   std::vector<uint64_t> A;
   uint64_t idx_node;
   uint64_t idx_newFn;
-
+  double mi;
+  std::string tt;
 
 };
 
@@ -1205,16 +1215,22 @@ res_BD_type try_bottom_decomposition( std::vector<uint64_t>& support, dbs_storag
   // signal = signal of the klut node created 
 
   res_BD_type res_BD;
+
+  double MImax = 0;
+
   res_BD.is_created = false;
 
+  dbs_storage new_nodes;
   dbs_storage nodes_tmp = nodes_remaining;
   std::vector<uint64_t> Apart;
   std::vector<uint64_t> Spart;
 
   std::vector<uint64_t> A = active_list_gd( nodes_remaining, outputs_remaining );
+  MImax = MI_gd( {A[0]}, {0}, nodes_remaining, outputs_remaining, nodes_remaining[0].size() ); // support[k] -> k
+  
   for ( uint64_t sup = 2; sup <= std::min( _max_act, _max_sup ); ++sup )
   {
-    nodes_tmp;
+    nodes_tmp = nodes_remaining;
     Apart = {};
     Spart = {};
     for( uint64_t k {0u}; k < sup; ++k )
@@ -1229,24 +1245,167 @@ res_BD_type try_bottom_decomposition( std::vector<uint64_t>& support, dbs_storag
     auto mi_Fnew = MI_gd( { nodes_tmp[0].size() - 1 }, { 0 }, nodes_tmp, outputs_remaining, nodes_tmp[0].size() ); // support[k] -> k
     if ( mi_supp == mi_Fnew )
     {
+      std::cout << "o";
+      MImax = mi_supp;
       res_BD.is_created = true;
-      std::cout << "bottom_decomposed" << std::endl;
-      res_BD.idx_node = _num_nodes;
-      res_BD.idx_newFn = nodes_tmp[0].size()-1;
-      create_klut_node( Spart, tt_tmp );
-
-      res_BD.signal = _itos.storage[_num_nodes-1];
+      res_BD.tt = tt_tmp;
       res_BD.Supp = Spart;
       res_BD.A = Apart;
+      res_BD.mi = mi_Fnew;
+      new_nodes = nodes_tmp;
     }
   }
+
   if( res_BD.is_created )
-    nodes_remaining = nodes_tmp;
+  {
+    res_BD.idx_node = _num_nodes;
+    create_klut_node( res_BD.Supp, res_BD.tt );
+    res_BD.idx_newFn = nodes_tmp[0].size()-1;
+    res_BD.signal = _itos.storage[_num_nodes-1];
+    nodes_remaining = new_nodes;
+    return res_BD;
+  }
+  
+// START ################################
+  // compute mutual informtions
+  std::vector<double> mi_v;
+  std::vector<uint64_t> pi;
+
+  for( uint64_t k{1u}; k < nodes_remaining[0].size(); ++k )
+  {
+    mi_v.push_back( MI_gd( {k}, {0}, nodes_remaining, outputs_remaining, nodes_remaining[0].size() ));
+    pi.push_back(k);
+  }
+  // sort by mutual information
+  quicksort_by_attribute( pi, mi_v, 0, (pi.size()-1) );
+  // consider all pairs and store if mi_supp == mi_Fnew AND mi_supp > mi_max
+  for( uint64_t i_idx = 0; i_idx < (pi.size()-1) ; ++i_idx )
+  {
+    nodes_tmp = nodes_remaining;
+    Apart = {pi[i_idx], pi[i_idx+1]};
+    Spart = {support[pi[i_idx]], support[pi[i_idx+1]]};
+
+    auto tt_tmp = create_fn_gd( Apart, nodes_tmp, outputs_remaining );
+
+    //std::cout << tt_tmp << std::endl;
+    auto mi_supp = MI_gd( Apart, { 0 }, nodes_tmp, outputs_remaining, nodes_tmp[0].size() ); // support[k] -> k
+    auto mi_Fnew = MI_gd( { nodes_tmp[0].size() - 1 }, { 0 }, nodes_tmp, outputs_remaining, nodes_tmp[0].size() ); // support[k] -> k
+    if ( ( mi_supp == mi_Fnew ) && ( mi_supp > MImax ) )
+    {
+      std::cout << "+";
+      MImax = mi_supp;
+      res_BD.is_created = true;
+      res_BD.tt = tt_tmp;
+      res_BD.Supp = Spart;
+      res_BD.A = Apart;
+      res_BD.mi = mi_Fnew;
+      new_nodes = nodes_tmp;
+    }
+  }
+  // modify
+  if( res_BD.is_created )
+  {
+    res_BD.idx_node = _num_nodes;
+    create_klut_node( res_BD.Supp, res_BD.tt );
+    res_BD.idx_newFn = nodes_tmp[0].size()-1;
+    res_BD.signal = _itos.storage[_num_nodes-1];
+
+    nodes_remaining = new_nodes;
+  }
+// END ################################
 
   return res_BD;
 }
 
-    uint64_t it_dsd_shannon_decomposition_step( std::vector<uint64_t> support, dbs_storage nodes_remaining, dbs_storage outputs_remaining, bool is_dec_naive = false, uint64_t o_idx = 0 )
+
+void prepare_cofactor( dbs_storage const& nodes_remaining, dbs_storage const& outputs_remaining, 
+                        uint64_t x_idx, bool Id, 
+                        dbs_storage& nodesId, dbs_storage& outputsId )
+{
+  //std::cout << "Id=" << Id << std::endl;
+  for( uint64_t dt {0u}; dt < nodes_remaining.size(); ++dt )
+  {
+    if( nodes_remaining[dt][x_idx] == Id )
+    {
+      outputsId.push_back(outputs_remaining[dt]);
+      dyn_bitset dbset;
+      for( uint64_t k{0u}; k < nodes_remaining[0].size(); ++k )
+      {
+        if( k != x_idx )
+          dbset.push_back( nodes_remaining[dt][k] );
+      }
+      nodesId.push_back(dbset);
+    }
+  } // filled the cofactor
+
+}
+
+uint64_t HammingDistance( dyn_bitset& a, dyn_bitset& b  )
+{
+  auto a_xor_b = a^b;
+  return a_xor_b.count();
+}
+
+bool is_f1_eqto_not_f0( dbs_storage const& nodes_remaining, dbs_storage const& outputs_remaining, uint64_t& count_max, uint64_t x_idx )
+{
+  uint64_t hd_max = 1;
+  double Rt = 1.0;
+  uint64_t count_x = 0;
+  uint64_t count_neg = 0;
+
+  dbs_storage nodes0, nodes1, outputs0, outputs1;
+  prepare_cofactor( nodes_remaining, outputs_remaining, x_idx, 0, nodes0, outputs0 );
+  prepare_cofactor( nodes_remaining, outputs_remaining, x_idx, 1, nodes1, outputs1 );
+  
+  for ( uint64_t n {0u}; n < nodes0.size(); ++n )
+  {
+    for ( uint64_t m {0u}; m < nodes1.size(); ++m )
+    {
+      
+      if( HammingDistance( nodes0[n], nodes1[m] ) <= hd_max )
+      {
+        std::cout << nodes0[n] << std::endl;
+        std::cout << nodes1[m] << std::endl;
+        count_x++;
+        count_neg += ( outputs0[n] == ~outputs1[m] );
+      }
+    } // explored N1
+  }// explored N0
+
+  if( ( count_neg >= count_max ) && ( count_neg >= Rt*count_x ) )
+  {
+    count_max = count_neg;
+    return true;
+  }
+  return false;
+}
+          
+void remove_column( std::vector<uint64_t>& support, dbs_storage& nodes_remaining, uint64_t x_s )
+{
+  dbs_storage new_nodes_remaining;
+  std::vector<uint64_t> new_support;
+  for( uint64_t dt {0u}; dt < nodes_remaining.size(); ++dt )
+  {
+    dyn_bitset dbset;
+    for( uint64_t k {0u}; k < nodes_remaining[0].size(); ++k )
+    {
+      if( k != x_s )
+        dbset.push_back( nodes_remaining[dt][k] );
+    } 
+    new_nodes_remaining.push_back( dbset );
+  }
+
+  for( uint64_t k {0u}; k < nodes_remaining[0].size(); ++k )
+  {
+    if( k != x_s )
+      new_support.push_back( support[k] );
+  }
+
+  support = new_support;
+  nodes_remaining = new_nodes_remaining;
+}
+
+uint64_t it_dsd_shannon_decomposition_step( std::vector<uint64_t> support, dbs_storage nodes_remaining, dbs_storage outputs_remaining, bool is_dec_naive = false, uint64_t o_idx = 0 )
     {
       if( nodes_remaining.size() == 0 )
         return klut.get_constant( false );
@@ -1279,7 +1438,11 @@ res_BD_type try_bottom_decomposition( std::vector<uint64_t>& support, dbs_storag
 
       if( support.size() <= _max_sup )
       {
-        auto tt_tmp = create_fn_gd( support, nodes_remaining, outputs_remaining );
+        std::vector<uint64_t> supp_alt;
+        for( uint64_t el = 0; el < support.size(); ++el )
+          supp_alt.push_back(el);
+
+        auto tt_tmp = create_fn_gd( supp_alt, nodes_remaining, outputs_remaining );
         //std::cout << tt_tmp << std::endl;
         create_klut_node( support, tt_tmp );
         return _itos.storage[_num_nodes-1];
@@ -1291,6 +1454,8 @@ res_BD_type try_bottom_decomposition( std::vector<uint64_t>& support, dbs_storag
       }
       else
       {
+        bool is_xor = false;
+        // x xor f0f1' for all x
         for( uint64_t k{0u}; k < support.size(); ++k )
         {
           mi_new = MI_gd( { k }, { o_idx }, nodes_remaining, outputs_remaining, support.size() ); // support[k] -> k
@@ -1300,6 +1465,26 @@ res_BD_type try_bottom_decomposition( std::vector<uint64_t>& support, dbs_storag
             x_s = k;//support[k];
           }
         }
+        // START: x XOR f0'
+        uint64_t count_max = 2;
+        for( uint64_t k{0u}; k < support.size(); ++k )
+        {
+          if( is_f1_eqto_not_f0( nodes_remaining, outputs_remaining, count_max, k ) )
+          {
+            is_xor = true;
+            x_s = k;
+          }
+        }
+        if ( is_xor )
+        {
+          std::cout << count_max << std::endl;
+          auto pi_sig = _itos.storage[support[x_s]];
+          remove_column( support, nodes_remaining, x_s );
+
+          auto f0bar = it_dsd_shannon_decomposition_step( support, nodes_remaining, outputs_remaining, is_dec_naive, 0 );
+          return klut.create_xor( pi_sig , f0bar );
+        }
+        // END: x XOR f0'
       }
 
       dbs_storage nodes0, nodes1, outputs0, outputs1;   /* storage element: value of the output at each example */
@@ -1426,7 +1611,15 @@ res_BD_type try_bottom_decomposition( std::vector<uint64_t>& support, dbs_storag
       klut.create_po( f0 );
       _training_accuracy = compute_accuracy( _input_nodes, _outputs );
       std::cout << "training accuracy: " << _training_accuracy << "%" << std::endl;
-      std::cout << "number of gates: " << aig.num_gates();
+      std::cout << "number of gates: " << aig.num_gates()<< std::endl;
+      std::cout << "size: " << aig.size()<< std::endl;
+      depth_view_params ps;
+      ps.count_complements = true;
+      depth_view depth_aig{aig, {}, ps};
+      std::cout << "num levels: " << depth_aig.depth()<< std::endl;
+
+
+
     }
     #pragma endregion // top dsd + shannon
 
@@ -1450,6 +1643,7 @@ res_BD_type try_bottom_decomposition( std::vector<uint64_t>& support, dbs_storag
     double compute_accuracy( dbs_storage const& nodes, dbs_storage const& outputs )
     {
       aig = convert_klut_to_graph<aig_network>( klut );
+
       double acc = 0;
       double delta_acc;
       for( uint64_t k {0u}; k < nodes.size(); ++k )
