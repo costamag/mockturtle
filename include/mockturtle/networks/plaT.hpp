@@ -118,6 +118,11 @@ struct index_to_signal
         for ( uint64_t i {0u}; i < _num_data; ++i )
             std::cout << _outputs.at(i) << ":" << _nodes.at(i)  << std::endl ;
       }
+      void print_pla_gd( dbs_storage const& nodes, dbs_storage const& outputs )
+      {
+        for ( uint64_t i {0u}; i < nodes.size(); ++i )
+            std::cout << outputs.at(i) << ":" << nodes.at(i)  << std::endl ;
+      }
 
       void print_probabilities( std::vector<double> probabilities )
       {
@@ -340,8 +345,8 @@ struct index_to_signal
       return entropy;
     }
 
-    double MI_gd ( std::vector<uint64_t> Xindeces, std::vector<uint64_t> Yindeces,
-                   dbs_storage nodes, dbs_storage outputs, uint64_t num_nodes )
+    double MI_gd ( std::vector<uint64_t> const& Xindeces, std::vector<uint64_t> const& Yindeces,
+                   dbs_storage const& nodes, dbs_storage const& outputs, uint64_t num_nodes )
     {
       auto Hx = H_gd( Xindeces, {}, nodes, outputs, num_nodes );
       auto Hy = H_gd( {}, Yindeces, nodes, outputs, num_nodes );
@@ -1053,11 +1058,15 @@ struct index_to_signal
     #pragma region it_shannon_decomposition
     uint64_t it_shannon_decomposition_step( std::vector<uint64_t> support, dbs_storage nodes_remaining, dbs_storage outputs_remaining, bool is_dec_naive = false, uint64_t o_idx = 0 )
     {
+
       if( nodes_remaining.size() == 0 )
         return klut.get_constant( false );
       
       if( nodes_remaining[0].size() == 0 )
         return klut.get_constant( false );
+
+      if( nodes_remaining[0].size() != support.size() )
+        std::cerr << "not same size" << std::endl;
 
       uint64_t num_nodes = nodes_remaining[0].size();
       double mi_max = 0;
@@ -1263,7 +1272,7 @@ res_BD_type try_bottom_decomposition( std::vector<uint64_t>& support, dbs_storag
     res_BD.idx_newFn = nodes_tmp[0].size()-1;
     res_BD.signal = _itos.storage[_num_nodes-1];
     nodes_remaining = new_nodes;
-    return res_BD;
+    //return res_BD;
   }
   
 // START ################################
@@ -1314,6 +1323,73 @@ res_BD_type try_bottom_decomposition( std::vector<uint64_t>& support, dbs_storag
   }
 // END ################################
 
+  return res_BD;
+}
+
+
+res_BD_type try_bottom_decomposition_EXP( std::vector<uint64_t>& support, dbs_storage& nodes_remaining, dbs_storage& outputs_remaining, double& MImax )
+{
+  // is_created = true if a new node is worth being added due to bottom decomposition
+  // signal = signal of the klut node created 
+  //std::cout << "in try bottom Imax =" << MImax << std::endl;
+  res_BD_type res_BD;
+  res_BD.is_created = false;
+
+  dbs_storage new_nodes;
+  dbs_storage nodes_tmp;
+  std::vector<uint64_t> Apart;
+  std::vector<uint64_t> Spart;  
+  
+// START ################################
+  // consider all pairs and store if mi_supp == mi_Fnew AND mi_supp > mi_max
+  nodes_tmp = nodes_remaining;
+  for( uint64_t r = 0; r < nodes_remaining[0].size() ; ++r )
+  {
+    for( uint64_t c = r+1; c < nodes_remaining[0].size() ; ++c )
+    {
+      Apart = {r,c};
+      Spart = {support[r], support[c]};
+      //std::cout << "r:" << r << " c:" << c << std::endl;
+      //print_pla_gd( nodes_tmp, outputs_remaining );
+      auto tt_tmp = create_fn_gd( Apart, nodes_tmp, outputs_remaining );
+
+      //std::cout << tt_tmp << std::endl;
+      //print_pla_gd( nodes_tmp, outputs_remaining );
+
+      auto mi_supp = MI_gd( Apart, { 0 }, nodes_tmp, outputs_remaining, nodes_tmp[0].size() ); // support[k] -> k
+      auto mi_Fnew = MI_gd( { nodes_tmp[0].size() - 1 }, { 0 }, nodes_tmp, outputs_remaining, nodes_tmp[0].size() ); // support[k] -> k
+      if ( ( mi_supp == mi_Fnew ) && ( mi_supp > MImax ) )
+      {
+        MImax = mi_supp;
+        res_BD.is_created = true;
+        res_BD.tt = tt_tmp;
+        res_BD.Supp = Spart;
+        res_BD.A = Apart;
+        res_BD.mi = mi_Fnew;
+        new_nodes = nodes_tmp;
+      }
+      std::vector<uint64_t> fls_support = support;
+      remove_column( fls_support, nodes_tmp, nodes_remaining[0].size() );
+    }
+  }
+  // modify
+  if( res_BD.is_created )
+  {
+    std::cout << "created f(A[" << res_BD.A[0] << "],A[" << res_BD.A[1] << "])=f(" << 
+                  res_BD.Supp[0] << "," << res_BD.Supp[1] << ")=" << res_BD.tt << std::endl; 
+    res_BD.idx_node = _num_nodes;
+    support.push_back(_num_nodes);
+    create_klut_node( res_BD.Supp, res_BD.tt );
+    res_BD.signal = _itos.storage[_num_nodes-1];
+    nodes_remaining = new_nodes;
+
+    remove_column( support, nodes_remaining, std::max(res_BD.A[0], res_BD.A[1]) );
+    remove_column( support, nodes_remaining, std::min(res_BD.A[0], res_BD.A[1]) );
+
+    res_BD.idx_newFn = nodes_remaining[0].size()-1;
+    
+  }
+// END ################################
   return res_BD;
 }
 
@@ -1379,6 +1455,115 @@ bool is_f1_eqto_not_f0( dbs_storage const& nodes_remaining, dbs_storage const& o
   }
   return false;
 }
+
+
+bool is_f1_eqto_not_f0_hash( dbs_storage const& nodes_remaining, dbs_storage const& outputs_remaining, uint64_t x_idx )
+{
+
+  uint64_t count_neg = 0;
+  std::unordered_map<std::string, double> str_nodes0;
+
+  dbs_storage nodes0, nodes1, outputs0, outputs1;
+  prepare_cofactor( nodes_remaining, outputs_remaining, x_idx, 0, nodes0, outputs0 );
+  prepare_cofactor( nodes_remaining, outputs_remaining, x_idx, 1, nodes1, outputs1 );
+
+  for( uint32_t k {0u}; k < nodes0.size(); ++k )
+  {
+    std::string s;
+    to_string( nodes0[k], s );
+    //std::copy( nodes0[k].begin(), nodes0[k].end(), std::ostream_iterator<int>(ss, " "));
+
+    //s = s.substr(0, s.length()-1);
+    //bool not_present = (_mi_storage.find(s) == _mi_storage.end());
+    str_nodes0.insert(std::make_pair(s,outputs0[k][0]));
+  }
+
+  
+  //for ( uint64_t n {0u}; n < nodes0.size(); ++n )
+  //{
+    for ( uint64_t m {0u}; m < nodes1.size(); ++m )
+    {
+      //std::stringstream ss;
+      //std::copy( nodes1[m].begin(), nodes1[m].end(), std::ostream_iterator<int>(ss, " "));
+      std::string s ;
+      to_string( nodes1[m], s );
+      //s = s.substr(0, s.length()-1);
+      //std::cout << s << std::endl;
+      //std::cout << nodes1[m] << std::endl;
+      //std::cout << std::endl;
+
+      //bool present = ();
+      
+      if( str_nodes0.find(s) != str_nodes0.end() )
+      {
+        std::cout << s << ":" << str_nodes0.at(s) << std::endl;
+        std::cout << nodes1[m] << ":" << outputs1[m] << std::endl;
+        if( str_nodes0.at(s) == outputs1[m][0] )
+        {
+          std::cout << "F" << std::endl;
+          return false;
+        }
+        else
+        {
+          std::cout << "T" << std::endl;
+          count_neg ++;
+        }
+      }
+    } // explored N1
+  //}// explored N0
+
+  if( count_neg >= 0 ) // CONSIDER CHANGING TO > 0 
+  {
+    std::cout << "x";
+    return true;
+  }
+  return false;
+}
+
+bool is_f1_eqto_not_f0_hash_gd( dbs_storage const& nodes0, dbs_storage const& nodes1, 
+                                dbs_storage const& outputs0, dbs_storage const& outputs1 )
+{
+  uint64_t count_neg = 0;
+  std::unordered_map<std::string, double> str_nodes0;
+
+  /* fill hash table */
+  for( uint32_t k {0u}; k < nodes0.size(); ++k )
+  {
+    std::string s;
+    to_string( nodes0[k], s );
+    str_nodes0.insert(std::make_pair(s,outputs0[k][0]));
+  }
+
+
+  for ( uint64_t m {0u}; m < nodes1.size(); ++m )
+  {
+    std::string s ;
+    to_string( nodes1[m], s );
+
+    if( str_nodes0.find(s) != str_nodes0.end() )
+    {
+      //std::cout << s << ":" << str_nodes0.at(s) << std::endl;
+      //std::cout << nodes1[m] << ":" << outputs1[m] << std::endl;
+      if( str_nodes0.at(s) == outputs1[m][0] )
+      {
+        //std::cout << "F" << std::endl;
+        return false;
+      }
+      else
+      {
+        //std::cout << "T" << std::endl;
+        count_neg++;
+      }
+    }
+  } 
+
+  if( count_neg > 0 ) // CONSIDER CHANGING TO >= 0 if motivated
+  {
+    //std::cout << "x";
+    return true;
+  }
+  return false;
+}
           
 void remove_column( std::vector<uint64_t>& support, dbs_storage& nodes_remaining, uint64_t x_s )
 {
@@ -1405,86 +1590,114 @@ void remove_column( std::vector<uint64_t>& support, dbs_storage& nodes_remaining
   nodes_remaining = new_nodes_remaining;
 }
 
+void remove_column_and_invert( std::vector<uint64_t>& support, dbs_storage& nodes_remaining, dbs_storage& outputs_remaining, uint64_t x_s )
+{
+  dbs_storage new_nodes_remaining;
+  std::vector<uint64_t> new_support;
+  for( uint64_t dt {0u}; dt < nodes_remaining.size(); ++dt )
+  {
+    dyn_bitset dbset;
+    for( uint64_t k {0u}; k < nodes_remaining[0].size(); ++k )
+    {
+      if( k != x_s )
+        dbset.push_back( nodes_remaining[dt][k] );
+    } 
+    if ( nodes_remaining[dt][x_s] == 1 )
+      outputs_remaining[dt][0] = ~outputs_remaining[dt][0];
+    new_nodes_remaining.push_back( dbset );
+  }
+
+  for( uint64_t k {0u}; k < nodes_remaining[0].size(); ++k )
+  {
+    if( k != x_s )
+      new_support.push_back( support[k] );
+  }
+
+  support = new_support;
+  nodes_remaining = new_nodes_remaining;
+}
+
+bool check_if_all( dbs_storage const& outputs, bool const& val )
+{
+
+}
+bool cec_all_val( dbs_storage const& outputs_remaining, bool val )
+{
+  bool ans = true;
+
+  for( uint64_t k{0u}; k < outputs_remaining.size(); ++k )
+  {
+    if( outputs_remaining[k][0] != val )
+      ans = false;
+  }
+  return ans;
+}
+
 uint64_t it_dsd_shannon_decomposition_step( std::vector<uint64_t> support, dbs_storage nodes_remaining, dbs_storage outputs_remaining, bool is_dec_naive = false, uint64_t o_idx = 0 )
     {
+      //std::cout << "\nN---------------------------------N" << std::endl;
+      //std::cout << "|s|[" << support.size() <<"]|s|.";
+      //std::cout << "|N|[" << nodes_remaining.size() <<"]|N|.";
+      //std::cout << "|O|[" << outputs_remaining.size() <<"]|O|.";
+
+      assert( ( nodes_remaining.size() == outputs_remaining.size() ) ); // check nodes and outputs have the same length
+
       if( nodes_remaining.size() == 0 )
         return klut.get_constant( false );
       if( nodes_remaining[0].size() == 0 )
         return klut.get_constant( false );
 
       uint64_t num_nodes = nodes_remaining[0].size();
+      assert( ( num_nodes == support.size() ) ); // check support length
+
       double mi_max = 0;
       double mi_new;
       uint64_t x_s;
 
-      bool all_ones = true;
-      bool all_zeros = true;
-
-      for( uint64_t k{0u}; k < outputs_remaining.size(); ++k )
-      {
-        if( outputs_remaining[k][o_idx] == 0 )
-          all_ones = false;
-        else if ( outputs_remaining[k][o_idx] == 1 )
-          all_zeros = false;
-        else
-          std::cerr << "none valid " << std::endl;
-      }
+      bool all_ones = cec_all_val(outputs_remaining, 1 );
+      bool all_zeros = cec_all_val(outputs_remaining, 0 );
 
       if( all_ones == true )
+      {
+        //std::cout << "return true " << std::endl; //X 
         return klut.get_constant( true );
-      
+      }
       if( all_zeros == true )
+      {
+        //std::cout << "return false " << std::endl; //X 
         return klut.get_constant( false );
-
+      }
+      /* If support sufficiently small create function */
       if( support.size() <= _max_sup )
       {
         std::vector<uint64_t> supp_alt;
         for( uint64_t el = 0; el < support.size(); ++el )
           supp_alt.push_back(el);
-
+        
+        //print_pla_gd( nodes_remaining, outputs_remaining );
         auto tt_tmp = create_fn_gd( supp_alt, nodes_remaining, outputs_remaining );
-        //std::cout << tt_tmp << std::endl;
+        //std::cout << "TT=" << tt_tmp << std::endl;
+        //std::cout << "_num_nodes=" << _num_nodes << std::endl;
+        //std::cout << "storage size=" << _itos.storage.size() << std::endl;
         create_klut_node( support, tt_tmp );
+        //std::cout << "_num_nodes=" << _num_nodes << std::endl;
+        //std::cout << "storage size=" <<_itos.storage.size() << std::endl;
         return _itos.storage[_num_nodes-1];
       }
 
-      if ( is_dec_naive )
+      for( uint64_t k{0u}; k < support.size(); ++k )
       {
-        x_s = 0;//support[0];
-      }
-      else
-      {
-        bool is_xor = false;
-        // x xor f0f1' for all x
-        for( uint64_t k{0u}; k < support.size(); ++k )
-        {
-          mi_new = MI_gd( { k }, { o_idx }, nodes_remaining, outputs_remaining, support.size() ); // support[k] -> k
-          if( mi_new >= mi_max )
-          {
-            mi_max = mi_new;
-            x_s = k;//support[k];
-          }
-        }
-        // START: x XOR f0'
-        uint64_t count_max = 2;
-        for( uint64_t k{0u}; k < support.size(); ++k )
-        {
-          if( is_f1_eqto_not_f0( nodes_remaining, outputs_remaining, count_max, k ) )
-          {
-            is_xor = true;
-            x_s = k;
-          }
-        }
-        if ( is_xor )
-        {
-          std::cout << count_max << std::endl;
-          auto pi_sig = _itos.storage[support[x_s]];
-          remove_column( support, nodes_remaining, x_s );
+        mi_new = MI_gd( { k }, { o_idx }, nodes_remaining, outputs_remaining, support.size() ); // support[k] -> k
+        //std::cout << "new MI : " << mi_new << std::endl;
+        //std::cout << "max MI : " << mi_max << std::endl;
 
-          auto f0bar = it_dsd_shannon_decomposition_step( support, nodes_remaining, outputs_remaining, is_dec_naive, 0 );
-          return klut.create_xor( pi_sig , f0bar );
+        if( mi_new > mi_max )
+        {
+          //std::cout << "updated " << std::endl;
+          //std::cout <<  std::endl;
+          mi_max = mi_new;
+          x_s = k;//support[k];
         }
-        // END: x XOR f0'
       }
 
       dbs_storage nodes0, nodes1, outputs0, outputs1;   /* storage element: value of the output at each example */
@@ -1492,99 +1705,100 @@ uint64_t it_dsd_shannon_decomposition_step( std::vector<uint64_t> support, dbs_s
       std::vector<uint64_t> new_support;
       std::vector<uint64_t> support_UP;
 
-      dyn_bitset mask ( num_nodes, 1u );
-      mask = mask << x_s;
-      for (uint64_t k {0u}; k < nodes_remaining.size(); ++k )
-      {
+      /* fill cofactors */
+      //print_pla_gd(nodes_remaining, outputs_remaining);
+      prepare_cofactor( nodes_remaining, outputs_remaining, x_s, 0,  nodes0, outputs0 );
+      //std::cout << "new x_s" << x_s << std::endl; 
+      prepare_cofactor( nodes_remaining, outputs_remaining, x_s, 1,  nodes1, outputs1 );
+      //print_pla_gd(nodes0, outputs0);
 
-        if ( ( mask & nodes_remaining[k] ) == mask ) /* f1 */
-        {
-          boost::dynamic_bitset<> new_bs;
-          for ( uint64_t j{0u}; j < support.size(); ++j )
-          {
-            if( support[j] != support[x_s] )
-            {
-              new_bs.push_back( nodes_remaining[k][j] );
-            } 
-          }
-          nodes1.push_back( new_bs );
-          outputs1.push_back( outputs_remaining[k] );
-        }
-        else /* f0 */
-        {
-          boost::dynamic_bitset<> new_bs;
-          for ( uint64_t j{0u}; j < support.size(); ++j )
-          {
-            if( support[j] != support[x_s] )
-            {
-              new_bs.push_back( nodes_remaining[k][j] );
-            } 
-          }
-
-          nodes0.push_back( new_bs );
-          outputs0.push_back( outputs_remaining[k] );
-        }
-      }
       for ( uint64_t j{0u}; j < support.size(); ++j )
       {
-        if( support[j] != support[x_s] )
+        if( j != x_s )
           new_support.push_back( support[j] );
       }
-      auto F1 = it_dsd_shannon_decomposition_step( new_support, nodes1, outputs1, is_dec_naive, 0 );
-      auto F0 = it_dsd_shannon_decomposition_step( new_support, nodes0, outputs0, is_dec_naive, 0 );
-      auto original_support = support;
+
+      /* START checK
+      std::cout << "supp size = " << support.size() << std::endl;
+      std::cout << "nodes size = " << nodes_remaining.size() << std::endl;
+      std::cout << "nodes[0] size = " << nodes_remaining[0].size() << std::endl;
+      // END checK*/
+
       /* TOP DECOMPOSITION */
-      if ( F1 == klut.get_constant(true) )
-        return klut.create_or( _itos.storage[support[x_s]], F0 );
-      else if ( F0 == klut.get_constant(true) )
-        return klut.create_or( klut.create_not( _itos.storage[support[x_s]] ), F1 );
-      else if ( F1 == klut.get_constant(false) )
-        return klut.create_and( klut.create_not( _itos.storage[support[x_s]] ), F0 );
-      else if ( F0 == klut.get_constant(false) )
-        return klut.create_and( _itos.storage[support[x_s]], F1 );
-      else
+      
+      bool is_F0_taut = cec_all_val(outputs0, 1 );
+      bool is_F1_taut = cec_all_val(outputs1, 1 );
+      bool is_F0_cont = cec_all_val(outputs0, 0 );
+      bool is_F1_cont = cec_all_val(outputs1, 0 );
+
+      if ( is_F1_taut )
       {
-        res_BD_type res_BD = try_bottom_decomposition( support, nodes_remaining, outputs_remaining ); 
+        //std::cout << "F1=1 "; //X
+        auto F0 = it_dsd_shannon_decomposition_step( new_support, nodes0, outputs0, is_dec_naive, 0 );
+        return klut.create_or( _itos.storage[support[x_s]], F0 );
+      }
+      else if ( is_F0_taut )
+      {
+        auto F1 = it_dsd_shannon_decomposition_step( new_support, nodes1, outputs1, is_dec_naive, 0 );
+        //std::cout << "F0=1 "; //X
+        return klut.create_or( klut.create_not( _itos.storage[support[x_s]] ), F1 );
+      }
+      else if ( is_F1_cont )
+      {
+        auto F0 = it_dsd_shannon_decomposition_step( new_support, nodes0, outputs0, is_dec_naive, 0 );
+        //std::cout << "F1=0 "; //X
+        return klut.create_and( klut.create_not( _itos.storage[support[x_s]] ), F0 );
+      }
+      else if ( is_F0_cont )
+      {
+        auto F1 = it_dsd_shannon_decomposition_step( new_support, nodes1, outputs1, is_dec_naive, 0 );
+        //std::cout << "F0=0 "; //X
+        return klut.create_and( _itos.storage[support[x_s]], F1 );
+      }
+      else // xor
+      {
+        //print_pla_gd(nodes_remaining, outputs_remaining);
+        res_BD_type res_BD = try_bottom_decomposition_EXP( support, nodes_remaining, outputs_remaining, mi_max ); 
+        //print_pla_gd(nodes_remaining, outputs_remaining);
+
 
         if ( res_BD.is_created )
         {
-
-          new_support = {};
-          dbs_storage new_nodes_remaining;
-          std::vector<uint64_t> new_support;
-
-          for( uint64_t j{0u}; j < (nodes_remaining[0].size()-1); ++j )
-          {
-            if ( std::find( res_BD.A.begin(), res_BD.A.end(), j ) == res_BD.A.end() )
-            {
-              new_support.push_back( support[j] );
-            }
-          }
-
-          for( uint64_t dt{ 0u }; dt < nodes_remaining.size(); ++dt )
-          {
-            dyn_bitset newdbs;
-            for( uint64_t j{0u}; j < nodes_remaining[0].size(); ++j )
-            {
-              if ( std::find( res_BD.A.begin(), res_BD.A.end(), j ) == res_BD.A.end() )
-              {
-                newdbs.push_back( nodes_remaining[dt][j] );
-              }
-            }
-            new_nodes_remaining.push_back(newdbs);
-          }
-
-          new_support.push_back( res_BD.idx_node );
-
-          return it_dsd_shannon_decomposition_step( new_support, new_nodes_remaining, outputs_remaining, is_dec_naive, 0 );
+          /* START checK
+          std::cout << "BTM" << std::endl;
+          std::cout << "supp size = " << support.size() << std::endl;
+          std::cout << "nodes size = " << nodes_remaining.size() << std::endl;
+          std::cout << "nodes[0] size = " << nodes_remaining[0].size() << std::endl;
+          // END checK */
+          //std::cout << "x xor f0'" << std::endl;
+          //std::cout << "BTM "; //X
+          return it_dsd_shannon_decomposition_step( support, nodes_remaining, outputs_remaining, is_dec_naive, 0 );
         }
 
+        if ( is_f1_eqto_not_f0_hash_gd( nodes0, nodes1, outputs0, outputs1 ) )
+        {
+          //std::cout << "xXORf0' "; //X
+          auto pi_sig = _itos.storage[support[x_s]];
+          //print_pla_gd(nodes_remaining, outputs_remaining); //X
+          //std::cout << "RM+INV " << x_s << std::endl;//X
+          remove_column_and_invert( support, nodes_remaining, outputs_remaining, x_s ); // checked correct
+          //print_pla_gd(nodes_remaining, outputs_remaining); //X
+
+          auto f0bar = it_dsd_shannon_decomposition_step( support, nodes_remaining, outputs_remaining, is_dec_naive, 0 );
+          
+          return klut.create_xor( pi_sig , f0bar );
+        }
+        
       }
       // NO TOP DECOMPOSTION - BOTTOM DECOMPOSITION
       //for now only shannon
-      auto f0 = klut.create_and( klut.create_not(_itos.storage[original_support[x_s]]), F0 );
-      auto f1 = klut.create_and(_itos.storage[original_support[x_s]], F1 );
+      //std::cout << "SH1 " << std::endl; //X
+      auto F1 = it_dsd_shannon_decomposition_step( new_support, nodes1, outputs1, is_dec_naive, 0 );
+      //std::cout << "SH0 " << std::endl; //X
 
+      auto F0 = it_dsd_shannon_decomposition_step( new_support, nodes0, outputs0, is_dec_naive, 0 );
+      auto f0 = klut.create_and( klut.create_not(_itos.storage[support[x_s]]), F0 );
+      auto f1 = klut.create_and(_itos.storage[support[x_s]], F1 );
       return klut.create_or( f1, f0 );
       /* construct the substorage blocks */
     }
@@ -1608,6 +1822,7 @@ uint64_t it_dsd_shannon_decomposition_step( std::vector<uint64_t> support, dbs_s
       }
 
       auto f0 = it_dsd_shannon_decomposition_step( initial_support, nodes, _outputs, is_dec_naive, 0 );
+      std::cout << std::endl;
       klut.create_po( f0 );
       _training_accuracy = compute_accuracy( _input_nodes, _outputs );
       std::cout << "training accuracy: " << _training_accuracy << "%" << std::endl;

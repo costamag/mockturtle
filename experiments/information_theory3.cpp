@@ -184,7 +184,7 @@ int main()
   std::cout << std::endl;
   std::cout << "INFORMED SHANNON + DSD " << std::endl; 
   plaT_network pla3( train_ds.X, train_ds.Y, 2, 4, 2 );
-  //pla3.preprocess_muesli(0.3);
+  //pla3.preprocess_muesli(0.4);
 
   //std::cout << "HD: " << pla3.HammingDistance(N1,N1)<< pla3.HammingDistance(N1,N2) << " " << pla3.HammingDistance(N1,N3) << std::endl ;
   pla3.it_dsd_shannon_decomposition(false, 0);
