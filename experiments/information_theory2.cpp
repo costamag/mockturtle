@@ -215,7 +215,7 @@ std::cout << "\nclass 1" << std::endl;
   an_binary_fn( {0,1,1,1} );
 
   std::cout << "--------------- 2-XOR ---------------" << std::endl;
-  an_binary_fn( {0,1,1,0} );
+  an_binary_fn( {0,1,0} );
 
   std::cout << "--------------- 2-NAND ---------------" << std::endl;
   an_binary_fn( {1,1,1,0} );
@@ -387,6 +387,7 @@ std::cout << "\nclass 1" << std::endl;
   std::cout << "014 " << pla6.MI({0,2,4},{0}) << std::endl;
 
 
-
+  std::cout << "--------------- 2-XOR ---------------" << std::endl;
+  an_binary_fn( {0,1,0} );
   return 0;
 }

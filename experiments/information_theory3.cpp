@@ -1,7 +1,8 @@
 #include <iostream>
 //#include <catch.hpp>
-
+//#include <execution>
 #include <sstream>
+#include <fstream>
 #include <string>
 #include <vector>
 #include <bitset>
@@ -15,7 +16,8 @@
 #include <mockturtle/networks/cover.hpp>
 #include <mockturtle/algorithms/cover_to_graph.hpp>
 
-#include <mockturtle/networks/plaT.hpp>
+#include <mockturtle/networks/plaT.hpp>// plaT for bottom, plaT0 for only greedy
+//#include <mockturtle/networks/plaT0.hpp>
 #include <lorina/blif.hpp>
 #include <mockturtle/io/blif_reader.hpp>
 #include <mockturtle/views/names_view.hpp>
@@ -26,6 +28,9 @@
 #include <kitty/dynamic_truth_table.hpp>
 #include <fstream>
 #include <string>
+#include <omp.h>
+#include <unistd.h>
+
 
 using namespace mockturtle;
 using namespace kitty;
@@ -107,6 +112,8 @@ XYdataset dataset_loader( std::string file_name )
 
 }
 
+
+
 double computeAcc(std::vector<boost::dynamic_bitset<>> inputs,std::vector<boost::dynamic_bitset<>> outputs, aig_network aig )
 {
   //std::cout << aig.size() << std::endl;
@@ -140,73 +147,114 @@ double computeAcc(std::vector<boost::dynamic_bitset<>> inputs,std::vector<boost:
     double deltaA = ( (sim_res == outputs[d][0]) ? (double)1.0/outputs.size() : 0.0 );
     acc += deltaA;
   }
-  return 100*acc;
+  return 100;
 }
 
 
 int main()
-{  
-  for( uint32_t it = 0; it < 10; ++it )
-  {
+{ 
+
+std::vector<uint32_t> BKSrd = { 
+                              //10, 11, 15, 16, 
+                              //30, 31, 32, 33, 34, 
+                              //40, 41, 42, 43, 
+                              //44, 45,
+                              50, 51, 52, 53, 54, 55, 56, 57, 58,
+                              60, 61, 62, 63, 64, 65, 66, 67, 68, 69,
+                              70, 71, 72, 73, 74, 75, 76, 77, 78, 79
+                              };
+
+std::vector<uint32_t> XOR = { 20, 21, 30, 40, 42, 43};
+
+std::vector<uint32_t> BKS = { //0, 1, 2, 3, 5, 7, 
+                              //9,
+                              //10,
+                              //4.  6.  7.  8.  9. 12. 13. 14. 17. 18. 19. 26. 27. 28. 29. 35. 36. 37.
+                              //38. 39. 46. 47. 48. 49. 59. 80. 81. 82. 83. 84. 85. 86. 87. 88. 89. 90.
+                              //91. 92. 93. 94. 95. 96. 97. 98. 99 
+                              26, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89
+                              //4,  6,  7,  8,  9, 12, 13, 14, 17, 18, 19, 26, 27, 28, 29, 35, 36, 37,
+                              //38, 39, 46, 47, 48, 49, 59, , 90,
+                              //91, 92, 93, 94, 95, 96, 97, 98, 99,
+                              //21, 22, 23, 24,
+                              //20,
+                              //30, 31, 32, 33, 
+                              //34, 
+                              // 40, 41, 43, 44, 45,
+                              //42,
+                              //50, 51, 52, 56, 57, 58,
+                              //53, 54, 55,  
+                              // 60, 61, 62, 63, 64, 67, 68, 69,
+                              // 70, 71, 72,73, 74, 75, 76, 
+                              //77, 78, 79,                               
+                              };
+/*
+for( uint32_t it = 74; it < 75; ++it )
+{
   std::string str_code;
   if( it < 10 )
     str_code = "0"+std::to_string(it);
   else
     str_code = std::to_string(it);
+*/
+
+BKSrd = BKS;
+std::cout << "NUM THREADS = " << omp_get_max_threads() << std::endl;
+//omp_set_num_threads( 6 );
+//for( uint32_t it = 0; it < BKSrd.size(); ++it )
+//{
+//int num_threads = omp_get_num_threads();
+//#pragma omp parallel for 
+for (uint32_t i = 0 ; i<1; i++) {
+  // do something with i
+  auto bsk =  95;//BKS[i];
+        //do stuff with item
+  bool is_dec_naive = false;
+  bool try_bottom = false;
+  bool is_bottom_greedy = false;
+  bool only_shannon = true;
+  bool try_top_xor = true;
+  bool is_bottom_conservative = true;
+
+  /*std::string str_code;
+  if( BKSrd[it] < 10 )
+    str_code = "0"+std::to_string(BKSrd[it]);
+  else
+    str_code = std::to_string(BKSrd[it]);*/
+
+std::string str_code;
+  if( bsk < 10 )
+    str_code = "0"+std::to_string(bsk);
+  else
+    str_code = std::to_string(bsk);
+
+
+  std::string path_TO_file = "/home/acostama/PhD/E3/" + str_code + ".txt";
+  
+  
 
   std::string path_train = "/home/acostama/PhD/mockturtle/benchmarks/iwls2020-lsml-contest/benchmarks/train/train_txt/ex"+str_code+".train.txt";
   std::string path_test = "/home/acostama/PhD/mockturtle/benchmarks/iwls2020-lsml-contest/benchmarks/test/test_txt/ex"+str_code+".test.txt";
   std::string path_valid = "/home/acostama/PhD/mockturtle/benchmarks/iwls2020-lsml-contest/benchmarks/validation/validation_txt/ex"+str_code+".valid.txt";
-
     
-  using dyn_bitset = boost::dynamic_bitset<>;
-  using dbs_storage = std::vector<dyn_bitset>;
+  //using dyn_bitset = boost::dynamic_bitset<>;
+  //using dbs_storage = std::vector<dyn_bitset>;
   auto train_ds = dataset_loader( path_train );
-  //std::cout << "nin = " << train_ds.nin << std::endl;
-  //std::cout << "nout = " << train_ds.nout << std::endl;
-  //std::cout << "ndata = " << train_ds.ndata << std::endl;
-
   auto test_ds = dataset_loader( path_test );
   auto valid_ds = dataset_loader( path_valid );
 
-  //std::cout << "nin = " << test_ds.nin << std::endl;
-  //std::cout << "nout = " << test_ds.nout << std::endl;
-  //std::cout << "ndata = " << test_ds.ndata << std::endl;
-  std::cout << "* * * * * * * * * * * * * * * *  " << std::endl;
-  std::cout << "              " << str_code << "            " << std::endl;
-  std::cout << "* * * * * * * * * * * * * * * *  " << std::endl;
-  
-  dyn_bitset N1 ( 5, 1u );
-  dyn_bitset N2 ( 5, 3u );
-  dyn_bitset N3 ( 5, 8u );
 
-
-  std::cout << std::endl;
-  std::cout << "INFORMED SHANNON + DSD " << std::endl; 
-  plaT_network pla3( train_ds.X, train_ds.Y, 2, 4, 2 );
-  //pla3.preprocess_muesli(0.4);
-
-  //std::cout << "HD: " << pla3.HammingDistance(N1,N1)<< pla3.HammingDistance(N1,N2) << " " << pla3.HammingDistance(N1,N3) << std::endl ;
-  pla3.it_dsd_shannon_decomposition(false, 0);
-  std::cout << "test accuracy: " << pla3.compute_accuracy( test_ds.X, test_ds.Y ) << "%" << std::endl;
-  std::cout << "valid accuracy: " << pla3.compute_accuracy( valid_ds.X, valid_ds.Y ) << "%" << std::endl;
-
-  std::cout << std::endl;
-  /*std::cout << "NOT INFORMED SHANNON " << std::endl; 
-  plaT_network pla1( train_ds.X, train_ds.Y, 2, 4, 2 );
-  pla1.it_shannon_decomposition(true, 0);
-  std::cout << "test accuracy: " << pla1.compute_accuracy( test_ds.X, test_ds.Y ) << "%" << std::endl;
-  std::cout << "valid accuracy: " << pla1.compute_accuracy( valid_ds.X, valid_ds.Y ) << "%" << std::endl;
-  std::cout << std::endl;
-  std::cout << "INFORMED SHANNON " << std::endl; 
-  plaT_network pla2( train_ds.X, train_ds.Y, 2, 4, 2 );
-  pla2.it_shannon_decomposition(false, 0);
-  std::cout << "test accuracy: " << pla2.compute_accuracy( test_ds.X, test_ds.Y ) << "%" << std::endl;
-  std::cout << "valid accuracy: " << pla2.compute_accuracy( valid_ds.X, valid_ds.Y ) << "%" << std::endl;
-  
-  std::cout << std::endl;*/
+  plaT_network pla3( train_ds.X, train_ds.Y, 2, 4, 2 ); // plaT_network for bottom, plaT0_network for only greedy
+  pla3.add_test_set( test_ds.X, test_ds.Y );
+  pla3.add_valid_set( valid_ds.X, valid_ds.Y );
+  pla3.add_output_file( path_TO_file, str_code );
+  uint64_t delta_supp = 3;
+  pla3.it_dsd_shannon_decomposition(is_dec_naive, 0, try_bottom, is_bottom_greedy, only_shannon, try_top_xor, is_bottom_conservative, delta_supp );
+  //uint32_t max_num_nodes = train_ds.X[0].size()*1.5;
+  //pla3.BUDMA( 0.99, max_num_nodes );
 
   }
+
 
   return 0;
 }

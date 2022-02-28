@@ -33,7 +33,7 @@
 
 #include <iostream>
 //#include <catch.hpp>
-#include <ctime>
+
 #include <sstream>
 #include <algorithm>
 #include <string>
@@ -48,7 +48,7 @@
 #include <mockturtle/networks/aig.hpp>
 #include <mockturtle/algorithms/klut_to_graph.hpp>
 
-#include <fstream>
+
 #include <kitty/constructors.hpp>
 #include <kitty/dynamic_truth_table.hpp>
 
@@ -74,7 +74,7 @@ struct index_to_signal
 };
 
 
-  class plaT_network
+  class plaT0_network
   {
     #pragma region Types and constructors
     using dyn_bitset = boost::dynamic_bitset<>;
@@ -82,7 +82,7 @@ struct index_to_signal
 
 
     public:
-      plaT_network( dbs_storage input_nodes, dbs_storage output_nodes, uint64_t max_act, uint64_t max_sup = 2, uint64_t init_sup = 2 )
+      plaT0_network( dbs_storage input_nodes, dbs_storage output_nodes, uint64_t max_act, uint64_t max_sup = 2, uint64_t init_sup = 2 )
       : _input_nodes( input_nodes ),
         _nodes( input_nodes ),
         _outputs( output_nodes ),
@@ -104,7 +104,7 @@ struct index_to_signal
         {
           auto pi = klut.create_pi();
           _itos.insert( i, pi );
-          
+
           MI({i},{0});
         }
         _act = 0;
@@ -112,35 +112,6 @@ struct index_to_signal
       }
     #pragma endregion
     
-    #pragma region fileloading
-    public:
-    void add_output_file( std::string pathTOfile, std::string ID = "" )
-    {
-      _ID = "[" + ID + "] ";
-      _IDs = ID;
-      _pathTOfile = pathTOfile;
-      _has_file = true;
-    }
-
-    #pragma endregion
-
-    #pragma region add sets
-    public:
-    void add_test_set( dbs_storage X_test, dbs_storage Y_test )
-    {
-      _has_test = true;
-      _Xtest = X_test;
-      _Ytest = Y_test;
-    }
-
-    void add_valid_set( dbs_storage X_valid, dbs_storage Y_valid )
-    {
-      _has_valid = true;
-      _Xvalid = X_valid;
-      _Yvalid = Y_valid;
-    }
-    #pragma endregion
-
     #pragma region visual
     public:
       void print_pla()
@@ -177,11 +148,6 @@ struct index_to_signal
         }
         std::cout << "\n";
       }
-
-    void print_key_value(std::string const& key, uint64_t const& value, bool print_to_file = false) 
-    {
-      std::cout << _ID << "Key:[" << key << "] Value:[" << value << "]\n";
-    }
     #pragma endregion
       
     #pragma region basic_function
@@ -301,10 +267,10 @@ struct index_to_signal
     {
       uint64_t size_P_space = std::pow( 2, indeces_nodes.size() + indeces_outputs.size() );
       std::vector<double> probabilities;
-      double proba;
+      double_t proba;
       double eq_flag_nodes, eq_flag_outputs;
       dyn_bitset b1_nodes ( num_nodes, 1u );
-      dyn_bitset b1_outputs ( 1, 1u );
+      dyn_bitset b1_outputs ( _num_outputs, 1u );
       auto num_data = nodes.size();
 
 
@@ -395,7 +361,7 @@ struct index_to_signal
       uint64_t num_nodes = nodes[0].size();
       uint64_t num_data = nodes.size();
       uint64_t nin_node = support.size();
-
+      //std::cout << "supp size = " << nin_node << std::endl;
       uint64_t domain_size = pow( 2, nin_node );
       uint64_t Ci0, Ci1;
       for( uint64_t k{0u}; k < nodes.size(); ++k )
@@ -408,11 +374,11 @@ struct index_to_signal
       dyn_bitset Bit1 ( num_nodes+1, 1u );
       dyn_bitset Bit0 ( num_nodes+1, 0u );
 
-      dyn_bitset Bit1_outputs ( 1, 1u );
+      dyn_bitset Bit1_outputs ( _num_outputs, 1u );
 
       std::default_random_engine generator;
       std::bernoulli_distribution distribution(0.5);
-      std::string tt_str = "";
+      std::string tt_str;
       
       auto mask0 = ~( Bit1 << num_nodes );
 
@@ -438,7 +404,7 @@ struct index_to_signal
         for ( uint64_t j {0u}; j < nodes.size(); ++j )
         {
           if ( X == ( mask & nodes.at(j) ) )
-            ( outputs[j][0] == 1 ) ? Ci1++ : Ci0++;
+            ( ( outputs.at(j) & Bit1_outputs ) == Bit1_outputs ) ? Ci1++ : Ci0++;
         }
 
         auto new_val = Bit0;
@@ -468,8 +434,10 @@ struct index_to_signal
         {
           if ( X == ( mask & nodes.at(j) ) )
             nodes[j] |= new_val ;
+
         }
       }
+      //std::cout << "str: " << tt_str << std::endl;
       
       return tt_str;
 
@@ -922,7 +890,12 @@ struct index_to_signal
     {
       if (low < high)
       {
+        /* pi is partitioning index, arr[p] is now
+           at right place */
         auto pi = partition( support, attribute, low, high);
+ 
+        // Separately sort elements before
+        // partition and after partition
         quicksort_by_attribute( support, attribute, low, pi - 1);
         quicksort_by_attribute( support, attribute, pi + 1, high);
       }
@@ -1234,14 +1207,6 @@ struct index_to_signal
 
     // ##############################################################################################
 
-struct mi_bd_storage
-{
-  std::unordered_map<std::string, double> Fnew;
-  std::unordered_map<std::string, double> Fr;
-  std::unordered_map<std::string, double> Fc;
-  std::unordered_map<std::string, double> Frc;
-  std::unordered_map<std::string, double> supp;
-};
 #pragma region dsd_shannon
 
 
@@ -1261,216 +1226,8 @@ struct res_BD_type
 
 };
 
-bool try_bottom_decomposition( std::vector<uint64_t>& support, dbs_storage& nodes_remaining, dbs_storage& outputs_remaining, mi_bd_storage& mi_bd )
-{
-  std::vector<uint64_t> A2; // indeces original nodes_remaining under analysis
-  std::vector<uint64_t> Ad; // indeces modified nodes_remaining under analysis
-  std::vector<uint64_t> S2; // support. Is independent of nodes_remaining
-  std::vector<uint64_t> original_support = support; // reference support
-  std::vector <uint32_t> removed_c;
-  bool is_bd_changed = false; // becomes true if 2-inputs disjoined function is detected
-  std::string support_key; // will contain the string version of the support under analysis
 
-  uint64_t num_nodes = nodes_remaining[0].size();
-  uint64_t num_nodes_dec = nodes_remaining[0].size();
-
-  std::vector<uint64_t> MoTOd; // maps the original indeces to the ones of the new nodes container
-
-  for( uint32_t k{0u}; k < num_nodes; ++k )
-    MoTOd.push_back( k );
-
-  for( uint64_t r = 0; r < num_nodes-1; ++r )
-  {
-    for( uint64_t c = r+1; c < num_nodes ; ++c )
-    {
-      if( std::find(removed_c.begin(), removed_c.end(), c) == removed_c.end())
-      {
-        A2 = { r, c };
-        Ad = { MoTOd[r], MoTOd[c] };
-
-        S2 = { original_support[r], original_support[c] };
-
-
-        auto tt = create_fn_gd( Ad, nodes_remaining, outputs_remaining ); //HERE
-        num_nodes_dec = nodes_remaining[0].size(); // changed by create...
-        double mi_supp;
-        double mi_Fnew;
-        double mi_Fr;
-        double mi_Fc;
-        double mi_Frc;
-
-        std::string Sr, Sc;
-        uint64_t Sr_64t = original_support[r];
-        uint64_t Sc_64t = original_support[c];
-        Sr = std::to_string( Sr_64t );
-        Sc = std::to_string( Sc_64t );
-        std::string support_key = Sr + " " + Sc;
-
-        if( (mi_bd.Frc).find( support_key ) == (mi_bd.Frc).end() )
-        {
-          mi_supp = MI_gd( Ad, { 0 }, nodes_remaining, outputs_remaining, num_nodes_dec ); // DANGER
-          mi_Fnew = MI_gd( { num_nodes_dec - 1 }, { 0 }, nodes_remaining, outputs_remaining, num_nodes_dec ); // support[k] -> k
-          mi_Fr = MI_gd( { (num_nodes_dec - 1), MoTOd[r] }, { 0 }, nodes_remaining, outputs_remaining, num_nodes_dec );
-          mi_Fc = MI_gd( { (num_nodes_dec - 1), MoTOd[c] }, { 0 }, nodes_remaining, outputs_remaining, num_nodes_dec );
-          mi_Frc = MI_gd( { (num_nodes_dec - 1), MoTOd[r], MoTOd[c] }, { 0 }, nodes_remaining, outputs_remaining, num_nodes_dec );
-          (mi_bd.Fnew).insert(std::make_pair( support_key, mi_Fnew ));
-          (mi_bd.Frc).insert(std::make_pair( support_key, mi_Frc ));
-          (mi_bd.Fr).insert(std::make_pair( support_key, mi_Fr ));
-          (mi_bd.Fc).insert(std::make_pair( support_key, mi_Fc ));
-          (mi_bd.supp).insert(std::make_pair( support_key, mi_supp ));
-        } 
-        else
-        {
-          mi_supp = (mi_bd.supp).at( support_key );
-          mi_Fnew = (mi_bd.Fnew).at( support_key );
-          mi_Fr = (mi_bd.Fr).at( support_key );
-          mi_Fc = (mi_bd.Fc).at( support_key );
-          mi_Frc = (mi_bd.Frc).at( support_key );
-        }
-
-        bool is_bottom_dec = (( mi_supp == mi_Fnew ) && ( mi_Frc == mi_Fnew ) && ( mi_Fr == mi_Fnew ) && ( mi_Fc == mi_Fnew ));
-        if ( is_bottom_dec == true )//( ( mi_supp == mi_Fnew ) && ( mi_supp > MImax ) )
-        {
-         is_bd_changed = true;
-
-          support.push_back( _num_nodes );
-          create_klut_node( S2, tt );
-          add_tt_to_hash( tt );
-          remove_column( support, nodes_remaining, std::max(Ad[0], Ad[1]) );
-          remove_column( support, nodes_remaining, std::min(Ad[0], Ad[1]) );
-          _cnt_Frc++;
-          reduce_reference_from( MoTOd, ( std::max(A2[0], A2[1] ) + 1 ) );
-          reduce_reference_from( MoTOd, ( std::min(A2[0], A2[1] ) + 1 ) );
-          removed_c.push_back(c);
-
-          break;
-        }
-        else
-        {
-          std::vector<uint64_t> fls_support = support;
-          fls_support.push_back(0);
-          remove_column( fls_support, nodes_remaining, (nodes_remaining[0].size()-1) );
-        }
-          
-      }
-    }  
-  }   
-  return is_bd_changed;
-}
-
-bool try_conservative_bottom_decomposition( std::vector<uint64_t>& support, dbs_storage& nodes_remaining, dbs_storage& outputs_remaining, mi_bd_storage& mi_bd, double& MImax )
-{
-  res_BD_type res_BD;
-  res_BD.is_created = false;
-
-  dbs_storage new_nodes;
-  dbs_storage nodes_tmp;
-  std::vector<uint64_t> original_support = support;
-
-  std::vector<uint64_t> Apart;
-  std::vector<uint64_t> Spart;
-  double mi_supp;
-  double mi_Fnew;
-  double mi_Fr;
-  double mi_Fc;
-  double mi_Frc;  
-  
-// START ################################
-  // consider all pairs and store if mi_supp == mi_Fnew AND mi_supp > mi_max
-  nodes_tmp = nodes_remaining;
-  for( uint64_t r = 0; r < (nodes_remaining[0].size()-1) ; ++r )
-  {
-    for( uint64_t c = r+1; c < nodes_remaining[0].size() ; ++c )
-    {
-      Apart = {r,c};
-      Spart = {original_support[r], original_support[c]};
-      
-      std::string Sr, Sc;
-      uint64_t Sr_64t = original_support[r];
-      uint64_t Sc_64t = original_support[c];
-      Sr = std::to_string( Sr_64t );
-      Sc = std::to_string( Sc_64t );
-      std::string support_key = Sr + " " + Sc;
-      //std::cout << "r:" << r << " c:" << c << std::endl; //X1
-      //print_pla_gd( nodes_tmp, outputs_remaining );
-      auto tt_tmp = create_fn_gd( Apart, nodes_tmp, outputs_remaining );
-
-      //std::cout << tt_tmp << std::endl;
-
-      if( (mi_bd.Frc).find( support_key ) == (mi_bd.Frc).end() )
-      {
-        mi_supp = MI_gd( Apart, { 0 }, nodes_tmp, outputs_remaining, nodes_tmp[0].size() ); // support[k] -> k
-        mi_Fnew = MI_gd( { nodes_tmp[0].size() - 1 }, { 0 }, nodes_tmp, outputs_remaining, nodes_tmp[0].size() ); // support[k] -> k
-        mi_Fr = MI_gd( { (nodes_tmp[0].size() - 1), r }, { 0 }, nodes_tmp, outputs_remaining, nodes_tmp[0].size() );
-        mi_Fc = MI_gd( { (nodes_tmp[0].size() - 1), c }, { 0 }, nodes_tmp, outputs_remaining, nodes_tmp[0].size() );
-        mi_Frc = MI_gd( { (nodes_tmp[0].size() - 1), r, c }, { 0 }, nodes_tmp, outputs_remaining, nodes_tmp[0].size() );
-        (mi_bd.Fnew).insert(std::make_pair( support_key, mi_Fnew ));
-        (mi_bd.Frc).insert(std::make_pair( support_key, mi_Frc ));
-        (mi_bd.Fr).insert(std::make_pair( support_key, mi_Fr ));
-        (mi_bd.Fc).insert(std::make_pair( support_key, mi_Fc ));
-        (mi_bd.supp).insert(std::make_pair( support_key, mi_supp ));
-      } 
-      else
-      {
-        mi_supp = (mi_bd.supp).at( support_key );
-        mi_Fnew = (mi_bd.Fnew).at( support_key );
-        mi_Fr = (mi_bd.Fr).at( support_key );
-        mi_Fc = (mi_bd.Fc).at( support_key );
-        mi_Frc = (mi_bd.Frc).at( support_key );
-      }
-
-      if ( mi_Fnew > MImax )//( ( mi_supp == mi_Fnew ) && ( mi_supp > MImax ) )
-      {
-        MImax = mi_Fnew;
-        res_BD.is_created = true;
-        res_BD.tt = tt_tmp;
-        res_BD.Supp = Spart;
-        res_BD.A = Apart;
-        res_BD.mi = mi_Fnew;
-        new_nodes = nodes_tmp;
-
-        if( ( mi_supp == mi_Fnew ) && (mi_Frc == mi_Fnew) && ( mi_Fr == mi_Fnew ) && ( mi_Fc == mi_Fnew) )
-        {
-          res_BD.rc_del = true; 
-        }
-        else
-        {
-          res_BD.rc_del = false; 
-        }
-      }
-      std::vector<uint64_t> fls_support = support;
-      remove_column( fls_support, nodes_tmp, nodes_remaining[0].size() );
-    }
-  }
-  // modify
-  if( res_BD.is_created )
-  {
-    res_BD.idx_node = _num_nodes;
-    support.push_back(_num_nodes);
-    create_klut_node( res_BD.Supp, res_BD.tt );
-    add_tt_to_hash( res_BD.tt );
-    res_BD.signal = _itos.storage[_num_nodes-1];
-    nodes_remaining = new_nodes;
-    std::cout << _ID << "created f(A[" << res_BD.A[0] << "],A[" << res_BD.A[1] << "])=f(" << res_BD.Supp[0] << "," << res_BD.Supp[1] << ")=" << res_BD.tt << std::endl;
-    
-    if ( res_BD.rc_del )
-    {
-      _cnt_Frc++;
-      remove_column( support, nodes_remaining, std::max(res_BD.A[0], res_BD.A[1]) );
-      remove_column( support, nodes_remaining, std::min(res_BD.A[0], res_BD.A[1]) );
-    }
-    else
-    {
-      _cnt_Fo++;
-    }
-    res_BD.idx_newFn = nodes_remaining[0].size()-1;      
-
-  }
-// END ################################
-  return res_BD.is_created;
-}
-
-bool try_greedy_bottom_decomposition( std::vector<uint64_t>& support, dbs_storage& nodes_remaining, dbs_storage& outputs_remaining, mi_bd_storage& mi_bd, double& MImax, uint64_t& x_s )
+res_BD_type try_bottom_decomposition_EXP( std::vector<uint64_t>& support, dbs_storage& nodes_remaining, dbs_storage& outputs_remaining, double& MImax )
 {
   // is_created = true if a new node is worth being added due to bottom decomposition
   // signal = signal of the klut node created 
@@ -1480,62 +1237,30 @@ bool try_greedy_bottom_decomposition( std::vector<uint64_t>& support, dbs_storag
 
   dbs_storage new_nodes;
   dbs_storage nodes_tmp;
-  std::vector<uint64_t> original_support = support;
   std::vector<uint64_t> Apart;
-  std::vector<uint64_t> Spart; 
-  double mi_supp;
-  double mi_Fnew;
-  double mi_Fr;
-  double mi_Fc;
-  double mi_Frc; 
+  std::vector<uint64_t> Spart;  
   
 // START ################################
   // consider all pairs and store if mi_supp == mi_Fnew AND mi_supp > mi_max
   nodes_tmp = nodes_remaining;
-
-  for( uint64_t k = 0; k < nodes_remaining[0].size() ; ++k )
+  for( uint64_t r = 0; r < nodes_remaining[0].size() ; ++r )
   {
-    if( k != x_s )
+    for( uint64_t c = r+1; c < nodes_remaining[0].size() ; ++c )
     {
-      auto r = std::min(x_s, k);
-      auto c = std::max(x_s, k);
-
       Apart = {r,c};
-      Spart = {original_support[r], original_support[c]};
-
-      std::string Sr, Sc;
-      uint64_t Sr_64t = original_support[r];
-      uint64_t Sc_64t = original_support[c];
-      Sr = std::to_string( Sr_64t );
-      Sc = std::to_string( Sc_64t );
-      std::string support_key = Sr + " " + Sc;
+      Spart = {support[r], support[c]};
       //std::cout << "r:" << r << " c:" << c << std::endl; //X1
       //print_pla_gd( nodes_tmp, outputs_remaining );
       auto tt_tmp = create_fn_gd( Apart, nodes_tmp, outputs_remaining );
 
       //std::cout << tt_tmp << std::endl;
+      //print_pla_gd( nodes_tmp, outputs_remaining );
 
-      if( (mi_bd.Frc).find( support_key ) == (mi_bd.Frc).end() )
-      {
-        mi_supp = MI_gd( Apart, { 0 }, nodes_tmp, outputs_remaining, nodes_tmp[0].size() ); // support[k] -> k
-        mi_Fnew = MI_gd( { nodes_tmp[0].size() - 1 }, { 0 }, nodes_tmp, outputs_remaining, nodes_tmp[0].size() ); // support[k] -> k
-        mi_Fr = MI_gd( { (nodes_tmp[0].size() - 1), r }, { 0 }, nodes_tmp, outputs_remaining, nodes_tmp[0].size() );
-        mi_Fc = MI_gd( { (nodes_tmp[0].size() - 1), c }, { 0 }, nodes_tmp, outputs_remaining, nodes_tmp[0].size() );
-        mi_Frc = MI_gd( { (nodes_tmp[0].size() - 1), r, c }, { 0 }, nodes_tmp, outputs_remaining, nodes_tmp[0].size() );
-        (mi_bd.Fnew).insert(std::make_pair( support_key, mi_Fnew ));
-        (mi_bd.Frc).insert(std::make_pair( support_key, mi_Frc ));
-        (mi_bd.Fr).insert(std::make_pair( support_key, mi_Fr ));
-        (mi_bd.Fc).insert(std::make_pair( support_key, mi_Fc ));
-        (mi_bd.supp).insert(std::make_pair( support_key, mi_supp ));
-      } 
-      else
-      {
-        mi_supp = (mi_bd.supp).at( support_key );
-        mi_Fnew = (mi_bd.Fnew).at( support_key );
-        mi_Fr = (mi_bd.Fr).at( support_key );
-        mi_Fc = (mi_bd.Fc).at( support_key );
-        mi_Frc = (mi_bd.Frc).at( support_key );
-      }
+      auto mi_supp = MI_gd( Apart, { 0 }, nodes_tmp, outputs_remaining, nodes_tmp[0].size() ); // support[k] -> k
+      auto mi_Fnew = MI_gd( { nodes_tmp[0].size() - 1 }, { 0 }, nodes_tmp, outputs_remaining, nodes_tmp[0].size() ); // support[k] -> k
+      auto mi_Fr = MI_gd( { (nodes_tmp[0].size() - 1), r }, { 0 }, nodes_tmp, outputs_remaining, nodes_tmp[0].size() );
+      auto mi_Fc = MI_gd( { (nodes_tmp[0].size() - 1), c }, { 0 }, nodes_tmp, outputs_remaining, nodes_tmp[0].size() );
+      auto mi_Frc = MI_gd( { (nodes_tmp[0].size() - 1), r, c }, { 0 }, nodes_tmp, outputs_remaining, nodes_tmp[0].size() );
 
       if ( mi_Fnew > MImax )//( ( mi_supp == mi_Fnew ) && ( mi_supp > MImax ) )
       {
@@ -1547,13 +1272,29 @@ bool try_greedy_bottom_decomposition( std::vector<uint64_t>& support, dbs_storag
         res_BD.mi = mi_Fnew;
         new_nodes = nodes_tmp;
 
-        if( ( mi_supp == mi_Fnew ) && (mi_Frc == mi_Fnew) && (mi_Fr == mi_Fnew) && (mi_Fc == mi_Fnew) )
+        if( mi_Frc == mi_Fnew )
         {
-          res_BD.rc_del = true;  
+          res_BD.rc_del = true; 
+          res_BD.r_del = false; 
+          res_BD.c_del = false; 
+        }
+        else if( mi_Fr == mi_Fnew )
+        {
+          res_BD.rc_del = false; 
+          res_BD.r_del = true; 
+          res_BD.c_del = false; 
+        }
+        else if( mi_Fc == mi_Fnew )
+        {
+          res_BD.rc_del = false; 
+          res_BD.r_del = false; 
+          res_BD.c_del = true; 
         }
         else
         {
           res_BD.rc_del = false; 
+          res_BD.r_del = false; 
+          res_BD.c_del = false; 
         }
       }
       std::vector<uint64_t> fls_support = support;
@@ -1563,59 +1304,53 @@ bool try_greedy_bottom_decomposition( std::vector<uint64_t>& support, dbs_storag
   // modify
   if( res_BD.is_created )
   {
+    std::cout << "created f(A[" << res_BD.A[0] << "],A[" << res_BD.A[1] << "])=f(" << 
+                  res_BD.Supp[0] << "," << res_BD.Supp[1] << ")=" << res_BD.tt;
+
+    //std::cout << "At the moment the number of nodes is "<< _num_nodes << " will bw index of new fn" << std::endl;
+    //std::cout << "support has size " << support.size() << std::endl;
     res_BD.idx_node = _num_nodes;
     support.push_back(_num_nodes);
+    //std::cout << "after inserting" << _num_nodes << " in the back, support has size " << support.size() << std::endl;
     create_klut_node( res_BD.Supp, res_BD.tt );
-    add_tt_to_hash( res_BD.tt );
+    //std::cout << "now. created node. _num_nodes is now " << _num_nodes << std::endl;
+    //std::cout << "Indeed, signal stored at _num_nodes-1 in _itos is " << _itos.storage[_num_nodes-1] << std::endl;
     res_BD.signal = _itos.storage[_num_nodes-1];
     nodes_remaining = new_nodes;
-    std::cout << "created f(A[" << res_BD.A[0] << "],A[" << res_BD.A[1] << "])=f(" << res_BD.Supp[0] << "," << res_BD.Supp[1] << ")=" << res_BD.tt << std::endl;
     
     if ( res_BD.rc_del )
     {
-      _cnt_Frc++;
+      std::cout << " --> del {r,c}" << std::endl;
       remove_column( support, nodes_remaining, std::max(res_BD.A[0], res_BD.A[1]) );
       remove_column( support, nodes_remaining, std::min(res_BD.A[0], res_BD.A[1]) );
     }
+    else if ( res_BD.r_del )
+    {
+      std::cout << " --> del {r}" << std::endl;
+      remove_column( support, nodes_remaining, res_BD.A[0] );
+    }
+    else if ( res_BD.c_del )
+    {
+      std::cout << " --> del {c}" << std::endl;
+      remove_column( support, nodes_remaining, res_BD.A[1] );
+    }
     else
     {
-      _cnt_Fo++;
+      std::cout << " --> del {}" << std::endl;
     }
     res_BD.idx_newFn = nodes_remaining[0].size()-1;      
 
   }
 // END ################################
-  return res_BD.is_created;
-}
-//#############################################################################################################
-//-------------------------------------------------------------------------------------------------------------
-
-//-------------------------------------------------------------------------------------------------------------
-//#############################################################################################################
-void reduce_reference_from( std::vector<uint64_t>& vector, uint64_t ref )
-{
-  for( uint64_t k { ref }; k<vector.size(); ++k )
-  {
-    vector[k] -= 1;
-  }
+  return res_BD;
 }
 
-void add_tt_to_hash( std::string const& tt_new )
-{
-  if( _tt_counter.find( tt_new ) == _tt_counter.end() )
-  {
-    _tt_counter.insert(std::make_pair( tt_new, 1 ));
-  }
-  else
-  {
-    _tt_counter[tt_new] += 1;
-  }
-}
 
 void prepare_cofactor( dbs_storage const& nodes_remaining, dbs_storage const& outputs_remaining, 
                         uint64_t x_idx, bool Id, 
                         dbs_storage& nodesId, dbs_storage& outputsId )
 {
+  //std::cout << "Id=" << Id << std::endl;
   for( uint64_t dt {0u}; dt < nodes_remaining.size(); ++dt )
   {
     if( nodes_remaining[dt][x_idx] == Id )
@@ -1695,18 +1430,22 @@ bool is_f1_eqto_not_f0_hash_gd( dbs_storage const& nodes0, dbs_storage const& no
 
     if( str_nodes0.find(s) != str_nodes0.end() )
     {
+      //std::cout << s << ":" << str_nodes0.at(s) << std::endl;
+      //std::cout << nodes1[m] << ":" << outputs1[m] << std::endl;
       if( str_nodes0.at(s) == outputs1[m][0] )
       {
+        //std::cout << "F" << std::endl;
         return false;
       }
       else
       {
+        //std::cout << "T" << std::endl;
         count_neg++;
       }
     }
   } 
 
-  if( count_neg > 1 ) // CONSIDER CHANGING TO >= 0 if motivated
+  if( count_neg > 0 ) // CONSIDER CHANGING TO >= 0 if motivated
   {
     //std::cout << "x";
     return true;
@@ -1766,55 +1505,55 @@ void remove_column_and_invert( std::vector<uint64_t>& support, dbs_storage& node
   nodes_remaining = new_nodes_remaining;
 }
 
-bool cec_all_val( dbs_storage const& outputs_remaining, bool val, double& p_val )
+bool check_if_all( dbs_storage const& outputs, bool const& val )
+{
+
+}
+bool cec_all_val( dbs_storage const& outputs_remaining, bool val )
 {
   bool ans = true;
-  p_val = 0;
+
   for( uint64_t k{0u}; k < outputs_remaining.size(); ++k )
   {
     if( outputs_remaining[k][0] != val )
-    {
       ans = false;
-    }
-    else
-    {
-      p_val += (double)1.0;
-    }
   }
-  p_val = p_val/outputs_remaining.size();
   return ans;
 }
 
-uint64_t it_dsd_shannon_decomposition_step( std::vector<uint64_t> support, dbs_storage nodes_remaining, dbs_storage outputs_remaining, mi_bd_storage& mis_bd,
-                                            bool is_dec_naive = false, uint64_t o_idx = 0, uint64_t supp_lim = 10000 )
+uint64_t it_dsd_shannon_decomposition_step( std::vector<uint64_t> support, dbs_storage nodes_remaining, dbs_storage outputs_remaining, bool is_dec_naive = false, uint64_t o_idx = 0 )
     {
+      std::cout << "\nN---------------------------------N" << std::endl;
+      std::cout << "|s|[" << support.size() <<"]|s|.";
+      std::cout << "|N|[" << nodes_remaining.size() <<"]|N|.";
+      std::cout << "|No|[" << nodes_remaining[0].size() <<"]|oN|.";
+      std::cout << "|O|[" << outputs_remaining.size() <<"]|O|."<< std::endl;
+
       assert( ( nodes_remaining.size() == outputs_remaining.size() ) ); // check nodes and outputs have the same length
 
       if( nodes_remaining.size() == 0 )
         return klut.get_constant( false );
       if( nodes_remaining[0].size() == 0 )
         return klut.get_constant( false );
-      
+
       uint64_t num_nodes = nodes_remaining[0].size();
       assert( ( num_nodes == support.size() ) ); // check support length
 
       double mi_max = 0;
       double mi_new;
-      double P1 = 0;
-      double P0 = 0;
-      uint64_t x_s = 0;
-      bool is_updated = false;
+      uint64_t x_s=0;
 
-      bool all_ones = cec_all_val( outputs_remaining, 1, P1 );
-      bool all_zeros = cec_all_val( outputs_remaining, 0, P0 );
-      double dP = 3.89/(2.0*sqrt(outputs_remaining.size()) );
+      bool all_ones = cec_all_val(outputs_remaining, 1 );
+      bool all_zeros = cec_all_val(outputs_remaining, 0 );
 
       if( all_ones == true )
       {
+        //std::cout << "return true " << std::endl; //X 
         return klut.get_constant( true );
       }
       if( all_zeros == true )
       {
+        //std::cout << "return false " << std::endl; //X 
         return klut.get_constant( false );
       }
   
@@ -1824,129 +1563,136 @@ uint64_t it_dsd_shannon_decomposition_step( std::vector<uint64_t> support, dbs_s
         std::vector<uint64_t> supp_alt;
         for( uint64_t el = 0; el < support.size(); ++el )
           supp_alt.push_back(el);
-
+        
+        //print_pla_gd( nodes_remaining, outputs_remaining );
         auto tt_tmp = create_fn_gd( supp_alt, nodes_remaining, outputs_remaining );
+        //std::cout << "TT=" << tt_tmp << std::endl;
+        //std::cout << "_num_nodes=" << _num_nodes << std::endl;
+        //std::cout << "storage size=" << _itos.storage.size() << std::endl;
         create_klut_node( support, tt_tmp );
+        //std::cout << "_num_nodes=" << _num_nodes << std::endl;
+        //std::cout << "storage size=" <<_itos.storage.size() << std::endl;
         return _itos.storage[_num_nodes-1];
       }
+
       for( uint64_t k{0u}; k < support.size(); ++k )
       {
         mi_new = MI_gd( { k }, { o_idx }, nodes_remaining, outputs_remaining, support.size() ); // support[k] -> k
+        //std::cout << "new MI : " << mi_new << std::endl;
+        //std::cout << "max MI : " << mi_max << std::endl;
 
         if( mi_new > mi_max )
         {
+          //std::cout << "updated " << std::endl;
+          //std::cout <<  std::endl;
           mi_max = mi_new;
-          x_s = k;
+          x_s = k;//support[k];
         }
       }
+      Hnew = H_gd( { x_s }, { o_idx }, nodes_remaining, outputs_remaining, support.size() );
+      Inew = MI_gd( { x_s }, { o_idx }, nodes_remaining, outputs_remaining, support.size() );
+      std::cout << "eps[" << support(x_s) << "]=" << Inew/Hnew << std::endl; // support[k] -> k
+      //std::cout << "xs= " << x_s << std::endl;
+      //std::cout << "supp[xs]= " << support[x_s] << std::endl;
 
       dbs_storage nodes0, nodes1, outputs0, outputs1;   /* storage element: value of the output at each example */
+
       std::vector<uint64_t> new_support;
+      std::vector<uint64_t> support_UP;
+
       /* fill cofactors */
+      //print_pla_gd(nodes_remaining, outputs_remaining);
+
       prepare_cofactor( nodes_remaining, outputs_remaining, x_s, 0,  nodes0, outputs0 );
       prepare_cofactor( nodes_remaining, outputs_remaining, x_s, 1,  nodes1, outputs1 );
+
+      //print_pla_gd(nodes0, outputs0);
 
       for ( uint64_t j{0u}; j < support.size(); ++j )
       {
         if( j != x_s )
           new_support.push_back( support[j] );
       }
-      if( _only_shannon == false)
+
+      /* START checK
+      std::cout << "supp size = " << support.size() << std::endl;
+      std::cout << "nodes size = " << nodes_remaining.size() << std::endl;
+      std::cout << "nodes[0] size = " << nodes_remaining[0].size() << std::endl;
+      // END checK*/
+
+      /* TOP DECOMPOSITION */
+      
+      bool is_F0_taut = cec_all_val(outputs0, 1 );
+      bool is_F1_taut = cec_all_val(outputs1, 1 );
+      bool is_F0_cont = cec_all_val(outputs0, 0 );
+      bool is_F1_cont = cec_all_val(outputs1, 0 );
+
+      if ( is_F1_taut )
       {
-        //std::cout << "Trying TOP DECOMPOSITION" << std::endl;
-        /* TOP DECOMPOSITION */
-        double P00 = 0;
-        double P01 = 0;
-        double P10 = 0;
-        double P11 = 0;
-        bool is_F0_taut = cec_all_val(outputs0, 1, P01 );
-        bool is_F1_taut = cec_all_val(outputs1, 1, P11 );
-        bool is_F0_cont = cec_all_val(outputs0, 0, P00 );
-        bool is_F1_cont = cec_all_val(outputs1, 0, P10 );
-
-        if ( is_F1_taut )
-        {
-          _cnt_F1t++;
-          //std::delete &mis_bd;
-          mi_bd_storage mis_bd_new;
-          mis_bd = mis_bd_new;
-          auto F0 = it_dsd_shannon_decomposition_step( new_support, nodes0, outputs0, mis_bd, is_dec_naive, 0, ( new_support.size() + _delta_supp ) );
-          return klut.create_or( _itos.storage[support[x_s]], F0 );
-        }
-        else if ( is_F0_taut )
-        {
-          mi_bd_storage mis_bd_new;
-          mis_bd = mis_bd_new;
-          auto F1 = it_dsd_shannon_decomposition_step( new_support, nodes1, outputs1, mis_bd, is_dec_naive, 0, ( new_support.size() + _delta_supp ) );
-          _cnt_F0t++;
-          return klut.create_le( _itos.storage[support[x_s]], F1 );
-        }
-        else if ( is_F1_cont )
-        {
-          mi_bd_storage mis_bd_new;
-          mis_bd = mis_bd_new;
-          auto F0 = it_dsd_shannon_decomposition_step( new_support, nodes0, outputs0, mis_bd, is_dec_naive, 0, ( new_support.size() + _delta_supp ) );
-          _cnt_F1c++;
-          return klut.create_lt( _itos.storage[support[x_s]], F0 );
-        }
-        else if ( is_F0_cont )
-        {
-          mi_bd_storage mis_bd_new;
-          mis_bd = mis_bd_new;
-          auto F1 = it_dsd_shannon_decomposition_step( new_support, nodes1, outputs1, mis_bd, is_dec_naive, 0, ( new_support.size() + _delta_supp ) );
-          _cnt_F0c++;
-          return klut.create_and( _itos.storage[support[x_s]], F1 );
-        }
-        else if( _try_top_xor && ( P1 > (0.5-dP) ) && ( P1 < (0.5+dP) ) )
-        {
-          //std::cout << "dP = " << dP << std::endl; 
-          if(is_f1_eqto_not_f0_hash_gd( nodes0, nodes1, outputs0, outputs1 ))
-          {
-            //std::cout << "xXORf0' " << std::endl; //X
-            _cnt_xor++;
-            auto pi_sig = _itos.storage[support[x_s]];
-            remove_column_and_invert( support, nodes_remaining, outputs_remaining, x_s ); // checked correct
-            mi_bd_storage mis_bd_new;
-            mis_bd = mis_bd_new;
-            auto f0bar = it_dsd_shannon_decomposition_step( support, nodes_remaining, outputs_remaining, mis_bd, is_dec_naive, 0, ( support.size() + _delta_supp ) );
-            return klut.create_xor( pi_sig , f0bar );
-          }
-        }
-
-        if( ( _try_bottom == true ) )//&& ( supp_lim == ( support.size() + _delta_supp ) ) )// xor
-        {
-          auto old_supp_size = support.size();
-          if ( try_bottom_decomposition( support, nodes_remaining, outputs_remaining, mis_bd ) )
-          {
-            //std::cout << _ID << "support:" << old_supp_size << " -> " << support.size() << std::endl;
-            return it_dsd_shannon_decomposition_step( support, nodes_remaining, outputs_remaining, mis_bd, is_dec_naive, 0, ( support.size() + _delta_supp ) );
-          }
-        }
-
-        is_updated = false;
-        if( _is_bottom_greedy && ( support.size() <= supp_lim ) )
-        {
-          is_updated = try_greedy_bottom_decomposition( support, nodes_remaining, outputs_remaining, mis_bd, mi_max, x_s );
-        }
-        else if ( _is_bottom_conservative && ( support.size() <= supp_lim ) )
-        {
-          auto old_supp_size = support.size();
-          is_updated = try_conservative_bottom_decomposition( support, nodes_remaining, outputs_remaining, mis_bd, mi_max );
-          std::cout << _ID << "support.BC:" << old_supp_size << " -> " << support.size() << std::endl;
-        }
-        if ( is_updated )
-        {
-          return it_dsd_shannon_decomposition_step( support, nodes_remaining, outputs_remaining, mis_bd, is_dec_naive, 0, supp_lim );
-        } 
-
+        std::cout << "F1=1 " << std::endl; //X
+        auto F0 = it_dsd_shannon_decomposition_step( new_support, nodes0, outputs0, is_dec_naive, 0 );
+        return klut.create_or( _itos.storage[support[x_s]], F0 );
       }
+      else if ( is_F0_taut )
+      {
+        auto F1 = it_dsd_shannon_decomposition_step( new_support, nodes1, outputs1, is_dec_naive, 0 );
+        std::cout << "F0=1 " << std::endl; //X
+        return klut.create_le( _itos.storage[support[x_s]], F1 );
+      }
+      else if ( is_F1_cont )
+      {
+        auto F0 = it_dsd_shannon_decomposition_step( new_support, nodes0, outputs0, is_dec_naive, 0 );
+        std::cout << "F1=0 " << std::endl; //X
+        return klut.create_lt( _itos.storage[support[x_s]], F0 );
+      }
+      else if ( is_F0_cont )
+      {
+        auto F1 = it_dsd_shannon_decomposition_step( new_support, nodes1, outputs1, is_dec_naive, 0 );
+        std::cout << "F0=0 " << std::endl; //X
+        return klut.create_and( _itos.storage[support[x_s]], F1 );
+      }
+      else if( is_f1_eqto_not_f0_hash_gd( nodes0, nodes1, outputs0, outputs1 ) )
+      {
+          std::cout << "xXORf0' " << std::endl; //X
+        auto pi_sig = _itos.storage[support[x_s]];
+          //print_pla_gd(nodes_remaining, outputs_remaining); //X
+          //std::cout << "RM+INV " << x_s << std::endl;//X
+        remove_column_and_invert( support, nodes_remaining, outputs_remaining, x_s ); // checked correct
+          //print_pla_gd(nodes_remaining, outputs_remaining); //X
+
+        auto f0bar = it_dsd_shannon_decomposition_step( support, nodes_remaining, outputs_remaining, is_dec_naive, 0 );
+          
+        return klut.create_xor( pi_sig , f0bar );
+      }
+      else // xor
+      {
+        //print_pla_gd(nodes_remaining, outputs_remaining);
+        res_BD_type res_BD = try_bottom_decomposition_EXP( support, nodes_remaining, outputs_remaining, mi_max ); 
+        //print_pla_gd(nodes_remaining, outputs_remaining);
+
+
+        if ( res_BD.is_created )
+        {
+          /* START checK
+          std::cout << "BTM" << std::endl;
+          std::cout << "supp size = " << support.size() << std::endl;
+          std::cout << "nodes size = " << nodes_remaining.size() << std::endl;
+          std::cout << "nodes[0] size = " << nodes_remaining[0].size() << std::endl;
+          // END checK */
+          //std::cout << "x xor f0'" << std::endl;
+          std::cout << "BTM " << std::endl; //X
+          return it_dsd_shannon_decomposition_step( support, nodes_remaining, outputs_remaining, is_dec_naive, 0 );
+        }
+        
+      }
+
+      // NO TOP DECOMPOSTION - BOTTOM DECOMPOSITION
       //for now only shannon
-      //std::cout << "SH1 " << std::endl; //X
-      mi_bd_storage mis_bd_new1;
-      mi_bd_storage mis_bd_new0;
-      auto F1 = it_dsd_shannon_decomposition_step( new_support, nodes1, outputs1, mis_bd_new1, is_dec_naive, 0, ( new_support.size()+_delta_supp ) );
-      //std::cout << "SH0 " << std::endl; //X
-      auto F0 = it_dsd_shannon_decomposition_step( new_support, nodes0, outputs0, mis_bd_new0, is_dec_naive, 0, ( new_support.size()+_delta_supp ) );
+      std::cout << "SH1 " << std::endl; //X
+      auto F1 = it_dsd_shannon_decomposition_step( new_support, nodes1, outputs1, is_dec_naive, 0 );
+      std::cout << "SH0 " << std::endl; //X
+
+      auto F0 = it_dsd_shannon_decomposition_step( new_support, nodes0, outputs0, is_dec_naive, 0 );
       auto f0 = klut.create_and( klut.create_not(_itos.storage[support[x_s]]), F0 );
       auto f1 = klut.create_and(_itos.storage[support[x_s]], F1 );
 
@@ -1954,503 +1700,8 @@ uint64_t it_dsd_shannon_decomposition_step( std::vector<uint64_t> support, dbs_s
       /* construct the substorage blocks */
     }
 
-    void it_dsd_shannon_decomposition( bool is_dec_naive = false, uint64_t o_idx = 0, 
-                                       bool try_bottom = true, bool is_bottom_greedy = false, 
-                                       bool only_shannon = false, bool try_top_xor = true,
-                                       bool is_bottom_conservative = false, uint64_t delta_supp = 10000 )
+    void it_dsd_shannon_decomposition( bool is_dec_naive = false, uint64_t o_idx = 0 )
     {
-      std::clock_t start;
-      double duration;
-
-      start = std::clock();
-      _cnt_F1t = 0;
-      _cnt_F1c = 0;
-      _cnt_F0t = 0;
-      _cnt_F0c = 0;
-      _cnt_xor = 0;
-      _cnt_Frc = 0;
-      _cnt_Fo = 0;
-      _cnt_Fbd = 0;
-
-      _delta_supp = delta_supp;
-      _try_top_xor = try_top_xor;
-      _only_shannon = only_shannon;
-      _is_bottom_greedy = is_bottom_greedy;
-      _is_bottom_conservative = is_bottom_conservative;
-      _try_bottom = try_bottom;
-
-    std::cout << std::endl;
-    std::cout << ".b" << _ID << std::endl;  
-
-    std::cout << ".e ";
-    if( _only_shannon )
-      std::cout << "* only shannon " ;
-    else 
-    {
-      if( _try_bottom )
-        std::cout << "* try bottom decomposition ";
-      if( _try_top_xor )
-        std::cout << "* top xor ";
-      if( _is_bottom_greedy || _is_bottom_conservative  )
-      {
-        if ( _is_bottom_greedy )
-          std::cout << "* greedy function creation ";
-        else if ( _is_bottom_conservative )
-          std::cout << "* conservative function creation ";
-        std::cout << "* delta = " << _delta_supp << " ";
-      }
-    }
-    std::cout << "*" << std::endl;
-    std::ofstream _myfile;
-      if( _has_file )
-      {
-        _myfile.open ( _pathTOfile );
-        _myfile << ".b " << _IDs << std::endl; 
-        _myfile << ".e";
-        if( _only_shannon )
-          _myfile << "* only shannon " ;
-        else 
-        {
-          if( _try_bottom )
-            _myfile << "* try bottom decomposition ";
-          if( _try_top_xor )
-            _myfile << "* top xor ";
-          if( _is_bottom_greedy || _is_bottom_conservative  )
-          {
-            if ( _is_bottom_greedy )
-              _myfile << "* greedy function creation ";
-            else if ( _is_bottom_conservative )
-              _myfile << "* conservative function creation ";
-              _myfile << "* delta = " << _delta_supp << " ";
-          }
-        }
-        _myfile << "*" << std::endl;
-      }
-
-      std::vector<uint64_t> initial_support;
-      dbs_storage nodes;
-      for( uint64_t k{0u}; k < _num_nodes; ++k )
-        initial_support.push_back( k );
-      
-      for( uint64_t d{0u}; d < _nodes.size(); ++d )
-      {
-        boost::dynamic_bitset<> dtmp;
-        for( uint64_t k{0u}; k < _num_nodes; ++k )
-        {
-          dtmp.push_back(_nodes[d][k]);
-        } 
-        nodes.push_back(dtmp); 
-      }
-      mi_bd_storage mis_bd;
-      uint64_t supp_lim = _num_nodes + _delta_supp;
-      auto f0 = it_dsd_shannon_decomposition_step( initial_support, nodes, _outputs, mis_bd, is_dec_naive, 0, supp_lim );
-      klut.create_po( f0 );
-      _training_accuracy = compute_accuracy( _input_nodes, _outputs );
-      std::cout << ".cF1t" << _ID <<_cnt_F1t << std::endl;
-      std::cout << ".cF0t" << _ID <<_cnt_F0t << std::endl;
-      std::cout << ".cF1c" << _ID <<_cnt_F1c << std::endl;
-      std::cout << ".cF0c" << _ID <<_cnt_F0c << std::endl;
-      if( _try_top_xor )
-        std::cout << ".cXOR" << _ID <<_cnt_xor << std::endl;
-      if( _try_bottom || _is_bottom_greedy || _is_bottom_conservative )
-      {
-        std::cout << ".cFrc" << _ID <<_cnt_Frc << std::endl;
-        std::cout << ".cFo" << _ID <<_cnt_Fo << std::endl;
-        std::cout << ".cFbd" << _ID <<_cnt_Fbd << std::endl;
-        for( const auto& HTp : _tt_counter ) {
-          std::cout << ".pTT" << _ID;
-          std::cout << _ID << "TT:[" << HTp.first << "] counts:[" << HTp.second << "]\n";
-
-        }
-      }
-      std::cout << ".g" << _ID << aig.num_gates()<< std::endl;
-      std::cout << ".s" << _ID << aig.size()<< std::endl;
-      depth_view_params ps;
-      ps.count_complements = true;
-      depth_view depth_aig{aig, {}, ps};
-      std::cout << ".d" << _ID << depth_aig.depth()<< std::endl;
-      std::cout << ".l" << _ID << _training_accuracy << std::endl;
-
-      std::cout << ".t" << _ID << compute_accuracy( _Xtest, _Ytest ) << std::endl;
-      std::cout << ".v" << _ID << compute_accuracy( _Xvalid, _Yvalid ) << std::endl;
-      if( _has_file )
-      {
-        _myfile<< ".cF1t " << _cnt_F1t << std::endl;
-        _myfile<< ".cF0t " << _cnt_F0t << std::endl;
-        _myfile<< ".cF1c "  << _cnt_F1c << std::endl;
-        _myfile<< ".cF0c "  << _cnt_F0c << std::endl;
-        if( _try_top_xor )
-          _myfile<< ".cXOR " << _cnt_xor << std::endl;
-        if( _try_bottom || _is_bottom_greedy || _is_bottom_conservative )
-        {
-          _myfile<< ".cFrc " << _cnt_Frc << std::endl;
-          _myfile<< ".cFo "  << _cnt_Fo << std::endl;
-          _myfile<< ".cFbd " << _cnt_Fbd << std::endl;
-          for( const auto& HTp : _tt_counter ) {
-            _myfile<< ".pTT";
-            _myfile << "TT:[" << HTp.first << "] counts:[" << HTp.second << "]\n";
-          }
-        }
-        _myfile<< ".g " << aig.num_gates()<< std::endl;
-        _myfile<< ".s " << aig.size()<< std::endl;
-        _myfile<< ".d " << depth_aig.depth()<< std::endl;
-        _myfile<< ".l " << _training_accuracy << std::endl;
-        _myfile << ".t " << compute_accuracy( _Xtest, _Ytest ) << std::endl;
-        _myfile << ".v " << compute_accuracy( _Xvalid, _Yvalid ) << std::endl;
-        _myfile.close();
-      }
-
-      duration = ( std::clock() - start ) / (double) CLOCKS_PER_SEC;
-
-      std::cout<<"printf: "<< duration <<'\n';
-
-    }
-    #pragma endregion // top dsd + shannon
-
-
-
-// ##############################################################################################
-// **********************************************************************************************
-// ##############################################################################################
-bool try_sym_based_nodes_creation( std::vector<uint64_t>& support, dbs_storage& nodes, dbs_storage& outputs, std::vector<double>& Isupport, double Imax )
-{
-  /* order by mutual information */
-  std::vector<uint64_t> support_ord;
-  std::vector<uint64_t> indeces_ord;
-  bool bool_ans = false;
-  std::vector<double> Isupport_ord = Isupport;
-  double I_supp, I_Fnew, I_Fr, I_Fc, I_Frc;
-  std::vector<uint64_t> A2;
-  std::vector<uint64_t> An;
-  std::vector<uint64_t> S2;
-  std::string Sr, Sc;
-  for( uint64_t k {0u}; k < support.size(); ++k )
-    indeces_ord.push_back( k );
-
-  //std::cout << "idx: ";
-  //for( uint64_t k{0u}; k<support.size();++k )
-  //  std::cout << indeces_ord[k] << " ";
-  //std::cout <<std::endl;
-  //std::cout << "sup: ";
-  //for( uint64_t k{0u}; k<support.size();++k )
-  //  std::cout << support[k] << " ";
-  //std::cout <<std::endl;
-  //std::cout << "mis: ";
-  //for( uint64_t k{0u}; k<support.size();++k )
-  //  std::cout << Isupport[k] << " ";
-  //std::cout <<std::endl;
-
-  std::vector<uint64_t> MoTOn = indeces_ord;
-  quicksort_by_attribute( indeces_ord, Isupport_ord, 0, (indeces_ord.size()-1) );
-  for( uint64_t k {0u}; k < support.size(); ++k )
-    support_ord.push_back( support[indeces_ord[k]] );
-
-  //std::cout << "idx: ";
-  //for( uint64_t k{0u}; k<support.size();++k )
-  //  std::cout << indeces_ord[k] << " ";
-  //std::cout <<std::endl;
-  //std::cout << "sup: ";
-  //for( uint64_t k{0u}; k<support.size();++k )
-  //  std::cout << support_ord[k] << " ";
-  //std::cout <<std::endl;
-  //std::cout << "mis: ";
-  //for( uint64_t k{0u}; k<support.size();++k )
-  //  std::cout << Isupport_ord[k] << " ";
-  //std::cout <<std::endl;
-
-
-  std::vector<uint64_t> removed_c = {};
-  for( uint64_t r {0u}; r < ( support_ord.size() - 1 ) ; ++r )
-  {
-    for (uint64_t c = r + 1; c < support_ord.size(); ++c )
-    {
-      //std::cout << "r=" << r << " c=" << c << std::endl;
-      //std::cout << "removed[r/c]: ";
-      //for( uint64_t k{0u}; k<removed_c.size();++k )
-      //  std::cout << removed_c[k] << " ";
-      //std::cout <<std::endl;
-      
-      bool is_r_good = (std::find(removed_c.begin(), removed_c.end(), r) == removed_c.end());
-      bool is_c_good = (std::find(removed_c.begin(), removed_c.end(), c) == removed_c.end());
-      //std::cout << " is_r_good " << is_r_good << " is_c_good " << is_c_good <<std::endl;
-      
-      if( is_r_good == false )
-        break;
-
-      if( is_c_good )
-      {
-        A2 = { indeces_ord[r], indeces_ord[c] }; // index in the nodes data structure
-        //std::cout << "indeces_ord considered: A2[0]= " << A2[0] << " A2[1]= " << A2[1] << std::endl;
-        An = { MoTOn[indeces_ord[r]], MoTOn[indeces_ord[c]] }; // 
-        //std::cout << "new indeces considered: An[0]= " << An[0] << " An[1]= " << An[1] << std::endl;
-        S2 = { support_ord[r], support_ord[c] };
-        //std::cout << "new support considered: S2[0]= " << S2[0] << " S2[1]= " << S2[1] << std::endl;
-
-      
-        Sr = std::to_string( support_ord[r] );
-        Sc = std::to_string( support_ord[c] );
-        std::string support_key = Sr + " " + Sc;
-        //std::cout << "support_key: " << support_key << std::endl;
-        bool is_s_new = ( _HT2I.find( support_key ) == _HT2I.end() );
-        if( is_s_new )
-        {
-          //std::cout << "new node: ";
-          auto tt = create_fn_gd( An, nodes, outputs );
-          //std::cout << "tt= " << tt << std::endl;
-
-          _HT2I.insert( std::make_pair( support_key, tt ) );
-          support.push_back(_num_nodes);
-
-          I_supp = MI_gd( An, { 0 }, nodes, outputs, nodes[0].size() ); 
-          I_Fnew = MI_gd( { nodes[0].size() - 1 }, { 0 }, nodes, outputs, nodes[0].size() );
-          I_Fr = MI_gd( { (nodes[0].size() - 1), MoTOn[indeces_ord[r]] }, { 0 }, nodes, outputs, nodes[0].size() );
-          I_Fc = MI_gd( { (nodes[0].size() - 1), MoTOn[indeces_ord[c]] }, { 0 }, nodes, outputs, nodes[0].size() );
-          I_Frc = MI_gd( { (nodes[0].size() - 1), MoTOn[indeces_ord[r]], MoTOn[indeces_ord[c]] }, { 0 }, nodes, outputs, nodes[0].size() );
-          //std::cout << "I_supp:" << I_supp << " I_Fnew:" << I_Fnew << " I_Fr:" << I_Fr << " I_Fc:" << I_Fc << " I_Frc:" << I_Frc << std::endl; 
-
-          bool are_rc_redundant = ( I_supp == I_Fnew ) && ( I_Fr == I_Fnew ) && ( I_Fc == I_Fnew ) && ( I_Fc == I_Fnew ) && ( I_Frc == I_Fnew );
-          if ( are_rc_redundant )
-          {
-            //std::cout << "redundant" << std::endl;
-            bool_ans |= true;
-            create_klut_node( S2, tt );
-            add_tt_to_hash( tt );
-            remove_column( support, nodes, std::min( An[0], An[1] ) );
-            remove_column( support, nodes, std::min( An[0], An[1] ) );
-            _cnt_Frc++;
-            reduce_reference_from( MoTOn, ( std::max( A2[0], A2[1] ) + 1 ) );
-            reduce_reference_from( MoTOn, ( std::min( A2[0], A2[1] ) + 1 ) );
-            removed_c.push_back(c);
-            removed_c.push_back(r);
-            break;
-          }
-          else if ( I_Fnew > Imax )
-          {
-            bool_ans |= true;
-            create_klut_node( S2, tt );
-            add_tt_to_hash( tt );
-            _cnt_Fo++;
-            break;
-          }
-          remove_column( support, nodes, nodes[0].size()-1 );
-        }
-      }
-    }
-  }
-  return bool_ans;
-}
-
-
-/*
-      std::vector<uint64_t> fls_support = support;
-      remove_column( fls_support, nodes_tmp, nodes_remaining[0].size() );
-    }
-  }
-  // modify
-  if( res_BD.is_created )
-  {
-    res_BD.idx_node = _num_nodes;
-    support.push_back(_num_nodes);
-    create_klut_node( res_BD.Supp, res_BD.tt );
-*/
-
-uint64_t BUDMA_step( std::vector<uint64_t> support, dbs_storage nodes, dbs_storage outputs )
-    {
-      
-      assert( ( nodes.size() == outputs.size() ) ); // check nodes and outputs have the same length
-
-      if( nodes.size() == 0 )
-        return klut.get_constant( false );
-      if( nodes[0].size() == 0 )
-        return klut.get_constant( false );
-      
-      uint64_t num_nodes = nodes[0].size();
-      assert( ( num_nodes == support.size() ) ); // check support length
-
-      double Imax = 0;
-      double Inew;
-      std::vector<double> Isupport;
-      double P1 = 0;
-      double P0 = 0;
-      uint64_t x_max = 0;
-      uint64_t s_max = 0;
-      bool is_updated = false;
-
-      bool all_ones = cec_all_val( outputs, 1, P1 );
-      bool all_zeros = cec_all_val( outputs, 0, P0 );
-      double dP = 3.89/(2.0*sqrt(outputs.size()) );
-
-      if( all_ones == true )
-        return klut.get_constant( true );
-      if( all_zeros == true )
-        return klut.get_constant( false );
-  
-      /* If support sufficiently small create function */
-      if( support.size() <= _max_sup )
-      {
-        std::vector<uint64_t> indeces_support;
-        for( uint64_t el = 0; el < support.size(); ++el )
-          indeces_support.push_back(el);
-
-        auto tt_tmp = create_fn_gd( indeces_support, nodes, outputs );
-        create_klut_node( support, tt_tmp );
-        return _itos.storage[_num_nodes-1];
-      }
-
-      for( uint64_t k{0u}; k < support.size(); ++k )
-      {
-        std::string s = std::to_string( support[k] );
-        bool is_s_present = ( _HT1I.find( s ) != _HT1I.end());
-        if( is_s_present )
-          Inew = _HT1I.at(s);
-        else
-        {
-          Inew = MI_gd( { k }, { 0 }, nodes, outputs, support.size() );
-          _HT1I.insert( std::make_pair( s, Inew ) );
-        }
-        Isupport.push_back( Inew );
-
-        if( Inew > Imax )
-        {
-          Imax = Inew;
-          x_max = k;
-          s_max = support[k];
-        }
-      }
-
-      dbs_storage nodes0, nodes1, outputs0, outputs1;   /* storage element: value of the output at each example */
-      std::vector<uint64_t> new_support;
-      /* fill cofactors */
-      prepare_cofactor( nodes, outputs, x_max, 0,  nodes0, outputs0 );
-      prepare_cofactor( nodes, outputs, x_max, 1,  nodes1, outputs1 );
-
-      for( uint64_t k{0u}; k < support.size(); ++k )
-      {
-        if( k != x_max )
-          new_support.push_back( support[k] );
-      }
-
-      //std::cout << "Trying TOP DECOMPOSITION" << std::endl;
-      /* TOP DECOMPOSITION */
-      double P00 = 0;
-      double P01 = 0;
-      double P10 = 0;
-      double P11 = 0;
-      bool is_F0_taut = cec_all_val(outputs0, 1, P01 );
-      bool is_F1_taut = cec_all_val(outputs1, 1, P11 );
-      bool is_F0_cont = cec_all_val(outputs0, 0, P00 );
-      bool is_F1_cont = cec_all_val(outputs1, 0, P10 );
-
-      if( is_F1_taut )
-      {
-        _cnt_F1t++;
-        std::unordered_map<std::string, std::string> HT2Inew;
-        std::unordered_map<std::string, double> HT1Inew;
-        _HT1I = HT1Inew;
-        _HT2I = HT2Inew;
-        auto F0 = BUDMA_step( new_support, nodes0, outputs0 );
-        return klut.create_or( _itos.storage[s_max], F0 );
-      }
-      else if( is_F0_taut )
-      {
-        _cnt_F0t++;
-        std::unordered_map<std::string, std::string> HT2Inew; 
-        std::unordered_map<std::string, double> HT1Inew;
-        _HT1I = HT1Inew;
-        _HT2I = HT2Inew;
-        auto F1 = BUDMA_step( new_support, nodes1, outputs1 );
-        return klut.create_le( _itos.storage[s_max], F1 );
-      }
-      else if( is_F1_cont )
-      {
-        _cnt_F1c++;
-        std::unordered_map<std::string, std::string> HT2Inew; 
-        std::unordered_map<std::string, double> HT1Inew;
-        _HT1I = HT1Inew;
-        _HT2I = HT2Inew;
-        auto F0 = BUDMA_step( new_support, nodes0, outputs0 );
-        return klut.create_lt( _itos.storage[s_max], F0 );
-      }
-      else if( is_F0_cont )
-      {
-        _cnt_F0c++;
-        std::unordered_map<std::string, std::string> HT2Inew; 
-        std::unordered_map<std::string, double> HT1Inew;
-        _HT1I = HT1Inew;
-        _HT2I = HT2Inew;
-        auto F1 = BUDMA_step( new_support, nodes1, outputs1 );
-        return klut.create_and( _itos.storage[s_max], F1 );
-      }
-      else if( ( P1 > (0.5-dP) ) && ( P1 < (0.5+dP) ) )
-      {
-        if(is_f1_eqto_not_f0_hash_gd( nodes0, nodes1, outputs0, outputs1 ))
-        {
-          _cnt_xor++;
-          auto pi_sig = _itos.storage[s_max];
-          remove_column_and_invert( support, nodes, outputs, x_max );
-          std::unordered_map<std::string, std::string> HT2Inew; 
-          std::unordered_map<std::string, double> HT1Inew;
-          _HT1I = HT1Inew;
-          _HT2I = HT2Inew;
-          auto f0bar = BUDMA_step( support, nodes, outputs );
-          return klut.create_xor( pi_sig , f0bar );
-        }
-      }
-      /* BUDMA CORE */
-      double Hf = H_gd( {x_max}, {0}, nodes, outputs, nodes[0].size() );
-      if( num_nodes >= _max_num_nodes )
-        _create_new_nodes = false;
-      if( _create_new_nodes == true )
-      {
-        if( Imax/Hf >= _eps_th )
-          return _itos.storage[s_max];
-        
-        if( try_sym_based_nodes_creation( support, nodes, outputs, Isupport, Imax ) )
-          return BUDMA_step( support, nodes, outputs );
-        else 
-          _create_new_nodes = false; 
-      }
-      _create_new_nodes = false; 
-
-      auto F1 = BUDMA_step( new_support, nodes1, outputs1 );
-      auto F0 = BUDMA_step( new_support, nodes0, outputs0 );
-      auto f0 = klut.create_and( klut.create_not(_itos.storage[s_max]), F0 );
-      auto f1 = klut.create_and(_itos.storage[s_max], F1 );
-
-      return klut.create_or( f1, f0 );
-      /* construct the substorage blocks */
-    }
-
-void BUDMA( double eps_th = 0.99, uint64_t max_num_nodes = 5000 )
-    {
-      _eps_th = eps_th;
-      _cnt_F1t = 0;
-      _cnt_F1c = 0;
-      _cnt_F0t = 0;
-      _cnt_F0c = 0;
-      _cnt_xor = 0;
-      _cnt_Frc = 0;
-      _cnt_Fo = 0;
-      _cnt_Fbd = 0;
-      _create_new_nodes = true;
-      _max_num_nodes = max_num_nodes;
-
-    std::clock_t start;
-    double duration;
-
-    start = std::clock();
-
-    std::cout << std::endl;
-    std::cout << ".b" << _ID << std::endl;  
-    std::cout << ".e BUDMA |'" << _max_num_nodes << "'|" << std::endl;
-
-    std::ofstream _myfile;
-      if( _has_file )
-      {
-        _myfile.open ( _pathTOfile );
-        _myfile << ".b" << std::endl; 
-        _myfile << ".e BUDMA |'" << _max_num_nodes << "'|" << std::endl;
-      }
 
       std::vector<uint64_t> initial_support;
       dbs_storage nodes;
@@ -2467,73 +1718,22 @@ void BUDMA( double eps_th = 0.99, uint64_t max_num_nodes = 5000 )
         nodes.push_back(dtmp); 
       }
 
-      auto f0 = BUDMA_step( initial_support, nodes, _outputs );
+      auto f0 = it_dsd_shannon_decomposition_step( initial_support, nodes, _outputs, is_dec_naive, 0 );
+      std::cout << std::endl;
       klut.create_po( f0 );
-
       _training_accuracy = compute_accuracy( _input_nodes, _outputs );
-      std::cout << ".cF1t" << _ID <<_cnt_F1t << std::endl;
-      std::cout << ".cF0t" << _ID <<_cnt_F0t << std::endl;
-      std::cout << ".cF1c" << _ID <<_cnt_F1c << std::endl;
-      std::cout << ".cF0c" << _ID <<_cnt_F0c << std::endl;
-      std::cout << ".cXOR" << _ID <<_cnt_xor << std::endl;
-      std::cout << ".cFrc" << _ID <<_cnt_Frc << std::endl;
-      std::cout << ".cFo" << _ID <<_cnt_Fo << std::endl;
-      std::cout << ".cFbd" << _ID <<_cnt_Fbd << std::endl;
-      for( const auto& HTp : _tt_counter ) 
-      {
-        std::cout << ".pTT" << _ID;
-        std::cout << _ID << "TT:[" << HTp.first << "] counts:[" << HTp.second << "]\n";
-      }
-      
-      std::cout << ".g" << _ID << aig.num_gates()<< std::endl;
-      std::cout << ".s" << _ID << aig.size()<< std::endl;
+      std::cout << "training accuracy: " << _training_accuracy << "%" << std::endl;
+      std::cout << "number of gates: " << aig.num_gates()<< std::endl;
+      std::cout << "size: " << aig.size()<< std::endl;
       depth_view_params ps;
       ps.count_complements = true;
       depth_view depth_aig{aig, {}, ps};
-      std::cout << ".d" << _ID << depth_aig.depth()<< std::endl;
-      std::cout << ".l" << _ID << _training_accuracy << std::endl;
-
-      auto test_accuracy = compute_accuracy( _Xtest, _Ytest );
-      auto valid_accuracy = compute_accuracy( _Xvalid, _Yvalid );
-      std::cout << ".t" << _ID << test_accuracy << std::endl;
-      std::cout << ".v" << _ID << valid_accuracy << std::endl;
-      duration = ( std::clock() - start ) / (double) CLOCKS_PER_SEC;
-      std::cout <<".a " << _ID << duration <<'\n';
-
-      if( _has_file )
-      {
-        _myfile<< ".cF1t " << _cnt_F1t << std::endl;
-        _myfile<< ".cF0t " << _cnt_F0t << std::endl;
-        _myfile<< ".cF1c "  << _cnt_F1c << std::endl;
-        _myfile<< ".cF0c " << _cnt_F0c << std::endl;
-        _myfile<< ".cXOR "<< _cnt_xor << std::endl;
-        _myfile<< ".cFrc " << _cnt_Frc << std::endl;
-        _myfile<< ".cFo "  << _cnt_Fo << std::endl;
-        _myfile<< ".cFbd " << _cnt_Fbd << std::endl;
-          for( const auto& HTp : _tt_counter ) {
-            _myfile<< ".pTT ";
-            _myfile <<  "TT:[" << HTp.first << "] counts:[" << HTp.second << "]\n";
-          }
-        
-        _myfile<< ".g "  << aig.num_gates()<< std::endl;
-        _myfile<< ".s "  << aig.size()<< std::endl;
-        _myfile<< ".d " << depth_aig.depth()<< std::endl;
-        _myfile<< ".l " << _training_accuracy << std::endl;
-        _myfile << ".t "  << test_accuracy << std::endl;
-        _myfile << ".v " << valid_accuracy << std::endl;
-        
-        _myfile <<".a "<< duration <<'\n';
-
-        _myfile.close();
-      }
-
+      std::cout << "num levels: " << depth_aig.depth()<< std::endl;
     }
-
-    
     #pragma endregion // top dsd + shannon
+
     // ##############################################################################################
-    // **********************************************************************************************
-    // ##############################################################################################
+
     #pragma region simulate
     bool simulate_input( dyn_bitset const& input_pattern, bool convertToAig = true )
     {
@@ -2552,11 +1752,10 @@ void BUDMA( double eps_th = 0.99, uint64_t max_num_nodes = 5000 )
     double compute_accuracy( dbs_storage const& nodes, dbs_storage const& outputs )
     {
       aig = convert_klut_to_graph<aig_network>( klut );
-
-      //std::cout << "pre number of gates: " << aig1.num_gates()<< std::endl;
-      //std::cout << "pre size: " << aig1.size()<< std::endl;
-      //aig_algebraic_rewriting( aig );
       //aig = cleanup_dangling( aig1 );
+      //std::cout << "pre number of gates: " << aig.num_gates()<< std::endl;
+      //std::cout << "pre size: " << aig.size()<< std::endl;
+      //aig_algebraic_rewriting( aig );
 
       double acc = 0;
       double delta_acc;
@@ -2569,7 +1768,7 @@ void BUDMA( double eps_th = 0.99, uint64_t max_num_nodes = 5000 )
         delta_acc = ( ( simulate_input( ipattern, false ) == outputs[k][0] ) ? (double)1.0/nodes.size() : 0.0 );
         acc += delta_acc;
       }
-      return acc;
+      return 100*acc;
     }
 
     bool simulate_at_node( dyn_bitset const& input_pattern, klut_network const& klut_node )
@@ -2618,10 +1817,6 @@ void BUDMA( double eps_th = 0.99, uint64_t max_num_nodes = 5000 )
       dbs_storage _input_nodes;
       dbs_storage _nodes;   /* storage element: value of the output at each example */
       dbs_storage _outputs; /* storage element: value of the output at each example */
-      dbs_storage _Xtest;
-      dbs_storage _Ytest;
-      dbs_storage _Xvalid;
-      dbs_storage _Yvalid;
       uint64_t _num_data;   /* number of examples */
       uint64_t _num_nodes;
       uint64_t _num_outputs;
@@ -2633,38 +1828,13 @@ void BUDMA( double eps_th = 0.99, uint64_t max_num_nodes = 5000 )
       uint64_t _sup = 0;
       uint64_t _max_act;
       uint64_t _max_sup;
-      uint64_t _delta_supp;
       uint64_t _init_sup;
       double _eps_th;
-      bool _has_file = false;
-      std::string _pathTOfile;
       double _eps_best;
       uint64_t _idx_fn;
-      std::string _ID = "";
-      std::string _IDs = "";
-      bool _try_bottom;
-      bool _try_top_xor;
-      bool  _has_valid = false;
-      bool  _has_test = false;
-      bool _is_bottom_greedy;
-      bool _is_bottom_conservative;
-      bool _only_shannon;
-      bool _create_new_nodes;
       double _training_accuracy;
       double _dI = 0;
-      uint32_t _cnt_F1t = 0;
-      uint32_t _cnt_F1c = 0;
-      uint32_t _cnt_F0t = 0;
-      uint32_t _cnt_F0c = 0;
-      uint32_t _cnt_xor = 0;
-      uint32_t _cnt_Frc = 0;
-      uint32_t _cnt_Fo = 0;
-      uint64_t _max_num_nodes;
-      uint32_t _cnt_Fbd = 0;
       std::unordered_map<std::string, double> _mi_storage;
-      std::unordered_map<std::string, uint64_t> _tt_counter;
-      std::unordered_map<std::string, std::string> _HT2I; 
-      std::unordered_map<std::string, double> _HT1I;
 
   };
 
