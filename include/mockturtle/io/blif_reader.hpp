@@ -42,9 +42,9 @@
 #include <string>
 #include <vector>
 
-#include "../traits.hpp"
 #include "../networks/aig.hpp"
 #include "../networks/cover.hpp"
+#include "../traits.hpp"
 
 namespace mockturtle
 {
