@@ -37,14 +37,14 @@
 
 #include <kitty/kitty.hpp>
 #include <lorina/blif.hpp>
-#include <mockturtle/networks/aig.hpp>
-#include <mockturtle/networks/cover.hpp>
 
 #include <map>
 #include <string>
 #include <vector>
 
 #include "../traits.hpp"
+#include "../networks/aig.hpp"
+#include "../networks/cover.hpp"
 
 namespace mockturtle
 {
