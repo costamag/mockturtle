@@ -42,9 +42,9 @@
 #include <string>
 #include <vector>
 
-#include "../traits.hpp"
 #include "../networks/aig.hpp"
 #include "../networks/cover.hpp"
+#include "../traits.hpp"
 
 namespace mockturtle
 {
@@ -238,7 +238,7 @@ public:
     if constexpr ( std::is_same<typename Ntk::base_type, cover_network>::value )
     {
       std::vector<kitty::cube> cubes;
-      bool is_sop =  ( first_output_value == '1' );
+      bool is_sop = ( first_output_value == '1' );
       for ( const auto& c : cover )
       {
         assert( c.second.size() == 1 );
