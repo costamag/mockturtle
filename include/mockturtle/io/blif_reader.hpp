@@ -260,7 +260,7 @@ public:
 
       if ( cubes.size() != 0 )
       {
-        signals[output] = ntk_.create_node( input_signals, std::make_pair( cubes, is_sop ) );
+        signals[output] = ntk_.create_cover_node( input_signals, std::make_pair( cubes, is_sop ) );
       }
     }
     else
