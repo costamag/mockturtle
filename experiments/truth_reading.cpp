@@ -135,24 +135,15 @@ std::pair<std::vector<kitty::dynamic_truth_table>, uint32_t> load( std::string f
 }
 int main()
 {
-std::cout << "NUM THREADS = " << omp_get_max_threads() << std::endl;
-<<<<<<< HEAD
-omp_set_num_threads( 1 );
-
-std::vector<size_t> bvect = { 65,66,67, 40,45,48};
-
-#pragma omp parallel for 
-for (uint32_t i = 0 ; i<100; i++) { // bvect.size()
-  uint32_t bsk = i;
-=======
-//omp_set_num_threads( 8 );
+//std::cout << "NUM THREADS = " << omp_get_max_threads() << std::endl;
+//omp_set_num_threads( 1 );
 
 std::vector<size_t> bvect = { 65,66,67, 40,45,48};
 
 //#pragma omp parallel for 
-//for (uint32_t i = 0 ; i<bvect.size(); i++) { // bvect.size()
-  uint32_t bsk = 0;//bvect[i];
->>>>>>> 05a989ef885cfc6343be0ff9c5de36b2f56e7cc7
+for (uint32_t i = 0 ; i<100; i++) { // bvect.size()
+  uint32_t bsk = i;
+
   std::string str_code;
   if( bsk < 10 )
     str_code = "0"+std::to_string(bsk);
