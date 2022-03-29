@@ -56,10 +56,14 @@ namespace mockturtle
 /*! \brief Parameters for dsd_decomposition */
 struct muesli_params
 {
+  /* input parameters */
   size_t max_act{10};
   size_t max_sup{3};
   double eps_th{1};
   size_t init_sup{2};
+  bool is_po_only_if_exact{true};
+  /* output parameters */
+  bool is_exact_fn{false};
 };
 
 using dbitset = boost::dynamic_bitset<>;
@@ -350,17 +354,39 @@ public:
         Imax = Inew;
       }
     }
-
     nd_info ninfo;
+
+    if( _vars.sup > _ps.max_sup )
+    {
+      ninfo.truth = false;
+      return ninfo;
+    }
+
     ninfo.sig = support[best_idx];
     
     ninfo.truth = best_eps < _ps.eps_th;
-
+    if( ninfo.truth )
+    {
+      is_exact_functionality = true;
+      _ps.is_exact_fn = true;
+    }
     return ninfo;
   }
 #pragma endregion not done
 
 #pragma region improve function
+bool is_not_trivial( std::string tt_str )
+{
+  bool ans = true;
+  ans &= ( tt_str != "1111" ); 
+  ans &= ( tt_str != "0000" ); 
+  ans &= ( tt_str != "1100" ); 
+  ans &= ( tt_str != "0011" ); 
+  ans &= ( tt_str != "1010" ); 
+  ans &= ( tt_str != "0101" );
+  return ans; 
+}
+
 struct improve_info
 {
   std::string tt_str;
@@ -386,7 +412,7 @@ struct improve_info
       {
         Xnew.push_back( A_info.X[ _vars.act + k ]);
         new_support.push_back( A_info.support[ _vars.act + k ] );
-        std::cout << A_info.X[ _vars.act + k ] << std::endl;
+        //std::cout << A_info.X[ _vars.act + k ] << std::endl;
 
       }
 
@@ -401,7 +427,7 @@ struct improve_info
       
       auto chj_info = chatterjee_method( Xnew, Y );
 
-      std::cout << "> " << chj_info.x << std::endl;
+      //std::cout << "> " << chj_info.x << std::endl;
       std::cout << chj_info.tt_str << std::endl;
 
       ninfo.tt_str = chj_info.tt_str;
@@ -410,13 +436,14 @@ struct improve_info
 
       auto mi_new = kitty::mutual_information( first_act , Y );
       std::cout << mi_new << " > "<< mi_old << " ? " << std::endl; 
-      if ( mi_new > mi_old )
+      if (  mi_new > mi_old && is_not_trivial( ninfo.tt_str ) )
       {
         ninfo.x = chj_info.x;
         ninfo.success = true;
+        return ninfo;
+
       }
-      else
-        ninfo.success = false;
+      ninfo.success = false;
       return ninfo;
     }
   #pragma endregion improve function
@@ -444,6 +471,8 @@ struct improve_info
       std::vector<size_t> support_new;
       _vars.act = 0;
       do {
+          if( _vars.sup > _ps.max_sup )
+            break;
           auto impr_info = improve_fn( support, X, Y ); // improve mi
           success = impr_info.success;
           
@@ -452,7 +481,7 @@ struct improve_info
             X.push_back( impr_info.x );
             for( auto s : impr_info.support )
               std::cout << s << std::endl;
-            std::cout << impr_info.x << std::endl;
+            //std::cout << impr_info.x << std::endl;
 
             kitty::dynamic_truth_table tt( impr_info.support.size() );
             kitty::create_from_binary_string( tt, impr_info.tt_str );
@@ -471,6 +500,8 @@ struct improve_info
 
           while( success == true )
           {
+            if( _vars.sup > _ps.max_sup )
+              break;
             auto impr_info = improve_fn( support, X, Y );            
             success = impr_info.success;
 
@@ -478,7 +509,7 @@ struct improve_info
             {
               for( auto s : impr_info.support )
                 std::cout << s << std::endl;
-              std::cout << impr_info.x << std::endl;
+              //std::cout << impr_info.x << std::endl;
               
               X.push_back( impr_info.x );
               kitty::dynamic_truth_table tt( impr_info.support.size() );
@@ -490,6 +521,8 @@ struct improve_info
         else
         {
           _vars.sup++;
+          if( _vars.sup > _ps.max_sup )
+            break;
         }
       }
 
@@ -519,6 +552,8 @@ private:
   Istorage _Icoll;
   muesli_params _ps;
   muesli_vars _vars;
+public:
+  bool is_exact_functionality = false;
 };
 } // namespace detail
 
@@ -533,7 +568,13 @@ klut_network muesli( dbitset_vector& X, dbitset& Y, muesli_params& ps )
   for( auto x : X )
     examples.signals.push_back( klut.create_pi() );
   detail::muesli_impl impl( klut, examples, ps );
-  klut.create_po( impl.run() );
+
+  auto osignal = impl.run();
+  if( (ps.is_po_only_if_exact && impl.is_exact_functionality) || !ps.is_po_only_if_exact )
+  {
+    klut.create_po( osignal );
+  }
+
   return klut;
 }
 #pragma endregion iwls2020

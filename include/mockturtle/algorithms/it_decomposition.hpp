@@ -42,6 +42,8 @@
 #include <kitty/decomposition.hpp>
 #include <kitty/dynamic_truth_table.hpp>
 #include <kitty/dbs_statistical_bit_operations.hpp>
+#include <mockturtle/algorithms/muesli.hpp>
+
 #include <kitty/operators.hpp>
 #include <kitty/print.hpp>
 #include <bitset>
@@ -61,8 +63,35 @@ struct it_decomposition_params
   size_t max_sup{3};
   bool try_top_decomposition{true};
   bool try_bottom_decomposition{true};
+  bool try_creation{false};
   bool try_xor_decomposition{false};
+  bool use_cumsum{false};
+  bool is_bottom_exact{false};
   bool is_trivial{true};
+};
+
+struct detection_counter
+{
+  size_t _and;
+  size_t _or;
+  size_t _lt;
+  size_t _le;
+  size_t _xor;
+  size_t _btm;
+  size_t _ctj;
+  size_t _cre;
+
+  detection_counter():
+    _and(0),
+    _or(0),
+    _lt(0),
+    _le(0),
+    _xor(0),
+    _btm(0),
+    _ctj(0),
+    _cre(0)
+  {}
+
 };
 
 struct XYdataset{
@@ -171,6 +200,93 @@ public:
   }
   #pragma endregion cofactors
 
+  #pragma region cum sum
+    double Pk_f( uint64_t const& k, uint64_t const& N0, uint64_t const& N1, uint const& n )
+    {
+      
+      uint64_t Nh = std::max(N0,N1);
+      uint64_t Nl = std::min(N0,N1);
+      uint64_t n_inf = 10;
+      if( n>n_inf || Nl==0 || Nh == 0)
+        return (k==0 ? (double)1:(double)0);
+      double Pk = 1;
+      if(k>Nl)
+      {
+        "k-Nl check";
+        return 0;
+      }
+      if( pow(2,n-1)+k < Nh+Nl) 
+      {
+        "pow check";
+        return 0;
+      }
+      if(Nh==pow(2,n-1))
+      {
+        if( k==Nl )
+        {
+          return 1;
+        } 
+      }
+
+      for(auto j=0;j<Nl-k;++j)
+      {
+        Pk*=(1-(double)Nh/(pow(2,n-1)-j));
+      }
+      
+      if(k!=0)
+      {
+        for( auto j = 0; j<k ; ++j )
+        {
+          double Ak = (double)(Nl-j)/(j+1);
+          double Bk = (double)(Nh-j)/(pow(2,n-1)-Nl+j+1);
+          Pk *= Ak*Bk;
+        }
+      }
+
+      return Pk;
+    }
+    std::pair<double,double> M1M2k(uint64_t const& N0, uint64_t const& N1, uint64_t const& n )
+    {
+      uint64_t Nh = std::max(N0,N1);
+      uint64_t Nl = std::min(N0,N1);
+      uint64_t n_inf = 32;
+      if( n>n_inf )
+        return std::make_pair(0,0);
+      uint64_t kmin = std::max(1, (int)((Nh+Nl)-pow(2,n-1)));
+      double Pk = Pk_f( kmin, N0, N1, n );
+      double M1 = kmin*Pk;
+      double M2 = kmin*kmin*Pk;
+      for( uint64_t k=kmin+1; k< Nl+1 ;++k)
+      {
+        
+        //double Ak = (double)(Nh-k+1)/(pow(2,n-1)-(Nh+Nl)+k);
+        //Ak = Pk*(Nl-k+1);
+        double Ak = k*Pk_f( k, N0, N1, n );
+        M1 += Ak;
+        M2 += Ak*k;
+      }
+      return std::make_pair(M1,sqrt(M2-M1*M1));
+    }
+    uint64_t num_intersections(uint64_t const& N0, uint64_t const& N1, uint64_t const& n)
+    {
+      auto R = M1M2k(N0,N1,n);
+      return std::max((int)floor(R.first-3*R.second),1);
+    }
+
+    double CumSum(uint64_t const& kmax, uint64_t const& N0, uint64_t const& N1, uint64_t const& n )
+    {
+      double CS =0;
+      for(uint64_t k=0; k<kmax+1; ++k)
+      {
+        double dP=Pk_f( k, N0, N1, n );
+        //std::cout << "Pk_f("<< k<<","<< N0<<"," <<N1 <<","<< n<<" )=" << dP<<std::endl;
+        CS+=dP;
+      }
+      //std::cout << CS << std::endl;
+      return CS;
+    }
+  #pragma endregion cum sum
+
   #pragma region quicksort
     template<typename T>
     void swap( T& a, T& b)
@@ -263,8 +379,19 @@ public:
       if(already.find(s)==already.end())
         already.insert(std::make_pair(s,XY1.second[k]));
     }
+    
+    auto n = XY0.first.size()+1;
+    auto R = M1M2k(N0,N1,n);
+    auto Min = std::max(1,(int)floor(R.first-R.second));
+    auto Max = std::max(1,(int)ceil(R.first+R.second));
       
-    if( count_neg >= 1 ) // modifications are possible
+    bool condition1 = ( ( CumSum( count_neg+(int)ceil(R.second), N0, N1, n ) >= 1-0.001 ) && ( count_neg >=2 ) );
+    bool condition2 = ( count_neg >= 1 ) ;
+    bool is_satisfied = _ps.use_cumsum ? condition1 : condition2;
+    /*std::cout << "c1 " << condition1 << std::endl; 
+    std::cout << "c2 " << condition2 << std::endl; 
+    std::cout << "cs " << is_satisfied << std::endl; */
+    if( is_satisfied ) // modifications are possible
       return true;
 
     return false;
@@ -330,22 +457,29 @@ public:
   {
     if( (XY0.second.size() == 0) || (XY0.second.count() == 0) ) // F0 = 0
     {
+      _cnt._and++;
       return it_top_decomposition::and_ ;
     }
     else if( (XY1.second.size() != 0) && (XY1.second.count() == XY1.second.size()) ) // F1 = 1
     {
+      _cnt._or++;
       return it_top_decomposition::or_ ;
     }
     else if( (XY1.second.size() == 0) || (XY1.second.count() == 0) ) // F1 = 0
     {
+      _cnt._lt++;
       return it_top_decomposition::lt_ ;
     }
     else if( (XY0.second.size() != 0) && (XY0.second.count() == XY0.second.size()) ) // F0 = 1
     {
+      _cnt._le++;
       return it_top_decomposition::le_ ;
     }
     else if( _ps.try_xor_decomposition && is_xor_decomposable( XY0, XY1 ) )
+    {
+      _cnt._xor++;
       return it_top_decomposition::xor_ ;
+    }
     else
       return it_top_decomposition::none ;
   }
@@ -363,11 +497,9 @@ public:
 
       double Isupp, Ifnew, Ifr, Ifc, Ifrc;  
       dbitset_vector Xtmp;
-      //for( size_t r=1;  r < original_support.size()-1 ; ++r )
+
       for( size_t i=0;  i < IDXvect.size()-1 ; ++i )
       {
-        //for( size_t c=0;  c< r ; ++c )
-        //{
           auto r = IDXvect[i];
           auto c = IDXvect[i+1];
           indeces2 = { r, c };
@@ -407,15 +539,13 @@ public:
             Ifrc = (_Icoll.Frc).at( support_key );
           }
  
-
-          if( ( Isupp == Ifnew ) && (Ifrc == Ifnew) && ( Ifr == Ifnew ) && ( Ifc == Ifnew) && chj.second )
+          bool exact_flag = _ps.is_bottom_exact ? chj.second : true;
+          /*std::cout << "is bottom exact " << _ps.is_bottom_exact << std::endl;
+          std::cout << "chj.second " << chj.second << std::endl;
+          std::cout << "exact flag " << exact_flag << std::endl;
+*/
+          if( ( Isupp == Ifnew ) && (Ifrc == Ifnew) && ( Ifr == Ifnew ) && ( Ifc == Ifnew) && exact_flag )
           {
-            /*std::cout << "Chatterjee I = " << Isupp << std::endl;
-            std::cout << Xtmp[0] << std::endl;
-            std::cout << Xtmp[1] << std::endl;
-            std::cout << Y << std::endl;
-            std::cout << tt_str << std::endl;
-            std::cout << Xtmp[2] << std::endl;*/
 
             kitty::dynamic_truth_table tt(2u);
             create_from_binary_string( tt, tt_str );
@@ -432,6 +562,70 @@ public:
       return false;
     }
   #pragma endregion decomposition_checks
+
+  #pragma region creation procedures
+  bool is_new_created(  std::vector<signal<klut_network>>& support, dbitset_vector& X, dbitset const& Y, double Imax,
+                                      std::vector<double>& Ivect, std::vector<size_t>& IDXvect )
+    {
+      quicksort_by_attribute( IDXvect, Ivect, 0, Ivect.size()-1 );
+
+      auto original_support = support;
+
+      std::vector<size_t> indeces2;
+      std::vector<signal<klut_network>> support2;
+      bool flag = false;
+
+      double Isupp, Ifnew, Ifr, Ifc, Ifrc;  
+      dbitset_vector Xtmp;
+
+      for( size_t i=0;  i < IDXvect.size()-1 ; ++i )
+      {
+          auto r = IDXvect[i];
+          auto c = IDXvect[i+1];
+          indeces2 = { r, c };
+          support2 = { original_support[r], original_support[c] };
+
+          std::string Sr, Sc;
+          uint64_t Sr_64t = original_support[r];
+          uint64_t Sc_64t = original_support[c];
+          Sr = std::to_string( Sr_64t );
+          Sc = std::to_string( Sc_64t );
+          std::string support_key = Sr + " " + Sc;
+
+          Xtmp = { X[r], X[c] };
+          auto chj = chatterjee_method( Xtmp, Y );
+          auto tt_str = chj.first;
+          assert( Xtmp.size() == 3 );
+
+          if( (_Icoll.Fnew).find( support_key ) == (_Icoll.Fnew).end() )
+          { 
+            Isupp = kitty::mutual_information( std::vector{ X[r], X[c] }, Y ); 
+            Ifnew = kitty::mutual_information( Xtmp[2], Y );
+            (_Icoll.Fnew).insert(std::make_pair( support_key, Ifnew ));
+            if( Ifnew >= Imax )
+            {
+              kitty::dynamic_truth_table tt(2u);
+              create_from_binary_string( tt, tt_str );
+              support.push_back( _klut.create_node( support2, tt ) );
+              X.push_back( Xtmp[2] );
+                return true;
+            }
+          } 
+          else
+          {
+            Ifnew = (_Icoll.Fnew).at( support_key );
+          }
+ 
+          //bool exact_flag = _ps.is_bottom_exact ? chj.second : true;
+          /*std::cout << "is bottom exact " << _ps.is_bottom_exact << std::endl;
+          std::cout << "chj.second " << chj.second << std::endl;
+          std::cout << "exact flag " << exact_flag << std::endl;
+*/
+        //}
+      }
+      return false;
+    }
+  #pragma endregion creation procedures
 
   #pragma region idsd
   signal<klut_network> idsd_step( std::vector<signal<klut_network>> support, dbitset_vector& X, dbitset & Y )
@@ -452,8 +646,10 @@ public:
 
 
     if( support.size() <= _ps.max_sup )
+    {
+      _cnt._ctj++;
       return apply_chatterjee( support, X, Y );
-
+    }
     uint64_t idx = 0;
     double Inew = 0;
     double Imax = 0;
@@ -521,8 +717,14 @@ public:
     }
     if( _ps.try_bottom_decomposition && is_bottom_decomposable( support, X, Y, Imax, Ivect, IDXvect ) )
     {
+      _cnt._btm++;
       return idsd_step( support, X, Y );
-    }  
+    }
+    if( _ps.try_creation && is_new_created( support, X, Y, Imax, Ivect, IDXvect ) )
+    {
+      _cnt._cre++;
+      return idsd_step( support, X, Y );
+    } 
     _Icoll.clear();
     auto F0 = idsd_step( reduced_support, XY0.first, XY0.second );
     _Icoll.clear();
@@ -547,6 +749,8 @@ private:
   uint64_t _num_out;
   Istorage _Icoll;
   it_decomposition_params _ps;
+public:
+  detection_counter _cnt;
 };
 
 } // namespace detail
@@ -668,14 +872,22 @@ double compute_accuracy( mockturtle::dbitset_vector const& X, mockturtle::dbitse
   return acc;
 }
 
-void it_decomposition_iwls20( XYdataset& dt, klut_network& klut, it_decomposition_params& ps )
+detail::it_decomposition_impl it_decomposition_iwls20( XYdataset& dt, klut_network& klut, it_decomposition_params& ps )
 {
   lfeNtk<klut_network> examples;
   examples.partial = std::make_pair( dt.X, dt.Y );
-  for( size_t i = 0; i < dt.nin; ++i )
-    examples.signals.push_back( klut.create_pi() );
+
+  muesli_params mps;
+  ps.max_sup = 2;
+  klut = muesli( examples.partial.first, examples.partial.second, mps );
+
+  //for( size_t i = 0; i < dt.nin; ++i )
+  //  examples.signals.push_back( klut.create_pi() );
+  
   detail::it_decomposition_impl impl( klut, examples, ps );
-  klut.create_po( impl.run() );
+  if( !mps.is_exact_fn )
+    klut.create_po( impl.run() );
+  return impl;
 }
 #pragma endregion iwls2020
 } // namespace mockturtle
