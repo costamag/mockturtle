@@ -483,6 +483,9 @@ int main()
   kitty::print_binary(tt_s);
   //swap_adjacent_inplace( tt_s, GetParam().first );
 
+  dbitset X(16u,1010101010101010);
+  std::cout << std::endl;
+  std::cout << X << std::endl;
 
   return 0;
 }

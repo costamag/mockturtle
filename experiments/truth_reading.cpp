@@ -1,7 +1,5 @@
 
 #include <iostream>
-//#include <catch.hpp>
-//#include <execution>
 #include <sstream>
 #include <string>
 #include <fstream>
@@ -11,6 +9,7 @@
 #include <mockturtle/algorithms/cut_rewriting.hpp>
 #include <mockturtle/algorithms/aig_resub.hpp>
 #include <mockturtle/io/write_aiger.hpp>
+#include <mockturtle/io/aiger_reader.hpp>
 
 #include <cmath>
 #include <random>
@@ -24,13 +23,9 @@
 #include <mockturtle/networks/aig.hpp>
 #include <mockturtle/io/truth_reader.hpp>
 
-
-//#include <mockturtle/networks/cover.hpp>
 #include <mockturtle/algorithms/it_decomposition.hpp>
 #include <mockturtle/algorithms/klut_to_graph.hpp>
 
-//#include <mockturtle/networks/pla2.hpp>// plaT for bottom, plaT0 for only greedy
-//#include <mockturtle/networks/plaT0.hpp>
 #include <lorina/truth.hpp>
 #include <mockturtle/views/names_view.hpp>
 #include <mockturtle/algorithms/graph_to_lfe.hpp>
@@ -44,15 +39,15 @@
 #include <kitty/statistical_bit_operations.hpp>
 #include <fstream>
 #include <string>
-//#include <omp.h>
 #include <unistd.h>
+#include <omp.h>
 using namespace mockturtle;
-/*
+
 template<class Ntk>
-Ntk abc_opto( Ntk const& ntk )
+Ntk abc_opto( Ntk const& ntk, std::string str_code )
 {
-  write_aiger( ntk, "/tmp/test.aig" );
-  std::string command = "abc -q \"r /tmp/test.aig; resyn2; resyn2; resyn2; resyn2; resyn2; write_aiger /tmp/res.aig\"";
+  write_aiger( ntk, "/tmp/"+str_code+".aig" );
+  std::string command = "abc -q \"r /tmp/"+str_code+".aig; resyn2rs; write_aiger /tmp/"+str_code+".aig\"";
 
   std::array<char, 128> buffer;
   std::string result;
@@ -67,11 +62,42 @@ Ntk abc_opto( Ntk const& ntk )
   }
 
   Ntk res;
-  lorina::read_aiger()  
+  std::string string_path = ("/tmp/"+str_code+".aig");
+  lorina::read_aiger( string_path, aiger_reader( res ) );  
 
-  return Ntk;
+  return res;
 }
-*/
+
+bool cec( std::string path_to_ntk1, std::string path_to_ntk2 )
+{
+  std::string command = "abc -q \"read "+path_to_ntk1+"; &get; &cec "+path_to_ntk2+" \" ";
+
+  std::array<char, 128> buffer;
+  std::string result;
+  std::unique_ptr<FILE, decltype( &pclose )> pipe( popen( command.c_str(), "r" ), pclose );
+  if ( !pipe )
+  {
+    throw std::runtime_error( "popen() failed" );
+  }
+  while ( fgets( buffer.data(), buffer.size(), pipe.get() ) != nullptr )
+  {
+    result += buffer.data();
+  }
+
+  /* search for one line which says "Networks are equivalent" and ignore all other debug output from ABC */
+  std::stringstream ss( result );
+  std::string line;
+  while ( std::getline( ss, line, '\n' ) )
+  {
+    if ( line.size() >= 23u && line.substr( 0u, 23u ) == "Networks are equivalent" )
+    {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 void print_LFE( auto LFE, bool only_complete = false )  
 {
   std::cout << "complete:" << std::endl;
@@ -135,13 +161,13 @@ std::pair<std::vector<kitty::dynamic_truth_table>, uint32_t> load( std::string f
 }
 int main()
 {
-//std::cout << "NUM THREADS = " << omp_get_max_threads() << std::endl;
-//omp_set_num_threads( 1 );
+std::cout << "NUM THREADS = " << omp_get_max_threads() << std::endl;
+omp_set_num_threads( 6 );
 
 std::vector<size_t> bvect = { 65,66,67, 40,45,48};
 
-//#pragma omp parallel for 
-for (uint32_t i = 0 ; i<100; i++) { // bvect.size()
+#pragma omp parallel for 
+for (uint32_t i = 39 ; i<100; i++) { // bvect.size()
   uint32_t bsk = i;
 
   std::string str_code;
@@ -185,7 +211,6 @@ for (uint32_t i = 0 ; i<100; i++) { // bvect.size()
     std::cout << "TRUTH Ntk after" << std::endl;
     std::cout << "num gates " << klut.num_gates() << std::endl;
     std::cout << "num outputs " << klut.num_pos() << std::endl;
-
   }
 
   auto aig = convert_klut_to_graph<aig_network>( klut );
@@ -208,15 +233,39 @@ for (uint32_t i = 0 ; i<100; i++) { // bvect.size()
   if( LFE_pre.complete.second != LFE_after.complete.second )
   {
     error = true;
-    std::cout << "XXXXXXXXXXXXX ERROR XXXXXXXXXXXXX" << std::endl;
+    std::cerr << "[e] not equivalent according to simple simulation check" << std::endl;
   }
+
+  aig = cleanup_dangling( aig );
+  std::string my_path = "/home/acostama/projects/EPFL/mockturtle/simulations/iwls22/resub/aig/"+str_code+".aig";
+  std::string best_path = "/home/acostama/projects/EPFL/mockturtle/simulations/iwls22/contest_results/ex"+str_code+".aig";
 
   depth_view_params psD;
   psD.count_complements = true;
+  depth_view depth_aig_old{aig, {}, psD};
+  auto new_depth = depth_aig_old.depth();
+  auto old_depth = new_depth;
+  auto new_num_gates = aig.num_gates();
+  auto old_num_gates = new_num_gates;
+  do{
+    old_depth = new_depth;
+    old_num_gates = new_num_gates;
+    aig = abc_opto( aig, str_code );
+    write_aiger( aig, my_path );
+    new_num_gates = aig.num_gates();
+    depth_view depth_aig{aig, {}, psD};
+    new_depth = depth_aig.depth();
+    std::cout << "ng " << new_num_gates << std::endl;
+    std::cout << "dp " << new_depth << std::endl;
+  } while( (new_num_gates < old_num_gates) || (new_depth < old_depth) );
+  
   depth_view depth_aig{aig, {}, psD};
 
-  aig = cleanup_dangling( aig );
-  write_aiger( aig, "/home/acostama/projects/EPFL/mockturtle/simulations/iwls22/resub/aig/"+str_code+".aig" );
+  if( cec( my_path, best_path ) == false )
+    std::cerr << "[e] not equivalent according to abc" << std::endl;
+  else
+    std::cout << "equivalent according to abc" << std::endl;
+
 
   std::cout <<".b " << str_code << std::endl;
   std::cout << ".g " << depth_aig.num_gates() << std::endl;
@@ -232,6 +281,7 @@ for (uint32_t i = 0 ; i<100; i++) { // bvect.size()
   myfile << ".g " << depth_aig.num_gates() << std::endl;
   myfile << ".s " << depth_aig.size() << std::endl; 
   myfile << ".d " << depth_aig.depth() << std::endl;
+
   myfile.close();
 
 }
