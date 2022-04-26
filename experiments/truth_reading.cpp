@@ -36,7 +36,7 @@
 #include <kitty/constructors.hpp>
 #include <kitty/print.hpp>
 #include <kitty/dynamic_truth_table.hpp>
-#include <kitty/statistical_bit_operations.hpp>
+#include <kitty/statistics.hpp>
 #include <fstream>
 #include <string>
 #include <unistd.h>

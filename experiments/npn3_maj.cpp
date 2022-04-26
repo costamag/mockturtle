@@ -19,16 +19,16 @@
 
 
 //#include <mockturtle/networks/cover.hpp>
-#include <mockturtle/algorithms/it_decomposition.hpp>
+#include <mockturtle/algorithms/lfe/mi_decomposition.hpp>
 #include <mockturtle/algorithms/node_resynthesis/xag_npn.hpp>
-#include <mockturtle/algorithms/muesli.hpp>
+//#include <mockturtle/algorithms/muesli.hpp>
 #include <mockturtle/algorithms/klut_to_graph.hpp>
 
 //#include <mockturtle/networks/pla2.hpp>// plaT for bottom, plaT0 for only greedy
 //#include <mockturtle/networks/plaT0.hpp>
 #include <lorina/truth.hpp>
 #include <mockturtle/views/names_view.hpp>
-#include <mockturtle/algorithms/graph_to_lfe.hpp>
+#include <mockturtle/algorithms/lfe/graph_to_lfe.hpp>
 #include <typeinfo>
 #include <lorina/lorina.hpp>
 #include <mockturtle/views/depth_view.hpp>
@@ -36,7 +36,7 @@
 #include <kitty/constructors.hpp>
 #include <kitty/print.hpp>
 #include <kitty/dynamic_truth_table.hpp>
-#include <kitty/dbs_statistical_bit_operations.hpp>
+#include <kitty/statistics.hpp>
 #include <fstream>
 #include <string>
 #include <omp.h>

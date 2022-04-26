@@ -1,0 +1,1363 @@
+/* mockturtle: C++ logic network library
+ * Copyright (C) 2018-2021  EPFL
+ *
+ * Permission is hereby granted, free of charge, to any person
+ * obtaining a copy of this software and associated documentation
+ * files (the "Software"), to deal in the Software without
+ * restriction, including without limitation the rights to use,
+ * copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following
+ * conditions:
+ *
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+ * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+ * HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
+ */
+
+/*!
+  \file mi_decomposition.hpp
+  \brief Mutual Information - based decomposition
+
+  \author Andrea Costamagna
+*/
+
+#pragma once
+
+#include <cstdint>
+#include <vector>
+
+#include "../../traits.hpp"
+
+#include <fmt/format.h>
+#include <kitty/constructors.hpp>
+#include <kitty/decomposition.hpp>
+#include <kitty/dynamic_truth_table.hpp>
+#include <mockturtle/algorithms/klut_to_graph.hpp>
+#include <mockturtle/algorithms/cut_rewriting.hpp>
+#include <mockturtle/algorithms/aig_resub.hpp>
+#include <kitty/statistics.hpp>
+
+#include <kitty/operators.hpp>
+#include <kitty/print.hpp>
+
+#include <mockturtle/algorithms/lfe/graph_to_lfe.hpp>
+
+
+namespace mockturtle
+{
+
+/*! \brief Parameters for dsd_decomposition */
+struct mi_decomposition_params
+{
+  /*! \brief Apply XOR decomposition. */
+  bool is_verbose{false};
+  bool is_informed{true};
+  size_t max_sup{3};
+  bool try_top_decomposition{true};
+  bool try_bottom_decomposition{true};
+  bool try_bottom_decomposition_advanced{false};
+  bool try_creation{false};
+  bool try_xor_decomposition{false};
+  bool use_cumsum{false};
+  bool is_bottom_exact{false};
+  bool is_trivial{true};
+  uint64_t type_preprocessing{1};
+  bool dontcares{false};
+};
+
+struct detection_counter
+{
+  size_t _and;
+  size_t _or;
+  size_t _lt;
+  size_t _le;
+  size_t _xor;
+  size_t _btm;
+  size_t _ctj;
+  size_t _cre;
+  stopwatch<>::duration time_dec{0};
+
+  detection_counter():
+    _and(0),
+    _or(0),
+    _lt(0),
+    _le(0),
+    _xor(0),
+    _btm(0),
+    _ctj(0),
+    _cre(0)
+  {}
+
+};
+
+struct XYdataset{
+  std::vector<kitty::partial_truth_table> X;
+  kitty::partial_truth_table Y;
+  uint64_t nin;
+  uint64_t nout;
+  uint64_t ndata;
+};
+
+using dbitset = kitty::partial_truth_table;
+using dbitset_vector = std::vector<dbitset>;
+
+namespace detail
+{
+
+enum class mi_top_decomposition
+{
+  none,
+  and_,
+  or_,
+  lt_,
+  le_,
+  xor_
+};
+
+class mi_decomposition_impl
+{
+
+public:
+  mi_decomposition_impl( klut_network& ntk, lfeNtk<klut_network>& examples, mi_decomposition_params& ps )
+      : _klut( ntk ),
+        _examples( examples ),
+        _ps( ps )
+  {
+    _num_out = examples.complete.second.size();
+  }
+
+  void remove_column_and_invert( dbitset_vector& X, dbitset& Y, uint64_t idx )
+  {
+    Y ^= X[idx];
+    X.erase( X.begin() + idx );
+  }
+
+  #pragma region storage units
+    struct Istorage
+  {
+    std::unordered_map<std::string, double> Fnew;
+    std::unordered_map<std::string, double> Fr;
+    std::unordered_map<std::string, double> Fc;
+    std::unordered_map<std::string, double> Frc;
+    std::unordered_map<std::string, double> supp;
+
+    void clear()
+    {
+      Fnew.clear();
+      Fr.clear();
+      Fc.clear();
+      Frc.clear();
+      supp.clear();
+    }
+  };
+
+  #pragma endregion sotorage units
+
+  #pragma region cofactors
+  std::pair<dbitset_vector, dbitset> compute_cofactor( dbitset_vector const& X, dbitset const& Y, 
+                                                              uint64_t const& id, uint64_t idx = 0 )
+  {
+    if( X.size()==0 )
+      return std::make_pair(X,Y);
+    assert( X[0].num_bits() == Y.num_bits() );
+    assert( idx < X.size() );
+
+    dbitset M;
+    M = (id == 1) ?  X[idx] : ~X[idx];
+    dbitset_vector Xid;
+    dbitset Yid;
+
+    uint64_t ref_idx = M.num_bits();
+    for( auto i{0u}; i < M.num_bits(); ++i )
+    {
+      if( kitty::get_bit(M,i) == 1 )
+      {
+        ref_idx = i;
+        break;
+      }
+    }
+
+    if (ref_idx != M.num_bits() )
+    {
+      dbitset rM ( kitty::count_ones(M) );
+      Yid = rM;
+
+      for( size_t i{0}; i < X.size(); ++i )
+        Xid.push_back( rM );
+
+      uint64_t current_idx = ref_idx;
+      size_t k = 0;
+      bool new1_found = true;
+      do
+      {
+        kitty::get_bit(Y,current_idx) == 1 ? kitty::set_bit(Yid,k) : kitty::clear_bit(Yid,k);
+        for( size_t i{0}; i < X.size(); ++i )
+          kitty::get_bit(X[i],current_idx) == 1 ? kitty::set_bit(Xid[i],k) : kitty::clear_bit(Xid[i],k);
+        k++;  
+        new1_found = false;
+
+        for( auto i{current_idx+1}; i < M.num_bits(); ++i )
+        {
+          if( kitty::get_bit(M,i) == 1 )
+          {
+            current_idx = i;
+            new1_found = true;
+            break;
+          }
+        }
+        if( current_idx >= M.num_bits() )
+          new1_found = false;
+      } while ( new1_found );
+      Xid.erase( Xid.begin()+idx );
+    }
+
+    return std::make_pair( Xid, Yid );
+  }
+  #pragma endregion cofactors
+
+  #pragma region cum sum
+    double Pk_f( uint64_t const& k, uint64_t const& N0, uint64_t const& N1, uint const& n )
+    {
+      
+      uint64_t Nh = std::max(N0,N1);
+      uint64_t Nl = std::min(N0,N1);
+      uint64_t n_inf = 10;
+      if( n>n_inf || Nl==0 || Nh == 0)
+        return (k==0 ? (double)1:(double)0);
+      double Pk = 1;
+      if(k>Nl)
+      {
+        "k-Nl check";
+        return 0;
+      }
+      if( pow(2,n-1)+k < Nh+Nl) 
+      {
+        "pow check";
+        return 0;
+      }
+      if(Nh==pow(2,n-1))
+      {
+        if( k==Nl )
+        {
+          return 1;
+        } 
+      }
+
+      for(auto j=0;j<Nl-k;++j)
+      {
+        Pk*=(1-(double)Nh/(pow(2,n-1)-j));
+      }
+      
+      if(k!=0)
+      {
+        for( auto j = 0; j<k ; ++j )
+        {
+          double Ak = (double)(Nl-j)/(j+1);
+          double Bk = (double)(Nh-j)/(pow(2,n-1)-Nl+j+1);
+          Pk *= Ak*Bk;
+        }
+      }
+
+      return Pk;
+    }
+    std::pair<double,double> M1M2k(uint64_t const& N0, uint64_t const& N1, uint64_t const& n )
+    {
+      uint64_t Nh = std::max(N0,N1);
+      uint64_t Nl = std::min(N0,N1);
+      uint64_t n_inf = 32;
+      if( n>n_inf )
+        return std::make_pair(0,0);
+      uint64_t kmin = std::max(1, (int)((Nh+Nl)-pow(2,n-1)));
+      double Pk = Pk_f( kmin, N0, N1, n );
+      double M1 = kmin*Pk;
+      double M2 = kmin*kmin*Pk;
+      for( uint64_t k=kmin+1; k< Nl+1 ;++k)
+      {
+        
+        //double Ak = (double)(Nh-k+1)/(pow(2,n-1)-(Nh+Nl)+k);
+        //Ak = Pk*(Nl-k+1);
+        double Ak = k*Pk_f( k, N0, N1, n );
+        M1 += Ak;
+        M2 += Ak*k;
+      }
+      return std::make_pair(M1,sqrt(M2-M1*M1));
+    }
+    uint64_t num_intersections(uint64_t const& N0, uint64_t const& N1, uint64_t const& n)
+    {
+      std::pair<double,double> R = M1M2k(N0,N1,n);
+      return std::max((int)floor(R.first-3*R.second),1);
+    }
+
+    double CumSum(uint64_t const& kmax, uint64_t const& N0, uint64_t const& N1, uint64_t const& n )
+    {
+      double CS =0;
+      for(uint64_t k=0; k<kmax+1; ++k)
+      {
+        double dP=Pk_f( k, N0, N1, n );
+        CS+=dP;
+      }
+      return CS;
+    }
+  #pragma endregion cum sum
+
+  #pragma region quicksort
+    template<typename T>
+    void swap( T& a, T& b)
+    {
+      T t = a;
+      a = b;
+      b = t;
+    }
+
+    int partition ( std::vector<size_t>& support, std::vector<double>& attribute , uint64_t low, uint64_t high )
+    {
+    double pivot = attribute[high];    // pivot
+    int i = (low-1);  // Index of smaller element
+ 
+    for (int j = low; j < high; j++)
+      {
+        if ( attribute[j] <= pivot)
+        {
+            i++;    // increment index of larger element
+            swap(attribute[i], attribute[j]);
+            swap(support[i], support[j]);
+        }
+      }
+      swap(attribute[i + 1], attribute[high]);
+      swap(support[i + 1], support[high]);
+      return (i + 1);
+    }
+
+    void quicksort_by_attribute( std::vector<size_t>& support, std::vector<double>& attribute,  int low, int high )
+    {
+      if( low >= high )
+        return;
+      else
+      {
+        int pi = partition( support, attribute, low, high);
+        quicksort_by_attribute( support, attribute, low, pi - 1);
+        quicksort_by_attribute( support, attribute, pi+1, high);
+      }
+    }
+    #pragma endregion
+
+  #pragma region is_xor_decomposable
+  bool is_xor_decomposable(  std::pair<dbitset_vector, dbitset>& XY0, std::pair<dbitset_vector, dbitset>& XY1 )
+  {
+    size_t count_neg = 0;
+    std::unordered_map<std::string, bool> str_nodes0;
+    std::unordered_map<std::string, bool> already;
+
+    size_t N0 = 0;
+    /* fill hash table */
+    //if( XY0.first.size() == 0 )
+    //  return false;
+    for( size_t k {0u}; k < XY0.first[0].num_bits(); ++k )
+    {
+      dbitset pattern;
+      for( size_t j{0}; j < XY0.first.size(); ++j )
+        pattern.add_bit( kitty::get_bit(XY0.first[j],k) );
+      std::string s;
+      s = kitty::to_binary( pattern );
+      if( str_nodes0.find(s) == str_nodes0.end() )
+      {
+        N0++;
+        str_nodes0.insert( std::make_pair(s, kitty::get_bit(XY0.second,k)));
+      }
+      else if ( str_nodes0.at(s) != kitty::get_bit(XY0.second, k) )
+      {
+        return false;
+      }
+    }
+
+    uint64_t N1 = 0;
+    for ( size_t k {0u}; k < XY1.first[0].num_bits(); ++k )
+    {
+      dbitset pattern;
+      for( size_t j{0}; j < XY1.first.size(); ++j )
+        pattern.add_bit( kitty::get_bit(XY1.first[j], k) );
+      std::string s;
+      s = kitty::to_binary( pattern );
+      if( already.find(s) == already.end() )
+        N1++;
+
+      if( str_nodes0.find(s) != str_nodes0.end() )
+      {   
+        if( str_nodes0.at(s) == kitty::get_bit(XY1.second,k) )
+          return false;
+        else
+        {
+          if(already.find(s) == already.end())
+            count_neg++;
+        }
+      }
+      if(already.find(s)==already.end())
+        already.insert(std::make_pair(s, kitty::get_bit( XY1.second, k )));
+    }
+    
+    size_t n = XY0.first.size()+1;
+    std::pair<double,double> R = M1M2k(N0,N1,n);
+    int Min = std::max(1,(int)floor(R.first-R.second));
+    int Max = std::max(1,(int)ceil(R.first+R.second));
+
+    bool condition0 = ( count_neg >= 0 ) ;//&& ( XY0.second.num_bits()<std::pow(2,n) ) && ( XY0.second.num_bits()>0 ) ;
+    bool condition1 = ( ( CumSum( count_neg+(int)ceil(R.second), N0, N1, n ) >= 1-0.001 ) && ( count_neg >=2 ) );
+    bool condition2 = ( count_neg >= 1 ) ;
+
+    bool is_satisfied = ( _ps.dontcares ? condition0 : ( _ps.use_cumsum ? condition1 : condition2 ) );
+    if( is_satisfied ) // modifications are possible
+      return true;
+
+    return false;
+    }
+  #pragma endregion is_xor_decomposable
+
+  #pragma region are_equal
+  bool are_equal(  std::pair<dbitset_vector, dbitset> const XY0, std::pair<dbitset_vector, dbitset> const XY1 )
+  {
+    if( (XY0.second.num_bits()==0) || (XY1.second.num_bits()==0) )
+      return true;
+    size_t count_neg = 0;
+    std::unordered_map<std::string, bool> str_nodes0;
+    std::unordered_map<std::string, bool> already;
+
+    size_t N0 = 0;
+    /* fill hash table */
+    if( XY0.first.size() == 0 )
+      return false;
+    for( size_t k {0u}; k < XY0.first[0].num_bits(); ++k )
+    {
+      dbitset pattern;
+      for( size_t j{0}; j < XY0.first.size(); ++j )
+        pattern.add_bit( kitty::get_bit(XY0.first[j], k) );
+      std::string s;
+      s = kitty::to_binary( pattern );
+      if( str_nodes0.find(s) == str_nodes0.end() )
+      {
+        N0++;
+        str_nodes0.insert( std::make_pair(s, kitty::get_bit( XY0.second, k )));
+      }
+      else if ( str_nodes0.at(s) != kitty::get_bit( XY0.second, k ) )
+      {
+        return false;
+      }
+    }
+    uint64_t N1 = 0;
+    for ( size_t k {0u}; k < XY1.first[0].num_bits(); ++k )
+    {
+      dbitset pattern;
+
+      for( size_t j{0}; j < XY1.first.size(); ++j )
+        pattern.add_bit( kitty::get_bit( XY1.first[j], k ) );
+      std::string s;
+      s = to_binary( pattern );
+      if( already.find(s) == already.end() )
+        N1++;
+
+      if( str_nodes0.find(s) != str_nodes0.end() )
+      {   
+        if( str_nodes0.at(s) != kitty::get_bit( XY1.second, k) )
+          return false;
+      }
+      if(already.find(s)==already.end())
+        already.insert(std::make_pair(s, kitty::get_bit( XY1.second, k )));
+    }
+    return true;
+
+    }
+  #pragma endregion are_equal
+
+std::string decToBinary(int n, size_t N)
+{
+    // array to store binary number
+    std::vector<int> binaryNum;
+    std::string S = "";
+ 
+    // counter for binary array
+    int i = 0;
+    while (n > 0) {
+ 
+        // storing remainder in binary array
+        binaryNum.push_back( n % 2 );
+        S = (n % 2 == 1 ? "1"+S : "0"+S );
+        n = n / 2;
+        i++;
+    }
+    
+    if( binaryNum.size() < N )
+    { 
+      for( auto j{0u}; j < N - binaryNum.size(); ++j )
+      {
+          S = "0"+S;
+      }
+    }
+    return S;
+}
+
+  #pragma region chatterjee
+  std::pair<std::string, bool> chatterjee_method( dbitset_vector& X, dbitset Y )
+  {
+      bool is_exact = true;
+      uint64_t N = X.size();
+      uint64_t pow2N = pow(2,N);
+      dbitset bit02N( X[0].num_bits() );
+      dbitset Kmask, new_values;
+      new_values = bit02N;
+      std::string tt = "";
+      std::default_random_engine generator;
+      std::bernoulli_distribution distribution(0.5);
+      uint64_t C0, C1;
+      for( uint64_t k {0u}; k < pow2N; ++k )
+      {
+        Kmask = ~bit02N;
+        dbitset maskN(N);
+        std::string Sk = decToBinary( k, N );
+
+        kitty::create_from_binary_string( maskN, Sk );
+
+        for( uint64_t j {0u}; j < N; ++j )
+        {
+          if( kitty::get_bit( maskN, j) == 1 )
+            Kmask &= X[j];
+          else if( kitty::get_bit(maskN, j ) == 0 )
+            Kmask &= ~X[j];
+          else
+            std::cerr << "invalid" << std::endl;
+        }
+        C1 = kitty::count_ones(( Kmask & Y ));
+        C0 = kitty::count_ones(( Kmask & ~Y ));
+        auto r = distribution(generator);
+
+        if( ( C1 > C0 ) || ( ( C1 == C0 ) && ( r >= 0.5 ) ) )
+        {
+          new_values |= Kmask;
+          tt = "1"+tt;
+        }
+        else if( ( C1 < C0 ) || ( ( C1 == C0 ) && ( r < 0.5 ) ) )
+        {
+          tt = "0"+tt;
+        }
+        if( C1 != 0 && C0 != 0 ) // ADDED
+          is_exact &= false;
+      }
+      X.push_back( new_values );
+      return std::make_pair( tt, is_exact );
+  }
+  signal<klut_network> apply_chatterjee( std::vector<signal<klut_network>>& support, dbitset_vector& X, dbitset const& Y)
+  {
+    std::string tt_str = chatterjee_method( X, Y ).first;
+    kitty::dynamic_truth_table tt( support.size() );
+    kitty::create_from_binary_string( tt, tt_str );
+    return _klut.create_node( support, tt );
+  }
+  #pragma endregion chatterjee
+
+  #pragma region decomposition_checks
+  mi_top_decomposition is_top_decomposable( std::pair<dbitset_vector, dbitset>& XY0, std::pair<dbitset_vector, dbitset>& XY1 )
+  {
+    if( (XY0.second.num_bits() == 0) || (kitty::count_ones(XY0.second) == 0) ) // F0 = 0
+    {
+      _cnt._and++;
+      return mi_top_decomposition::and_ ;
+    }
+    else if( (XY1.second.num_bits() != 0) && (kitty::count_ones(XY1.second) == XY1.second.num_bits()) ) // F1 = 1
+    {
+      _cnt._or++;
+      return mi_top_decomposition::or_ ;
+    }
+    else if( (XY1.second.num_bits() == 0) || (kitty::count_ones(XY1.second) == 0) ) // F1 = 0
+    {
+      _cnt._lt++;
+      return mi_top_decomposition::lt_ ;
+    }
+    else if( (XY0.second.num_bits() != 0) && (kitty::count_ones(XY0.second) == XY0.second.num_bits()) ) // F0 = 1
+    {
+      _cnt._le++;
+      return mi_top_decomposition::le_ ;
+    }
+    else if( _ps.try_xor_decomposition && is_xor_decomposable( XY0, XY1 ) )
+    {
+      _cnt._xor++;
+      return mi_top_decomposition::xor_ ;
+    }
+    else
+      return mi_top_decomposition::none ;
+  }
+
+  bool is_bottom_decomposable(  std::vector<signal<klut_network>>& support, dbitset_vector& X, dbitset & Y, double Imax,
+                                      std::vector<double>& Ivect, std::vector<size_t>& IDXvect )
+    {
+      quicksort_by_attribute( IDXvect, Ivect, 0, Ivect.size()-1 );
+
+      std::vector<signal<klut_network>> original_support = support;
+
+      std::vector<size_t> indeces2;
+      std::vector<signal<klut_network>> support2;
+      bool flag = false;
+
+      double Isupp, Ifnew, Ifr, Ifc, Ifrc;  
+      dbitset_vector Xtmp;
+
+      for( size_t i=0;  i < IDXvect.size()-1 ; ++i )
+      {
+          size_t r = IDXvect[i];
+          size_t c = IDXvect[i+1];
+          indeces2 = { r, c };
+          support2 = { original_support[r], original_support[c] };
+
+          std::string Sr, Sc;
+          uint64_t Sr_64t = original_support[r];
+          uint64_t Sc_64t = original_support[c];
+          Sr = std::to_string( Sr_64t );
+          Sc = std::to_string( Sc_64t );
+          std::string support_key = Sr + " " + Sc;
+
+          Xtmp = { X[r], X[c] };
+          std::pair<std::string, bool> chj = chatterjee_method( Xtmp, Y );
+          std::string tt_str = chj.first;
+          assert( Xtmp.size() == 3 );
+
+          if( (_Icoll.Frc).find( support_key ) == (_Icoll.Frc).end() )
+          {
+            std::vector<kitty::partial_truth_table> V1 = { X[r], X[c] };
+            Isupp = kitty::mutual_information( V1 , Y ); 
+            Ifnew = kitty::mutual_information( Xtmp[2], Y );
+            std::vector<kitty::partial_truth_table> V2 = { Xtmp[2], X[r] };
+            Ifr = kitty::mutual_information( V2, Y );
+            std::vector<kitty::partial_truth_table> V3 = { Xtmp[2], X[c] };
+            Ifc = kitty::mutual_information( V3, Y );
+            std::vector<kitty::partial_truth_table> V4 = { Xtmp[2], X[r], X[c] };
+            Ifrc = kitty::mutual_information( V4, Y );
+            (_Icoll.Fnew).insert(std::make_pair( support_key, Ifnew ));
+            (_Icoll.Frc).insert(std::make_pair( support_key, Ifrc ));
+            (_Icoll.Fr).insert(std::make_pair( support_key, Ifr ));
+            (_Icoll.Fc).insert(std::make_pair( support_key, Ifc ));
+            (_Icoll.supp).insert(std::make_pair( support_key, Isupp ));
+          } 
+          else
+          {
+            Isupp = (_Icoll.supp).at( support_key );
+            Ifnew = (_Icoll.Fnew).at( support_key );
+            Ifr = (_Icoll.Fr).at( support_key );
+            Ifc = (_Icoll.Fc).at( support_key );
+            Ifrc = (_Icoll.Frc).at( support_key );
+          }
+ 
+          bool exact_flag = _ps.is_bottom_exact ? chj.second : true;
+
+          if( ( Isupp == Ifnew ) && (Ifrc == Ifnew) && ( Ifr == Ifnew ) && ( Ifc == Ifnew) && exact_flag )
+          {
+            kitty::dynamic_truth_table tt(2u);
+            create_from_binary_string( tt, tt_str );
+            support.push_back( _klut.create_node( support2, tt ) );
+            X.push_back( Xtmp[2] );
+            X.erase(X.begin()+std::max( r, c ) );
+            X.erase(X.begin()+std::min( r, c ) );
+            support.erase(support.begin()+std::max( r, c ));
+            support.erase(support.begin()+std::min( r, c ));
+            return true;
+          }
+      }
+      return false;
+    }
+
+    bool is_bottom_decomposable_advanced(  std::vector<signal<klut_network>>& support, dbitset_vector& X, dbitset& Y, double Imax,
+                                      std::vector<double>& Ivect, std::vector<size_t>& IDXvect )
+    {
+      quicksort_by_attribute( IDXvect, Ivect, 0, Ivect.size()-1 );
+
+      std::vector<signal<klut_network>> original_support = support;
+
+      std::vector<size_t> indeces2;
+      std::vector<signal<klut_network>> support2;
+      bool flag = false;
+
+      double Isupp, Ifnew, Ifr, Ifc, Ifrc;  
+      dbitset_vector Xtmp;
+
+      for( size_t i=0;  i < IDXvect.size()-1 ; ++i )
+      {
+          size_t r = IDXvect[i];
+          for( size_t j=i+1;  j < IDXvect.size() ; ++j )
+          {
+            if( Ivect[i] != Ivect[i] )
+              break;
+
+            size_t c = IDXvect[j];
+            indeces2 = { r, c };
+            support2 = { original_support[r], original_support[c] };
+
+            std::string Sr, Sc;
+            uint64_t Sr_64t = original_support[r];
+            uint64_t Sc_64t = original_support[c];
+            Sr = std::to_string( Sr_64t );
+            Sc = std::to_string( Sc_64t );
+            std::string support_key = Sr + " " + Sc;
+
+            Xtmp = { X[r], X[c] };
+            std::pair<std::string, bool> chj = chatterjee_method( Xtmp, Y );
+            std::string tt_str = chj.first;
+            assert( Xtmp.size() == 3 );
+
+            if( (_Icoll.Frc).find( support_key ) == (_Icoll.Frc).end() )
+            {
+            std::vector<kitty::partial_truth_table> V1 = { X[r], X[c] };
+            Isupp = kitty::mutual_information( V1 , Y ); 
+            Ifnew = kitty::mutual_information( Xtmp[2], Y );
+            std::vector<kitty::partial_truth_table> V2 = { Xtmp[2], X[r] };
+            Ifr = kitty::mutual_information( V2, Y );
+            std::vector<kitty::partial_truth_table> V3 = { Xtmp[2], X[c] };
+            Ifc = kitty::mutual_information( V3, Y );
+            std::vector<kitty::partial_truth_table> V4 = { Xtmp[2], X[r], X[c] };
+            Ifrc = kitty::mutual_information( V4, Y );
+            (_Icoll.Fnew).insert(std::make_pair( support_key, Ifnew ));
+            (_Icoll.Frc).insert(std::make_pair( support_key, Ifrc ));
+            (_Icoll.Fr).insert(std::make_pair( support_key, Ifr ));
+            (_Icoll.Fc).insert(std::make_pair( support_key, Ifc ));
+            (_Icoll.supp).insert(std::make_pair( support_key, Isupp ));
+            } 
+            else
+            {
+              Isupp = (_Icoll.supp).at( support_key );
+              Ifnew = (_Icoll.Fnew).at( support_key );
+              Ifr = (_Icoll.Fr).at( support_key );
+              Ifc = (_Icoll.Fc).at( support_key );
+              Ifrc = (_Icoll.Frc).at( support_key );
+            }
+ 
+            bool exact_flag = _ps.is_bottom_exact ? chj.second : true;
+
+            if( ( Isupp == Ifnew ) && (Ifrc == Ifnew) && ( Ifr == Ifnew ) && ( Ifc == Ifnew) && exact_flag )
+            {
+
+              kitty::dynamic_truth_table tt(2u);
+              create_from_binary_string( tt, tt_str );
+              support.push_back( _klut.create_node( support2, tt ) );
+              X.push_back( Xtmp[2] );
+              X.erase(X.begin()+std::max( r, c ) );
+              X.erase(X.begin()+std::min( r, c ) );
+              support.erase(support.begin()+std::max( r, c ));
+              support.erase(support.begin()+std::min( r, c ));
+              return true;
+            }
+          }
+        }
+        return false;
+    }
+  #pragma endregion decomposition_checks
+
+  #pragma region creation procedures
+  bool is_new_created(  std::vector<signal<klut_network>>& support, dbitset_vector& X, dbitset& Y, double Imax,
+                                      std::vector<double>& Ivect, std::vector<size_t>& IDXvect )
+    {
+
+      quicksort_by_attribute( IDXvect, Ivect, 0, Ivect.size()-1 );
+
+      std::vector<signal<klut_network>> original_support = support;
+
+      std::vector<size_t> indeces2;
+      std::vector<signal<klut_network>> support2;
+      bool flag = false;
+
+      double Isupp, Ifnew, Ifr, Ifc, Ifrc;  
+      dbitset_vector Xtmp;
+
+      for( size_t i=0;  i < IDXvect.size()-1 ; ++i )
+      {
+          size_t r = IDXvect[i];
+          for( size_t j=i+1;  j < IDXvect.size() ; ++j )
+          {        
+          size_t c = IDXvect[j];
+          indeces2 = { r, c };
+          support2 = { original_support[r], original_support[c] };
+
+          std::string Sr, Sc;
+          signal<klut_network> Sr_64t = original_support[r];
+          signal<klut_network> Sc_64t = original_support[c];
+          Sr = std::to_string( Sr_64t );
+          Sc = std::to_string( Sc_64t );
+          std::string support_key = Sr + " " + Sc;
+
+          Xtmp = { X[r], X[c] };
+          std::pair<std::string, bool> chj = chatterjee_method( Xtmp, Y );
+          std::string tt_str = chj.first;
+          assert( Xtmp.size() == 3 );
+          if( (_Icoll.Fnew).find( support_key ) == (_Icoll.Fnew).end() )
+          { 
+            std::vector<kitty::partial_truth_table> V1 = { X[r], X[c] };
+            Isupp = kitty::mutual_information( V1, Y );
+            Ifnew = kitty::mutual_information( Xtmp[2], Y );
+            (_Icoll.Fnew).insert(std::make_pair( support_key, Ifnew ));
+            if( Ifnew > Imax )
+            {
+              kitty::dynamic_truth_table tt(2u);
+              create_from_binary_string( tt, tt_str );
+              support.push_back( _klut.create_node( support2, tt ) );
+              X.push_back( Xtmp[2] );
+                return true;
+            }
+
+          } 
+          else
+          {
+            Ifnew = (_Icoll.Fnew).at( support_key );
+          }
+
+          }
+      }
+      return false;
+    }
+  #pragma endregion creation procedures
+
+  #pragma region dont cares bottom
+    bool is_F1_F0(  std::pair<dbitset_vector, dbitset> const XY0, 
+                    std::pair<dbitset_vector, dbitset> const XY1, 
+                    std::vector<uint64_t>& where1,
+                    uint64_t min_intersection = 0 )
+    {
+      uint64_t count = 0;
+      std::unordered_map<std::string, double> str_nodes0;
+      if( ( XY0.first.size() == 0 ) || ( XY1.first.size() == 0 ) )
+        return true;
+      if( (XY0.first[0].num_bits() == 0) || (XY1.first[0].num_bits() == 0) )
+        return true;
+
+      /* fill hash table */
+      for( uint64_t k {0u}; k < XY0.first[0].num_bits(); ++k )
+      {
+        dbitset pattern;
+        for( size_t j{0}; j < XY0.first.size(); ++j )
+          pattern.add_bit( kitty::get_bit(XY0.first[j],k) );
+        std::string s;
+        s = kitty::to_binary( pattern );
+        str_nodes0.insert(std::make_pair(s,kitty::get_bit(XY0.second,k)));
+      }
+
+      for ( uint64_t k {0u}; k < XY1.first[0].num_bits(); ++k )
+      {
+        dbitset pattern;
+        for( size_t j{0}; j < XY1.first.size(); ++j )
+          pattern.add_bit( kitty::get_bit(XY1.first[j],k) );
+        std::string s;
+        s = kitty::to_binary( pattern );
+        
+        if( str_nodes0.find(s) != str_nodes0.end() )
+        {
+          if( str_nodes0.at(s) == kitty::get_bit(XY1.second,k) )
+          {
+            where1.push_back(k);
+            count++;
+          }
+          else
+          {
+            return false;
+          }
+        }
+      }
+
+      if( count >= min_intersection ) // CONSIDER CHANGING TO >= 0 if motivated
+      {
+        return true;
+      }
+      return false;
+    }
+
+
+  bool dontcares_try_bottom_decomposition( std::vector<uint64_t>& support, 
+                                    dbitset_vector& X, dbitset& Y )
+  {
+    if(support.size()<3)
+      return false;
+      
+    for( uint64_t j{1}; j < support.size(); ++j )
+    {
+      for( uint64_t i = 0; i < j; ++i )
+      {
+        auto XY0 = compute_cofactor( X, Y, 0, i );
+        auto XY00 = compute_cofactor( XY0.first, XY0.second, 0, j-1 );
+        auto XY01 = compute_cofactor( XY0.first, XY0.second, 1, j-1 );
+
+        auto XY1 = compute_cofactor( X, Y, 1, i );
+        auto XY10 = compute_cofactor( XY1.first, XY1.second, 0, j-1 );
+        auto XY11 = compute_cofactor( XY1.first, XY1.second, 1, j-1 );
+        
+
+        if( (XY00.first.size() == 0)||(XY01.first.size() == 0)||(XY10.first.size() == 0)||(XY11.first.size() == 0) )
+          return false;
+        if( (XY00.first[0].num_bits() == 1)||(XY01.first[0].num_bits() == 1)||(XY10.first[0].num_bits() == 1)||(XY11.first[0].num_bits() == 1) )
+          return false;
+
+        uint32_t min_corr = 0;
+        bool eq01 = are_equal( XY00, XY01 ); // tells you where in XY01 there are repetitions
+        bool eq02 = are_equal( XY00, XY10 );
+        bool eq03 = are_equal( XY00, XY11 );
+        bool eq12 = are_equal( XY01, XY10 );
+        bool eq13 = are_equal( XY01, XY11 );
+        bool eq23 = are_equal( XY10, XY11 );
+
+        auto num_pairs =  static_cast<uint32_t>(eq01)+
+                          static_cast<uint32_t>(eq02)+
+                          static_cast<uint32_t>(eq03)+
+                          static_cast<uint32_t>(eq12)+
+                          static_cast<uint32_t>(eq13)+
+                          static_cast<uint32_t>(eq23);
+
+        if( (num_pairs != 2) && (num_pairs != 3) )
+          return false;
+        if( eq12 && eq13 && eq23 && !eq01 && !eq02 && !eq03 ) // F00 is different
+        {
+          auto fxy = _klut.create_or( support[i], support[j] );
+          support.push_back( fxy );
+          support.erase(support.begin()+j);
+          support.erase(support.begin()+i);
+          X.push_back( X[i] | X[j] );
+          X.erase(X.begin()+j);
+          X.erase(X.begin()+i);
+          return true;
+        }
+        else if( eq01 && eq02 && eq12 && !eq03 && !eq13 && !eq23 ) // F11 is different
+        {
+          auto fxy = _klut.create_and( support[i], support[j] );
+          support.push_back( fxy );
+          support.erase(support.begin()+j);
+          support.erase(support.begin()+i);
+          X.push_back( X[i] & X[j] );
+          X.erase(X.begin()+j);
+          X.erase(X.begin()+i); 
+          return true;
+        }
+        else if( eq02 && eq03 && eq23 && !eq01 && !eq12 && !eq13 ) // F01 is different
+        {
+          auto fxy = _klut.create_lt( support[i], support[j] );
+          support.push_back( fxy );
+          support.erase(support.begin()+j);
+          support.erase(support.begin()+i);
+          X.push_back( (~X[i]) & X[j] );
+          X.erase(X.begin()+j);
+          X.erase(X.begin()+i);     
+          return true;
+        }
+        else if( eq01 && eq03 && eq13 && !eq02 && !eq12 && !eq23 ) // F10 is different
+        {
+          auto fxy = _klut.create_le( support[i], support[j] );
+          support.push_back( fxy );
+          support.erase(support.begin()+j);
+          support.erase(support.begin()+i);
+          X.push_back( (~X[i]) | X[j] );
+          X.erase(X.begin()+j);
+          X.erase(X.begin()+i); 
+          return true;
+        }
+        else if( eq03 && eq12 )
+        {
+          auto fxy = _klut.create_xor( support[i], support[j] );
+          support.push_back(fxy);
+          support.erase(support.begin()+j);
+          support.erase(support.begin()+i);
+          X.push_back( X[i] ^ X[j] );
+          X.erase(X.begin()+j);
+          X.erase(X.begin()+i); 
+          return true; 
+        }
+        else
+        {
+          return false;
+        }
+      }
+    }
+  }
+  #pragma endregion dont cares bottom
+
+  #pragma region idsd
+  signal<klut_network> idsd_step( std::vector<signal<klut_network>> support, dbitset_vector& X, dbitset & Y )
+  {
+    if( X.size() == 0 )
+      return _klut.get_constant( false );    
+    if( X[0].num_bits() == 0 )
+      return _klut.get_constant( false );
+
+    assert( ( support.size() == X.size() ) );
+    assert( ( X[0].num_bits() == Y.num_bits() ) );
+
+    if( kitty::count_ones(Y) == 0 ) // contraddiction
+      return _klut.get_constant( false );
+    else if( kitty::count_ones(Y) == Y.num_bits() ) // tautology
+      return _klut.get_constant( true );
+
+    if( support.size() <= _ps.max_sup )
+    {
+      _cnt._ctj++;
+      return apply_chatterjee( support, X, Y );
+    }
+    uint64_t idx = 0;
+    uint64_t idx_min = 0;
+    double Inew = 0;
+    double Imax = 0;
+    std::vector<double> Ivect;
+    std::vector<size_t> IDXvect;
+    
+    if( _ps.is_informed )
+    {
+      size_t i = 0;
+      for( auto x : X )
+      {
+        Inew = kitty::mutual_information( x, Y );
+        if( Inew >= Imax )
+        {
+          idx = i;
+          Imax = Inew;
+        }
+
+        IDXvect.push_back( i++ );
+        Ivect.push_back( Inew );
+      }
+    }
+
+    std::pair<dbitset_vector, dbitset> XY0 = compute_cofactor( X, Y, 0, idx );
+    std::pair<dbitset_vector, dbitset> XY1 = compute_cofactor( X, Y, 1, idx ); 
+
+    std::vector<signal<klut_network>> reduced_support = support;
+    reduced_support.erase( reduced_support.begin() + idx );
+
+    if( _ps.try_top_decomposition )
+    {
+      mi_top_decomposition res = is_top_decomposable( XY0, XY1 );
+      if ( res != mi_top_decomposition::none )
+      {
+        _Icoll.clear();
+        switch ( res )
+        {
+        default:
+          assert( false );
+        case mi_top_decomposition::and_:
+        {
+          signal<klut_network> F1 = idsd_step( reduced_support, XY1.first, XY1.second );
+          return _klut.create_and( support[idx], F1 );
+        }
+        case mi_top_decomposition::or_:
+        {
+          signal<klut_network> F0 = idsd_step( reduced_support, XY0.first, XY0.second );
+          return _klut.create_or( support[idx], F0 );
+        }
+        case mi_top_decomposition::lt_:
+        {
+          signal<klut_network> F0 = idsd_step( reduced_support, XY0.first, XY0.second );
+          return _klut.create_lt( support[idx], F0 );
+        }
+        case mi_top_decomposition::le_:
+        {  
+          signal<klut_network> F1 = idsd_step( reduced_support, XY1.first, XY1.second );
+          return _klut.create_le( support[idx], F1 );
+        }
+        case mi_top_decomposition::xor_:
+        {
+          remove_column_and_invert( X, Y, idx ); 
+          return _klut.create_xor( support[idx] , idsd_step( reduced_support, X, Y ) );
+        }
+        }
+      }
+    }
+    if( _ps.dontcares )
+    {
+      if( _ps.try_bottom_decomposition && dontcares_try_bottom_decomposition( support, X, Y ) )
+      {
+        _cnt._btm++;
+        return idsd_step( support, X, Y );
+      }
+    }
+    else
+    {
+      if( _ps.try_bottom_decomposition && is_bottom_decomposable( support, X, Y, Imax, Ivect, IDXvect ) )
+      {
+        _cnt._btm++;
+        return idsd_step( support, X, Y );
+      }
+
+      if( _ps.try_bottom_decomposition_advanced && is_bottom_decomposable_advanced( support, X, Y, Imax, Ivect, IDXvect ) )
+      {
+        _cnt._btm++;
+        return idsd_step( support, X, Y );    
+      }
+
+      if( _ps.try_creation && is_new_created( support, X, Y, Imax, Ivect, IDXvect ) )
+      {
+        _cnt._cre++;
+        return idsd_step( support, X, Y );
+      } 
+    }
+
+    _Icoll.clear();
+    signal<klut_network> F0 = idsd_step( reduced_support, XY0.first, XY0.second );
+    _Icoll.clear();
+    signal<klut_network> F1 = idsd_step( reduced_support, XY1.first, XY1.second );
+
+    signal<klut_network> f0 = _klut.create_and( _klut.create_not( support[idx] ), F0 );
+    signal<klut_network> f1 = _klut.create_and( support[idx], F1 );
+
+    return _klut.create_or( f1, f0 );
+
+  }
+  #pragma endregion idsd
+
+  signal<klut_network> run()
+  {
+    signal<klut_network> f0 = idsd_step( _examples.signals, _examples.partial.first, _examples.partial.second );
+    return f0;
+
+  }
+private:
+  klut_network& _klut;
+  lfeNtk<klut_network> _examples;
+  signal<klut_network> _support;
+  uint64_t _num_out;
+  Istorage _Icoll;
+  mi_decomposition_params _ps;
+public:
+  detection_counter _cnt;
+};
+
+} // namespace detail
+
+#pragma region decomposition
+void print_LFE( lfeNtk<klut_network> LFE, bool only_complete = false )  
+{
+  std::cout << "complete:" << std::endl;
+  for( auto x : LFE.complete.first)
+  {
+    kitty::print_binary(x);std::cout<<std::endl;
+  }
+  uint32_t n = LFE.complete.first[0].num_bits();
+  for( auto i = 0u; i < n; ++i )
+    std::cout << "-";
+  std::cout << std::endl;
+  for( auto x : LFE.complete.second)
+  {
+    kitty::print_binary(x);std::cout<<std::endl;
+  } 
+  if( !only_complete )
+  {
+    std::cout << "partial:" << std::endl;
+    for( auto x : LFE.partial.first)
+    {
+      kitty::print_binary(x); std::cout<<std::endl;
+    }
+    n = LFE.partial.first[0].num_bits();
+    for( auto i = 0u; i < n; ++i )
+      std::cout << "-";
+    std::cout << std::endl;
+
+    kitty::print_binary(LFE.partial.second); std::cout<<std::endl; 
+  }
+}
+
+/* Algorithms:
+ * mi_decomposition      : multi output given an original klut network
+ * trivial_decomposition : decompose all the outputs
+*/
+void mi_decomposition( klut_network& klut, mi_decomposition_params& ps )
+{
+  if( ps.is_trivial )
+  {
+    std::vector<uint64_t> output_nodes;
+    std::vector<uint64_t> reference;
+    uint64_t ref = 0; 
+    klut.foreach_po( [&]( auto const& node, auto index ) {
+      output_nodes.push_back( node );
+      reference.push_back( ref++ );
+    } );
+
+    uint32_t num_pos = klut.num_pos();
+    lfeNtk<klut_network> examples = graph_to_lfe( klut );
+    kitty::partial_truth_table tt0 = examples.partial.second;
+    std::vector<signal<klut_network>> outputs;
+
+    for( auto i = 0; i < examples.complete.second.size(); ++i ) // you could work on the order
+    {
+      examples = graph_to_lfe( klut, i );
+      detail::mi_decomposition_impl impl( klut, examples, ps );
+      klut.substitute_node( output_nodes[i], impl.run() );
+    }
+
+    
+  }
+  else if( ps.type_preprocessing == 1 )
+  {
+
+    std::vector<uint64_t> output_nodes;
+    klut.foreach_po( [&]( auto const& node, auto index ) {
+      output_nodes.push_back( node );
+    } );
+    uint32_t num_pos = klut.num_pos();
+    lfeNtk<klut_network> examples = graph_to_lfe( klut );
+    std::vector<signal<klut_network>> outputs;
+
+    detail::mi_decomposition_impl impl( klut, examples, ps );
+    outputs = {impl.run()};
+    if( num_pos > 1 )
+    {
+      outputs = {};
+      lfeNtk<klut_network> examples = graph_to_lfe( klut );   
+      for( auto i = 0; i < examples.complete.second.size(); ++i ) // you could work on the order
+      {
+        lfeNtk<klut_network> examplesN = graph_to_lfe( klut, i );
+        detail::mi_decomposition_impl impl( klut, examplesN, ps );
+        klut.substitute_node( output_nodes[i], impl.run() );
+      }
+    }
+    else
+    {
+      klut.substitute_node( output_nodes[0], outputs[0] );
+    }
+  }
+  else
+  {
+    std::vector<uint64_t> output_nodes;
+    klut.foreach_po( [&]( auto const& node, auto index ) {
+      output_nodes.push_back( node );
+    } );
+    uint32_t num_pos = klut.num_pos();
+    lfeNtk<klut_network> examples = graph_to_lfe( klut );
+
+    std::vector<signal<klut_network>> outputs;
+
+    if( num_pos > 1 )
+    {
+      lfeNtk<klut_network> examplesL = graph_to_lfe( klut, 0 );
+      for( auto i{1u}; i<examples.complete.second.size(); ++i )
+      {
+        lfeNtk<klut_network> examplesR = graph_to_lfe( klut, i );
+
+        examplesL.partial.second = examplesL.partial.second & examplesR.partial.second;
+      }
+      
+      detail::mi_decomposition_impl impl( klut, examplesL, ps );
+      outputs = {impl.run()};
+      outputs = {};
+      lfeNtk<klut_network> examples = graph_to_lfe( klut );   
+      for( auto i = 0; i < examples.complete.second.size(); ++i ) // you could work on the order
+      {
+        lfeNtk<klut_network> examplesN = graph_to_lfe( klut, i );
+        detail::mi_decomposition_impl impl( klut, examplesN, ps );
+        klut.substitute_node( output_nodes[i], impl.run() );
+      }
+    }
+    else
+    {
+      outputs = {};
+      lfeNtk<klut_network> examples = graph_to_lfe( klut );
+      detail::mi_decomposition_impl impl( klut, examples, ps );
+      outputs = {impl.run()}; 
+      klut.substitute_node( output_nodes[0], outputs[0] );
+    }
+  }
+}
+#pragma endregion decomposition
+
+#pragma region mi_based_flow
+template<class Ntk>
+Ntk mi_klut_to_graph( klut_network& klut, mi_decomposition_params& ps )
+{
+  if( ps.is_verbose )
+  {
+    std::cout << "Original k-LUT network:" << std::endl;
+    std::cout << "num gates " << klut.num_gates() << std::endl;
+    std::cout << "num outputs " << klut.num_pos() << std::endl;
+  }
+
+  lfeNtk<klut_network> LFE_pre = graph_to_lfe( klut );
+
+  mi_decomposition( klut, ps );
+
+  if( ps.is_verbose )
+  {
+    std::cout << "k-LUT network after decomposition:" << std::endl;
+    std::cout << "num gates " << klut.num_gates() << std::endl;
+    std::cout << "num outputs " << klut.num_pos() << std::endl;
+  }
+
+  lfeNtk<klut_network> LFE_after = graph_to_lfe( klut );
+  bool error = false;
+  if( LFE_pre.complete.second != LFE_after.complete.second )
+  {
+    error = true;
+    std::cerr << "[e] not equivalent according to simple simulation check" << std::endl;
+  }
+
+  Ntk ntk = convert_klut_to_graph<Ntk>( klut );
+  ntk = cleanup_dangling( ntk );
+
+  xag_npn_resynthesis<Ntk> resyn;
+  cut_rewriting_params ps_cr;
+  ps_cr.cut_enumeration_ps.cut_size = 4;
+  ntk = cut_rewriting( ntk, resyn, ps_cr );
+
+  using view_t = depth_view<fanout_view<Ntk>>;
+  fanout_view<Ntk> fanout_view{ ntk };
+  view_t resub_view{ fanout_view };
+
+  aig_resubstitution( resub_view );
+  ntk = cleanup_dangling( ntk );
+  
+  return ntk;
+}
+#pragma endregion mi-flow
+
+
+#pragma region iwls2020
+template<typename Ntk>
+bool simulate_input( mockturtle::dbitset const& input_pattern, Ntk& ntk )
+{
+  std::vector<bool> inpt_v;
+  for( uint64_t k{0u}; k<input_pattern.num_bits();++k )
+  {
+    inpt_v.push_back( ( ( kitty::get_bit( input_pattern, k ) == 1 ) ? true : false ) );
+  }
+
+  return simulate<bool>( ntk, default_simulator<bool>( inpt_v ) )[0];
+}
+
+template<typename Ntk>
+double compute_accuracy( mockturtle::dbitset_vector const& X, mockturtle::dbitset const& Y, Ntk& ntk )
+{
+  double acc = 0;
+  double delta_acc;
+  for( uint64_t k {0u}; k < X[0].num_bits(); ++k )
+  {
+    dbitset ipattern;
+    for ( uint64_t j {0u}; j < X.size(); ++j )
+      ipattern.add_bit( kitty::get_bit(X[j],k) );
+        
+    delta_acc = ( ( simulate_input( ipattern, ntk ) == kitty::get_bit(Y,k) ) ? (double)1.0/X[0].num_bits() : 0.0 );
+    acc += delta_acc;
+  }
+  return acc;
+}
+
+detail::mi_decomposition_impl mi_decomposition_iwls20( XYdataset& dt, klut_network& klut, mi_decomposition_params& ps )
+{
+  lfeNtk<klut_network> examples;
+  examples.partial = std::make_pair( dt.X, dt.Y );
+
+  for( size_t i = 0; i < dt.nin; ++i )
+    examples.signals.push_back( klut.create_pi() );
+  
+  detail::mi_decomposition_impl impl( klut, examples, ps );
+
+  call_with_stopwatch( impl._cnt.time_dec, [&]() {
+    klut.create_po( impl.run() );
+  });
+  
+  return impl;
+}
+#pragma endregion iwls2020
+
+} // namespace mockturtle

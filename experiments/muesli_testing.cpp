@@ -19,8 +19,6 @@
 
 
 //#include <mockturtle/networks/cover.hpp>
-#include <mockturtle/algorithms/it_decomposition.hpp>
-#include <mockturtle/algorithms/muesli.hpp>
 #include <mockturtle/algorithms/klut_to_graph.hpp>
 
 //#include <mockturtle/networks/pla2.hpp>// plaT for bottom, plaT0 for only greedy
@@ -35,7 +33,7 @@
 #include <kitty/constructors.hpp>
 #include <kitty/print.hpp>
 #include <kitty/dynamic_truth_table.hpp>
-#include <kitty/statistical_bit_operations.hpp>
+#include <kitty/statistics.hpp>
 #include <fstream>
 #include <string>
 #include <omp.h>
