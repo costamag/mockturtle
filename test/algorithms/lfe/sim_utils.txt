@@ -1,0 +1,204 @@
+#include <catch.hpp>
+
+#include <mockturtle/algorithms/lfe/simulation_view.hpp>
+#include <mockturtle/algorithms/lfe/sim_patterns.hpp>
+#include <mockturtle/algorithms/lfe/sim_utils.hpp>
+#include <mockturtle/algorithms/lfe/sim_operations.hpp>
+#include <mockturtle/networks/klut.hpp>
+#include <kitty/partial_truth_table.hpp>
+#include <kitty/constructors.hpp>
+#include <kitty/print.hpp>
+#include <mockturtle/algorithms/lfe/sim_decomposition_checks.hpp>
+
+#include <iostream>
+#include <vector>
+
+using namespace mockturtle;
+
+TEST_CASE( "sort by attribute", "[lfe]" )
+{
+  std::vector<size_t> support = { 0, 1, 2, 3, 4, 5 };
+  std::vector<double> attribute = { 0.5, 0.0, 2.0, 1.5, 3.0, 2.5  };
+  quicksort_by_attribute( support, attribute );
+  std::vector<size_t> target_support { 4, 5, 2, 3, 0, 1 };  
+  std::vector<double> target_attribute { 3.0, 2.5, 2.0, 1.5, 0.5, 0.0 };
+
+  CHECK( attribute == target_attribute );
+  CHECK( support == target_support );
+}
+
+TEST_CASE( "Intersection probability", "[lfe]" )
+{
+  CHECK( Pk_f( 0, 4, 4, 3 ) == 0 );
+  CHECK( Pk_f( 4, 4, 4, 3 ) == 1 );
+  CHECK( Pk_f( 5, 4, 4, 3 ) == 0 );
+  CHECK( CumSum( 0, 4, 4, 3 ) == 0 );
+  CHECK( CumSum( 4, 4, 4, 3 ) == 1 );
+  CHECK( CumSum( 5, 4, 4, 3 ) == 1 );
+}
+
+TEST_CASE( "top xor decomposable", "[lfe]" )
+{
+  klut_network klut;
+  simulation_view klut_sim{ klut };
+
+  std::vector<kitty::partial_truth_table> ex;
+  for( size_t i = 0; i < 3; ++i )
+  {
+    ex.push_back( kitty::partial_truth_table(8u) );
+    create_nth_var( ex[i], i );
+  }
+  kitty::partial_truth_table y1(8u);
+  y1 = ex[0] ^ ( ex[1] | ex[2]);
+
+  klut_sim.initialize_network( ex );
+  
+  sim_pattern<klut_network> y1_sim = sim_pattern<klut_network>( y1 );
+  y1_sim.pat = y1;
+
+  std::vector<sim_pattern<klut_network>> X = klut_sim.get_input_patterns();
+  auto XY0 = compute_cofactor0( X, y1_sim );
+  auto XY1 = compute_cofactor1( X, y1_sim );
+
+  CHECK( is_xor_decomposable( XY0, XY1 ) == true );
+
+  XY0 = compute_cofactor0( X, y1_sim, 1 );
+  XY1 = compute_cofactor1( X, y1_sim, 1 );
+
+  CHECK( is_xor_decomposable( XY0, XY1 ) == false );
+}
+
+TEST_CASE( "top and decomposable", "[lfe]" )
+{
+  klut_network klut;
+  simulation_view klut_sim{ klut };
+
+  std::vector<kitty::partial_truth_table> ex;
+  for( size_t i = 0; i < 3; ++i )
+  {
+    ex.push_back( kitty::partial_truth_table(8u) );
+    create_nth_var( ex[i], i );
+  }
+  kitty::partial_truth_table y1(8u);
+  y1 = ex[0] & ( ex[1] | ex[2]);
+
+  klut_sim.initialize_network( ex );
+  
+  sim_pattern<klut_network> y1_sim = sim_pattern<klut_network>( y1 );
+  y1_sim.pat = y1;
+
+  std::vector<sim_pattern<klut_network>> X = klut_sim.get_input_patterns();
+  auto XY0 = compute_cofactor0( X, y1_sim );
+  auto XY1 = compute_cofactor1( X, y1_sim );
+
+  CHECK( is_top_decomposable( XY0, XY1 ) == sim_top_decomposition::and_ );
+
+}
+
+TEST_CASE( "top or decomposable", "[lfe]" )
+{
+  klut_network klut;
+  simulation_view klut_sim{ klut };
+
+  std::vector<kitty::partial_truth_table> ex;
+  for( size_t i = 0; i < 3; ++i )
+  {
+    ex.push_back( kitty::partial_truth_table(8u) );
+    create_nth_var( ex[i], i );
+  }
+  kitty::partial_truth_table y1(8u);
+  y1 = ex[0] | ( ex[1] | ex[2]);
+
+  klut_sim.initialize_network( ex );
+  
+  sim_pattern<klut_network> y1_sim = sim_pattern<klut_network>( y1 );
+  y1_sim.pat = y1;
+
+  std::vector<sim_pattern<klut_network>> X = klut_sim.get_input_patterns();
+  auto XY0 = compute_cofactor0( X, y1_sim );
+  auto XY1 = compute_cofactor1( X, y1_sim );
+
+  CHECK( is_top_decomposable( XY0, XY1 ) == sim_top_decomposition::or_ );
+
+}
+
+TEST_CASE( "top lt decomposable", "[lfe]" )
+{
+  klut_network klut;
+  simulation_view klut_sim{ klut };
+
+  std::vector<kitty::partial_truth_table> ex;
+  for( size_t i = 0; i < 3; ++i )
+  {
+    ex.push_back( kitty::partial_truth_table(8u) );
+    create_nth_var( ex[i], i );
+  }
+  kitty::partial_truth_table y1(8u);
+  y1 = ~ex[0] &( ex[1] | ex[2]);
+
+  klut_sim.initialize_network( ex );
+  
+  sim_pattern<klut_network> y1_sim = sim_pattern<klut_network>( y1 );
+  y1_sim.pat = y1;
+
+  std::vector<sim_pattern<klut_network>> X = klut_sim.get_input_patterns();
+  auto XY0 = compute_cofactor0( X, y1_sim );
+  auto XY1 = compute_cofactor1( X, y1_sim );
+
+  CHECK( is_top_decomposable( XY0, XY1 ) == sim_top_decomposition::lt_ );
+
+}
+
+TEST_CASE( "top le decomposable", "[lfe]" )
+{
+  klut_network klut;
+  simulation_view klut_sim{ klut };
+
+  std::vector<kitty::partial_truth_table> ex;
+  for( size_t i = 0; i < 3; ++i )
+  {
+    ex.push_back( kitty::partial_truth_table(8u) );
+    create_nth_var( ex[i], i );
+  }
+  kitty::partial_truth_table y1(8u);
+  y1 = ~ex[0] | ( ex[1] | ex[2]);
+
+  klut_sim.initialize_network( ex );
+  
+  sim_pattern<klut_network> y1_sim = sim_pattern<klut_network>( y1 );
+  y1_sim.pat = y1;
+
+  std::vector<sim_pattern<klut_network>> X = klut_sim.get_input_patterns();
+  auto XY0 = compute_cofactor0( X, y1_sim );
+  auto XY1 = compute_cofactor1( X, y1_sim );
+
+  CHECK( is_top_decomposable( XY0, XY1 ) == sim_top_decomposition::le_ );
+
+}
+
+TEST_CASE( "top none decomposable", "[lfe]" )
+{
+  klut_network klut;
+  simulation_view klut_sim{ klut };
+
+  std::vector<kitty::partial_truth_table> ex;
+  for( size_t i = 0; i < 3; ++i )
+  {
+    ex.push_back( kitty::partial_truth_table(8u) );
+    create_nth_var( ex[i], i );
+  }
+  kitty::partial_truth_table y1(8u);
+  y1 = ~ex[1] | ( ex[0] ^ ex[2]);
+
+  klut_sim.initialize_network( ex );
+  
+  sim_pattern<klut_network> y1_sim = sim_pattern<klut_network>( y1 );
+  y1_sim.pat = y1;
+
+  std::vector<sim_pattern<klut_network>> X = klut_sim.get_input_patterns();
+  auto XY0 = compute_cofactor0( X, y1_sim );
+  auto XY1 = compute_cofactor1( X, y1_sim );
+
+  CHECK( is_top_decomposable( XY0, XY1 ) == sim_top_decomposition::none );
+
+}

@@ -1,0 +1,189 @@
+#include <catch.hpp>
+
+#include <mockturtle/algorithms/lfe/sim_muesli.hpp>
+#include <mockturtle/algorithms/lfe/simulation_view.hpp>
+#include <mockturtle/algorithms/lfe/chatterjee_method.hpp>
+#include <mockturtle/networks/klut.hpp>
+#include <kitty/partial_truth_table.hpp>
+#include <kitty/dynamic_truth_table.hpp>
+#include <kitty/constructors.hpp>
+#include <kitty/print.hpp>
+
+using namespace mockturtle;
+
+
+TEST_CASE( "sim muesli create network f = ab+cde ", "[sim_muesli]" )
+{
+  klut_network klut;
+  simulation_view klut_sim{ klut };
+
+  std::vector<kitty::partial_truth_table> ex;
+  for( size_t i = 0; i < 5; ++i )
+  {
+    ex.push_back( kitty::partial_truth_table(32u) );
+    create_nth_var( ex[i], i );
+  }
+  kitty::partial_truth_table y(32u);
+  y = ( ex[0] & ex[1] ) | ( ( ex[2] & ex[3] ) & ex[4] );
+  
+  sim_muesli_params ps;
+  ps.init_sup = 2;
+  ps.max_sup = 3;
+  ps.max_act = 2;
+  ps.eps_th = 0.99;
+  ps.verbose = true;
+
+  auto f0 = sim_muesli( klut_sim, ex, y, ps );
+  auto ipatterns = klut_sim.get_input_patterns();
+  CHECK( ipatterns.size() == 5 );
+  for( size_t i = 0; i < 5; ++i )
+  {
+    CHECK( ipatterns[i].pat == ex[i] );
+    CHECK( klut_sim.sim_patterns[2+i].pat == ex[i] );
+  }
+  CHECK( klut_sim.sim_patterns[ klut_sim.get_node_pattern(f0) ] .pat == y );
+  CHECK( klut_sim.num_gates() == 4 );
+
+}
+
+TEST_CASE( "sim muesli create network f = ab+cd ", "[sim_muesli]" )
+{
+  klut_network klut;
+  simulation_view klut_sim{ klut };
+
+  std::vector<kitty::partial_truth_table> ex;
+  for( size_t i = 0; i < 4; ++i )
+  {
+    ex.push_back( kitty::partial_truth_table(32u) );
+    create_nth_var( ex[i], i );
+  }
+  kitty::partial_truth_table y(32u);
+  y = ( ex[0] & ex[1] ) | ( ex[2] & ex[3] );
+  
+  sim_muesli_params ps;
+  ps.init_sup = 2;
+  ps.max_sup = 3;
+  ps.max_act = 2;
+  ps.eps_th = 0.99;
+  ps.verbose = true;
+
+  auto f0 = sim_muesli( klut_sim, ex, y, ps );
+  auto ipatterns = klut_sim.get_input_patterns();
+  CHECK( ipatterns.size() == 4 );
+  for( size_t i = 0; i < 4; ++i )
+  {
+    CHECK( ipatterns[i].pat == ex[i] );
+    CHECK( klut_sim.sim_patterns[2+i].pat == ex[i] );
+  }
+  CHECK( klut_sim.sim_patterns[ klut_sim.get_node_pattern(f0) ] .pat == y );
+  CHECK( klut_sim.num_gates() == 4 );
+
+
+}
+
+TEST_CASE( "sim muesli create network f = abcd |A|=3", "[sim_muesli]" )
+{
+  klut_network klut;
+  simulation_view klut_sim{ klut };
+
+  std::vector<kitty::partial_truth_table> ex;
+  for( size_t i = 0; i < 4; ++i )
+  {
+    ex.push_back( kitty::partial_truth_table(16u) );
+    create_nth_var( ex[i], i );
+  }
+  kitty::partial_truth_table y(16u);
+  y = ( ex[0] & ex[1] ) & ( ex[2] & ex[3] );
+  
+  sim_muesli_params ps;
+  ps.init_sup = 2;
+  ps.max_sup = 3;
+  ps.max_act = 2;
+  ps.eps_th = 0.99;
+  ps.verbose = true;
+
+  auto f0 = sim_muesli( klut_sim, ex, y, ps );
+  auto ipatterns = klut_sim.get_input_patterns();
+  CHECK( ipatterns.size() == 4 );
+  for( size_t i = 0; i < 4; ++i )
+  {
+    CHECK( ipatterns[i].pat == ex[i] );
+    CHECK( klut_sim.sim_patterns[2+i].pat == ex[i] );
+  }
+  CHECK( klut_sim.sim_patterns[ klut_sim.get_node_pattern(f0) ] .pat == y );
+  kitty::print_binary( klut_sim.sim_patterns[ klut_sim.get_node_pattern(f0) ] .pat ); std::cout << std::endl;
+  CHECK( klut_sim.num_gates() == 3 );
+
+}
+
+
+TEST_CASE( "sim muesli create network f = a^(bcd) |A|=3", "[sim_muesli]" )
+{
+  klut_network klut;
+  simulation_view klut_sim{ klut };
+
+  std::vector<kitty::partial_truth_table> ex;
+  for( size_t i = 0; i < 4; ++i )
+  {
+    ex.push_back( kitty::partial_truth_table(16u) );
+    create_nth_var( ex[i], i );
+  }
+  kitty::partial_truth_table y(16u);
+  y =  ex[0] ^ (ex[1]  & ( ex[2] & ex[3] ));
+  
+  sim_muesli_params ps;
+  ps.init_sup = 2;
+  ps.max_sup = 3;
+  ps.max_act = 2;
+  ps.eps_th = 0.99;
+  ps.verbose = true;
+
+  auto f0 = sim_muesli( klut_sim, ex, y, ps );
+  auto ipatterns = klut_sim.get_input_patterns();
+  CHECK( ipatterns.size() == 4 );
+  for( size_t i = 0; i < 4; ++i )
+  {
+    CHECK( ipatterns[i].pat == ex[i] );
+    CHECK( klut_sim.sim_patterns[2+i].pat == ex[i] );
+  }
+  CHECK( klut_sim.sim_patterns[ klut_sim.get_node_pattern(f0) ] .pat == y );
+  kitty::print_binary( klut_sim.sim_patterns[ klut_sim.get_node_pattern(f0) ] .pat ); std::cout << std::endl;
+  CHECK( klut_sim.num_gates() == 3 );
+
+}
+
+TEST_CASE( "sim muesli create network f = a+b^c+d |A|=3", "[sim_muesli]" )
+{
+  klut_network klut;
+  simulation_view klut_sim{ klut };
+
+  std::vector<kitty::partial_truth_table> ex;
+  for( size_t i = 0; i < 4; ++i )
+  {
+    ex.push_back( kitty::partial_truth_table(16u) );
+    create_nth_var( ex[i], i );
+  }
+  kitty::partial_truth_table y(16u);
+  y =  ex[0] | ( (ex[1] ^ ex[2]) | ex[3] );
+  
+  sim_muesli_params ps;
+  ps.init_sup = 2;
+  ps.max_sup = 3;
+  ps.max_act = 3;
+  ps.eps_th = 0.99;
+  ps.verbose = true;
+  ps.try_accuracy_recovery = true;
+
+  auto f0 = sim_muesli( klut_sim, ex, y, ps );
+  auto ipatterns = klut_sim.get_input_patterns();
+  CHECK( ipatterns.size() == 4 );
+  for( size_t i = 0; i < 4; ++i )
+  {
+    CHECK( ipatterns[i].pat == ex[i] );
+    CHECK( klut_sim.sim_patterns[2+i].pat == ex[i] );
+  }
+  CHECK( klut_sim.sim_patterns[ klut_sim.get_node_pattern(f0) ] .pat == y );
+  kitty::print_binary( klut_sim.sim_patterns[ klut_sim.get_node_pattern(f0) ] .pat ); std::cout << std::endl;
+  CHECK( klut_sim.num_gates() == 3 );
+
+}

@@ -1,0 +1,112 @@
+#include <catch.hpp>
+
+#include <mockturtle/algorithms/lfe/muesli.hpp>
+#include <mockturtle/algorithms/lfe/simulation_view.hpp>
+#include <mockturtle/algorithms/lfe/sim_patterns.hpp>
+#include <mockturtle/algorithms/lfe/sim_operations.hpp>
+#include <mockturtle/networks/klut.hpp>
+#include <kitty/partial_truth_table.hpp>
+#include <kitty/dynamic_truth_table.hpp>
+#include <kitty/constructors.hpp>
+#include <kitty/print.hpp>
+
+using namespace mockturtle;
+
+
+TEST_CASE( "cofactors multi output", "[sim_patterns]" )
+{
+  klut_network klut;
+  simulation_view klut_sim{ klut };
+
+  std::vector<kitty::partial_truth_table> ex;
+  for( size_t i = 0; i < 3; ++i )
+  {
+    ex.push_back( kitty::partial_truth_table(8u) );
+    create_nth_var( ex[i], i );
+  }
+  kitty::partial_truth_table y1(8u);
+  kitty::partial_truth_table y2(8u);
+  y1 = ( ex[0] & ex[1] ) & ex[2];
+  y2 = ( ex[0] | ex[1] ) | ex[2];
+
+  klut_sim.initialize_network( ex );
+  
+  sim_pattern<klut_network> y1_sim = sim_pattern<klut_network>( y1 );
+  sim_pattern<klut_network> y2_sim = sim_pattern<klut_network>( y2 );
+  y1_sim.pat = y1;
+  y2_sim.pat = y2;
+
+  std::vector<sim_pattern<klut_network>> F = std::vector{y1_sim, y2_sim};
+  std::vector<sim_pattern<klut_network>> X = klut_sim.get_input_patterns();
+
+  auto XY0 = compute_cofactor0( X, F );
+  auto XY1 = compute_cofactor1( X, F );
+  kitty::partial_truth_table F0_1( 4u );
+  kitty::create_from_binary_string( F0_1, "0000" );
+  kitty::partial_truth_table F0_2( 4u );
+  kitty::create_from_binary_string( F0_2, "1110" );
+  kitty::partial_truth_table F1_1( 4u );
+  kitty::create_from_binary_string( F1_1, "1000" );
+  kitty::partial_truth_table F1_2( 4u );
+  kitty::create_from_binary_string( F1_2, "1111" );
+
+  std::vector<kitty::partial_truth_table> F0 = { F0_1, F0_2 };
+  std::vector<kitty::partial_truth_table> F1 = { F1_1, F1_2 };
+
+  for( size_t i = 0; i < XY0.second.size(); ++i )
+    CHECK( XY0.second[i].pat == F0[i] );
+
+  for( size_t i = 0; i < XY1.second.size(); ++i )
+    CHECK( XY1.second[i].pat == F1[i] );
+}
+
+
+TEST_CASE( "cofactors single output", "[sim_patterns]" )
+{
+  klut_network klut;
+  simulation_view klut_sim{ klut };
+
+  std::vector<kitty::partial_truth_table> ex;
+  for( size_t i = 0; i < 3; ++i )
+  {
+    ex.push_back( kitty::partial_truth_table(8u) );
+    create_nth_var( ex[i], i );
+  }
+  kitty::partial_truth_table y1(8u);
+  kitty::partial_truth_table y2(8u);
+  y1 = ( ex[0] & ex[1] ) & ex[2];
+  y2 = ( ex[0] | ex[1] ) | ex[2];
+
+  klut_sim.initialize_network( ex );
+  
+  sim_pattern<klut_network> y1_sim = sim_pattern<klut_network>( y1 );
+  sim_pattern<klut_network> y2_sim = sim_pattern<klut_network>( y2 );
+  y1_sim.pat = y1;
+  y2_sim.pat = y2;
+
+  std::vector<sim_pattern<klut_network>> X = klut_sim.get_input_patterns();
+
+  auto XY0_1 = compute_cofactor0( X, y1_sim );
+  auto XY1_1 = compute_cofactor1( X, y1_sim );
+  auto XY0_2 = compute_cofactor0( X, y2_sim );
+  auto XY1_2 = compute_cofactor1( X, y2_sim );
+
+  kitty::partial_truth_table F0_1( 4u );
+  kitty::create_from_binary_string( F0_1, "0000" );
+  kitty::partial_truth_table F0_2( 4u );
+  kitty::create_from_binary_string( F0_2, "1110" );
+  kitty::partial_truth_table F1_1( 4u );
+  kitty::create_from_binary_string( F1_1, "1000" );
+  kitty::partial_truth_table F1_2( 4u );
+  kitty::create_from_binary_string( F1_2, "1111" );
+
+  std::vector<kitty::partial_truth_table> F0 = { F0_1, F0_2 };
+  std::vector<kitty::partial_truth_table> F1 = { F1_1, F1_2 };
+
+  CHECK( XY0_1.second.pat == F0_1 );
+  CHECK( XY0_2.second.pat == F0_2 );
+
+  CHECK( XY1_1.second.pat == F1_1 );
+  CHECK( XY1_2.second.pat == F1_2 );
+
+}
