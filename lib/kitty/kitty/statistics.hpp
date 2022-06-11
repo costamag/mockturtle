@@ -52,7 +52,7 @@ namespace kitty
   \param tt Truth table
 */
 template<typename TT>
-std::vector<double> probability( TT& tt )
+std::vector<double> probability( TT const& tt )
 {
   double p = (double)count_ones(tt)/tt.num_bits();
   std::vector<double> probs = { 1-p, p };
@@ -64,7 +64,7 @@ std::vector<double> probability( TT& tt )
   \param tts Vector of Truth tables
 */
 template<typename TT>
-std::vector<double> probability( std::vector<TT>& tts )
+std::vector<double> probability( std::vector<TT>const& tts )
 {
   auto ntts = tts.size();
   size_t nvars;
@@ -106,7 +106,7 @@ std::vector<double> probability( std::vector<TT>& tt )
   \param index Bit index
 */
 template<typename TT>
-std::vector<double> probability( std::vector<TT>& tt1, std::vector<TT>& tt2 )
+std::vector<double> probability( std::vector<TT>const& tt1, std::vector<TT>const& tt2 )
 {
   auto n1 = tt1[0].num_vars();
   auto n2 = tt2[0].num_vars();
@@ -127,7 +127,7 @@ std::vector<double> probability( std::vector<TT>& tt1, std::vector<TT>& tt2 )
   \param index Bit index
 */
 template<typename TT>
-std::vector<double> probability( TT& tt1, TT& tt2 )
+std::vector<double> probability( TT const& tt1, TT const& tt2 )
 {
   std::vector<TT> dbv = { tt1, tt2 };
 
@@ -140,15 +140,15 @@ std::vector<double> probability( TT& tt1, TT& tt2 )
   \param index Bit index
 */
 template<typename TT>
-std::vector<double> probability( std::vector<TT>& tts, TT& tt )
+std::vector<double> probability( std::vector<TT>const& tts, TT const& tt )
 {
   auto n1 = tts[0].num_bits();
   auto n2 = tt.num_bits();
   assert( ( n1 == n2 ) );
+  std::vector<TT> ttn = tts;
+  ttn.push_back( tt );
 
-  tts.push_back( tt );
-
-  return probability( tts );
+  return probability( ttn );
 }
 
 #pragma endregion probability
@@ -159,7 +159,7 @@ std::vector<double> probability( std::vector<TT>& tts, TT& tt )
   \param tt Truth table
 */
 template<typename X>
-double entropy( X& x )
+double entropy( X const& x )
 {
   auto probs = probability( x );
   double H = 0;
@@ -173,7 +173,7 @@ double entropy( X& x )
   \param tt Truth table
 */
 template<typename X, typename Y>
-double entropy( X& x, Y& y )
+double entropy( X const& x, Y const& y )
 {
   auto probs = probability( x, y );
   double H = 0;
@@ -191,9 +191,13 @@ double entropy( X& x, Y& y )
   \param tt Truth table
 */
 template<typename X, typename Y>
-double mutual_information( X& x, Y& y )
+double mutual_information( X const& x, Y const& y )
 {
-  return entropy( x ) + entropy( y ) - entropy( x, y );  
+  double mi = entropy( x ) + entropy( y ) - entropy( x, y );  
+  if( mi < 1e-6 && mi > -1e-6 )
+    return 0;
+  else
+    return mi;
 }
 #pragma endregion mutual information
 

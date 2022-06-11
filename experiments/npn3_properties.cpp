@@ -262,16 +262,54 @@ int main()
   print_mutual_informations3( LFE_pre_maj );
   auto Q = std::vector{LFE_pre_maj.partial.second};
   std::cout << "H(f)= " << kitty::entropy( Q ) << std::endl;
-  f = LFE_pre_maj.complete.second[0];
+  auto fm = LFE_pre_maj.partial_MO.second[0];
 
   auto x = LFE_pre_maj.partial.first[0];
   auto y = LFE_pre_maj.partial.first[1];
   auto z = LFE_pre_maj.partial.first[2];
 
+  std::cout << "I(xs;f)=" << kitty::mutual_information( x&y, fm ) << std::endl;
+  std::cout << "I(xs;f)=" << kitty::mutual_information( std::vector{ x, x&y }, fm ) << std::endl;
+  std::cout << "I(xs;f)=" << kitty::mutual_information( std::vector{ y, x&y }, fm ) << std::endl;
+  std::cout << "I(xs;f)=" << kitty::mutual_information( std::vector{ x, y, x&y }, fm ) << std::endl;
+
   walsh = kitty::rademacher_walsh_spectrum( f );
   for( auto w : walsh )
     std::cout << w << " ";
   std::cout << std::endl;
+
+  std::cout << "#######################################################" <<std::endl;
+  std::cout << "                     f = x^(z+xy)                       " <<std::endl;
+  std::cout << "#######################################################" <<std::endl;
+  str_code = "06";
+  std::string path_dot = "/home/acostama/projects/EPFL/mockturtle/benchmarks/NPN-representatives/nin3/ex"+str_code+".truth";
+
+  klut_network klut_dot;
+  if( lorina::read_truth( path_dot, truth_reader( klut_dot ) ) == lorina::return_code::parse_error )
+    assert( false );
+
+  auto LFE_pre_dot = graph_to_lfe( klut_dot );
+
+  print_mutual_informations3( LFE_pre_dot );
+  auto f1 = LFE_pre_dot.partial_MO.second[0];
+  kitty::print_binary(f1); std::cout << std::endl;
+  std::cout << "H(f)= " << kitty::entropy( LFE_pre_dot.partial_MO.second ) << std::endl;
+
+  x = LFE_pre_dot.partial_MO.first[0];
+  y = LFE_pre_dot.partial_MO.first[1];
+  z = LFE_pre_dot.partial_MO.first[2];
+
+  std::cout << "I(x;f)=" << kitty::mutual_information( x, f1 ) << std::endl;
+  std::cout << "I(y;f)=" << kitty::mutual_information( y, f1 ) << std::endl;
+  std::cout << "I(z;f)=" << kitty::mutual_information( z, f1 ) << std::endl;
+  std::vector<kitty::partial_truth_table> xs;
+  auto fnew = x&(~y);
+  std::cout << "I(xs;f)=" << kitty::mutual_information( fnew, f1 ) << std::endl;
+  std::cout << "I(xs;f)=" << kitty::mutual_information( std::vector{ x, fnew }, f1 ) << std::endl;
+  std::cout << "I(xs;f)=" << kitty::mutual_information( std::vector{ y, fnew }, f1 ) << std::endl;
+  std::cout << "I(xs;f)=" << kitty::mutual_information( std::vector{ x, y, fnew }, f1 ) << std::endl;
+
+
   
   return 0;
 }

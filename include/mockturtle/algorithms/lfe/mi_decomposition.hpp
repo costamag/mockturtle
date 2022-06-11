@@ -44,12 +44,14 @@
 #include <mockturtle/algorithms/klut_to_graph.hpp>
 #include <mockturtle/algorithms/cut_rewriting.hpp>
 #include <mockturtle/algorithms/aig_resub.hpp>
+#include <mockturtle/algorithms/lfe/graph_to_lfe.hpp>
 #include <kitty/statistics.hpp>
 
 #include <kitty/operators.hpp>
 #include <kitty/print.hpp>
 
 #include <mockturtle/algorithms/lfe/graph_to_lfe.hpp>
+#include <mockturtle/algorithms/lfe/chatterjee_method.hpp>
 
 
 namespace mockturtle
@@ -59,19 +61,18 @@ namespace mockturtle
 struct mi_decomposition_params
 {
   /*! \brief Apply XOR decomposition. */
-  bool is_verbose{false};
-  bool is_informed{true};
-  size_t max_sup{3};
-  bool try_top_decomposition{true};
-  bool try_bottom_decomposition{true};
-  bool try_bottom_decomposition_advanced{false};
-  bool try_creation{false};
+  bool is_informed{false};
+  size_t max_sup{4};
+  bool try_top_decomposition{false};
+  bool try_bottom_decomposition{false};
   bool try_xor_decomposition{false};
   bool use_cumsum{false};
-  bool is_bottom_exact{false};
+  bool dontcares{false};
+
+  bool is_verbose{false};
   bool is_trivial{true};
   uint64_t type_preprocessing{1};
-  bool dontcares{false};
+
 };
 
 struct detection_counter
@@ -475,7 +476,7 @@ public:
 
     }
   #pragma endregion are_equal
-
+/*
 std::string decToBinary(int n, size_t N)
 {
     // array to store binary number
@@ -502,65 +503,7 @@ std::string decToBinary(int n, size_t N)
     }
     return S;
 }
-
-  #pragma region chatterjee
-  std::pair<std::string, bool> chatterjee_method( dbitset_vector& X, dbitset Y )
-  {
-      bool is_exact = true;
-      uint64_t N = X.size();
-      uint64_t pow2N = pow(2,N);
-      dbitset bit02N( X[0].num_bits() );
-      dbitset Kmask, new_values;
-      new_values = bit02N;
-      std::string tt = "";
-      std::default_random_engine generator;
-      std::bernoulli_distribution distribution(0.5);
-      uint64_t C0, C1;
-      for( uint64_t k {0u}; k < pow2N; ++k )
-      {
-        Kmask = ~bit02N;
-        dbitset maskN(N);
-        std::string Sk = decToBinary( k, N );
-
-        kitty::create_from_binary_string( maskN, Sk );
-
-        for( uint64_t j {0u}; j < N; ++j )
-        {
-          if( kitty::get_bit( maskN, j) == 1 )
-            Kmask &= X[j];
-          else if( kitty::get_bit(maskN, j ) == 0 )
-            Kmask &= ~X[j];
-          else
-            std::cerr << "invalid" << std::endl;
-        }
-        C1 = kitty::count_ones(( Kmask & Y ));
-        C0 = kitty::count_ones(( Kmask & ~Y ));
-        auto r = distribution(generator);
-
-        if( ( C1 > C0 ) || ( ( C1 == C0 ) && ( r >= 0.5 ) ) )
-        {
-          new_values |= Kmask;
-          tt = "1"+tt;
-        }
-        else if( ( C1 < C0 ) || ( ( C1 == C0 ) && ( r < 0.5 ) ) )
-        {
-          tt = "0"+tt;
-        }
-        if( C1 != 0 && C0 != 0 ) // ADDED
-          is_exact &= false;
-      }
-      X.push_back( new_values );
-      return std::make_pair( tt, is_exact );
-  }
-  signal<klut_network> apply_chatterjee( std::vector<signal<klut_network>>& support, dbitset_vector& X, dbitset const& Y)
-  {
-    std::string tt_str = chatterjee_method( X, Y ).first;
-    kitty::dynamic_truth_table tt( support.size() );
-    kitty::create_from_binary_string( tt, tt_str );
-    return _klut.create_node( support, tt );
-  }
-  #pragma endregion chatterjee
-
+*/
   #pragma region decomposition_checks
   mi_top_decomposition is_top_decomposable( std::pair<dbitset_vector, dbitset>& XY0, std::pair<dbitset_vector, dbitset>& XY1 )
   {
@@ -593,84 +536,17 @@ std::string decToBinary(int n, size_t N)
       return mi_top_decomposition::none ;
   }
 
-  bool is_bottom_decomposable(  std::vector<signal<klut_network>>& support, dbitset_vector& X, dbitset & Y, double Imax,
-                                      std::vector<double>& Ivect, std::vector<size_t>& IDXvect )
-    {
-      quicksort_by_attribute( IDXvect, Ivect, 0, Ivect.size()-1 );
-
-      std::vector<signal<klut_network>> original_support = support;
-
-      std::vector<size_t> indeces2;
-      std::vector<signal<klut_network>> support2;
-      bool flag = false;
-
-      double Isupp, Ifnew, Ifr, Ifc, Ifrc;  
-      dbitset_vector Xtmp;
-
-      for( size_t i=0;  i < IDXvect.size()-1 ; ++i )
-      {
-          size_t r = IDXvect[i];
-          size_t c = IDXvect[i+1];
-          indeces2 = { r, c };
-          support2 = { original_support[r], original_support[c] };
-
-          std::string Sr, Sc;
-          uint64_t Sr_64t = original_support[r];
-          uint64_t Sc_64t = original_support[c];
-          Sr = std::to_string( Sr_64t );
-          Sc = std::to_string( Sc_64t );
-          std::string support_key = Sr + " " + Sc;
-
-          Xtmp = { X[r], X[c] };
-          std::pair<std::string, bool> chj = chatterjee_method( Xtmp, Y );
-          std::string tt_str = chj.first;
-          assert( Xtmp.size() == 3 );
-
-          if( (_Icoll.Frc).find( support_key ) == (_Icoll.Frc).end() )
-          {
-            std::vector<kitty::partial_truth_table> V1 = { X[r], X[c] };
-            Isupp = kitty::mutual_information( V1 , Y ); 
-            Ifnew = kitty::mutual_information( Xtmp[2], Y );
-            std::vector<kitty::partial_truth_table> V2 = { Xtmp[2], X[r] };
-            Ifr = kitty::mutual_information( V2, Y );
-            std::vector<kitty::partial_truth_table> V3 = { Xtmp[2], X[c] };
-            Ifc = kitty::mutual_information( V3, Y );
-            std::vector<kitty::partial_truth_table> V4 = { Xtmp[2], X[r], X[c] };
-            Ifrc = kitty::mutual_information( V4, Y );
-            (_Icoll.Fnew).insert(std::make_pair( support_key, Ifnew ));
-            (_Icoll.Frc).insert(std::make_pair( support_key, Ifrc ));
-            (_Icoll.Fr).insert(std::make_pair( support_key, Ifr ));
-            (_Icoll.Fc).insert(std::make_pair( support_key, Ifc ));
-            (_Icoll.supp).insert(std::make_pair( support_key, Isupp ));
-          } 
-          else
-          {
-            Isupp = (_Icoll.supp).at( support_key );
-            Ifnew = (_Icoll.Fnew).at( support_key );
-            Ifr = (_Icoll.Fr).at( support_key );
-            Ifc = (_Icoll.Fc).at( support_key );
-            Ifrc = (_Icoll.Frc).at( support_key );
-          }
- 
-          bool exact_flag = _ps.is_bottom_exact ? chj.second : true;
-
-          if( ( Isupp == Ifnew ) && (Ifrc == Ifnew) && ( Ifr == Ifnew ) && ( Ifc == Ifnew) && exact_flag )
-          {
-            kitty::dynamic_truth_table tt(2u);
-            create_from_binary_string( tt, tt_str );
-            support.push_back( _klut.create_node( support2, tt ) );
-            X.push_back( Xtmp[2] );
-            X.erase(X.begin()+std::max( r, c ) );
-            X.erase(X.begin()+std::min( r, c ) );
-            support.erase(support.begin()+std::max( r, c ));
-            support.erase(support.begin()+std::min( r, c ));
-            return true;
-          }
-      }
+  bool filter4_chatterjee_result( std::string& tt )
+  {
+    assert( tt.length() == 4 );
+    if( ( tt == "1111") || ( tt == "0000") || ( tt == "1100") || ( tt == "0011") || ( tt == "1010") || ( tt == "0101") )
       return false;
-    }
+    else
+      return true;
+  }
 
-    bool is_bottom_decomposable_advanced(  std::vector<signal<klut_network>>& support, dbitset_vector& X, dbitset& Y, double Imax,
+
+    bool is_bottom_decomposable(  std::vector<signal<klut_network>>& support, dbitset_vector& X, dbitset& Y, double Imax,
                                       std::vector<double>& Ivect, std::vector<size_t>& IDXvect )
     {
       quicksort_by_attribute( IDXvect, Ivect, 0, Ivect.size()-1 );
@@ -687,9 +563,13 @@ std::string decToBinary(int n, size_t N)
       for( size_t i=0;  i < IDXvect.size()-1 ; ++i )
       {
           size_t r = IDXvect[i];
+
+          uint64_t steps_beyond = 0;
+          double Inn = Ivect[i];
+
           for( size_t j=i+1;  j < IDXvect.size() ; ++j )
           {
-            if( Ivect[i] != Ivect[i] )
+            if( Ivect[i] != Ivect[j] )
               break;
 
             size_t c = IDXvect[j];
@@ -704,8 +584,9 @@ std::string decToBinary(int n, size_t N)
             std::string support_key = Sr + " " + Sc;
 
             Xtmp = { X[r], X[c] };
-            std::pair<std::string, bool> chj = chatterjee_method( Xtmp, Y );
-            std::string tt_str = chj.first;
+            auto chj = chatterjee_method( Xtmp, Y );
+            std::string tt_str = chj.tt;
+            
             assert( Xtmp.size() == 3 );
 
             if( (_Icoll.Frc).find( support_key ) == (_Icoll.Frc).end() )
@@ -734,11 +615,13 @@ std::string decToBinary(int n, size_t N)
               Ifrc = (_Icoll.Frc).at( support_key );
             }
  
-            bool exact_flag = _ps.is_bottom_exact ? chj.second : true;
+            
+            bool is_informative = filter4_chatterjee_result( tt_str );
+            bool is_better = ( Ifnew > Ivect[i] ) && ( Ifnew > Ivect[i+1] ) && ( Ifnew >= Imax );
+            bool filter = is_informative && is_better;
 
-            if( ( Isupp == Ifnew ) && (Ifrc == Ifnew) && ( Ifr == Ifnew ) && ( Ifc == Ifnew) && exact_flag )
+            if( filter && ( Isupp == Ifnew ) && (Ifrc == Ifnew) && ( Ifr == Ifnew ) && ( Ifc == Ifnew) )
             {
-
               kitty::dynamic_truth_table tt(2u);
               create_from_binary_string( tt, tt_str );
               support.push_back( _klut.create_node( support2, tt ) );
@@ -755,68 +638,6 @@ std::string decToBinary(int n, size_t N)
     }
   #pragma endregion decomposition_checks
 
-  #pragma region creation procedures
-  bool is_new_created(  std::vector<signal<klut_network>>& support, dbitset_vector& X, dbitset& Y, double Imax,
-                                      std::vector<double>& Ivect, std::vector<size_t>& IDXvect )
-    {
-
-      quicksort_by_attribute( IDXvect, Ivect, 0, Ivect.size()-1 );
-
-      std::vector<signal<klut_network>> original_support = support;
-
-      std::vector<size_t> indeces2;
-      std::vector<signal<klut_network>> support2;
-      bool flag = false;
-
-      double Isupp, Ifnew, Ifr, Ifc, Ifrc;  
-      dbitset_vector Xtmp;
-
-      for( size_t i=0;  i < IDXvect.size()-1 ; ++i )
-      {
-          size_t r = IDXvect[i];
-          for( size_t j=i+1;  j < IDXvect.size() ; ++j )
-          {        
-          size_t c = IDXvect[j];
-          indeces2 = { r, c };
-          support2 = { original_support[r], original_support[c] };
-
-          std::string Sr, Sc;
-          signal<klut_network> Sr_64t = original_support[r];
-          signal<klut_network> Sc_64t = original_support[c];
-          Sr = std::to_string( Sr_64t );
-          Sc = std::to_string( Sc_64t );
-          std::string support_key = Sr + " " + Sc;
-
-          Xtmp = { X[r], X[c] };
-          std::pair<std::string, bool> chj = chatterjee_method( Xtmp, Y );
-          std::string tt_str = chj.first;
-          assert( Xtmp.size() == 3 );
-          if( (_Icoll.Fnew).find( support_key ) == (_Icoll.Fnew).end() )
-          { 
-            std::vector<kitty::partial_truth_table> V1 = { X[r], X[c] };
-            Isupp = kitty::mutual_information( V1, Y );
-            Ifnew = kitty::mutual_information( Xtmp[2], Y );
-            (_Icoll.Fnew).insert(std::make_pair( support_key, Ifnew ));
-            if( Ifnew > Imax )
-            {
-              kitty::dynamic_truth_table tt(2u);
-              create_from_binary_string( tt, tt_str );
-              support.push_back( _klut.create_node( support2, tt ) );
-              X.push_back( Xtmp[2] );
-                return true;
-            }
-
-          } 
-          else
-          {
-            Ifnew = (_Icoll.Fnew).at( support_key );
-          }
-
-          }
-      }
-      return false;
-    }
-  #pragma endregion creation procedures
 
   #pragma region dont cares bottom
     bool is_F1_F0(  std::pair<dbitset_vector, dbitset> const XY0, 
@@ -996,7 +817,7 @@ std::string decToBinary(int n, size_t N)
     if( support.size() <= _ps.max_sup )
     {
       _cnt._ctj++;
-      return apply_chatterjee( support, X, Y );
+      return apply_chatterjee( _klut, support, X, Y );
     }
     uint64_t idx = 0;
     uint64_t idx_min = 0;
@@ -1081,18 +902,7 @@ std::string decToBinary(int n, size_t N)
         _cnt._btm++;
         return idsd_step( support, X, Y );
       }
-
-      if( _ps.try_bottom_decomposition_advanced && is_bottom_decomposable_advanced( support, X, Y, Imax, Ivect, IDXvect ) )
-      {
-        _cnt._btm++;
-        return idsd_step( support, X, Y );    
-      }
-
-      if( _ps.try_creation && is_new_created( support, X, Y, Imax, Ivect, IDXvect ) )
-      {
-        _cnt._cre++;
-        return idsd_step( support, X, Y );
-      } 
+      
     }
 
     _Icoll.clear();

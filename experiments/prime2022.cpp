@@ -122,7 +122,7 @@ XYdataset dataset_loader( std::string file_name )
   return DS;
 }
 
-std::string DEC_ALGO{"aIDSD"};
+std::string DEC_ALGO{"dcIDSD"};
 using experiment_t = experiments::experiment<std::string, uint32_t, uint32_t, float, float, float, float>;
 experiment_t exp_res( "/iwls2020/"+DEC_ALGO, "benchmark", "#gates", "depth", "train", "test", "valid", "runtime" );
 
@@ -264,7 +264,6 @@ void thread_run( iwls2020_parameters const& iwls2020_ps, std::string const& run_
         ps.try_xor_decomposition = false;
         ps.use_cumsum = false;
         ps.try_bottom_decomposition = false;
-        ps.is_bottom_exact = false;
         ps.dontcares = false;
     }
     else if ( iwls2020_ps.dec_algo == "ISD" )
@@ -274,50 +273,6 @@ void thread_run( iwls2020_parameters const& iwls2020_ps, std::string const& run_
         ps.try_xor_decomposition = false;
         ps.use_cumsum = false;
         ps.try_bottom_decomposition = false;
-        ps.is_bottom_exact = false;
-        ps.dontcares = false;
-    }
-    else if ( iwls2020_ps.dec_algo == "IDSD" )
-    {
-        ps.is_informed = true;
-        ps.try_top_decomposition = true;
-        ps.try_xor_decomposition = true;
-        ps.use_cumsum = true;
-        ps.try_bottom_decomposition = true;
-        ps.is_bottom_exact = true;
-        ps.dontcares = false;
-    }
-    else if ( iwls2020_ps.dec_algo == "IDSDopt" )
-    {
-        ps.is_informed = true;
-        ps.try_top_decomposition = true;
-        ps.try_xor_decomposition = true;
-        ps.use_cumsum = true;
-        ps.try_bottom_decomposition = true;
-        ps.is_bottom_exact = true;
-        ps.dontcares = false;
-
-        postprocess = true;
-    }
-    else if ( iwls2020_ps.dec_algo == "IDSDadv" )
-    {
-        ps.is_informed = true;
-        ps.try_top_decomposition = true;
-        ps.try_xor_decomposition = true;
-        ps.use_cumsum = true;
-        ps.try_bottom_decomposition = true;
-        ps.is_bottom_exact = true;
-        ps.dontcares = false;
-        ps.try_bottom_decomposition_advanced = true;
-    }
-    else if ( iwls2020_ps.dec_algo == "aIDSD" )
-    {
-        ps.is_informed = true;
-        ps.try_top_decomposition = true;
-        ps.try_xor_decomposition = true;
-        ps.use_cumsum = true;
-        ps.try_bottom_decomposition = true;
-        ps.is_bottom_exact = false;
         ps.dontcares = false;
     }
     else if ( iwls2020_ps.dec_algo == "tIDSD" )
@@ -327,8 +282,17 @@ void thread_run( iwls2020_parameters const& iwls2020_ps, std::string const& run_
         ps.try_xor_decomposition = true;
         ps.use_cumsum = true;
         ps.try_bottom_decomposition = false;
-        ps.is_bottom_exact = false;
         ps.dontcares = false;
+    }
+    else if ( iwls2020_ps.dec_algo == "IDSD" )
+    {
+        ps.is_informed = true;
+        ps.try_top_decomposition = true;
+        ps.try_xor_decomposition = true;
+        ps.use_cumsum = true;
+        ps.try_bottom_decomposition = true;
+        ps.dontcares = false;
+
     }
     else if ( iwls2020_ps.dec_algo == "dcIDSD" )
     {
@@ -337,7 +301,6 @@ void thread_run( iwls2020_parameters const& iwls2020_ps, std::string const& run_
         ps.try_xor_decomposition = true;
         ps.use_cumsum = true;
         ps.try_bottom_decomposition = true;
-        ps.is_bottom_exact = true;
         ps.dontcares = true;
     }
     else

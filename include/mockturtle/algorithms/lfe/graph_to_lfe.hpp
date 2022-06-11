@@ -45,20 +45,25 @@
 #include <kitty/operators.hpp>
 #include <kitty/print.hpp>
 
-#include "../simulation.hpp"
+#include "mockturtle/algorithms/simulation.hpp"
 
 
 namespace mockturtle
 {
 using ClfeNtk = std::pair<std::vector<kitty::dynamic_truth_table>, std::vector<kitty::dynamic_truth_table>>;
 using PlfeNtk = std::pair<std::vector<kitty::partial_truth_table>, kitty::partial_truth_table>;
+using PlfeNtk_MO = std::pair<std::vector<kitty::partial_truth_table>, std::vector<kitty::partial_truth_table>>;
+
 
 template<class Ntk>
 struct lfeNtk
 {
   ClfeNtk complete;
   PlfeNtk partial;
+  PlfeNtk_MO partial_MO;
   std::vector<signal<Ntk>> signals;
+  bool use_MO{false};
+  uint64_t oidx{0};
 };
 namespace detail
 {
@@ -91,7 +96,6 @@ public:
     } );
 
     std::vector<kitty::dynamic_truth_table> gs;
-
     std::vector<kitty::dynamic_truth_table> fs;
 
     _ntk.foreach_po( [&]( auto const& node, auto index ) {
@@ -115,6 +119,27 @@ public:
 
     result.complete = std::make_pair(xs,fs);
     #pragma endregion complete
+
+    #pragma region partial_MO
+    std::vector<kitty::partial_truth_table> xs_MO;
+    std::vector<kitty::partial_truth_table> fs_MO;
+    for( auto x : xs )
+    {
+      kitty::partial_truth_table xs_tmp( xs[0].num_bits() );
+      kitty::create_from_binary_string( xs_tmp, kitty::to_binary( x ) );
+      xs_MO.push_back( xs_tmp );
+    }
+
+    for( auto f : fs )
+    {
+      kitty::partial_truth_table fs_tmp( fs[0].num_bits() );
+      kitty::create_from_binary_string( fs_tmp, kitty::to_binary( f ) );
+      fs_MO.push_back( fs_tmp );
+    }
+
+    result.partial_MO = std::make_pair(xs_MO,fs_MO);
+
+    #pragma endregion partial_MO
 
     #pragma region partial
     std::vector<kitty::partial_truth_table> xsP;

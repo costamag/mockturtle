@@ -66,7 +66,7 @@ struct muesli_params
   bool is_exact_fn{false};
 };
 
-using dbitset = boost::dynamic_bitset<>;
+using dbitset = kitty::partial_truth_table;
 using dbitset_vector = std::vector<dbitset>;
 
 namespace detail
@@ -154,6 +154,10 @@ public:
       }
     }
     #pragma endregion
+
+
+
+/* chatterjee
 
   #pragma region chatterjee
   struct chj_info
@@ -263,7 +267,10 @@ public:
     return ninfo;
   }
   #pragma endregion chatterjee
-
+*/
+  
+  
+  
   #pragma region active list
   
   struct alist_info
