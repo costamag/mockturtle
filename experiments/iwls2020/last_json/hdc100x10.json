@@ -1,0 +1,907 @@
+[
+  {
+    "entries": [
+      {
+        "#gates": 561,
+        "benchmark": "ex01",
+        "depth": 28,
+        "runtime": 21.742000579833984,
+        "test": 98.4375,
+        "train": 100.0,
+        "valid": 98.21875
+      },
+      {
+        "#gates": 841,
+        "benchmark": "ex03",
+        "depth": 32,
+        "runtime": 29.88599967956543,
+        "test": 97.40625,
+        "train": 100.0,
+        "valid": 97.609375
+      },
+      {
+        "#gates": 1299,
+        "benchmark": "ex05",
+        "depth": 29,
+        "runtime": 35.38199996948242,
+        "test": 96.328125,
+        "train": 100.0,
+        "valid": 96.234375
+      },
+      {
+        "#gates": 2396,
+        "benchmark": "ex07",
+        "depth": 35,
+        "runtime": 33.55699920654297,
+        "test": 95.875,
+        "train": 100.0,
+        "valid": 96.234375
+      },
+      {
+        "#gates": 1366,
+        "benchmark": "ex10",
+        "depth": 44,
+        "runtime": 34.66899871826172,
+        "test": 84.953125,
+        "train": 100.0,
+        "valid": 86.09375
+      },
+      {
+        "#gates": 1058,
+        "benchmark": "ex11",
+        "depth": 34,
+        "runtime": 26.777999877929688,
+        "test": 85.609375,
+        "train": 100.0,
+        "valid": 85.421875
+      },
+      {
+        "#gates": 824,
+        "benchmark": "ex12",
+        "depth": 33,
+        "runtime": 27.323999404907227,
+        "test": 84.125,
+        "train": 100.0,
+        "valid": 83.359375
+      },
+      {
+        "#gates": 592,
+        "benchmark": "ex13",
+        "depth": 25,
+        "runtime": 23.847999572753906,
+        "test": 82.71875,
+        "train": 100.0,
+        "valid": 82.34375
+      },
+      {
+        "#gates": 3964,
+        "benchmark": "ex09",
+        "depth": 37,
+        "runtime": 72.54000091552734,
+        "test": 91.0,
+        "train": 100.0,
+        "valid": 90.890625
+      },
+      {
+        "#gates": 472,
+        "benchmark": "ex14",
+        "depth": 24,
+        "runtime": 29.871999740600586,
+        "test": 85.0625,
+        "train": 100.0,
+        "valid": 85.875
+      },
+      {
+        "#gates": 6800,
+        "benchmark": "ex00",
+        "depth": 42,
+        "runtime": 117.9010009765625,
+        "test": 65.734375,
+        "train": 100.0,
+        "valid": 66.265625
+      },
+      {
+        "#gates": 3789,
+        "benchmark": "ex15",
+        "depth": 37,
+        "runtime": 55.042999267578125,
+        "test": 86.171875,
+        "train": 100.0,
+        "valid": 87.40625
+      },
+      {
+        "#gates": 8607,
+        "benchmark": "ex02",
+        "depth": 44,
+        "runtime": 147.97999572753906,
+        "test": 49.0,
+        "train": 100.0,
+        "valid": 49.859375
+      },
+      {
+        "#gates": 3995,
+        "benchmark": "ex17",
+        "depth": 38,
+        "runtime": 46.89099884033203,
+        "test": 87.625,
+        "train": 100.0,
+        "valid": 87.296875
+      },
+      {
+        "#gates": 8898,
+        "benchmark": "ex04",
+        "depth": 43,
+        "runtime": 145.93299865722656,
+        "test": 49.40625,
+        "train": 100.0,
+        "valid": 50.859375
+      },
+      {
+        "#gates": 8896,
+        "benchmark": "ex06",
+        "depth": 40,
+        "runtime": 153.3249969482422,
+        "test": 50.09375,
+        "train": 100.0,
+        "valid": 49.0625
+      },
+      {
+        "#gates": 209,
+        "benchmark": "ex21",
+        "depth": 17,
+        "runtime": 9.005999565124512,
+        "test": 99.9375,
+        "train": 100.0,
+        "valid": 99.9375
+      },
+      {
+        "#gates": 3,
+        "benchmark": "ex23",
+        "depth": 2,
+        "runtime": 6.9720001220703125,
+        "test": 100.0,
+        "train": 100.0,
+        "valid": 100.0
+      },
+      {
+        "#gates": 4489,
+        "benchmark": "ex16",
+        "depth": 35,
+        "runtime": 58.334999084472656,
+        "test": 83.125,
+        "train": 100.0,
+        "valid": 82.734375
+      },
+      {
+        "#gates": 9020,
+        "benchmark": "ex08",
+        "depth": 40,
+        "runtime": 173.21600341796875,
+        "test": 51.1875,
+        "train": 100.0,
+        "valid": 50.125
+      },
+      {
+        "#gates": 5059,
+        "benchmark": "ex18",
+        "depth": 35,
+        "runtime": 58.50899887084961,
+        "test": 82.984375,
+        "train": 100.0,
+        "valid": 83.65625
+      },
+      {
+        "#gates": 1362,
+        "benchmark": "ex27",
+        "depth": 33,
+        "runtime": 40.22200012207031,
+        "test": 98.125,
+        "train": 100.0,
+        "valid": 98.015625
+      },
+      {
+        "#gates": 5445,
+        "benchmark": "ex19",
+        "depth": 35,
+        "runtime": 69.26000213623047,
+        "test": 83.0625,
+        "train": 100.0,
+        "valid": 82.859375
+      },
+      {
+        "#gates": 4808,
+        "benchmark": "ex25",
+        "depth": 40,
+        "runtime": 63.91699981689453,
+        "test": 88.875,
+        "train": 100.0,
+        "valid": 88.875
+      },
+      {
+        "#gates": 656,
+        "benchmark": "ex30",
+        "depth": 24,
+        "runtime": 23.96299934387207,
+        "test": 98.578125,
+        "train": 100.0,
+        "valid": 98.8125
+      },
+      {
+        "#gates": 570,
+        "benchmark": "ex31",
+        "depth": 28,
+        "runtime": 20.992000579833984,
+        "test": 98.640625,
+        "train": 100.0,
+        "valid": 98.515625
+      },
+      {
+        "#gates": 1015,
+        "benchmark": "ex32",
+        "depth": 30,
+        "runtime": 36.66299819946289,
+        "test": 97.390625,
+        "train": 100.0,
+        "valid": 97.609375
+      },
+      {
+        "#gates": 1660,
+        "benchmark": "ex33",
+        "depth": 30,
+        "runtime": 40.58000183105469,
+        "test": 96.71875,
+        "train": 100.0,
+        "valid": 96.171875
+      },
+      {
+        "#gates": 1747,
+        "benchmark": "ex34",
+        "depth": 32,
+        "runtime": 29.7810001373291,
+        "test": 96.671875,
+        "train": 100.0,
+        "valid": 97.03125
+      },
+      {
+        "#gates": 8604,
+        "benchmark": "ex22",
+        "depth": 45,
+        "runtime": 145.77200317382813,
+        "test": 48.703125,
+        "train": 100.0,
+        "valid": 49.953125
+      },
+      {
+        "#gates": 8430,
+        "benchmark": "ex20",
+        "depth": 53,
+        "runtime": 164.46600341796875,
+        "test": 55.4375,
+        "train": 100.0,
+        "valid": 55.09375
+      },
+      {
+        "#gates": 8604,
+        "benchmark": "ex24",
+        "depth": 39,
+        "runtime": 141.03199768066406,
+        "test": 49.328125,
+        "train": 100.0,
+        "valid": 50.71875
+      },
+      {
+        "#gates": 1337,
+        "benchmark": "ex35",
+        "depth": 34,
+        "runtime": 36.143001556396484,
+        "test": 96.90625,
+        "train": 100.0,
+        "valid": 96.8125
+      },
+      {
+        "#gates": 9335,
+        "benchmark": "ex26",
+        "depth": 42,
+        "runtime": 150.375,
+        "test": 49.5,
+        "train": 100.0,
+        "valid": 50.53125
+      },
+      {
+        "#gates": 1326,
+        "benchmark": "ex36",
+        "depth": 30,
+        "runtime": 29.87299919128418,
+        "test": 97.15625,
+        "train": 100.0,
+        "valid": 97.171875
+      },
+      {
+        "#gates": 2172,
+        "benchmark": "ex37",
+        "depth": 32,
+        "runtime": 39.85200119018555,
+        "test": 95.375,
+        "train": 100.0,
+        "valid": 94.890625
+      },
+      {
+        "#gates": 2117,
+        "benchmark": "ex38",
+        "depth": 30,
+        "runtime": 33.191001892089844,
+        "test": 96.171875,
+        "train": 100.0,
+        "valid": 96.1875
+      },
+      {
+        "#gates": 2010,
+        "benchmark": "ex39",
+        "depth": 31,
+        "runtime": 39.34199905395508,
+        "test": 95.34375,
+        "train": 100.0,
+        "valid": 95.65625
+      },
+      {
+        "#gates": 1162,
+        "benchmark": "ex41",
+        "depth": 27,
+        "runtime": 29.049999237060547,
+        "test": 100.0,
+        "train": 100.0,
+        "valid": 100.0
+      },
+      {
+        "#gates": 9060,
+        "benchmark": "ex28",
+        "depth": 38,
+        "runtime": 152.33700561523438,
+        "test": 49.8125,
+        "train": 100.0,
+        "valid": 49.53125
+      },
+      {
+        "#gates": 9274,
+        "benchmark": "ex29",
+        "depth": 42,
+        "runtime": 156.63499450683594,
+        "test": 48.953125,
+        "train": 100.0,
+        "valid": 49.34375
+      },
+      {
+        "#gates": 6161,
+        "benchmark": "ex40",
+        "depth": 43,
+        "runtime": 121.44000244140625,
+        "test": 78.4375,
+        "train": 100.0,
+        "valid": 79.359375
+      },
+      {
+        "#gates": 6848,
+        "benchmark": "ex43",
+        "depth": 43,
+        "runtime": 131.99400329589844,
+        "test": 68.265625,
+        "train": 100.0,
+        "valid": 66.5625
+      },
+      {
+        "#gates": 8638,
+        "benchmark": "ex42",
+        "depth": 42,
+        "runtime": 146.38699340820313,
+        "test": 49.75,
+        "train": 100.0,
+        "valid": 49.703125
+      },
+      {
+        "#gates": 7881,
+        "benchmark": "ex45",
+        "depth": 46,
+        "runtime": 142.12399291992188,
+        "test": 49.96875,
+        "train": 100.0,
+        "valid": 48.40625
+      },
+      {
+        "#gates": 8147,
+        "benchmark": "ex44",
+        "depth": 39,
+        "runtime": 140.02200317382813,
+        "test": 49.8125,
+        "train": 100.0,
+        "valid": 49.921875
+      },
+      {
+        "#gates": 1341,
+        "benchmark": "ex50",
+        "depth": 33,
+        "runtime": 37.99700164794922,
+        "test": 97.1875,
+        "train": 100.0,
+        "valid": 97.25
+      },
+      {
+        "#gates": 9528,
+        "benchmark": "ex46",
+        "depth": 42,
+        "runtime": 147.89700317382813,
+        "test": 50.046875,
+        "train": 100.0,
+        "valid": 49.1875
+      },
+      {
+        "#gates": 9030,
+        "benchmark": "ex47",
+        "depth": 38,
+        "runtime": 143.91299438476563,
+        "test": 49.78125,
+        "train": 100.0,
+        "valid": 48.953125
+      },
+      {
+        "#gates": 119,
+        "benchmark": "ex55",
+        "depth": 23,
+        "runtime": 11.39900016784668,
+        "test": 98.53125,
+        "train": 100.0,
+        "valid": 98.59375
+      },
+      {
+        "#gates": 154,
+        "benchmark": "ex56",
+        "depth": 19,
+        "runtime": 9.310999870300293,
+        "test": 96.234375,
+        "train": 100.0,
+        "valid": 96.28125
+      },
+      {
+        "#gates": 143,
+        "benchmark": "ex57",
+        "depth": 25,
+        "runtime": 7.531000137329102,
+        "test": 98.65625,
+        "train": 100.0,
+        "valid": 98.484375
+      },
+      {
+        "#gates": 317,
+        "benchmark": "ex58",
+        "depth": 24,
+        "runtime": 11.595000267028809,
+        "test": 94.453125,
+        "train": 100.0,
+        "valid": 95.71875
+      },
+      {
+        "#gates": 1972,
+        "benchmark": "ex54",
+        "depth": 33,
+        "runtime": 29.770999908447266,
+        "test": 94.21875,
+        "train": 100.0,
+        "valid": 93.9375
+      },
+      {
+        "#gates": 9088,
+        "benchmark": "ex48",
+        "depth": 44,
+        "runtime": 157.3780059814453,
+        "test": 49.953125,
+        "train": 100.0,
+        "valid": 50.4375
+      },
+      {
+        "#gates": 337,
+        "benchmark": "ex62",
+        "depth": 25,
+        "runtime": 11.529000282287598,
+        "test": 95.125,
+        "train": 100.0,
+        "valid": 94.546875
+      },
+      {
+        "#gates": 306,
+        "benchmark": "ex61",
+        "depth": 24,
+        "runtime": 17.131999969482422,
+        "test": 99.15625,
+        "train": 100.0,
+        "valid": 99.390625
+      },
+      {
+        "#gates": 8,
+        "benchmark": "ex64",
+        "depth": 6,
+        "runtime": 7.260000228881836,
+        "test": 100.0,
+        "train": 100.0,
+        "valid": 100.0
+      },
+      {
+        "#gates": 111,
+        "benchmark": "ex63",
+        "depth": 20,
+        "runtime": 7.616000175476074,
+        "test": 98.8125,
+        "train": 100.0,
+        "valid": 98.734375
+      },
+      {
+        "#gates": 874,
+        "benchmark": "ex60",
+        "depth": 34,
+        "runtime": 32.77799987792969,
+        "test": 92.609375,
+        "train": 100.0,
+        "valid": 92.625
+      },
+      {
+        "#gates": 222,
+        "benchmark": "ex65",
+        "depth": 22,
+        "runtime": 18.53499984741211,
+        "test": 99.515625,
+        "train": 100.0,
+        "valid": 99.484375
+      },
+      {
+        "#gates": 446,
+        "benchmark": "ex66",
+        "depth": 23,
+        "runtime": 11.156999588012695,
+        "test": 92.015625,
+        "train": 100.0,
+        "valid": 92.3125
+      },
+      {
+        "#gates": 474,
+        "benchmark": "ex67",
+        "depth": 25,
+        "runtime": 11.557000160217285,
+        "test": 92.25,
+        "train": 100.0,
+        "valid": 92.1875
+      },
+      {
+        "#gates": 262,
+        "benchmark": "ex69",
+        "depth": 30,
+        "runtime": 9.678999900817871,
+        "test": 99.765625,
+        "train": 100.0,
+        "valid": 99.703125
+      },
+      {
+        "#gates": 203,
+        "benchmark": "ex68",
+        "depth": 23,
+        "runtime": 15.720999717712402,
+        "test": 97.5,
+        "train": 100.0,
+        "valid": 97.40625
+      },
+      {
+        "#gates": 160,
+        "benchmark": "ex70",
+        "depth": 19,
+        "runtime": 8.770000457763672,
+        "test": 98.234375,
+        "train": 100.0,
+        "valid": 98.375
+      },
+      {
+        "#gates": 207,
+        "benchmark": "ex71",
+        "depth": 23,
+        "runtime": 8.798999786376953,
+        "test": 98.359375,
+        "train": 100.0,
+        "valid": 98.375
+      },
+      {
+        "#gates": 4762,
+        "benchmark": "ex53",
+        "depth": 42,
+        "runtime": 73.71399688720703,
+        "test": 78.703125,
+        "train": 100.0,
+        "valid": 79.125
+      },
+      {
+        "#gates": 420,
+        "benchmark": "ex72",
+        "depth": 34,
+        "runtime": 14.472000122070313,
+        "test": 97.328125,
+        "train": 100.0,
+        "valid": 97.28125
+      },
+      {
+        "#gates": 3903,
+        "benchmark": "ex59",
+        "depth": 36,
+        "runtime": 43.4739990234375,
+        "test": 89.28125,
+        "train": 100.0,
+        "valid": 88.953125
+      },
+      {
+        "#gates": 9313,
+        "benchmark": "ex49",
+        "depth": 41,
+        "runtime": 148.85899353027344,
+        "test": 50.71875,
+        "train": 100.0,
+        "valid": 50.90625
+      },
+      {
+        "#gates": 1583,
+        "benchmark": "ex76",
+        "depth": 24,
+        "runtime": 15.715999603271484,
+        "test": 80.53125,
+        "train": 100.0,
+        "valid": 80.9375
+      },
+      {
+        "#gates": 1592,
+        "benchmark": "ex77",
+        "depth": 24,
+        "runtime": 16.424999237060547,
+        "test": 80.6875,
+        "train": 100.0,
+        "valid": 81.015625
+      },
+      {
+        "#gates": 2092,
+        "benchmark": "ex73",
+        "depth": 39,
+        "runtime": 56.76300048828125,
+        "test": 93.0625,
+        "train": 100.0,
+        "valid": 92.515625
+      },
+      {
+        "#gates": 7686,
+        "benchmark": "ex51",
+        "depth": 42,
+        "runtime": 145.88400268554688,
+        "test": 55.578125,
+        "train": 100.0,
+        "valid": 55.703125
+      },
+      {
+        "#gates": 6645,
+        "benchmark": "ex52",
+        "depth": 40,
+        "runtime": 142.60000610351563,
+        "test": 57.8125,
+        "train": 100.0,
+        "valid": 58.140625
+      },
+      {
+        "#gates": 1592,
+        "benchmark": "ex79",
+        "depth": 24,
+        "runtime": 16.56399917602539,
+        "test": 80.6875,
+        "train": 100.0,
+        "valid": 81.015625
+      },
+      {
+        "#gates": 3641,
+        "benchmark": "ex75",
+        "depth": 32,
+        "runtime": 44.77199935913086,
+        "test": 93.59375,
+        "train": 100.0,
+        "valid": 93.96875
+      },
+      {
+        "#gates": 3376,
+        "benchmark": "ex78",
+        "depth": 29,
+        "runtime": 27.049999237060547,
+        "test": 56.78125,
+        "train": 100.0,
+        "valid": 57.078125
+      },
+      {
+        "#gates": 3800,
+        "benchmark": "ex83",
+        "depth": 32,
+        "runtime": 47.34199905395508,
+        "test": 96.171875,
+        "train": 100.0,
+        "valid": 95.65625
+      },
+      {
+        "#gates": 4733,
+        "benchmark": "ex82",
+        "depth": 35,
+        "runtime": 64.70099639892578,
+        "test": 92.53125,
+        "train": 100.0,
+        "valid": 92.25
+      },
+      {
+        "#gates": 4252,
+        "benchmark": "ex84",
+        "depth": 36,
+        "runtime": 63.35499954223633,
+        "test": 92.96875,
+        "train": 100.0,
+        "valid": 92.9375
+      },
+      {
+        "#gates": 5344,
+        "benchmark": "ex81",
+        "depth": 43,
+        "runtime": 85.21600341796875,
+        "test": 88.125,
+        "train": 100.0,
+        "valid": 88.515625
+      },
+      {
+        "#gates": 4147,
+        "benchmark": "ex86",
+        "depth": 38,
+        "runtime": 54.96200180053711,
+        "test": 95.5,
+        "train": 100.0,
+        "valid": 95.25
+      },
+      {
+        "#gates": 6132,
+        "benchmark": "ex80",
+        "depth": 40,
+        "runtime": 90.27999877929688,
+        "test": 84.390625,
+        "train": 100.0,
+        "valid": 85.5625
+      },
+      {
+        "#gates": 5415,
+        "benchmark": "ex85",
+        "depth": 40,
+        "runtime": 63.22200012207031,
+        "test": 93.5,
+        "train": 100.0,
+        "valid": 93.96875
+      },
+      {
+        "#gates": 8556,
+        "benchmark": "ex74",
+        "depth": 59,
+        "runtime": 166.5919952392578,
+        "test": 51.78125,
+        "train": 100.0,
+        "valid": 53.09375
+      },
+      {
+        "#gates": 4446,
+        "benchmark": "ex87",
+        "depth": 40,
+        "runtime": 62.512001037597656,
+        "test": 94.484375,
+        "train": 100.0,
+        "valid": 94.3125
+      },
+      {
+        "#gates": 4056,
+        "benchmark": "ex89",
+        "depth": 36,
+        "runtime": 66.7509994506836,
+        "test": 92.59375,
+        "train": 100.0,
+        "valid": 92.734375
+      },
+      {
+        "#gates": 4358,
+        "benchmark": "ex88",
+        "depth": 34,
+        "runtime": 65.47899627685547,
+        "test": 92.375,
+        "train": 100.0,
+        "valid": 92.453125
+      },
+      {
+        "#gates": 5394,
+        "benchmark": "ex93",
+        "depth": 68,
+        "runtime": 184.03500366210938,
+        "test": 68.640625,
+        "train": 99.921875,
+        "valid": 68.109375
+      },
+      {
+        "#gates": 5489,
+        "benchmark": "ex92",
+        "depth": 55,
+        "runtime": 194.07400512695313,
+        "test": 63.53125,
+        "train": 99.890625,
+        "valid": 63.5625
+      },
+      {
+        "#gates": 7732,
+        "benchmark": "ex90",
+        "depth": 56,
+        "runtime": 208.0959930419922,
+        "test": 53.765625,
+        "train": 99.96875,
+        "valid": 54.640625
+      },
+      {
+        "#gates": 4457,
+        "benchmark": "ex95",
+        "depth": 60,
+        "runtime": 179.56100463867188,
+        "test": 75.03125,
+        "train": 100.0,
+        "valid": 73.78125
+      },
+      {
+        "#gates": 7484,
+        "benchmark": "ex91",
+        "depth": 50,
+        "runtime": 208.58099365234375,
+        "test": 59.484375,
+        "train": 100.0,
+        "valid": 59.75
+      },
+      {
+        "#gates": 6828,
+        "benchmark": "ex94",
+        "depth": 61,
+        "runtime": 217.12600708007813,
+        "test": 56.0,
+        "train": 99.921875,
+        "valid": 56.78125
+      },
+      {
+        "#gates": 6440,
+        "benchmark": "ex96",
+        "depth": 44,
+        "runtime": 197.1959991455078,
+        "test": 61.46875,
+        "train": 99.984375,
+        "valid": 62.203125
+      },
+      {
+        "#gates": 6743,
+        "benchmark": "ex97",
+        "depth": 64,
+        "runtime": 214.6269989013672,
+        "test": 61.5,
+        "train": 99.953125,
+        "valid": 61.296875
+      },
+      {
+        "#gates": 5491,
+        "benchmark": "ex98",
+        "depth": 68,
+        "runtime": 154.7519989013672,
+        "test": 62.125,
+        "train": 100.0,
+        "valid": 63.0625
+      },
+      {
+        "#gates": 5779,
+        "benchmark": "ex99",
+        "depth": 64,
+        "runtime": 151.4250030517578,
+        "test": 63.671875,
+        "train": 100.0,
+        "valid": 63.53125
+      }
+    ],
+    "version": "d9d3b71"
+  }
+]

@@ -25,180 +25,256 @@
 
 /*!
   \file statistics.hpp
-  \brief Computes statistical properties of truth tables
-
+  \brief Computes statistical properties of Boolean functions
   \author Andrea Costamagna
 */
 
 #pragma once
 
-#include "partial_truth_table.hpp"
-#include "dynamic_truth_table.hpp"
-#include "static_truth_table.hpp"
+#include <algorithm>
+#include <cmath>
+#include <vector>
+#include <cstdlib>
+
 #include "bit_operations.hpp"
 #include "constructors.hpp"
-#include <algorithm>
-#include <iostream>
-#include <vector>
-
-#include <cmath>
+#include "traits.hpp"
 
 namespace kitty
 {
+/*! \brief Computes the probabilities of the random variable X
 
-#pragma region probability
-/*! \brief Compute the probability for the binary value of a single truth table
+  The random variable \f$X\in\mathbb{B}^{n}\f$ is represented using \f$n\f$ Truth tables. 
+  The collection of the \f$i\f$-th bit of all truth tables identifies a pattern \f$\pi_i\in\mathbb{B}^{n}\f$, i.e., a sampling of \f$X\f$.
+  This function computes the probability \f$\mathbb{P}(\pi)\f$ of each pattern \f$\pi\in\mathbb{B}^{n}\f$.
 
-  \param tt Truth table
+  \param X \f$n\f$-dimensional vector of Truth tables or of pointers to Truth tables
 */
 template<typename TT>
-std::vector<double> probability( TT const& tt )
+std::vector<double> probabilities( std::vector<TT> const& X )
 {
-  double p = (double)count_ones(tt)/tt.num_bits();
-  std::vector<double> probs = { 1-p, p };
-  return probs;
-}
 
-/*! \brief Compute the probability for the binary value of a vector of truth tables
+  size_t ntts = X.size();
+  size_t nconstr = std::is_same<TT, kitty::dynamic_truth_table>::value ? (int)log2( X[0].num_bits() ) : X[0].num_bits();
 
-  \param tts Vector of Truth tables
-*/
-template<typename TT>
-std::vector<double> probability( std::vector<TT>const& tts )
-{
-  auto ntts = tts.size();
-  size_t nvars;
-  nvars = tts[0].num_bits();
   std::vector<double> probs;
-  TT const0( nvars );
-  TT ttc( nvars );
+  TT const0( nconstr );
+  TT mask( nconstr );
 
-  for( uint32_t p = 0; p < pow( 2, ntts ); ++p )
+  for ( uint32_t p = 0; p < pow( 2, ntts ); ++p )
   {
-    ttc = ~const0;
-    for( uint32_t i = 0; i < ntts; ++i )
+    mask = ~const0;
+    for ( uint32_t i = 0; i < ntts; ++i )
     {
       bool bit = ( p >> i ) & 1u;
 
-      if( bit == 1 )
-        ttc &= tts[i];
-      else  
-        ttc &= ~tts[i];
+      if ( bit == 1 )
+        mask &= X[i];
+      else
+        mask &= ~X[i];
     }
-    probs.push_back( (double)count_ones(ttc)/ttc.num_bits() );
+    probs.push_back( (double)count_ones( mask ) / mask.num_bits() );
   }
 
   return probs;
 }
-/*
-template <typename TT>
-std::vector<double> probability( std::vector<TT>& tt )
-{
-  if constexpr( std::is_same_v< std::vector<kitty::partial_truth_table>, TT> )
-    return probability( tt );
-  else
-    return probability_v( tt );
-}
-*/
-/*! \brief Compute the probability for the binary value of a single truth table
 
-  \param tt Truth table
-  \param index Bit index
+template<typename TT>
+std::vector<double> probabilities( std::vector<TT*> const& X )
+{
+
+  size_t ntts = X.size();
+  size_t nconstr = std::is_same<TT, kitty::dynamic_truth_table>::value ? (int)log2( (*X[0]).num_bits() ) : (*X[0]).num_bits();
+
+  std::vector<double> probs;
+  TT const0( nconstr );
+  TT mask( nconstr );
+
+  for ( uint32_t p = 0; p < pow( 2, ntts ); ++p )
+  {
+    mask = ~const0;
+    for ( uint32_t i = 0; i < ntts; ++i )
+    {
+      bool bit = ( p >> i ) & 1u;
+
+      if ( bit == 1 )
+        mask &= *X[i];
+      else
+        mask &= ~*X[i];
+    }
+    probs.push_back( (double)count_ones( mask ) / mask.num_bits() );
+  }
+
+  return probs;
+}
+
+
+/*! \brief Computes the joint probabilities of random variables X and Y
+
+  The random variables \f$X\in\mathbb{B}^{n_1}\f$ and \f$Y\in\mathbb{B}^{n_2}\f$ are represented using \f$n_1\f$ and \f$n_2\f$ Truth tables, respectively. 
+  The collection of the \f$i\f$-th bit of all truth tables identifies a pattern \f$\pi_i=\pi^{(1)}_i\pi^{(2)}_i\in\mathbb{B}^{n}\f$, i.e., a sampling of \f$(X,Y)\f$.
+  This function computes the probability \f$\mathbb{P}(\pi)\f$ of each pattern \f$\pi\in\mathbb{B}^{n}\f$.
+  
+  \param X \f$n_1\f$-dimensional vector of Truth tables or of pointers to Truth tables
+  \param Y \f$n_2\f$-dimensional vector of Truth tables or of pointers to Truth tables
 */
 template<typename TT>
-std::vector<double> probability( std::vector<TT>const& tt1, std::vector<TT>const& tt2 )
+std::vector<double> probabilities( std::vector<TT> const& X, std::vector<TT> const& Y )
 {
-  auto n1 = tt1[0].num_vars();
-  auto n2 = tt2[0].num_vars();
-  assert( ( n1 == n2 ) );
 
-  std::vector<kitty::dynamic_truth_table> tts;
+  std::vector<TT> U;
 
-  for( auto tt : tt2 )
-    tt1.push_back( tt );
+  U = X;
+  U.insert( U.end(), Y.begin(), Y.end() );
 
-  return probability( tt1 );
+  return probabilities( U );
 }
 
+/*! \brief Computes the entropy of the random variable X.
 
-/*! \brief Compute the probability for the binary value of a single truth table
+  The random variable \f$X\in\mathbb{B}^{n}\f$ is represented using \f$n\f$ Truth tables. 
+  The collection of the \f$i\f$-th bit of all truth tables identifies a pattern \f$\pi_i\in\mathbb{B}^{n}\f$, i.e., a sampling of \f$X\f$.
+  The entropy quantifies the uncertainty on the value of \f$X\f$:
 
-  \param tt Truth table
-  \param index Bit index
+  \f$H(X)=-\sum_{\pi\in\mathbb{B}^n}\mathbb{P}(\pi)\cdot\log_2\mathbb{P}(\pi)\f$
+
+  \param X \f$n\f$-dimensional vector of Truth tables or of pointers to Truth tables
 */
 template<typename TT>
-std::vector<double> probability( TT const& tt1, TT const& tt2 )
+double entropy( std::vector<TT> const& X )
 {
-  std::vector<TT> dbv = { tt1, tt2 };
-
-  return probability( dbv );
-}
-
-/*! \brief Compute the probability for the binary value of a single truth table
-
-  \param tt Truth table
-  \param index Bit index
-*/
-template<typename TT>
-std::vector<double> probability( std::vector<TT>const& tts, TT const& tt )
-{
-  auto n1 = tts[0].num_bits();
-  auto n2 = tt.num_bits();
-  assert( ( n1 == n2 ) );
-  std::vector<TT> ttn = tts;
-  ttn.push_back( tt );
-
-  return probability( ttn );
-}
-
-#pragma endregion probability
-
-#pragma region entropy
-/*! \brief Compute the entropy of a single truth table
-
-  \param tt Truth table
-*/
-template<typename X>
-double entropy( X const& x )
-{
-  auto probs = probability( x );
+  std::vector<double> probs = probabilities( X );
   double H = 0;
-  for( auto i = 0; i < probs.size(); ++i )
-    H += ( ( probs[i] > 0 ) ? -probs[i]*log2( probs[i] ) : 0 );
-  return H;  
+  for ( size_t i = 0; i < probs.size(); ++i )
+    H += ( ( probs[i] > (double)0.0 ) ? -probs[i] * log2( probs[i] ) : (double)0.0 );
+  return H;
 }
 
-/*! \brief Compute the entropy of a single truth table
+/*!  \brief Computes the entropy of the patterns in X and Y.
 
-  \param tt Truth table
+  The random variables \f$X\in\mathbb{B}^{n_1}\f$ and \f$Y\in\mathbb{B}^{n_2}\f$ are represented using \f$n_1\f$ and \f$n_2\f$ Truth tables, respectively. 
+  The collection of the \f$i\f$-th bit of all truth tables identifies a pattern \f$\pi_i=\pi^{(1)}_i\pi^{(2)}_i\in\mathbb{B}^{n}\f$, i.e., a sampling of \f$(X,Y)\f$.
+  The entropy quantifies the uncertainty on the value of \f$(X,Y)\f$:
+  
+  \f$H(X,Y)=-\sum_{\pi\in\mathbb{B}^n}\mathbb{P}(\pi)\cdot\log_2\mathbb{P}(\pi)\f$
+
+  \param X \f$n_1\f$-dimensional vector of Truth tables or of pointers to Truth tables
+  \param Y \f$n_2\f$-dimensional vector of Truth tables or of pointers to Truth tables
 */
-template<typename X, typename Y>
-double entropy( X const& x, Y const& y )
+template<typename TT>
+double entropy( std::vector<TT> const& X, std::vector<TT> const& Y )
 {
-  auto probs = probability( x, y );
+  std::vector<double> probs = probabilities( X, Y );
   double H = 0;
-  for( auto i = 0; i < probs.size(); ++i )
-    H += ( ( probs[i] > 0 ) ? -probs[i]*log2( probs[i] ) : 0 );
-  return H;  
+  for ( size_t i = 0; i < probs.size(); ++i )
+    H += ( ( probs[i] > 0 ) ? -probs[i] * log2( probs[i] ) : 0 );
+  return H;
 }
 
+/*! \brief Computes the mutual information of random variables X and Y
 
-#pragma endregion entropy
+  The random variables \f$X\in\mathbb{B}^{n_1}\f$ and \f$Y\in\mathbb{B}^{n_2}\f$ are represented using \f$n_1\f$ and \f$n_2\f$ Truth tables, respectively. 
+  The mutual information quantifies the reduction in uncertainty on \f$Y\f$, given that \f$X\f$ is known:
+  
+  \f$I(X;Y)=H(Y)-H(Y|X)=H(X)+H(Y)-H(X,Y)\f$
 
-#pragma region mutual information
-/*! \brief Compute the mutual information of two 
-
-  \param tt Truth table
+  \param X \f$n_1\f$-dimensional Vector of Truth tables or of pointers to Truth tables
+  \param Y \f$n_2\f$-dimensional Vector of Truth tables or of pointers to Truth tables
 */
-template<typename X, typename Y>
-double mutual_information( X const& x, Y const& y )
+template<typename TT>
+double mutual_information( std::vector<TT> const& X, std::vector<TT> const& Y )
 {
-  double mi = entropy( x ) + entropy( y ) - entropy( x, y );  
-  if( mi < 1e-6 && mi > -1e-6 )
-    return 0;
-  else
-    return mi;
+  double mi = entropy( X ) + entropy( Y ) - entropy( X, Y );
+  return ( mi > 1e-14 ) ? mi : 0;
 }
-#pragma endregion mutual information
+
+/*! \brief Computes the mutual information of random variables X and y
+
+  The random variables \f$X\in\mathbb{B}^{n_1}\f$ and \f$y\in\mathbb{B}\f$ are represented using \f$n_1\f$ and \f$1\f$ Truth tables, respectively. 
+  The mutual information quantifies the reduction in uncertainty on \f$y\f$, given that \f$X\f$ is known:
+  
+  \f$I(X;y)=H(y)-H(y|X)=H(X)+H(y)-H(X,y)\f$
+
+  \param X \f$n_1\f$-dimensional Vector of Truth tables or of pointers to Truth tables
+  \param y Truth table or of pointer to Truth tables
+*/
+template<typename TT>
+double mutual_information( std::vector<TT> const& X, TT const& y )
+{
+  std::vector<TT> Y = { y };
+
+  return mutual_information( X, Y );
+}
+
+/*! \brief Computes the normalized mutual information of random variables X and Y
+
+  The random variables \f$X\in\mathbb{B}^{n_1}\f$ and \f$Y\in\mathbb{B}^{n_2}\f$ are represented using \f$n_1\f$ and \f$n_2\f$ Truth tables, respectively. 
+  The normalized mutual information quantifies the reduction in uncertainty on \f$Y\f$, given that \f$X\f$ is known:
+  
+  \f$NI(X;Y)=\frac{H(X)+H(Y)}{H(X,Y)}\f$
+
+  \param X \f$n_1\f$-dimensional Vector of Truth tables or of pointers to Truth tables
+  \param Y \f$n_2\f$-dimensional Vector of Truth tables or of pointers to Truth tables
+*/
+template<typename TT>
+double normalized_mutual_information( std::vector<TT> const& X, std::vector<TT> const& Y )
+{
+  double mi = ( entropy( X ) + entropy( Y ) ) / entropy( X, Y );
+  return ( mi > 1e-14 ) ? mi : 0;
+}
+
+/*! \brief Computes the normalized mutual information of random variables X and y
+
+  The random variables \f$X\in\mathbb{B}^{n_1}\f$ and \f$y\in\mathbb{B}\f$ are represented using \f$n_1\f$ and \f$1\f$ Truth tables, respectively. 
+  The normalized mutual information quantifies the reduction in uncertainty on \f$y\f$, given that \f$X\f$ is known:
+  
+  \f$NI(X;y)=\frac{H(X)+H(y)}{H(X,y)}\f$
+
+  \param X \f$n_1\f$-dimensional Vector of Truth tables or of pointers to Truth tables
+  \param y Truth table or pointer to Truth table
+*/
+template<typename TT>
+double normalized_mutual_information( std::vector<TT> const& X, TT const& y )
+{
+  std::vector<TT> Y = { y };
+  return normalized_mutual_information( X, Y );
+}
+
+
+/*! \brief Computes the correlation of random variables X and y
+
+  The random variables \f$X\in\mathbb{B}^{n_1}\f$ and \f$y\in\mathbb{B}\f$ are represented using \f$n_1\f$ and \f$1\f$ Truth tables, respectively. 
+  The correlation quantifies the agrement/disagrement relationship of \f$y\f$ and \f$X\f$:
+  
+  \f$C(X;y)=agreements-disagreements\f$
+
+  \param X Truth table or of pointer to Truth tables
+  \param y Truth table or of pointer to Truth tables
+*/
+//template<typename TT>
+int correlation( kitty::partial_truth_table* const& X, kitty::partial_truth_table* const& Y )
+{
+  return abs((int)((*X).num_bits()-2*( count_ones( (*X)^(*Y) ) )));
+}
+
+//template<typename TT>
+int correlation( kitty::partial_truth_table const& X, kitty::partial_truth_table const& Y )
+{
+  return abs((int)(X.num_bits()-2*( count_ones( X^Y ) )));
+}
+
+int norm_correlation( kitty::partial_truth_table* const& X, kitty::partial_truth_table* const& Y )
+{
+  return std::abs(kitty::count_ones( (*X)&(*Y) )-(double)kitty::count_ones( *X )*kitty::count_ones( *Y )/((*Y).num_bits())); 
+
+}
+
+//template<typename TT>
+int norm_correlation( kitty::partial_truth_table const& X, kitty::partial_truth_table const& Y )
+{
+  return std::abs(kitty::count_ones( X&Y )-(double)kitty::count_ones( X )*kitty::count_ones( Y )/(Y.num_bits()));
+}
+
+
 
 } // namespace kitty

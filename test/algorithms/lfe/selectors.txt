@@ -1,0 +1,48 @@
+#include <catch.hpp>
+
+#include <mockturtle/algorithms/lfe/simulation_view.hpp>
+#include <mockturtle/networks/klut.hpp>
+#include <mockturtle/algorithms/lfe/hyperdimensional_computing/model.hpp>
+#include <mockturtle/algorithms/lfe/hyperdimensional_computing/methods/selectors.hpp>
+#include <kitty/partial_truth_table.hpp>
+#include <mockturtle/algorithms/simulation.hpp>
+#include <kitty/constructors.hpp>
+
+using namespace kitty;
+using namespace mockturtle;
+using namespace hdc;
+
+TEST_CASE( "depth selection", "[selector]" )
+{
+  klut_network oklut;
+  simulation_view oklut_sim{ oklut };
+  std::vector<partial_truth_table> ex;
+  partial_truth_table tt(16u);
+  for( uint32_t i = 0; i < 4; ++i )
+  {
+    create_nth_var(tt, i);
+    ex.push_back(tt);
+  }
+
+  tt = (ex[0]^ex[1])|(ex[2]&ex[3]);
+  std::vector<partial_truth_table> targets = {tt};
+  model M( oklut_sim, ex, targets );
+  std::vector<signal<klut_network>> osignals;
+
+  hdc::detail::selection_method selection_m = hdc::detail::selection_method::depth_selector;
+  hdc::detail::selection_params selection_ps;
+  selection_ps.max_new_supports = 3;
+  selection_ps.max_selection_attempts = 10;
+  selection_ps.support_size = 2;
+  selection_ps.max_search_depth = std::numeric_limits<uint32_t>::max();
+
+  std::vector<std::vector<signal<klut_network>>> supports = select_variables( oklut_sim, selection_m, selection_ps );
+  for( uint32_t i = 0; i < supports.size(); ++i )
+  {
+    for( uint32_t j = 0; j < supports[i].size(); ++j )
+      std::cout << supports[i][j] << " ";
+    std::cout << std::endl;
+  }
+  M.print_summary();
+}
+

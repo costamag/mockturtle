@@ -12,10 +12,19 @@
 #include <mockturtle/io/write_aiger.hpp>
 
 #include <mockturtle/networks/cover.hpp>
-#include <mockturtle/algorithms/cover_to_graph.hpp>
-#include <mockturtle/algorithms/klut_to_graph.hpp>
+#include "../include/mockturtle/algorithms/cover_to_graph.hpp"
+#include "../include/mockturtle/algorithms/klut_to_graph.hpp"
 
-#include <mockturtle/algorithms/lfe/mi_decomposition.hpp>
+//#include <mockturtle/algorithms/lfe/mi_decomposition.hpp>
+//#include <mockturtle/algorithms/lfe/mi_decomposition.hpp>
+#include "../include/mockturtle/algorithms/lfe/hyperdimensional_computing/model.hpp"
+#include "../include/mockturtle/algorithms/lfe/hyperdimensional_computing/methods/accuracy_recovery.hpp"
+#include "../include/mockturtle/algorithms/lfe/hyperdimensional_computing/methods/generators.hpp"
+#include "../include/mockturtle/algorithms/lfe/hyperdimensional_computing/methods/selectors.hpp"
+#include "../include/mockturtle/algorithms/lfe/hyperdimensional_computing/methods/selgenerators.hpp"
+#include "../include/mockturtle/algorithms/lfe/projectors_in_hd.hpp"
+
+
 #include <lorina/blif.hpp>
 #include <mockturtle/io/blif_reader.hpp>
 #include <mockturtle/views/names_view.hpp>
@@ -25,6 +34,7 @@
 #include <mockturtle/views/depth_view.hpp>
 #include <kitty/constructors.hpp>
 #include <kitty/dynamic_truth_table.hpp>
+#include <kitty/partial_truth_table.hpp>
 #include <fstream>
 #include <string>
 #include <omp.h>
@@ -39,14 +49,58 @@
 #include "experiments.hpp"
 #include <mockturtle/utils/stopwatch.hpp>
 #include <random>
+#include <mockturtle/algorithms/sim_resub.hpp>
+#include <mockturtle/algorithms/simulation.hpp>
 
+#include <mockturtle/algorithms/resubstitution.hpp>
 //#include <mockturtle/algorithms/node_resynthesis/mig_npn.hpp>
 
 #include <iostream>
 
 using namespace mockturtle;
+using namespace hdc;
 using namespace kitty;
 
+struct XYdataset{
+  std::vector<kitty::partial_truth_table> X;
+  kitty::partial_truth_table Y;
+  uint64_t nin;
+  uint64_t nout;
+  uint64_t ndata;
+  uint32_t conflicts_count{0};
+};
+
+
+template<typename Ntk>
+bool simulate_input( kitty::partial_truth_table const& input_pattern, Ntk& ntk )
+{
+  std::vector<bool> inpt_v;
+
+  for( uint64_t k{0u}; k<input_pattern.num_bits();++k )
+  {
+    inpt_v.push_back( ( ( kitty::get_bit( input_pattern, k ) == 1 ) ? true : false ) );
+  }
+
+  return simulate<bool>( ntk, default_simulator<bool>( inpt_v ) )[0];
+}
+
+template<typename Ntk>
+double compute_accuracy( std::vector<kitty::partial_truth_table> const& X, kitty::partial_truth_table const& Y, Ntk& ntk )
+{
+  double acc = 0;
+  double delta_acc;
+  for( uint64_t k {0u}; k < X[0].num_bits(); ++k )
+  {
+    kitty::partial_truth_table ipattern;
+    for ( uint64_t j {0u}; j < X.size(); ++j )
+      ipattern.add_bit( kitty::get_bit(X[j],k) );
+            
+    delta_acc = ( ( simulate_input( ipattern, ntk ) == kitty::get_bit(Y,k) ) ? (double)1.0/X[0].num_bits() : 0.0 );
+    acc += delta_acc;
+
+  }
+  return acc;
+}
 
 struct splitted_line{
   std::string first;
@@ -70,8 +124,13 @@ splitted_line split_string_by_space( std::string line )
 
 XYdataset dataset_loader( std::string file_name )
 {
+  std::set<std::string> onset;
+  std::set<std::string> offset;
+
   using dyn_bitset = kitty::partial_truth_table;
   XYdataset DS;
+  DS.conflicts_count = 0;
+
 
   std::string line;
   std::ifstream myfile ( file_name );
@@ -107,6 +166,21 @@ XYdataset dataset_loader( std::string file_name )
         kitty::create_from_binary_string( xline, v_line.first );
         dyn_bitset yline( 1 );
         kitty::create_from_binary_string( yline, v_line.second );
+        
+        if( v_line.second == "0" )
+        {
+          if( onset.find(v_line.first) != onset.end() )
+            DS.conflicts_count++;
+          offset.insert( v_line.first );
+        }
+        else if( v_line.second == "1" )
+        {
+          if( offset.find(v_line.first) != offset.end() )
+            DS.conflicts_count++;
+          onset.insert( v_line.first );
+        }
+        else
+          std::cerr << "[e] wrong label" << std::endl;
 
         for( uint32_t i{0u}; i < DS.nin; ++i )
           kitty::get_bit(xline,i) == 1 ? kitty::set_bit(DS.X[i],r) : kitty::clear_bit(DS.X[i],r) ;
@@ -119,10 +193,11 @@ XYdataset dataset_loader( std::string file_name )
     myfile.close();
   }
   else std::cout << "Unable to open file";
+
   return DS;
 }
 
-std::string DEC_ALGO{"dcIDSD"};
+std::string DEC_ALGO{"ifgen1024x1"};
 using experiment_t = experiments::experiment<std::string, uint32_t, uint32_t, float, float, float, float>;
 experiment_t exp_res( "/iwls2020/"+DEC_ALGO, "benchmark", "#gates", "depth", "train", "test", "valid", "runtime" );
 
@@ -136,7 +211,8 @@ std::mutex exp_mutex;
 #pragma region iwls2020 parameters
 struct iwls2020_parameters
 {
-  std::string dec_algo{"ISD"};
+  std::string dec_algo;
+  double frac_valid{0};
 };
 #pragma endregion iwls2020 parameters
 
@@ -223,6 +299,21 @@ void iterative_abc_opto( Ntk & ntk, std::string str_code, std::string abc_script
 }
 #pragma endregion abc post processing
 
+#pragma region synthesis by high dimensional projection
+template<class Ntk>
+Ntk flow_hdp( std::vector<kitty::partial_truth_table>& X, std::vector<kitty::partial_truth_table>& Y, int const& topology = 1 )
+{
+  auto klut = project_in_hd( X, Y, topology );
+  Ntk ntk = convert_klut_to_graph<Ntk>( klut );
+  ntk = cleanup_dangling( ntk );
+
+  return ntk;
+}
+#pragma endregion region synthesis by high dimensional projection
+
+
+
+
 void thread_run( iwls2020_parameters const& iwls2020_ps, std::string const& run_only_one )
 {
   std::string train_path = "../experiments/iwls2020/benchmarks/train/";
@@ -252,69 +343,95 @@ void thread_run( iwls2020_parameters const& iwls2020_ps, std::string const& run_
     auto Dl = dataset_loader( path_train );
     auto Dt = dataset_loader( path_test );
     auto Dv = dataset_loader( path_valid );
+
+  std::vector<kitty::partial_truth_table> X;
+  kitty::partial_truth_table Y;
+  uint64_t nin;
+  uint64_t nout;
+  uint64_t ndata;
+  if( iwls2020_ps.frac_valid != 0 )
+  {
+    for( uint32_t i = 0; i < Dl.X.size(); ++i )
+    {
+      for( uint32_t j = 0; j < uint32_t(iwls2020_ps.frac_valid*Dv.X[i].num_bits()); ++j )
+      {
+        Dl.X[i].add_bit( kitty::get_bit(Dv.X[i],j) );
+      }
+    }
+    for( uint32_t j = 0; j < uint32_t(iwls2020_ps.frac_valid*Dv.Y.num_bits()); ++j )
+    {
+      Dl.Y.add_bit( kitty::get_bit(Dv.Y,j) );
+    }
+  }
     bool postprocess{false};
 
-    mi_decomposition_params ps;
-    ps.max_sup = 4;
-
-    if ( iwls2020_ps.dec_algo == "SD" )
+    aig_network aig;
+    
+    auto start = std::chrono::high_resolution_clock::now();
+    
+    if( iwls2020_ps.dec_algo == "sdec" )
     {
-        ps.is_informed = false;
-        ps.try_top_decomposition = false;
-        ps.try_xor_decomposition = false;
-        ps.use_cumsum = false;
-        ps.try_bottom_decomposition = false;
-        ps.dontcares = false;
+      auto Y = std::vector{Dl.Y};
+      aig = flow_hdp<aig_network>( Dl.X, Y, 0 );
     }
-    else if ( iwls2020_ps.dec_algo == "ISD" )
+    else if( iwls2020_ps.dec_algo == "isdec" )
     {
-        ps.is_informed = true;
-        ps.try_top_decomposition = false;
-        ps.try_xor_decomposition = false;
-        ps.use_cumsum = false;
-        ps.try_bottom_decomposition = false;
-        ps.dontcares = false;
+      auto Y = std::vector{Dl.Y};
+      aig = flow_hdp<aig_network>( Dl.X, Y, 1 );
     }
-    else if ( iwls2020_ps.dec_algo == "tIDSD" )
+    else if( iwls2020_ps.dec_algo == "itsdec" )
     {
-        ps.is_informed = true;
-        ps.try_top_decomposition = true;
-        ps.try_xor_decomposition = true;
-        ps.use_cumsum = true;
-        ps.try_bottom_decomposition = false;
-        ps.dontcares = false;
+      auto Y = std::vector{Dl.Y};
+      aig = flow_hdp<aig_network>( Dl.X, Y, 2 );
     }
-    else if ( iwls2020_ps.dec_algo == "IDSD" )
+    else if( iwls2020_ps.dec_algo == "ixtsdec" )
     {
-        ps.is_informed = true;
-        ps.try_top_decomposition = true;
-        ps.try_xor_decomposition = true;
-        ps.use_cumsum = true;
-        ps.try_bottom_decomposition = true;
-        ps.dontcares = false;
-
+      auto Y = std::vector{Dl.Y};
+      aig = flow_hdp<aig_network>( Dl.X, Y, 3 );
     }
-    else if ( iwls2020_ps.dec_algo == "dcIDSD" )
+    else if( iwls2020_ps.dec_algo == "dcsdec" )
     {
-        ps.is_informed = true;
-        ps.try_top_decomposition = true;
-        ps.try_xor_decomposition = true;
-        ps.use_cumsum = true;
-        ps.try_bottom_decomposition = true;
-        ps.dontcares = true;
+      auto Y = std::vector{Dl.Y};
+      aig = flow_hdp<aig_network>( Dl.X, Y, 4 );
+    }
+    else if( iwls2020_ps.dec_algo == "dcxsdec" )
+    {
+      auto Y = std::vector{Dl.Y};
+      aig = flow_hdp<aig_network>( Dl.X, Y, 5 );
+    }
+    else if( iwls2020_ps.dec_algo == "muesli" )
+    {
+      auto Y = std::vector{Dl.Y};
+      aig = flow_hdp<aig_network>( Dl.X, Y, 6 );
+    }
+    else if( iwls2020_ps.dec_algo == "armuesli" )
+    {
+      auto Y = std::vector{Dl.Y};
+      aig = flow_hdp<aig_network>( Dl.X, Y, 7 );
+    }
+    else if( iwls2020_ps.dec_algo == "argmuesli" )
+    {
+      auto Y = std::vector{Dl.Y};
+      aig = flow_hdp<aig_network>( Dl.X, Y, 8 );
+    }
+    else if( iwls2020_ps.dec_algo == "fgen1024x1" )
+    {
+      auto Y = std::vector{Dl.Y};
+      aig = flow_hdp<aig_network>( Dl.X, Y, 9 );
+    }
+    else if( iwls2020_ps.dec_algo == "ifgen1024x1" )
+    {
+      auto Y = std::vector{Dl.Y};
+      aig = flow_hdp<aig_network>( Dl.X, Y, 10 );
     }
     else
     {
       fmt::print( "[w] method named {} is not defined\n", iwls2020_ps.dec_algo );
     }
     
-    klut_network klut;
-    
-    stopwatch<>::duration time_dec{0};
+    auto stop = std::chrono::high_resolution_clock::now();
 
-    auto res = mi_decomposition_iwls20( Dl, klut, ps );
-    
-    auto aig = convert_klut_to_graph<aig_network>( klut );
+    auto time_dec = std::chrono::duration_cast<std::chrono::milliseconds>(stop-start);
 
     if( postprocess )
       iterative_abc_opto( aig, benchmark, "resyn2rs" );
@@ -323,11 +440,13 @@ void thread_run( iwls2020_parameters const& iwls2020_ps, std::string const& run_
     float la = 100*compute_accuracy( Dl.X, Dl.Y, d );
     float ta = 100*compute_accuracy( Dt.X, Dt.Y, d );
     float va = 100*compute_accuracy( Dv.X, Dv.Y, d );
-    fmt::print( "[i] obtained new result on {}: \n.g {}\n.d {} \n.l {} \n.t {} \n.v {}\n.c {}\n", 
-                benchmark, aig.num_gates(), d.depth(), la, ta, va, to_seconds(res._cnt.time_dec) );
+  //   fmt::print( "[i] obtained new result on {}: \n.g {}\n.d {} \n.l {} \n.t {} \n.v {}\n.c {}\n", 
+  //              benchmark, aig.num_gates(), d.depth(), la, ta, va, to_seconds(res._cnt.time_dec) );
+    fmt::print( "[i] obtained new result on {}: \n.g {}\n.d {} \n.l {} \n.w {} \n.t {} \n.v {}\n.c {}", 
+            benchmark, aig.num_gates(), d.depth(), la, Dl.conflicts_count, ta, va,to_seconds(time_dec)  );
 
     exp_mutex.lock();
-    exp_res( benchmark, aig.num_gates(), d.depth(), la, ta, va, to_seconds(res._cnt.time_dec) );
+    exp_res( benchmark, aig.num_gates(), d.depth(), la, ta, va, to_seconds(time_dec) );
     exp_mutex.unlock();
     write_aiger( aig, output_path +"AIG/"+ benchmark + ".aig" );
 
@@ -339,15 +458,8 @@ void thread_run( iwls2020_parameters const& iwls2020_ps, std::string const& run_
     myfile << ".v " << va <<std::endl;
     myfile << ".g " << aig.num_gates() << std::endl;
     myfile << ".d " << d.depth() << std::endl;
-    myfile << ".Tor " << res._cnt._or << std::endl;
-    myfile << ".Tle " << res._cnt._le << std::endl;
-    myfile << ".Tlt " << res._cnt._lt << std::endl;
-    myfile << ".Tan " << res._cnt._and << std::endl;
-    myfile << ".Txo " << res._cnt._xor << std::endl;
-    myfile << ".Bde " << res._cnt._btm << std::endl;
-    myfile << ".Fch " << res._cnt._ctj << std::endl;
-    myfile << ".Fcr " << res._cnt._cre << std::endl;
-    myfile << ".ck " << to_seconds(res._cnt.time_dec) << std::endl;
+    myfile << ".c " << to_seconds(time_dec) << std::endl;
+
     myfile.close();
     std::cout << std::endl;
 
@@ -361,6 +473,7 @@ int main( int argc, char* argv[] )
 
   iwls2020_parameters iwls2020_ps;
   iwls2020_ps.dec_algo = DEC_ALGO;
+  iwls2020_ps.frac_valid = 1;
 
   std::string run_only_one = "";
 

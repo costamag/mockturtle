@@ -1,0 +1,506 @@
+/* mockturtle: C++ logic network library
+ * Copyright (C) 2018-2021  EPFL
+ *
+ * Permission is hereby granted, free of charge, to any person
+ * obtaining a copy of this software and associated documentation
+ * files (the "Software"), to deal in the Software without
+ * restriction, including without limitation the rights to use,
+ * copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following
+ * conditions:
+ *
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+ * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+ * HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
+ */
+
+/*!
+  \file generators.hpp
+  \brief Methods to create new nodes given the support variables.
+  \author Andrea Costamagna
+*/
+
+#pragma once
+
+#include "../../chatterjee_method.hpp"
+#include "../../sim_create_nodes.hpp"
+#include "selectors.hpp"
+#include <kitty/print.hpp>
+#include <kitty/properties.hpp>
+#include <kitty/statistics.hpp>
+
+namespace mockturtle
+{
+namespace hdc
+{
+namespace detail
+{
+enum class creation_method
+{
+  chatterjee1,
+  rassembler1,
+  assembler1,
+  assemblerG,
+  rxor_assembler1,
+  rand_assembler1  
+};
+
+class creation_params
+{
+  public:
+    uint32_t output{0};
+    uint32_t max_new_nodes{1};
+    bool verbose{false};
+};
+
+template<class Ntk>
+std::vector<std::pair<std::vector<signal<Ntk>>,std::string>> chatterjee1( simulation_view<Ntk>& ntk, std::vector<std::vector<signal<Ntk>>> & divisors, 
+                           detail::creation_params const& ps )
+{
+  kitty::partial_truth_table * Y = &ntk.targets[ps.output];
+  std::vector<std::pair<std::vector<signal<Ntk>>,std::string>> candidates_s;
+  std::vector<std::pair< std::vector<signal<Ntk>>,kitty::dynamic_truth_table>> candidates;
+
+  std::vector<signal<Ntk>> new_signals;
+  for( uint32_t i=0; i < divisors.size(); ++i )
+  {
+    if( divisors[i].size()>1 )
+    {
+      std::vector<kitty::partial_truth_table*> X;
+      for( auto d : divisors[i] )
+        X.push_back( &( ntk.sim_patterns[ntk.nodes_to_patterns[ntk.get_node(d)]].pat ) );
+
+      chj_result F = chatterjee_method( X, Y, ntk.seed );
+
+      auto f = std::make_pair( divisors[i], F.tt );
+      if( ntk.available_nodes.find( f ) == ntk.available_nodes.end() )
+      {
+        auto candidate = std::make_pair( divisors[i], F.dtt );
+        auto candidate_s = std::make_pair( divisors[i], F.tt );
+        candidates.push_back( candidate );
+        candidates_s.push_back( candidate_s );
+      }
+    }
+  }
+  srand(ntk.seed++);
+  if( candidates.size() > ps.max_new_nodes )
+  {
+    size_t num_candidates = candidates.size() - ps.max_new_nodes;
+    for( uint32_t j{0}; j<num_candidates; ++j )
+    {
+      auto y = rand()%(candidates.size()+1);
+      candidates.erase( candidates.begin() + y );
+      candidates_s.erase( candidates_s.begin() + y );
+    }
+  }
+  for( uint32_t j=0; j<candidates.size(); ++j )
+  {
+    auto fnew = ntk.create_node( candidates[j].first, candidates[j].second );
+    new_signals.push_back( fnew );
+    ntk.available_nodes.insert( candidates_s[j] );
+    candidates_s[j].second = candidates_s[j].second + " -> " + std::to_string(fnew) + "~" + std::to_string(ps.output); 
+    if( ps.verbose )
+      std::cout << candidates_s[j].second << std::endl;
+    ntk.nodes_to_layer[ntk.get_node(fnew)]=ntk.layer_pointer;
+  }
+
+  if( new_signals.size() > 0 )
+    ntk.layer_to_signals.push_back( new_signals );
+  
+  return candidates_s;
+}
+
+template<class Ntk>
+std::vector<std::pair<std::vector<signal<Ntk>>,std::string>> rassembler1( simulation_view<Ntk>& ntk, std::vector<std::vector<signal<Ntk>>> & divisors, 
+                           detail::creation_params const& ps )
+{
+  kitty::partial_truth_table * Y = &ntk.targets[ps.output];
+  std::vector<std::pair<std::vector<signal<Ntk>>,std::string>> candidates_s;
+  std::vector<std::pair< std::vector<signal<Ntk>>,kitty::dynamic_truth_table>> candidates;
+
+  std::vector<signal<Ntk>> new_signals;
+  for( uint32_t i=0; i < divisors.size(); ++i )
+  {
+    if( divisors[i].size()>1 )
+    {
+      std::vector<kitty::partial_truth_table*> X;
+      for( auto d : divisors[i] )
+        X.push_back( &( ntk.sim_patterns[ntk.nodes_to_patterns[ntk.get_node(d)]].pat ) );
+
+      sim_create_nodes_result<kitty::partial_truth_table> Fset = sim_create_nodes_method( X, Y );
+
+      for( uint32_t j{0}; j<Fset.dtt_v.size(); ++j )
+      {
+        if( !kitty::is_trivial( Fset.dtt_v[j] ) && !kitty::is_trivial( ~Fset.dtt_v[j] ) )
+        {
+          auto f = std::make_pair( divisors[i], Fset.tt_v[j] );
+          if( ntk.available_nodes.find( f ) == ntk.available_nodes.end() )
+          {
+            auto candidate = std::make_pair( divisors[i], Fset.dtt_v[j] );
+            auto candidate_s = std::make_pair( divisors[i], Fset.tt_v[j] );
+            candidates.push_back( candidate );
+            candidates_s.push_back( candidate_s );
+          }
+        }
+      }
+    }
+  }
+  srand(ntk.seed++);
+  if( candidates.size() > ps.max_new_nodes )
+  {
+    size_t num_candidates = candidates.size() - ps.max_new_nodes;
+    for( uint32_t j{0}; j<num_candidates; ++j )
+    {
+      auto y = rand()%(candidates.size()+1);
+      candidates.erase( candidates.begin() + y );
+      candidates_s.erase( candidates_s.begin() + y );
+    }
+  }
+  for( uint32_t j=0; j<candidates.size(); ++j )
+  {
+    auto fnew = ntk.create_node( candidates[j].first, candidates[j].second );
+    new_signals.push_back( fnew );
+    ntk.available_nodes.insert( candidates_s[j] );
+    candidates_s[j].second = candidates_s[j].second + " -> " + std::to_string(fnew) + "~" + std::to_string(ps.output); 
+    if( ps.verbose )
+      std::cout << candidates_s[j].second << std::endl;
+    ntk.nodes_to_layer[ntk.get_node(fnew)]=ntk.layer_pointer;
+  }
+
+  if( new_signals.size() > 0 )
+    ntk.layer_to_signals.push_back( new_signals );
+  
+  return candidates_s;
+}
+
+template<class Ntk>
+std::vector<std::pair<std::vector<signal<Ntk>>,std::string>> assembler1( simulation_view<Ntk>& ntk, std::vector<std::vector<signal<Ntk>>> & divisors, 
+                           detail::creation_params const& ps )
+{
+  kitty::partial_truth_table * Y = &ntk.targets[ps.output];
+  std::vector<std::pair<std::vector<signal<Ntk>>,std::string>> candidates_s;
+  std::vector<std::pair< std::vector<signal<Ntk>>,kitty::dynamic_truth_table>> candidates;
+
+  std::vector<double> vect_I;
+
+  std::vector<signal<Ntk>> new_signals;
+  for( uint32_t i=0; i < divisors.size(); ++i )
+  {
+    if( divisors[i].size()>1 )
+    {
+      std::vector<kitty::partial_truth_table*> X;
+      for( auto d : divisors[i] )
+        X.push_back( &( ntk.sim_patterns[ntk.nodes_to_patterns[ntk.get_node(d)]].pat ) );
+
+      sim_create_nodes_result<kitty::partial_truth_table> Fset = sim_create_nodes_method( X, Y );
+
+      for( uint32_t j{0}; j<Fset.dtt_v.size(); ++j )
+      {
+        if( !kitty::is_trivial( Fset.dtt_v[j] ) && !kitty::is_trivial( ~Fset.dtt_v[j] ) )
+        {
+          auto f = std::make_pair( divisors[i], Fset.tt_v[j] );
+          if( ntk.available_nodes.find( f ) == ntk.available_nodes.end() )
+          {
+            auto candidate = std::make_pair( divisors[i], Fset.dtt_v[j] );
+            auto candidate_s = std::make_pair( divisors[i], Fset.tt_v[j] );
+
+            double Imax = -1;
+            for( uint32_t k=0; k < ntk.targets.size(); ++k )
+            
+            Imax = kitty::mutual_information( X, Y );
+
+            for( uint32_t k = 0; k < vect_I.size(); ++k )
+            {
+              if( Imax > vect_I[k] )
+              {
+                vect_I.insert( vect_I.begin()+k, Imax );
+                candidates.insert( candidates.begin()+k, candidate );
+                candidates_s.insert( candidates_s.begin()+k, candidate_s );
+                break;
+              } 
+            }
+
+            if( (vect_I.size() == 0) || ( vect_I.size() > 0 && Imax < vect_I[vect_I.size()-1] ) )
+            {
+              vect_I.push_back( Imax );
+              candidates.push_back( candidate );
+              candidates_s.push_back( candidate_s );
+            }
+          }
+        }
+      }
+    }
+  }
+
+  if( candidates.size() > ps.max_new_nodes )
+  {
+    for( uint32_t j{ps.max_new_nodes}; j<candidates.size(); ++j )
+    {
+      candidates.erase( candidates.begin() + j );
+      candidates_s.erase( candidates_s.begin() + j );
+    }
+  }
+
+  for( uint32_t j=0; j<candidates.size(); ++j )
+  {
+    auto fnew = ntk.create_node( candidates[j].first, candidates[j].second );
+    new_signals.push_back( fnew );
+    ntk.available_nodes.insert( candidates_s[j] );
+    candidates_s[j].second = candidates_s[j].second + " -> " + std::to_string(fnew) + "~" + std::to_string(ps.output); 
+    if( ps.verbose )
+      std::cout << candidates_s[j].second << std::endl;
+    ntk.nodes_to_layer[ntk.get_node(fnew)]=ntk.layer_pointer;
+  }
+
+  if( new_signals.size() > 0 )
+    ntk.layer_to_signals.push_back( new_signals );
+  
+  return candidates_s;
+}
+
+template<class Ntk>
+std::vector<std::pair<std::vector<signal<Ntk>>,std::string>> assemblerG( simulation_view<Ntk>& ntk, std::vector<std::vector<signal<Ntk>>> & divisors, 
+                           detail::creation_params const& ps )
+{
+  kitty::partial_truth_table * Y = &ntk.targets[ps.output];
+  std::vector<std::pair<std::vector<signal<Ntk>>,std::string>> candidates_s;
+  std::vector<std::pair< std::vector<signal<Ntk>>,kitty::dynamic_truth_table>> candidates;
+
+  std::vector<double> vect_I;
+
+  std::vector<signal<Ntk>> new_signals;
+  for( uint32_t i=0; i < divisors.size(); ++i )
+  {
+    if( divisors[i].size()>1 )
+    {
+      std::vector<kitty::partial_truth_table*> X;
+      for( auto d : divisors[i] )
+        X.push_back( &( ntk.sim_patterns[ntk.nodes_to_patterns[ntk.get_node(d)]].pat ) );
+
+      sim_create_nodes_result<kitty::partial_truth_table> Fset = sim_create_nodes_method( X, Y );
+
+      for( uint32_t j{0}; j<Fset.dtt_v.size(); ++j )
+      {
+        if( !kitty::is_trivial( Fset.dtt_v[j] ) && !kitty::is_trivial( ~Fset.dtt_v[j] ) )
+        {
+          auto f = std::make_pair( divisors[i], Fset.tt_v[j] );
+          if( ntk.available_nodes.find( f ) == ntk.available_nodes.end() )
+          {
+            auto candidate = std::make_pair( divisors[i], Fset.dtt_v[j] );
+            auto candidate_s = std::make_pair( divisors[i], Fset.tt_v[j] );
+
+            double Imax = -1;
+            double Inew;
+            for( uint32_t k=0; k < ntk.targets.size(); ++k )
+            {
+              Inew = kitty::mutual_information( X, &ntk.targets[k] );
+              if( Inew > Imax )
+                Imax = Inew;
+            }
+            for( uint32_t k = 0; k < vect_I.size(); ++k )
+            {
+              if( Imax > vect_I[k] )
+              {
+                vect_I.insert( vect_I.begin()+k, Imax );
+                candidates.insert( candidates.begin()+k, candidate );
+                candidates_s.insert( candidates_s.begin()+k, candidate_s );
+                break;
+              } 
+            }
+
+            if( (vect_I.size() == 0) || ( vect_I.size() > 0 && Imax < vect_I[vect_I.size()-1] ) )
+            {
+              vect_I.push_back( Imax );
+              candidates.push_back( candidate );
+              candidates_s.push_back( candidate_s );
+            }
+          }
+        }
+      }
+    }
+  }
+
+  if( candidates.size() > ps.max_new_nodes )
+  {
+    for( uint32_t j{ps.max_new_nodes}; j<candidates.size(); ++j )
+    {
+      candidates.erase( candidates.begin() + j );
+      candidates_s.erase( candidates_s.begin() + j );
+    }
+  }
+
+  for( uint32_t j=0; j<candidates.size(); ++j )
+  {
+    auto fnew = ntk.create_node( candidates[j].first, candidates[j].second );
+    new_signals.push_back( fnew );
+    ntk.available_nodes.insert( candidates_s[j] );
+    candidates_s[j].second = candidates_s[j].second + " -> " + std::to_string(fnew) + "~" + std::to_string(ps.output); 
+    if( ps.verbose )
+      std::cout << candidates_s[j].second << std::endl;
+    ntk.nodes_to_layer[ntk.get_node(fnew)]=ntk.layer_pointer;
+  }
+
+  if( new_signals.size() > 0 )
+    ntk.layer_to_signals.push_back( new_signals );
+  
+  return candidates_s;
+}
+
+template<class Ntk>
+std::vector<std::pair<std::vector<signal<Ntk>>,std::string>> rxor_assembler1( simulation_view<Ntk>& ntk, std::vector<std::vector<signal<Ntk>>> & divisors, 
+                           detail::creation_params const& ps )
+{
+  assert( divisors[0].size() == 2 );
+
+  kitty::dynamic_truth_table tt_xor(2);
+  kitty::create_from_binary_string( tt_xor, "0110" );
+
+  //kitty::partial_truth_table * Y = &ntk.targets[ps.output];
+  std::vector<std::pair<std::vector<signal<Ntk>>,std::string>> candidates_s;
+  std::vector<std::pair< std::vector<signal<Ntk>>,kitty::dynamic_truth_table>> candidates;
+
+  std::vector<signal<Ntk>> new_signals;
+  for( uint32_t i=0; i < divisors.size(); ++i )
+  {
+    if( divisors[i].size()>1 )
+    {
+      auto candidate = std::make_pair( divisors[i], tt_xor );
+      auto candidate_s = std::make_pair( divisors[i], "0110" );
+      candidates.push_back( candidate );
+      candidates_s.push_back( candidate_s );
+    }
+  }
+  srand(ntk.seed++);
+  if( candidates.size() > ps.max_new_nodes )
+  {
+    size_t num_candidates = candidates.size() - ps.max_new_nodes;
+    for( uint32_t j{0}; j<num_candidates; ++j )
+    {
+      auto y = rand()%(candidates.size()+1);
+      candidates.erase( candidates.begin() + y );
+      candidates_s.erase( candidates_s.begin() + y );
+    }
+  }
+  for( uint32_t j=0; j<candidates.size(); ++j )
+  {
+    auto fnew = ntk.create_node( candidates[j].first, candidates[j].second );
+    new_signals.push_back( fnew );
+    ntk.available_nodes.insert( candidates_s[j] );
+    candidates_s[j].second = candidates_s[j].second + " -> " + std::to_string(fnew) + "~" + std::to_string(ps.output); 
+    if( ps.verbose )
+      std::cout << candidates_s[j].second << std::endl;
+    ntk.nodes_to_layer[ntk.get_node(fnew)]=ntk.layer_pointer;
+  }
+
+  if( new_signals.size() > 0 )
+    ntk.layer_to_signals.push_back( new_signals );
+  
+  return candidates_s;
+}
+
+template<class Ntk>
+std::vector<std::pair<std::vector<signal<Ntk>>,std::string>> rand_assembler1( simulation_view<Ntk>& ntk, std::vector<std::vector<signal<Ntk>>> & divisors, 
+                           detail::creation_params const& ps )
+{
+  assert( divisors[0].size() == 2 );
+
+  kitty::dynamic_truth_table tt_and(2);
+  kitty::create_from_binary_string( tt_and, "1000" );
+
+  //kitty::partial_truth_table * Y = &ntk.targets[ps.output];
+  std::vector<std::pair<std::vector<signal<Ntk>>,std::string>> candidates_s;
+  std::vector<std::pair< std::vector<signal<Ntk>>,kitty::dynamic_truth_table>> candidates;
+
+  std::vector<signal<Ntk>> new_signals;
+  for( uint32_t i=0; i < divisors.size(); ++i )
+  {
+    if( divisors[i].size()>1 )
+    {
+      auto candidate = std::make_pair( divisors[i], tt_and );
+      auto candidate_s = std::make_pair( divisors[i], "1000" );
+      candidates.push_back( candidate );
+      candidates_s.push_back( candidate_s );
+    }
+  }
+  srand(ntk.seed++);
+  if( candidates.size() > ps.max_new_nodes )
+  {
+    size_t num_candidates = candidates.size() - ps.max_new_nodes;
+    for( uint32_t j{0}; j<num_candidates; ++j )
+    {
+      auto y = rand()%(candidates.size()+1);
+      candidates.erase( candidates.begin() + y );
+      candidates_s.erase( candidates_s.begin() + y );
+    }
+  }
+  for( uint32_t j=0; j<candidates.size(); ++j )
+  {
+    auto fnew = ntk.create_node( candidates[j].first, candidates[j].second );
+    new_signals.push_back( fnew );
+    ntk.available_nodes.insert( candidates_s[j] );
+    candidates_s[j].second = candidates_s[j].second + " -> " + std::to_string(fnew) + "~" + std::to_string(ps.output); 
+    if( ps.verbose )
+      std::cout << candidates_s[j].second << std::endl;
+    ntk.nodes_to_layer[ntk.get_node(fnew)]=ntk.layer_pointer;
+  }
+
+  if( new_signals.size() > 0 )
+    ntk.layer_to_signals.push_back( new_signals );
+  
+  return candidates_s;
+}
+
+} // namespace detail
+
+/*! \brief create nodes from a given support
+ *
+ */
+template<class Ntk>
+bool create_nodes( simulation_view<Ntk>& ntk, std::vector<std::vector<signal<Ntk>>> & divisors, detail::creation_method const& creation_m, detail::creation_params const& creation_ps )
+{ 
+  std::vector<std::pair<std::vector<signal<Ntk>>,std::string>> creation_summary;
+    switch(creation_m) {
+      case detail::creation_method::chatterjee1:
+        creation_summary = detail::chatterjee1( ntk, divisors, creation_ps );
+        break;
+      case detail::creation_method::rassembler1:
+        creation_summary = detail::rassembler1( ntk, divisors, creation_ps );
+        break;
+      case detail::creation_method::assembler1:
+        creation_summary = detail::assembler1( ntk, divisors, creation_ps );
+        break;
+      case detail::creation_method::assemblerG:
+        creation_summary = detail::assemblerG( ntk, divisors, creation_ps );
+        break;
+      case detail::creation_method::rxor_assembler1:
+        creation_summary = detail::rxor_assembler1( ntk, divisors, creation_ps );
+        break;
+      case detail::creation_method::rand_assembler1:
+        creation_summary = detail::rand_assembler1( ntk, divisors, creation_ps );
+        break;
+    }
+    if( creation_summary.size() != 0 )
+    {
+      if( ntk.summary.size() > ntk.layer_pointer )
+      {
+        for( auto x : creation_summary )
+          ntk.summary[ntk.layer_pointer].push_back( x );
+      }
+      else
+        ntk.summary.push_back( creation_summary );
+    }
+
+    return  creation_summary.size() != 0 ;
+      
+}
+} /* namespace hyperdimensional computing */
+} // namespace mockturtle

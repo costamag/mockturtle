@@ -1,0 +1,255 @@
+/* mockturtle: C++ logic network library
+ * Copyright (C) 2018-2021  EPFL
+ *
+ * Permission is hereby granted, free of charge, to any person
+ * obtaining a copy of this software and associated documentation
+ * files (the "Software"), to deal in the Software without
+ * restriction, including without limitation the rights to use,
+ * copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following
+ * conditions:
+ *
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+ * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+ * HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
+ */
+
+/*!
+  \file muesli.hpp
+  \brief muesli algorithm
+
+  \author Andrea Costamagna
+*/
+
+#pragma once
+
+#include <cstdint>
+#include <vector>
+
+#include "../../traits.hpp"
+#include "../simulation.hpp"
+#include "simulation_view.hpp"
+#include "../../views/depth_view.hpp"
+#include "sim_patterns.hpp"
+#include "muesli.hpp"
+#include "sim_decomposition.hpp"
+
+#include <fmt/format.h>
+#include <kitty/constructors.hpp>
+#include <kitty/decomposition.hpp>
+#include <kitty/dynamic_truth_table.hpp>
+#include <kitty/statistics.hpp>
+#include <kitty/operators.hpp>
+#include <kitty/print.hpp>
+
+#include "chatterjee_method.hpp"
+
+namespace mockturtle
+{
+
+#pragma region fanout_analysis
+template<typename Ntk>
+void fanout_analysis( simulation_view<Ntk>& ntk, std::vector<signal<Ntk>> osignals )
+{
+  uint32_t oidx = 0;
+  for( size_t i = 0; i < osignals.size(); ++i )
+  {
+    ntk.clear_simulated();
+    color_cone( ntk, osignals[i], oidx );
+    oidx++;
+  }
+
+
+  std::vector<uint32_t> FOs(oidx, 0);
+  for( size_t i = 0; i <ntk.sim_patterns.size(); ++i )
+  {
+    if( ntk.sim_patterns[i].oclass.size() == 1 )
+    {
+      FOs[ntk.sim_patterns[i].oclass[0]] += 1;
+    }
+  }
+  
+  size_t sum = 0;
+  for( size_t i = 0; i < FOs.size(); ++i )
+  {
+    std::cout << i << " " << osignals[i] << " " << FOs[i];
+    std::cout << std::endl;
+    sum += FOs[i];
+  }
+  std::cout << sum << "/" << ntk.num_gates() << std::endl;
+
+}
+
+template<typename Ntk>
+void color_cone( simulation_view<Ntk>& ntk, node<Ntk> n, uint32_t oidx  )
+{
+  if( !ntk.sim_patterns[ ntk.nodes_to_patterns[ n ] ].simulated && !ntk.is_constant( n ) )
+  {
+    ntk.sim_patterns[ ntk.nodes_to_patterns[ n ] ].simulated = true;
+    ntk.sim_patterns[ ntk.nodes_to_patterns[ n ] ].oclass.push_back(oidx);
+
+    ntk.foreach_fanin( n, [&]( auto const& f ) {
+      if( !ntk.is_pi( f ) )
+        color_cone( ntk, f, oidx  );
+    } );
+  }
+}
+#pragma endregion fanout_analysis
+
+void muesli_iwls22( klut_network& klut, muesli_params& ps )
+{
+  size_t num_bits = pow( 2, klut.num_pis() );
+
+  std::vector<kitty::partial_truth_table> examples;
+  for( size_t i = 0; i < klut.num_pis(); ++i )
+  {
+    examples.push_back( kitty::partial_truth_table(num_bits) );
+    create_nth_var( examples[i], i );
+  }
+  std::vector<kitty::partial_truth_table> targets;
+
+  partial_simulator sim( examples );  
+  unordered_node_map<kitty::partial_truth_table, klut_network> node_to_value( klut );
+  simulate_nodes<kitty::partial_truth_table>( klut, node_to_value, sim );
+    
+  size_t i = 0;
+
+  klut.foreach_po( [&]( auto const& node, auto index ) {
+    targets.push_back( kitty::partial_truth_table(num_bits) );
+    std::string tt_str = kitty::to_binary( node_to_value[ node ] );
+    kitty::create_from_binary_string( targets[i], tt_str );
+    i++;
+  } );
+
+
+  klut_network oklut;
+  simulation_view oklut_sim{ oklut };
+  oklut_sim.initialize_network( examples );
+
+
+  std::vector<signal<klut_network>> osignals;
+
+  for( size_t i = 0; i < klut.num_pos(); ++i )
+  {
+    detail::muesli_impl impl( oklut_sim, targets[i], ps );
+    signal<klut_network> f0 = impl.run();
+    sim_decomposition_params decps;
+    if( oklut_sim.sim_patterns[oklut_sim.nodes_to_patterns[f0]].pat != targets[i] )
+    {
+      f0 = sim_decomposition( oklut_sim, examples, targets[i], decps );
+    }
+
+    osignals.push_back( f0 );
+    oklut_sim.create_po( f0 );
+  }
+  //fanout_analysis( oklut_sim, osignals );
+  klut = oklut_sim;
+
+}
+
+void sim_muesli_iwls22( klut_network& klut, sim_muesli_params& ps )
+{
+  size_t num_bits = pow( 2, klut.num_pis() );
+
+  std::vector<kitty::partial_truth_table> examples;
+  for( size_t i = 0; i < klut.num_pis(); ++i )
+  {
+    examples.push_back( kitty::partial_truth_table(num_bits) );
+    create_nth_var( examples[i], i );
+  }
+  std::vector<kitty::partial_truth_table> targets;
+
+  partial_simulator sim( examples );  
+  unordered_node_map<kitty::partial_truth_table, klut_network> node_to_value( klut );
+  simulate_nodes<kitty::partial_truth_table>( klut, node_to_value, sim );
+    
+  size_t i = 0;
+
+  klut.foreach_po( [&]( auto const& node, auto index ) {
+    targets.push_back( kitty::partial_truth_table(num_bits) );
+    std::string tt_str = kitty::to_binary( node_to_value[ node ] );
+    kitty::create_from_binary_string( targets[i], tt_str );
+    i++;
+  } );
+
+
+  klut_network oklut;
+  simulation_view oklut_sim{ oklut };
+  oklut_sim.initialize_network( examples );
+
+
+  std::vector<signal<klut_network>> osignals;
+
+  for( size_t i = 0; i < klut.num_pos(); ++i )
+  {
+    detail::sim_muesli_impl impl( oklut_sim, targets[i], ps );
+    signal<klut_network> f0 = impl.run();
+    sim_decomposition_params decps;
+    if( oklut_sim.sim_patterns[oklut_sim.nodes_to_patterns[f0]].pat != targets[i] )
+    {
+      f0 = sim_decomposition( oklut_sim, examples, targets[i], decps );
+    }
+
+    osignals.push_back( f0 );
+    oklut_sim.create_po( f0 );
+  }
+  //fanout_analysis( oklut_sim, osignals );
+  klut = oklut_sim;
+
+}
+
+void it4sh( klut_network& klut, sim_decomposition_params& ps )
+{
+  size_t num_bits = pow( 2, klut.num_pis() );
+
+  std::vector<kitty::partial_truth_table> examples;
+  for( size_t i = 0; i < klut.num_pis(); ++i )
+  {
+    examples.push_back( kitty::partial_truth_table(num_bits) );
+    create_nth_var( examples[i], i );
+  }
+  std::vector<kitty::partial_truth_table> targets;
+
+  partial_simulator sim( examples );  
+  unordered_node_map<kitty::partial_truth_table, klut_network> node_to_value( klut );
+  simulate_nodes<kitty::partial_truth_table>( klut, node_to_value, sim );
+    
+  size_t i = 0;
+
+  klut.foreach_po( [&]( auto const& node, auto index ) {
+    targets.push_back( kitty::partial_truth_table(num_bits) );
+    std::string tt_str = kitty::to_binary( node_to_value[ node ] );
+    kitty::create_from_binary_string( targets[i], tt_str );
+    i++;
+  } );
+
+
+  klut_network oklut;
+  simulation_view oklut_sim{ oklut };
+
+  std::vector<signal<klut_network>> osignals;
+  osignals = sim_decomposition( oklut_sim, examples, targets, ps );
+  
+  //fanout_analysis( oklut_sim, osignals );
+
+  for( size_t i = 0; i < osignals.size(); ++i )
+  {
+    oklut_sim.create_po(osignals[i]);
+  }
+  klut = oklut_sim;
+
+  depth_view dklut{klut};
+
+}
+
+
+}
