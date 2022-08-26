@@ -47,7 +47,10 @@ namespace detail
 enum class creation_method
 {
   fgenerator1,
-  ifgenerator1
+  ifgenerator1,
+  xorgen,
+  andgen,
+  majgen
 };
 
 class creation_params
@@ -88,7 +91,7 @@ void fgenerator1( simulation_view<Ntk>& ntk, std::vector<std::vector<signal<Ntk>
         auto f = std::make_pair( supports[i], Fset.tt_v[j] );
         if( ntk.available_nodes.find( f ) == ntk.available_nodes.end() )
         {
-          auto fnew = ntk.create_node( supports[i], Fset.dtt_v[j] );
+          ntk.create_node( supports[i], Fset.dtt_v[j] );
           ntk.available_nodes.insert( f );
           nodes_added_support++;
           nodes_added_total++;
@@ -164,9 +167,38 @@ void ifgenerator1( simulation_view<Ntk>& ntk, std::vector<std::vector<signal<Ntk
 
   for( auto cand : candidates )
   {
-    auto fnew = ntk.create_node( cand.support, cand.dtt );
+    ntk.create_node( cand.support, cand.dtt );
     auto f = std::make_pair( cand.support, cand.tt );
     ntk.available_nodes.insert( f );
+  }
+}
+
+template<class Ntk>
+void andgen( simulation_view<Ntk>& ntk, std::vector<std::vector<signal<Ntk>>> & supports, 
+                           detail::creation_params const& ps )
+{
+  for( uint32_t i=0; i < supports.size(); ++i )
+    ntk.create_xor( supports[i][0], supports[i][1] );
+}
+
+
+template<class Ntk>
+void xorgen( simulation_view<Ntk>& ntk, std::vector<std::vector<signal<Ntk>>> & supports, 
+                           detail::creation_params const& ps )
+{
+  for( uint32_t i=0; i < supports.size(); ++i )
+    ntk.create_xor( supports[i][0], supports[i][1] );
+}
+
+
+template<class Ntk>
+void majgen( simulation_view<Ntk>& ntk, std::vector<std::vector<signal<Ntk>>> & supports, 
+                           detail::creation_params const& ps )
+{
+  for( uint32_t i=0; i < supports.size(); ++i )
+  {
+    if( supports[i].size() == 3 )
+      ntk.create_maj( supports[i][0], supports[i][1], supports[i][2] );
   }
 }
 
@@ -184,6 +216,15 @@ void create_nodes( simulation_view<Ntk>& ntk, std::vector<std::vector<signal<Ntk
         break;
       case detail::creation_method::ifgenerator1:
         detail::ifgenerator1( ntk, supports, creation_ps );
+        break;
+      case detail::creation_method::andgen:
+        detail::andgen( ntk, supports, creation_ps );
+        break;
+      case detail::creation_method::xorgen:
+        detail::xorgen( ntk, supports, creation_ps );
+        break;
+      case detail::creation_method::majgen:
+        detail::majgen( ntk, supports, creation_ps );
         break;
     }
       

@@ -444,13 +444,13 @@ void clear_network_fanin_size_from_node( node n )
       node nchild = get_node( f );
       if( nodes_to_size_fanin[nchild] != 0 )
       {
-        nodes_to_size_fanin[nchild] = 0;
-
+        //nodes_to_size_fanin[nchild] = 0;
         clear_network_fanin_size_from_node( nchild );
       }
     } );
+    nodes_to_size_fanin[n] = 0;
+    sim_patterns[ n ].flag_sized = true;
   }
-  sim_patterns[ n ].flag_sized = true;
 }
 
 void update_network_fanin_size()

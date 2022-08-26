@@ -408,7 +408,7 @@ signal<Ntk> recover_accuracy( simulation_view<Ntk>& ntk, detail::arecovery_metho
         osignal = detail::ixtsdec( ntk, arecovery_ps );
         break;
       case detail::arecovery_method::ixtsdecS:
-        osignal = detail::ixtsdec( ntk, arecovery_ps );
+        osignal = detail::ixtsdecS( ntk, arecovery_ps );
         break;
       case detail::arecovery_method::dcsdec:
         osignal = detail::dcsdec( ntk, arecovery_ps );

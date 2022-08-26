@@ -168,7 +168,7 @@ namespace detail
 
         uint32_t bidx = 0;
         signal<Ntk> bsig;
-        uint32_t max_fanin_size = std::numeric_limits<uint32_t>::max();
+        //uint32_t max_fanin_size = std::numeric_limits<uint32_t>::max();
 
         std::vector<uint32_t> to_be_deleted;
         TT on_x(n_bits);

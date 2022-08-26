@@ -96,7 +96,6 @@ namespace detail
         {
           X = ntk.input_patterns;
         }
-
         assert( X[0].pat.num_bits() == target.num_bits() );
       }
 
@@ -282,6 +281,12 @@ namespace detail
         return is_success;
 
       }
+
+      void clear_fanin_size( signal<Ntk> & sig )
+      {
+        ntk.clear_network_fanin_size_from_node(ntk.get_node(sig));
+        ntk.update_network_fanin_size();
+      }
     
       signal<Ntk> idsd_step( std::vector<uint32_t> support, TT amask, TT xmask, bool branch_on_last = false )
       {
@@ -440,8 +445,6 @@ namespace detail
         
           if ( res != sim_top_decomposition_fast::none )
           {
-            ntk.clear_network_fanin_size_from_node(ntk.get_node(bsig));
-            ntk.update_network_fanin_size();
             switch ( res )
             {
               default:
@@ -451,24 +454,24 @@ namespace detail
                 signal<klut_network> F1 = idsd_step( reduced_support, amask1, xmask1 );
                 signal<klut_network> Fnew = ntk.create_and( bsig, F1 );
 
-                if( ps.verbose )
-                  std::cout << Fnew << "=" << bsig << " AND " << F1 << std::endl;
+                if( ps.is_size_aware ) clear_fanin_size( Fnew );
+                if( ps.verbose ) std::cout << Fnew << "=" << bsig << " AND " << F1 << std::endl;
                 return Fnew;
               }
               case sim_top_decomposition_fast::or_:
               {
                 signal<klut_network> F0 = idsd_step( reduced_support, amask0, xmask0 );
                 signal<klut_network> Fnew = ntk.create_or( bsig, F0 );
-                if( ps.verbose )
-                  std::cout << Fnew << "=" << bsig << " OR " << F0 << std::endl;
+                if( ps.is_size_aware ) clear_fanin_size( Fnew );
+                if( ps.verbose ) std::cout << Fnew << "=" << bsig << " OR " << F0 << std::endl;
                 return Fnew;
               }
               case sim_top_decomposition_fast::lt_:
               {
                 signal<klut_network> F0 = idsd_step( reduced_support, amask0, xmask0 );
                 signal<klut_network> Fnew = ntk.create_lt( bsig, F0 );
-                if( ps.verbose )
-                  std::cout << Fnew << "=" << bsig << "' AND " << F0 << std::endl;
+                if( ps.is_size_aware ) clear_fanin_size( Fnew );
+                if( ps.verbose ) std::cout << Fnew << "=" << bsig << "' AND " << F0 << std::endl;
                 return Fnew;
 
               }
@@ -476,8 +479,8 @@ namespace detail
               {  
                 signal<klut_network> F1 = idsd_step( reduced_support, amask1, xmask1 );
                 signal<klut_network> Fnew = ntk.create_le( bsig, F1 );
-                if( ps.verbose )
-                  std::cout << Fnew << "=" << bsig << "' OR " << F1 << std::endl;
+                if( ps.is_size_aware ) clear_fanin_size( Fnew );
+                if( ps.verbose ) std::cout << Fnew << "=" << bsig << "' OR " << F1 << std::endl;
                 return Fnew;
               }
               case sim_top_decomposition_fast::xor_:
@@ -485,8 +488,8 @@ namespace detail
                 xmask = xmask ^ on_x;
                 signal<klut_network> Fxor = idsd_step( reduced_support, amask, xmask );
                 signal<klut_network> Fnew = ntk.create_xor( bsig, Fxor );
-                if( ps.verbose )
-                  std::cout << Fnew << "=" << bsig << " XOR " << Fxor << std::endl;
+                if( ps.is_size_aware ) clear_fanin_size( Fnew );
+                if( ps.verbose ) std::cout << Fnew << "=" << bsig << " XOR " << Fxor << std::endl;
                 return Fnew;
               }
             }
@@ -506,12 +509,8 @@ namespace detail
             std::cout << "don't care-based not yet implemented" << std::endl;
           }
         }
-        
-        if( ps.is_size_aware )
-        {
-          ntk.clear_network_fanin_size_from_node(ntk.get_node(bsig));
-          ntk.update_network_fanin_size();        
-        }
+        if( ps.is_size_aware ) 
+          clear_fanin_size( bsig );
 
         signal<klut_network> F0 = idsd_step( reduced_support, amask0, xmask0 );
         signal<klut_network> f0 = ntk.create_and( ntk.create_not( bsig ), F0 );

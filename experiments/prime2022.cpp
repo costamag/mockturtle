@@ -197,7 +197,7 @@ XYdataset dataset_loader( std::string file_name )
   return DS;
 }
 
-std::string DEC_ALGO{"ifgen1024x1"};
+std::string DEC_ALGO{"majgen1024x10"};
 using experiment_t = experiments::experiment<std::string, uint32_t, uint32_t, float, float, float, float>;
 experiment_t exp_res( "/iwls2020/"+DEC_ALGO, "benchmark", "#gates", "depth", "train", "test", "valid", "runtime" );
 
@@ -346,9 +346,7 @@ void thread_run( iwls2020_parameters const& iwls2020_ps, std::string const& run_
 
   std::vector<kitty::partial_truth_table> X;
   kitty::partial_truth_table Y;
-  uint64_t nin;
-  uint64_t nout;
-  uint64_t ndata;
+
   if( iwls2020_ps.frac_valid != 0 )
   {
     for( uint32_t i = 0; i < Dl.X.size(); ++i )
@@ -419,10 +417,20 @@ void thread_run( iwls2020_parameters const& iwls2020_ps, std::string const& run_
       auto Y = std::vector{Dl.Y};
       aig = flow_hdp<aig_network>( Dl.X, Y, 9 );
     }
-    else if( iwls2020_ps.dec_algo == "ifgen1024x1" )
+    else if( iwls2020_ps.dec_algo == "ifgen1024x10" ) 
     {
       auto Y = std::vector{Dl.Y};
-      aig = flow_hdp<aig_network>( Dl.X, Y, 10 );
+      aig = flow_hdp<aig_network>( Dl.X, Y, 11 );
+    }
+    else if( iwls2020_ps.dec_algo == "ifgen1024x10_S" )
+    {
+      auto Y = std::vector{Dl.Y};
+      aig = flow_hdp<aig_network>( Dl.X, Y, 12 );
+    }
+    else if( iwls2020_ps.dec_algo == "majgen1024x10" )
+    {
+      auto Y = std::vector{Dl.Y};
+      aig = flow_hdp<aig_network>( Dl.X, Y, 13 );
     }
     else
     {
