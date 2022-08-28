@@ -59,6 +59,7 @@ class selcreation_params
     bool recover_accuracy{false};
     bool verbose{false};
     bool re_initialize{false};
+    uint32_t max_act{5};
 };
 
 template<class Ntk>
@@ -68,6 +69,7 @@ signal<Ntk> muesli( simulation_view<Ntk>& ntk, selcreation_params const& ps )
   muesli_ps.verbose = ps.verbose;
   muesli_ps.try_accuracy_recovery = ps.recover_accuracy;
   muesli_ps.re_initialize = ps.re_initialize;
+  muesli_ps.max_act = ps.max_act;
   std::vector<kitty::partial_truth_table> examples;
   for( auto sim : ntk.sim_patterns )
     examples.push_back( sim.pat );

@@ -557,3 +557,42 @@ TEST_CASE( "selection and creation maj", "[selector]" )
   M.accuracy_recovery(arecovery_m, arecovery_ps);
   M.print_summary();
 }
+
+
+
+TEST_CASE( "forest decomposition f=(a^b)c", "[model]" )
+{
+  klut_network oklut;
+  simulation_view oklut_sim{ oklut };
+  std::vector<partial_truth_table> ex;
+  partial_truth_table tt(8u);
+  for( uint32_t i = 0; i < 3; ++i )
+  {
+    create_nth_var(tt, i);
+    ex.push_back(tt);
+  }
+
+  tt = (ex[0]^ex[1])&ex[2];
+  std::vector<partial_truth_table> targets = {tt};
+  auto a = oklut_sim.create_pi(ex[0]);
+  auto b = oklut_sim.create_pi(ex[1]);
+  auto c = oklut_sim.create_pi(ex[2]);
+
+  model M( oklut_sim, ex, targets );
+  std::vector<signal<klut_network>> osignals;
+
+  hdc::detail::arecovery_method arecovery_m = hdc::detail::arecovery_method::forestS;
+  hdc::detail::arecovery_params arecovery_ps;
+  arecovery_ps.verbose = true;
+  
+  arecovery_ps.output=0;
+  osignals.push_back( M.accuracy_recovery(arecovery_m, arecovery_ps) );
+
+  M.ntk_.create_po( osignals[0] );
+  M.print_summary();
+
+  oklut_sim.foreach_gate( [&]( auto const& n) {
+    std::cout << n << " " << oklut_sim.nodes_to_size_fanin[n] << std::endl;
+  } );
+
+}

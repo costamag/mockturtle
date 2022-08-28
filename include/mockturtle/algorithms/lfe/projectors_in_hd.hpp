@@ -66,7 +66,6 @@ namespace hdc
 
 klut_network project_in_hd( std::vector<kitty::partial_truth_table> examples, std::vector<kitty::partial_truth_table> targets, int const& topology )
 {
-
   klut_network oklut;
   simulation_view oklut_sim{ oklut };
   model M( oklut_sim, examples, targets );
@@ -361,6 +360,152 @@ klut_network project_in_hd( std::vector<kitty::partial_truth_table> examples, st
       selection_ps.support_size = 3;
       selection_ps.max_search_depth = 1;
       hdc::detail::creation_method creation_m = hdc::detail::creation_method::majgen;
+      hdc::detail::creation_params creation_ps;
+      creation_ps.max_nodes_total  = 4096;
+
+      for( uint32_t i = 0; i < 1; ++i )
+      {
+        for( uint32_t y = 0; y < targets.size(); ++y )
+        {
+          creation_ps.output=y;
+          M.add( selection_m, selection_ps, creation_m, creation_ps );
+        }
+      }
+      std::cout << M.ntk_.num_gates() << std::endl;
+
+      hdc::detail::arecovery_method arecovery_m = hdc::detail::arecovery_method::ixtsdecS;
+      hdc::detail::arecovery_params arecovery_ps;
+      arecovery_ps.verbose = false;
+      for( uint32_t y = 0; y < targets.size(); ++y )
+      {
+        arecovery_ps.output=y;
+        osignals.push_back( M.accuracy_recovery(arecovery_m, arecovery_ps) );
+      }
+      std::cout << M.ntk_.num_gates() << std::endl;
+
+    break;
+    }
+    case 14:
+    {
+      hdc::detail::arecovery_method arecovery_m = hdc::detail::arecovery_method::forestS;
+      hdc::detail::arecovery_params arecovery_ps;
+      arecovery_ps.verbose = false;
+
+      for( uint32_t y = 0; y < targets.size(); ++y )
+      {
+        arecovery_ps.output=y;
+        osignals.push_back(M.accuracy_recovery(arecovery_m,arecovery_ps));
+      }
+      break;
+    }
+    case 15:
+    {
+      hdc::detail::selcreation_method selcreation_m = hdc::detail::selcreation_method::muesli;
+      hdc::detail::selcreation_params selcreation_ps;
+      selcreation_ps.re_initialize = false;
+      
+      for( uint32_t y = 0; y < targets.size(); ++y )
+      {
+        selcreation_ps.output=y;
+        M.add( selcreation_m, selcreation_ps );
+      }
+
+      hdc::detail::arecovery_method arecovery_m = hdc::detail::arecovery_method::forestS;
+      hdc::detail::arecovery_params arecovery_ps;
+      arecovery_ps.verbose = false;
+      for( uint32_t y = 0; y < targets.size(); ++y )
+      {
+        arecovery_ps.output=y;
+        osignals.push_back( M.accuracy_recovery(arecovery_m, arecovery_ps) );
+      }
+    break;
+    }
+    case 16:
+    {
+      std::cout << "," << std::endl;
+      hdc::detail::selcreation_method selcreation_m = hdc::detail::selcreation_method::muesli;
+      hdc::detail::selcreation_params selcreation_ps;
+      selcreation_ps.re_initialize = false;
+      selcreation_ps.max_act = 3;
+      
+      for( uint32_t y = 0; y < targets.size(); ++y )
+      {
+        selcreation_ps.output=y;
+        M.add( selcreation_m, selcreation_ps );
+      }
+      std::cout << "_" << std::endl;
+
+      hdc::detail::arecovery_method arecovery_m = hdc::detail::arecovery_method::forestS;
+      hdc::detail::arecovery_params arecovery_ps;
+      arecovery_ps.verbose = false;
+      arecovery_ps.num_trees = 5;
+      for( uint32_t y = 0; y < targets.size(); ++y )
+      {
+        arecovery_ps.output=y;
+        osignals.push_back( M.accuracy_recovery(arecovery_m, arecovery_ps) );
+      }
+      std::cout << "," << std::endl;
+
+    break;
+    }
+    case 17:
+    {
+      std::cout << "." << std::endl;
+      hdc::detail::arecovery_method arecovery_m = hdc::detail::arecovery_method::forestS;
+      hdc::detail::arecovery_params arecovery_ps;
+      arecovery_ps.verbose = false;
+      arecovery_ps.num_trees = 5;
+
+      for( uint32_t y = 0; y < targets.size(); ++y )
+      {
+        arecovery_ps.output=y;
+        osignals.push_back(M.accuracy_recovery(arecovery_m,arecovery_ps));
+      }
+      break;
+    }
+    case 18: // ifgenerator with size awareness. one hidden layer with 2048 nodes
+    {
+      hdc::detail::selection_method selection_m = hdc::detail::selection_method::depth_selector;
+      hdc::detail::selection_params selection_ps;
+      selection_ps.max_new_supports = 2048;
+      selection_ps.max_selection_attempts = 10000;
+      selection_ps.support_size = 2;
+      selection_ps.max_search_depth = 1;
+      hdc::detail::creation_method creation_m = hdc::detail::creation_method::ifgenerator1;
+      hdc::detail::creation_params creation_ps;
+      creation_ps.max_nodes_total  = 2048;
+
+      for( uint32_t i = 0; i < 1; ++i )
+      {
+        for( uint32_t y = 0; y < targets.size(); ++y )
+        {
+          creation_ps.output=y;
+          M.add( selection_m, selection_ps, creation_m, creation_ps );
+        }
+      }
+      std::cout << M.ntk_.num_gates() << std::endl;
+
+      hdc::detail::arecovery_method arecovery_m = hdc::detail::arecovery_method::ixtsdecS;
+      hdc::detail::arecovery_params arecovery_ps;
+      arecovery_ps.verbose = false;
+      for( uint32_t y = 0; y < targets.size(); ++y )
+      {
+        arecovery_ps.output=y;
+        osignals.push_back( M.accuracy_recovery(arecovery_m, arecovery_ps) );
+      }
+      std::cout << M.ntk_.num_gates() << std::endl;
+
+    break;
+    }
+    case 19: // ifgenerator with size awareness. one hidden layer with 2048 nodes
+    {
+      hdc::detail::selection_method selection_m = hdc::detail::selection_method::depth_selector;
+      hdc::detail::selection_params selection_ps;
+      selection_ps.max_new_supports = 4096;
+      selection_ps.max_selection_attempts = 13000;
+      selection_ps.support_size = 2;
+      selection_ps.max_search_depth = 1;
+      hdc::detail::creation_method creation_m = hdc::detail::creation_method::ifgenerator1;
       hdc::detail::creation_params creation_ps;
       creation_ps.max_nodes_total  = 4096;
 

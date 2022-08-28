@@ -71,33 +71,15 @@ struct XYdataset{
 
 
 template<typename Ntk>
-bool simulate_input( kitty::partial_truth_table const& input_pattern, Ntk& ntk )
-{
-  std::vector<bool> inpt_v;
-
-  for( uint64_t k{0u}; k<input_pattern.num_bits();++k )
-  {
-    inpt_v.push_back( ( ( kitty::get_bit( input_pattern, k ) == 1 ) ? true : false ) );
-  }
-
-  return simulate<bool>( ntk, default_simulator<bool>( inpt_v ) )[0];
-}
-
-template<typename Ntk>
 double compute_accuracy( std::vector<kitty::partial_truth_table> const& X, kitty::partial_truth_table const& Y, Ntk& ntk )
 {
   double acc = 0;
-  double delta_acc;
-  for( uint64_t k {0u}; k < X[0].num_bits(); ++k )
-  {
-    kitty::partial_truth_table ipattern;
-    for ( uint64_t j {0u}; j < X.size(); ++j )
-      ipattern.add_bit( kitty::get_bit(X[j],k) );
-            
-    delta_acc = ( ( simulate_input( ipattern, ntk ) == kitty::get_bit(Y,k) ) ? (double)1.0/X[0].num_bits() : 0.0 );
-    acc += delta_acc;
+  partial_simulator sim( X );
+  unordered_node_map<kitty::partial_truth_table, Ntk> node_to_value( ntk );
+  simulate_nodes( ntk, node_to_value, sim );
 
-  }
+  acc = double(kitty::count_ones(~(node_to_value[ntk._storage->outputs[0]]^Y)))/Y.num_bits();
+
   return acc;
 }
 
@@ -176,7 +158,7 @@ XYdataset dataset_loader( std::string file_name )
   return DS;
 }
 
-std::string DEC_ALGO{"armuesli"};
+std::string DEC_ALGO{"ifgenS2048x1"};
 using experiment_t = experiments::experiment<std::string, uint32_t, uint32_t, float, float, float, float>;
 experiment_t exp_res( "/iwls2020/"+DEC_ALGO, "benchmark", "#gates", "depth", "train", "test", "valid", "runtime" );
 
@@ -352,6 +334,51 @@ void thread_run( iwls2020_parameters const& iwls2020_ps)
     {
       auto Y = std::vector{Dl.Y};
       aig = flow_hdp<aig_network>( Dl.X, Y, 8 );
+    }
+    else if( iwls2020_ps.dec_algo == "fgen1024x1" )
+    {
+      auto Y = std::vector{Dl.Y};
+      aig = flow_hdp<aig_network>( Dl.X, Y, 9 );
+    }
+    else if( iwls2020_ps.dec_algo == "ifgen1024x10" ) 
+    {
+      auto Y = std::vector{Dl.Y};
+      aig = flow_hdp<aig_network>( Dl.X, Y, 11 );
+    }
+    else if( iwls2020_ps.dec_algo == "ifgen1024x10_S" )
+    {
+      auto Y = std::vector{Dl.Y};
+      aig = flow_hdp<aig_network>( Dl.X, Y, 12 );
+    }
+    else if( iwls2020_ps.dec_algo == "majgen1024x10" )
+    {
+      auto Y = std::vector{Dl.Y};
+      aig = flow_hdp<aig_network>( Dl.X, Y, 13 );
+    }
+    else if( iwls2020_ps.dec_algo == "forestS" )
+    {
+      auto Y = std::vector{Dl.Y};
+      aig = flow_hdp<aig_network>( Dl.X, Y, 14 );
+    }
+    else if( iwls2020_ps.dec_algo == "forestmuesli" )
+    {
+      auto Y = std::vector{Dl.Y};
+      aig = flow_hdp<aig_network>( Dl.X, Y, 15 );
+    }
+    else if( iwls2020_ps.dec_algo == "forestmuesli5" )
+    {
+      auto Y = std::vector{Dl.Y};
+      aig = flow_hdp<aig_network>( Dl.X, Y, 16 );
+    }
+    else if( iwls2020_ps.dec_algo == "forest5" )
+    {
+      auto Y = std::vector{Dl.Y};
+      aig = flow_hdp<aig_network>( Dl.X, Y, 17 );
+    }
+    else if( iwls2020_ps.dec_algo == "ifgenS2048x1" )
+    {
+      auto Y = std::vector{Dl.Y};
+      aig = flow_hdp<aig_network>( Dl.X, Y, 18 );
     }
     else
     {

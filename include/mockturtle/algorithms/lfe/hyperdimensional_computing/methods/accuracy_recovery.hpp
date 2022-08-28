@@ -35,6 +35,7 @@
 #include "../../sim_create_nodes.hpp"
 #include "../../sim_decomposition_fast.hpp"
 #include "../../sim_decomposition_fastS.hpp"
+#include "../../forest_decomposition.hpp"
 #include "../../dc_decomposition_fastS.hpp"
 #include "selectors.hpp"
 #include <kitty/print.hpp>
@@ -58,6 +59,7 @@ enum class arecovery_method
   dcxsdec,
   itsdecS,
   itdsdec,
+  forestS
 };
 
 class arecovery_params
@@ -66,6 +68,8 @@ class arecovery_params
     uint32_t output{0};
     bool verbose{true};
     uint32_t max_sup{2};
+
+    uint32_t num_trees{3};
 };
 
 
@@ -383,7 +387,38 @@ signal<Ntk> itdsdec( simulation_view<Ntk>& ntk, detail::arecovery_params const& 
   return osignal;
 }
 
+/*! \brief 
+ * Statistics based decomposition: tries top decomposition and performs shannon decomposition in case of failure
+ */
+template<class Ntk>
+signal<Ntk> forestS( simulation_view<Ntk>& ntk, detail::arecovery_params const& ps )
+{
+  forest_decomposition_params decps;
+  decps.verbose = ps.verbose;
+  decps.max_sup = ps.max_sup;
+  decps.is_informed = true;
+  decps.is_size_aware = true;
+  decps.try_top_decomposition = true;
+  decps.try_bottom_decomposition = false;
+  decps.use_correlation = false;
+  decps.try_xor = true;
+  decps.num_trees = ps.num_trees;
 
+  std::vector<kitty::partial_truth_table> examples;
+  for( auto sim : ntk.sim_patterns )
+    examples.push_back( sim.pat );
+
+  signal<Ntk> osignal = forest_decomposition( ntk, examples, ntk.targets[ps.output], decps, false );
+  double accuracy = 100*(double)kitty::count_ones( ~(ntk.targets[ps.output]^ntk.sim_patterns[ntk.nodes_to_patterns[osignal]].pat) )/ntk.targets[ps.output].num_bits();
+
+  if( ps.verbose )
+  {
+    std::cout << "[o " << ps.output << "] : " << accuracy << "%" <<std::endl;
+    kitty::print_binary( ~(ntk.targets[ps.output]^ntk.sim_patterns[ntk.nodes_to_patterns[osignal]].pat) );
+  }
+
+  return osignal;
+}
 
 } // namespace detail
 
@@ -421,6 +456,9 @@ signal<Ntk> recover_accuracy( simulation_view<Ntk>& ntk, detail::arecovery_metho
         break;
       case detail::arecovery_method::itdsdec:
         osignal = detail::itdsdec( ntk, arecovery_ps );
+        break;
+      case detail::arecovery_method::forestS:
+        osignal = detail::forestS( ntk, arecovery_ps );
         break;
     }
 
