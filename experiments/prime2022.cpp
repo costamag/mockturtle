@@ -195,7 +195,7 @@ XYdataset dataset_loader( std::string file_name )
   return DS;
 }
 
-std::string DEC_ALGO{"ifgenS4096x1"};
+std::string DEC_ALGO{"ifgenS1024x4"};
 using experiment_t = experiments::experiment<std::string, uint32_t, uint32_t, float, float, float, float>;
 experiment_t exp_res( "/iwls2020/"+DEC_ALGO, "benchmark", "#gates", "depth", "train", "test", "valid", "runtime" );
 
@@ -454,6 +454,16 @@ void thread_run( iwls2020_parameters const& iwls2020_ps, std::string const& run_
     {
       auto Y = std::vector{Dl.Y};
       aig = flow_hdp<aig_network>( Dl.X, Y, 19 );
+    }
+    else if( iwls2020_ps.dec_algo == "ifgenS1024x2" ) 
+    {
+      auto Y = std::vector{Dl.Y};
+      aig = flow_hdp<aig_network>( Dl.X, Y, 20 );
+    }
+    else if( iwls2020_ps.dec_algo == "ifgenS1024x4" ) 
+    {
+      auto Y = std::vector{Dl.Y};
+      aig = flow_hdp<aig_network>( Dl.X, Y, 21 );
     }
     else
     {
