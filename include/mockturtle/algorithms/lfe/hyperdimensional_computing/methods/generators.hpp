@@ -33,6 +33,7 @@
 
 #include "../../create_candidates.hpp"
 #include "../../sim_create_nodes.hpp"
+#include "../../chatterjee_method.hpp"
 #include "selectors.hpp"
 #include <kitty/print.hpp>
 #include <kitty/properties.hpp>
@@ -50,7 +51,10 @@ enum class creation_method
   ifgenerator1,
   xorgen,
   andgen,
-  majgen
+  majgen,
+  orthogonal_creator,
+  chatterjee1,
+  random
 };
 
 class creation_params
@@ -178,7 +182,7 @@ void andgen( simulation_view<Ntk>& ntk, std::vector<std::vector<signal<Ntk>>> & 
                            detail::creation_params const& ps )
 {
   for( uint32_t i=0; i < supports.size(); ++i )
-    ntk.create_xor( supports[i][0], supports[i][1] );
+    ntk.create_and( supports[i][0], supports[i][1] );
 }
 
 
@@ -191,6 +195,7 @@ void xorgen( simulation_view<Ntk>& ntk, std::vector<std::vector<signal<Ntk>>> & 
 }
 
 
+
 template<class Ntk>
 void majgen( simulation_view<Ntk>& ntk, std::vector<std::vector<signal<Ntk>>> & supports, 
                            detail::creation_params const& ps )
@@ -200,6 +205,96 @@ void majgen( simulation_view<Ntk>& ntk, std::vector<std::vector<signal<Ntk>>> & 
     if( supports[i].size() == 3 )
       ntk.create_maj( supports[i][0], supports[i][1], supports[i][2] );
   }
+}
+
+template<class Ntk>
+void orthogonal_creator( simulation_view<Ntk>& ntk, std::vector<std::vector<signal<Ntk>>> & supports, 
+                           detail::creation_params const& ps )
+{
+  for( uint32_t i=0; i < supports.size(); ++i )
+  {
+    ntk.create_xor( supports[i][0], supports[i][1] );
+    ntk.create_and( supports[i][0], supports[i][1] );
+    ntk.create_and( !supports[i][0], supports[i][1] );
+    ntk.create_and( supports[i][0], !supports[i][1] );
+    ntk.create_and( !supports[i][0], !supports[i][1] );
+  }
+}
+
+template<class Ntk>
+void chatterjee1( simulation_view<Ntk>& ntk, std::vector<std::vector<signal<Ntk>>> & divisors, 
+                           detail::creation_params const& ps )
+{
+  kitty::partial_truth_table * Y = &ntk.targets[ps.output];
+  std::vector<std::pair<std::vector<signal<Ntk>>,std::string>> candidates_s;
+  std::vector<std::pair< std::vector<signal<Ntk>>,kitty::dynamic_truth_table>> candidates;
+
+  std::vector<signal<Ntk>> new_signals;
+  for( uint32_t i=0; i < divisors.size(); ++i )
+  {
+    if( divisors[i].size()>1 )
+    {
+      std::vector<kitty::partial_truth_table*> X;
+      for( auto d : divisors[i] )
+        X.push_back( &( ntk.sim_patterns[ntk.nodes_to_patterns[ntk.get_node(d)]].pat ) );
+
+      chj_result F = chatterjee_method( X, Y, ntk.seed );
+
+      auto f = std::make_pair( divisors[i], F.tt );
+      if( ntk.available_nodes.find( f ) == ntk.available_nodes.end() )
+      {
+        auto candidate = std::make_pair( divisors[i], F.dtt );
+        auto candidate_s = std::make_pair( divisors[i], F.tt );
+        candidates.push_back( candidate );
+        candidates_s.push_back( candidate_s );
+      }
+    }
+  }
+  srand(ntk.seed++);
+  if( candidates.size() > ps.max_nodes_total )
+  {
+    size_t num_candidates = candidates.size() - ps.max_nodes_total;
+    for( uint32_t j{0}; j<num_candidates; ++j )
+    {
+      auto y = rand()%(candidates.size()+1);
+      candidates.erase( candidates.begin() + y );
+      candidates_s.erase( candidates_s.begin() + y );
+    }
+  }
+  for( uint32_t j=0; j<candidates.size(); ++j )
+  {
+    auto fnew = ntk.create_node( candidates[j].first, candidates[j].second );
+    new_signals.push_back( fnew );
+    ntk.available_nodes.insert( candidates_s[j] );
+    candidates_s[j].second = candidates_s[j].second + " -> " + std::to_string(fnew) + "~" + std::to_string(ps.output); 
+    if( ps.verbose )
+      std::cout << candidates_s[j].second << std::endl;
+  }
+  
+}
+
+
+template<class Ntk>
+void random( simulation_view<Ntk>& ntk, std::vector<std::vector<signal<Ntk>>> & divisors, 
+                           detail::creation_params const& ps )
+{
+
+  std::vector<signal<Ntk>> new_signals;
+  for( uint32_t i=0; i < divisors.size(); ++i )
+  {
+    if( divisors[i].size()>1 )
+    {
+      uint32_t nvars = divisors[i].size();
+      kitty::dynamic_truth_table ttn(nvars);
+      kitty::create_random( ttn, ntk.seed++ );
+      //kitty::print_binary(ttn);
+      //std::cout << std::endl;
+      ntk.create_node( divisors[i], ttn );
+    }
+
+  }
+
+  
 }
 
 } // namespace detail
@@ -225,6 +320,15 @@ void create_nodes( simulation_view<Ntk>& ntk, std::vector<std::vector<signal<Ntk
         break;
       case detail::creation_method::majgen:
         detail::majgen( ntk, supports, creation_ps );
+        break;
+      case detail::creation_method::orthogonal_creator:
+        detail::orthogonal_creator( ntk, supports, creation_ps );
+        break;
+      case detail::creation_method::chatterjee1:
+        detail::chatterjee1( ntk, supports, creation_ps );
+        break;
+      case detail::creation_method::random:
+        detail::random( ntk, supports, creation_ps );
         break;
     }
       

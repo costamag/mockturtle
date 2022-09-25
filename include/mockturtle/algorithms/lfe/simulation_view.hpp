@@ -493,6 +493,10 @@ signal get_constant( bool bool_val = false )
   return Ntk::get_constant( bool_val );
 }
 
+uint32_t is_pi( signal s )
+{ 
+  return Ntk::is_pi( s );
+}
 
 public:
   std::vector<sim_pattern<Ntk>> input_patterns;

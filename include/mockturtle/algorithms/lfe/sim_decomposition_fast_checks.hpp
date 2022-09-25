@@ -133,7 +133,7 @@ bool is_xor_decomposable_fast( std::vector<sim_pattern<Ntk>>& X, std::vector<uin
   //int Min = std::max(1,(int)floor(R.first-R.second));
   //int Max = std::max(1,(int)ceil(R.first+R.second));
 
-  bool is_satisfied = ( ( CumSum( count_neg+(int)ceil(R.second), N0, N1, n ) >= 1-0.001 ) && ( count_neg >=2 ) );
+  bool is_satisfied = ( ( CumSum( count_neg+(int)ceil(R.second), N0, N1, n ) >= 1-0.001 ) && ( count_neg >1 ) ); // CHANGE !!!
 
   if( is_satisfied )
     return true;
@@ -230,6 +230,7 @@ bool is_dc_xor_decomposable_fast( std::vector<sim_pattern<Ntk>>& X, std::vector<
   template<typename Ntk, typename TT>
   sim_top_decomposition_fast is_top_decomposable_fast( std::vector<sim_pattern<Ntk>> X, std::vector<uint32_t> & support, TT & onset, TT & amask1, TT & amask0, bool try_xor = false )
   {
+
     if( (kitty::count_ones( onset & amask0 ) == 0) ) // F0 = 0
       return sim_top_decomposition_fast::and_ ;
     else if( (onset & amask1) == amask1 ) // F1 = 1

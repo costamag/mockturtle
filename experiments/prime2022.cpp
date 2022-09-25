@@ -195,7 +195,7 @@ XYdataset dataset_loader( std::string file_name )
   return DS;
 }
 
-std::string DEC_ALGO{"ifgenS1024x4"};
+std::string DEC_ALGO{"idsdS"};
 using experiment_t = experiments::experiment<std::string, uint32_t, uint32_t, float, float, float, float>;
 experiment_t exp_res( "/iwls2020/"+DEC_ALGO, "benchmark", "#gates", "depth", "train", "test", "valid", "runtime" );
 
@@ -299,9 +299,13 @@ void iterative_abc_opto( Ntk & ntk, std::string str_code, std::string abc_script
 
 #pragma region synthesis by high dimensional projection
 template<class Ntk>
-Ntk flow_hdp( std::vector<kitty::partial_truth_table>& X, std::vector<kitty::partial_truth_table>& Y, int const& topology = 1 )
+Ntk flow_hdp( std::vector<kitty::partial_truth_table>& X, std::vector<kitty::partial_truth_table>& Y, int const& topology = 1, std::string benchmark = "ex--"  )
 {
   auto klut = project_in_hd( X, Y, topology );
+
+  write_blif( klut, "../experiments/iwls2020/results/"+DEC_ALGO+"/BLIF/"+ benchmark + ".blif" );
+
+
   Ntk ntk = convert_klut_to_graph<Ntk>( klut );
   ntk = cleanup_dangling( ntk );
 
@@ -464,6 +468,56 @@ void thread_run( iwls2020_parameters const& iwls2020_ps, std::string const& run_
     {
       auto Y = std::vector{Dl.Y};
       aig = flow_hdp<aig_network>( Dl.X, Y, 21 );
+    }
+    else if( iwls2020_ps.dec_algo == "ifgenS8192x1" ) 
+    {
+      auto Y = std::vector{Dl.Y};
+      aig = flow_hdp<aig_network>( Dl.X, Y, 200 );
+    }
+    else if( iwls2020_ps.dec_algo == "idsdS" )
+    {
+      auto Y = std::vector{Dl.Y};
+      aig = flow_hdp<aig_network>( Dl.X, Y, 22 );
+    }
+    else if( iwls2020_ps.dec_algo == "forestmuesli9" )
+    {
+      auto Y = std::vector{Dl.Y};
+      aig = flow_hdp<aig_network>( Dl.X, Y, 23 );
+    }
+    else if( iwls2020_ps.dec_algo == "forestmuesli_s4" )
+    {
+      auto Y = std::vector{Dl.Y};
+      aig = flow_hdp<aig_network>( Dl.X, Y, 24 );
+    }
+    else if( iwls2020_ps.dec_algo == "forestmuesli_t5s2a5" )
+    {
+      auto Y = std::vector{Dl.Y};
+      aig = flow_hdp<aig_network>( Dl.X, Y, 25 );
+    }
+    else if( iwls2020_ps.dec_algo == "forestmuesli_t5s4a5" )
+    {
+      auto Y = std::vector{Dl.Y};
+      aig = flow_hdp<aig_network>( Dl.X, Y, 26 );
+    }
+    else if( iwls2020_ps.dec_algo == "orthogonal00" )
+    {
+      auto Y = std::vector{Dl.Y};
+      aig = flow_hdp<aig_network>( Dl.X, Y, 100 );
+    }
+    else if( iwls2020_ps.dec_algo == "orthogonal01" )
+    {
+      auto Y = std::vector{Dl.Y};
+      aig = flow_hdp<aig_network>( Dl.X, Y, 101 );
+    }
+    else if( iwls2020_ps.dec_algo == "sat" )
+    {
+      auto Y = std::vector{Dl.Y};
+      aig = flow_hdp<aig_network>( Dl.X, Y, 102 );
+    }
+    else if( iwls2020_ps.dec_algo == "random" )
+    {
+      auto Y = std::vector{Dl.Y};
+      aig = flow_hdp<aig_network>( Dl.X, Y, 300, benchmark );
     }
     else
     {

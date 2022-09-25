@@ -36,6 +36,7 @@
 #include "../../sim_decomposition_fast.hpp"
 #include "../../sim_decomposition_fastS.hpp"
 #include "../../forest_decomposition.hpp"
+#include "../../forest_decompositionx2.hpp"
 #include "../../dc_decomposition_fastS.hpp"
 #include "selectors.hpp"
 #include <kitty/print.hpp>
@@ -59,7 +60,9 @@ enum class arecovery_method
   dcxsdec,
   itsdecS,
   itdsdec,
-  forestS
+  forestS,
+  forestSx2,
+  idsdS
 };
 
 class arecovery_params
@@ -269,6 +272,38 @@ signal<Ntk> ixtsdecS( simulation_view<Ntk>& ntk, detail::arecovery_params const&
  * Statistics based decomposition: tries top decomposition and performs shannon decomposition in case of failure
  */
 template<class Ntk>
+signal<Ntk> idsdS( simulation_view<Ntk>& ntk, detail::arecovery_params const& ps )
+{
+  sim_decomposition_fastS_params decps;
+  decps.verbose = ps.verbose;
+  decps.max_sup = ps.max_sup;
+  decps.is_informed = true;
+  decps.is_size_aware = false;
+  decps.try_top_decomposition = true;
+  decps.try_bottom_decomposition = true;
+  decps.use_correlation = false;
+  decps.try_xor = true;
+
+  std::vector<kitty::partial_truth_table> examples;
+  for( auto sim : ntk.sim_patterns )
+    examples.push_back( sim.pat );
+
+  signal<Ntk> osignal = sim_decomposition_fastS( ntk, examples, ntk.targets[ps.output], decps, false );
+  double accuracy = 100*(double)kitty::count_ones( ~(ntk.targets[ps.output]^ntk.sim_patterns[ntk.nodes_to_patterns[osignal]].pat) )/ntk.targets[ps.output].num_bits();
+
+  if( ps.verbose )
+  {
+    std::cout << "[o " << ps.output << "] : " << accuracy << "%" <<std::endl;
+    kitty::print_binary( ~(ntk.targets[ps.output]^ntk.sim_patterns[ntk.nodes_to_patterns[osignal]].pat) );
+  }
+
+  return osignal;
+}
+
+/*! \brief 
+ * Statistics based decomposition: tries top decomposition and performs shannon decomposition in case of failure
+ */
+template<class Ntk>
 signal<Ntk> dcsdec( simulation_view<Ntk>& ntk, detail::arecovery_params const& ps )
 {
   dc_decomposition_fastS_params decps;
@@ -420,6 +455,39 @@ signal<Ntk> forestS( simulation_view<Ntk>& ntk, detail::arecovery_params const& 
   return osignal;
 }
 
+/*! \brief 
+ * Statistics based decomposition: tries top decomposition and performs shannon decomposition in case of failure
+ */
+template<class Ntk>
+signal<Ntk> forestSx2( simulation_view<Ntk>& ntk, detail::arecovery_params const& ps )
+{
+  forest_decompositionx2_params decps;
+  decps.verbose = ps.verbose;
+  decps.max_sup = ps.max_sup;
+  decps.is_informed = true;
+  decps.is_size_aware = true;
+  decps.try_top_decomposition = true;
+  decps.try_bottom_decomposition = false;
+  decps.use_correlation = false;
+  decps.try_xor = true;
+  decps.num_trees = ps.num_trees;
+
+  std::vector<kitty::partial_truth_table> examples;
+  for( auto sim : ntk.sim_patterns )
+    examples.push_back( sim.pat );
+
+  signal<Ntk> osignal = forest_decompositionx2( ntk, examples, ntk.targets[ps.output], decps, false );
+  double accuracy = 100*(double)kitty::count_ones( ~(ntk.targets[ps.output]^ntk.sim_patterns[ntk.nodes_to_patterns[osignal]].pat) )/ntk.targets[ps.output].num_bits();
+
+  if( ps.verbose )
+  {
+    std::cout << "[o " << ps.output << "] : " << accuracy << "%" <<std::endl;
+    kitty::print_binary( ~(ntk.targets[ps.output]^ntk.sim_patterns[ntk.nodes_to_patterns[osignal]].pat) );
+  }
+
+  return osignal;
+}
+
 } // namespace detail
 
 template<class Ntk>
@@ -459,6 +527,12 @@ signal<Ntk> recover_accuracy( simulation_view<Ntk>& ntk, detail::arecovery_metho
         break;
       case detail::arecovery_method::forestS:
         osignal = detail::forestS( ntk, arecovery_ps );
+        break;
+      case detail::arecovery_method::forestSx2:
+        osignal = detail::forestSx2( ntk, arecovery_ps );
+        break;
+      case detail::arecovery_method::idsdS:
+        osignal = detail::idsdS( ntk, arecovery_ps );
         break;
     }
 

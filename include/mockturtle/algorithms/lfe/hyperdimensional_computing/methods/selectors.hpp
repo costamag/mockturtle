@@ -36,6 +36,8 @@
 #include <vector>
 #include <set>
 
+#include <kitty/statistics.hpp>
+
 namespace mockturtle
 {
 namespace hdc
@@ -45,7 +47,8 @@ namespace detail
 enum class selection_method
 {
   depth_selector,
-  layer_selector
+  layer_selector,
+  similarity_selector
 };
 
 class selection_params
@@ -155,6 +158,55 @@ inline std::vector<std::vector<signal<Ntk>>> layer_selector( simulation_view<Ntk
   return res;   
 }
 
+template<class Ntk>
+inline std::vector<std::vector<signal<Ntk>>> similarity_selector( simulation_view<Ntk>& ntk, detail::selection_params const& ps )
+{
+  std::vector<std::vector<signal<Ntk>>> child_signals;
+  uint32_t layer_pointer = ntk.layer_to_signals.size();
+  uint32_t max_depth = std::min<uint32_t>( layer_pointer, ps.max_search_depth );
+  uint32_t min_layer = layer_pointer-max_depth;
+  uint32_t max_layer = layer_pointer-1;
+  std::unordered_map<double,std::vector<uint32_t>> i_to_sigs;
+  
+  double inew;
+  uint32_t iref;
+  std::vector<uint32_t> sorted_indeces;
+  std::vector<double> sorted_mis;
+  for( uint32_t i = 0; i < ntk.sim_patterns.size(); ++i )
+  {
+    inew = kitty::mutual_information( std::vector{&ntk.sim_patterns[i].pat}, &ntk.targets[0] );
+    if( sorted_mis.size() == 0 || inew >= sorted_mis[sorted_mis.size()-1] )
+    {
+      sorted_mis.push_back( inew );
+      sorted_indeces.push_back( i );
+    }
+    else
+    {
+      for( uint32_t j = 0; j < sorted_indeces.size(); ++j )
+      {
+        if( inew <= sorted_mis[j] )
+        {
+          sorted_mis.insert( sorted_mis.begin()+j, inew );
+          sorted_indeces.insert( sorted_indeces.begin()+j, i );
+          break;
+        }
+      }
+    }
+  }
+
+  std::vector<std::vector<signal<Ntk>>> res;
+  for( uint32_t i=0; i < sorted_mis.size()-1; ++i )
+  {
+    std::cout << sorted_mis[i] << " ";
+    res.push_back( std::vector{ ntk.sim_patterns[sorted_indeces[i]].sig,ntk.sim_patterns[sorted_indeces[i+1]].sig } );
+  }
+  std::cout << std::endl;
+
+
+  ntk.seed*=res.size();
+  return res;   
+}
+
 /*template<class Ntk>
 inline std::vector<std::vector<signal<Ntk>>> urandom_selector( simulation_view<Ntk>& ntk, detail::selection_params const& ps )
 {
@@ -221,6 +273,10 @@ std::vector<std::vector<signal<Ntk>>> select_variables( simulation_view<Ntk>& nt
       case detail::selection_method::layer_selector:
         divisors = detail::layer_selector( ntk, selection_ps );
         break;
+      case detail::selection_method::similarity_selector:
+        divisors = detail::similarity_selector( ntk, selection_ps );
+        break;
+
     }
     return divisors;
 }

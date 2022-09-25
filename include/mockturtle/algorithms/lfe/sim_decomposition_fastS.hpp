@@ -53,6 +53,8 @@
 #include <kitty/operators.hpp>
 #include <kitty/print.hpp>
 
+#include <mockturtle/algorithms/lfe/create_candidates.hpp>
+
 namespace mockturtle
 {
 /*! \brief Parameters for sim_decomposition_fastS algorithm */
@@ -175,6 +177,16 @@ namespace detail
         bool is_success = false;
         TT on_xi;
         TT off_xi;
+
+        chj_result chj_new_node;
+        /*{
+          std::string tt;
+          kitty::partial_truth_table pat;
+          bool both_not0_and_eq {false};
+          bool both_not0 {false};
+          kitty::dynamic_truth_table dtt;
+        };*/
+
         for( uint32_t i = 0; i < support.size(); ++i )
         {
           on_xi = amask & X[support[i]].pat;
@@ -201,8 +213,121 @@ namespace detail
 
         uint32_t fanin_size;
         uint32_t min_fanin_size = std::numeric_limits<uint32_t>::max();
-        chj_result chj_res;
-        chj_result chj_res_new_node;
+        std::vector<TT*> support_pat_pointers;
+        support_pat_pointers.push_back( &X[0].pat );
+        support_pat_pointers.push_back( &X[0].pat );
+        std::vector<uint32_t> new_node_support_indeces = {0, 0};
+
+        for( uint32_t i = 0; i < sorted_indeces.size()-1; ++i )
+        {
+          support_pat_pointers[0] = &X[support[sorted_indeces[i]]].pat;
+          for( uint32_t j = i+1; j < sorted_indeces.size(); ++j )
+          {
+            support_pat_pointers[1] = &X[support[sorted_indeces[j]]].pat;
+            if( vect_I[i] != vect_I[j] )
+              break;
+            else
+            {
+              create_candidates_result<TT> candidates = create_candidates_method( support_pat_pointers, &on_f );
+              for( uint32_t k = 0; k < candidates.dtt_v.size(); ++k )
+              {
+                on_xi = amask & candidates.pat_v[k];
+                off_xi = amask & ~candidates.pat_v[k];
+                Inew = information( on_xi, off_xi, on_f, off_f );
+////////////////////////////////////////////////////////////////
+                TT xl = amask & X[support[sorted_indeces[i]]].pat;
+                TT xr = amask & X[support[sorted_indeces[j]]].pat;
+                TT ym = amask & on_f;
+                TT xn = on_xi;
+
+                std::vector<TT*> Xptr;
+                Xptr = std::vector{&xl, &xr};
+                double Iij = kitty::mutual_information( Xptr, &ym );
+                Xptr = std::vector{&xn};
+                double In = kitty::mutual_information( Xptr, &ym );
+                Xptr = std::vector{&xl,&xn};
+                double Iin = kitty::mutual_information( Xptr, &ym );
+                Xptr = std::vector{&xr, &xn};
+                double Ijn = kitty::mutual_information( Xptr, &ym );
+                Xptr = std::vector{&xl, &xr, &xn};
+                double Iijn = kitty::mutual_information( Xptr, &ym );
+
+                if( Inew > Imax && Iijn == In && Iin == In && Ijn == In && Iij == In )
+///////////////////////////////////////////////////////
+                {
+                  std::vector<signal<Ntk>> children;
+                  children.push_back( X[support[sorted_indeces[i]]].sig );
+                  children.push_back( X[support[sorted_indeces[j]]].sig );
+                  auto cand = std::make_pair( children, candidates.tt_v[k] );
+                  if( ntk.available_nodes.find(cand) == ntk.available_nodes.end() )
+                  {
+                    Imax = Inew;
+                    new_node_support_indeces[0] = sorted_indeces[i];
+                    new_node_support_indeces[1] = sorted_indeces[j];
+                    chj_new_node.tt = candidates.tt_v[k];
+                    chj_new_node.dtt = candidates.dtt_v[k];
+                    chj_new_node.pat = candidates.pat_v[k];
+                    min_fanin_size = fanin_size;
+                    ntk.available_nodes.insert(cand);
+                    is_success = true;
+                  }
+                }
+///////////////////////////////////////////////////////
+              }
+            }
+          }
+        }
+        if( is_success )
+        {
+          std::vector<signal<Ntk>> children;
+          children.push_back( X[support[new_node_support_indeces[0]]].sig );
+          children.push_back( X[support[new_node_support_indeces[1]]].sig );
+          signal<Ntk> fc = ntk.create_node( children, chj_new_node.dtt );
+          support.push_back( X.size() );
+          //std::cout << support.size() << std::endl;
+          X.push_back( ntk.sim_patterns[ ntk.get_node_pattern( fc ) ] );
+          std::cout << children[0] << " " << children[1] << " " << chj_new_node.tt << std::endl;  
+          support.erase( support.begin() + std::max<uint32_t>( new_node_support_indeces[0],new_node_support_indeces[1] ) );
+          support.erase( support.begin() + std::min<uint32_t>( new_node_support_indeces[0],new_node_support_indeces[1] ) );
+        }
+        return is_success;
+      }
+
+
+      /*bool try_bottom_decomposition( std::vector<uint32_t>& support, TT & amask, TT & on_f, TT & off_f, double Imax )
+      {
+        std::vector<double> vect_I;
+        std::vector<uint32_t> sorted_indeces;
+        double Inew;
+        bool is_success = false;
+        TT on_xi;
+        TT off_xi;
+        for( uint32_t i = 0; i < support.size(); ++i )
+        {
+          on_xi = amask & X[support[i]].pat;
+          off_xi = amask & ~X[support[i]].pat;
+          Inew = information( on_xi, off_xi, on_f, off_f );
+          if( (vect_I.size() == 0 ) || ( Inew < vect_I[vect_I.size()-1] ) )
+          {
+            vect_I.push_back( Inew );
+            sorted_indeces.push_back( i );
+          }
+          else
+          {
+            for( uint32_t j = 0; j < vect_I.size(); ++j )
+            {
+              if( Inew >= vect_I[j] )
+              {
+                sorted_indeces.insert( sorted_indeces.begin()+j, i );
+                vect_I.insert( vect_I.begin()+j, Inew );
+                break;
+              }
+            }
+          }
+        }
+
+        uint32_t fanin_size;
+        uint32_t min_fanin_size = std::numeric_limits<uint32_t>::max();
         std::vector<TT*> support_pat_pointers;
         support_pat_pointers.push_back( &X[0].pat );
         support_pat_pointers.push_back( &X[0].pat );
@@ -219,45 +344,49 @@ namespace detail
               break;
             else
             {
-              chj_res = chatterjee_method( support_pat_pointers, &on_f );
-              on_xi = amask & chj_res.pat;
-              off_xi = amask & chj_res.pat;
-
-              Inew = information( on_xi, off_xi, on_f, off_f );
-              if( ps.is_size_aware )
+              //chj_res = chatterjee_method( support_pat_pointers, &on_f );
+              create_candidates_result<TT> candidates = create_candidates_method( support_pat_pointers, &on_f );
+              for( auto chj_res : candidates )
               {
-                fanin_size = ntk.nodes_to_size_fanin[ntk.get_node(X[support[new_node_support_indeces[0]]].sig)]+
-                                 ntk.nodes_to_size_fanin[ntk.get_node(X[support[new_node_support_indeces[1]]].sig)]+1;
-              }
+                on_xi = amask & chj_res.pat;
+                off_xi = amask & chj_res.pat;
 
-              TT xl = amask & X[support[sorted_indeces[i]]].pat;
-              TT xr = amask & X[support[sorted_indeces[j]]].pat;
-              TT xn = on_xi;
-              std::vector<TT*> Xptr = std::vector{&xn};
-              double In = kitty::mutual_information( Xptr, &on_f );
-              Xptr = std::vector{&xl};
-              double Ii = kitty::mutual_information( Xptr, &on_f );
-              Xptr = std::vector{&xl, &xr};
-              double Iij = kitty::mutual_information( Xptr, &on_f );
-              Xptr = std::vector{&xl, &xr, &xn};
-              double Iijn = kitty::mutual_information( Xptr, &on_f );
-
-              if( ( In == Iij ) && ( In = Iijn ) && ( In > Ii ) && ( Inew >= Imax ) && ( !ps.is_size_aware  || (fanin_size < min_fanin_size) ) )
-              {
-                std::vector<signal<Ntk>> children;
-                children.push_back( X[support[sorted_indeces[i]]].sig );
-                children.push_back( X[support[sorted_indeces[j]]].sig );
-                auto cand = std::make_pair( children, chj_res.tt );
-                if( ntk.available_nodes.find(cand) == ntk.available_nodes.end() )
+                Inew = information( on_xi, off_xi, on_f, off_f );
+                if( ps.is_size_aware )
                 {
-                  Imax = Inew;
-                  new_node_support_indeces[0] = sorted_indeces[i];
-                  new_node_support_indeces[1] = sorted_indeces[j];
-                  chj_res_new_node = chj_res;
-                  min_fanin_size = fanin_size;
-                  ntk.available_nodes.insert(cand);
-                  is_success = true;
+                  fanin_size = ntk.nodes_to_size_fanin[ntk.get_node(X[support[new_node_support_indeces[0]]].sig)]+
+                                 ntk.nodes_to_size_fanin[ntk.get_node(X[support[new_node_support_indeces[1]]].sig)]+1;
+                }
 
+                TT xl = amask & X[support[sorted_indeces[i]]].pat;
+                TT xr = amask & X[support[sorted_indeces[j]]].pat;
+                TT xn = on_xi;
+                std::vector<TT*> Xptr;
+                Xptr = std::vector{&xn};
+                double In = kitty::mutual_information( Xptr, &on_f, &amask );
+                Xptr = std::vector{&xl,&xn};
+                double Iin = kitty::mutual_information( Xptr, &on_f, &amask );
+                Xptr = std::vector{&xr, &xn};
+                double Ijn = kitty::mutual_information( Xptr, &on_f, &amask );
+                Xptr = std::vector{&xl, &xr, &xn};
+                double Iijn = kitty::mutual_information( Xptr, &on_f, &amask );
+
+                if( ( In == Iijn ) && ( In > Ii ) && ( Inew >= Imax ) && ( !ps.is_size_aware  || (fanin_size < min_fanin_size) ) )
+                {
+                  std::vector<signal<Ntk>> children;
+                  children.push_back( X[support[sorted_indeces[i]]].sig );
+                  children.push_back( X[support[sorted_indeces[j]]].sig );
+                  auto cand = std::make_pair( children, chj_res.tt );
+                  if( ntk.available_nodes.find(cand) == ntk.available_nodes.end() )
+                  {
+                    Imax = Inew;
+                    new_node_support_indeces[0] = sorted_indeces[i];
+                    new_node_support_indeces[1] = sorted_indeces[j];
+                    chj_res_new_node = chj_res;
+                    min_fanin_size = fanin_size;
+                    ntk.available_nodes.insert(cand);
+                    is_success = true;
+                  }
                 }
               }
             }
@@ -280,7 +409,7 @@ namespace detail
         }
         return is_success;
 
-      }
+      }*/
 
       void clear_fanin_size( signal<Ntk> & sig )
       {
@@ -496,16 +625,15 @@ namespace detail
           }
         }
 
-        if( ps.try_bottom_decomposition )
+        if( !branch_on_last && ps.try_bottom_decomposition )
         {
           if( ps.is_informed )
           {
             if ( try_bottom_decomposition( support, amask, on_f, off_f, Imax ) )
               return idsd_step( support, amask, xmask, true );
-            
           }
           else
-          {
+          { 
             std::cout << "don't care-based not yet implemented" << std::endl;
           }
         }

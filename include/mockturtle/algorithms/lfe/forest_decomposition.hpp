@@ -98,6 +98,7 @@ namespace detail
           X = ntk.input_patterns;
         }
         assert( X[0].pat.num_bits() == target.num_bits() );
+        std::cout << ps.max_sup << std::endl;
       }
 
 

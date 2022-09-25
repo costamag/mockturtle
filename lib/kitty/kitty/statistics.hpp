@@ -206,6 +206,39 @@ double mutual_information( std::vector<TT> const& X, TT const& y )
   return mutual_information( X, Y );
 }
 
+/*
+template<typename TT>
+double mutual_information( std::vector<TT*> const& X, TT * const& y, TT * const& mask )
+{
+  std::vector<TT> TTXn;
+  std::vector<TT*> TTXnPTR;
+  TT TTyn;
+  
+  for( uint32_t j = 0; j < X.size(); ++j )
+  {
+    TT xnew;
+    TTXn.push_back(xnew);
+  }
+  for( uint32_t j = 0; j < X.size(); ++j )
+    TTXnPTR.push_back(&TTXn[j]);
+
+  for( uint32_t i = 0; i < kitty::num_bits(*y); ++i )
+  {
+    if( kitty::get_bit( *y, i ) == 1 )
+    {
+      TTyn.add_bit( kitty::get_bit( *y, i ) );
+      for( uint32_t j = 0; j < X.size(); ++j )
+      {
+        TT xnew;
+        TTXn[j].add_bit( kitty::get_bit(*X[i],j) );
+      }
+    }
+  }
+  std::vector<TT*> YPTR = { &TTyn };
+
+  return mutual_information( TTXnPTR, YPTR );
+}*/
+
 /*! \brief Computes the normalized mutual information of random variables X and Y
 
   The random variables \f$X\in\mathbb{B}^{n_1}\f$ and \f$Y\in\mathbb{B}^{n_2}\f$ are represented using \f$n_1\f$ and \f$n_2\f$ Truth tables, respectively. 
