@@ -1,0 +1,57 @@
+.model top
+.inputs pi2 pi3 pi4 pi5 pi6 pi7 pi8 pi9 pi10 pi11 pi12 pi13 pi14 pi15 pi16 pi17 pi18 pi19 pi20 
+.outputs po0 
+.names new_n0
+0
+.names new_n1
+1
+.names pi15 pi14 new_n21
+11 1
+.names pi14 pi7 new_n22
+01 1
+.names new_n21 new_n22 new_n23
+-1 1
+1- 1
+.names pi16 pi18 new_n24
+00 1
+11 1
+.names new_n24 pi16 new_n25
+-0 1
+1- 1
+.names new_n23 new_n25 new_n26
+11 1
+.names new_n26 new_n21 new_n27
+-1 1
+1- 1
+.names pi13 new_n25 new_n29
+11 1
+.names pi14 new_n25 new_n28
+11 1
+.names new_n29 new_n28 new_n30
+-1 1
+1- 1
+.names new_n27 new_n30 new_n31
+11 1
+.names pi17 new_n23 new_n32
+01 1
+.names new_n31 new_n32 new_n35
+-1 1
+1- 1
+.names pi20 pi13 new_n36
+10 1
+.names new_n36 pi14 new_n37
+10 1
+.names new_n35 new_n37 new_n39
+-1 1
+1- 1
+.names new_n32 new_n24 new_n33
+-1 1
+1- 1
+.names new_n33 pi18 new_n34
+-1 1
+1- 1
+.names new_n39 new_n34 new_n40
+11 1
+.names new_n40 po0
+1 1
+.end

@@ -196,7 +196,7 @@ XYdataset dataset_loader( std::string file_name )
   return DS;
 }
 
-std::string DEC_ALGO{"idsdS"};
+std::string DEC_ALGO{"vhds"};
 using experiment_t = experiments::experiment<std::string, uint32_t, uint32_t, float, float, float, float>;
 experiment_t exp_res( "/iwls2020/"+DEC_ALGO, "benchmark", "#gates", "depth", "train", "test", "valid", "runtime" );
 
@@ -389,6 +389,11 @@ void thread_run( iwls2020_parameters const& iwls2020_ps, std::string const& run_
       auto Y = std::vector{Dl.Y};
       xag = flow_hdp<xag_network>( Dl.X, Y, 22 );
     }
+    else if( iwls2020_ps.dec_algo == "vhds" )
+    {
+      auto Y = std::vector{Dl.Y};
+      xag = flow_hdp<xag_network>( Dl.X, Y, 600 );
+    }
     else
     {
       fmt::print( "[w] method named {} is not defined\n", iwls2020_ps.dec_algo );
@@ -435,7 +440,7 @@ int main( int argc, char* argv[] )
 
   iwls2020_parameters iwls2020_ps;
   iwls2020_ps.dec_algo = DEC_ALGO;
-  iwls2020_ps.frac_valid = 0;
+  iwls2020_ps.frac_valid = 1;
 
   std::string run_only_one = "";
 

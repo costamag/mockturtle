@@ -1,0 +1,208 @@
+.model top
+.inputs pi2 pi3 pi4 pi5 pi6 pi7 pi8 pi9 pi10 pi11 pi12 pi13 pi14 pi15 pi16 pi17 pi18 pi19 pi20 pi21 pi22 pi23 pi24 
+.outputs po0 
+.names new_n0
+0
+.names new_n1
+1
+.names pi21 pi22 new_n34
+00 1
+.names pi23 pi24 new_n450
+00 1
+11 1
+.names pi20 pi23 new_n489
+00 1
+.names pi19 pi23 new_n475
+-0 1
+1- 1
+.names pi2 pi19 new_n790
+-1 1
+1- 1
+.names pi3 pi12 new_n1786
+00 1
+.names pi8 pi10 new_n943
+-0 1
+0- 1
+.names new_n1786 new_n943 new_n2114
+-1 1
+0- 1
+.names new_n790 new_n2114 new_n2115
+-1 1
+1- 1
+.names new_n475 new_n2115 new_n2116
+11 1
+.names new_n489 new_n2116 new_n2117
+01 1
+.names new_n450 new_n2117 new_n2118
+11 1
+.names new_n450 new_n2112
+0 1
+.names pi2 pi4 new_n1075
+00 1
+11 1
+.names pi6 pi7 new_n1185
+00 1
+11 1
+.names pi3 pi4 new_n1935
+10 1
+01 1
+.names pi5 pi7 new_n1915
+00 1
+11 1
+.names pi4 pi18 new_n1298
+01 1
+.names pi15 pi20 new_n509
+00 1
+.names pi14 pi15 new_n1852
+-0 1
+1- 1
+.names new_n509 new_n1852 new_n2105
+01 1
+.names new_n1298 new_n2105 new_n2106
+01 1
+.names new_n1915 new_n2106 new_n2107
+-1 1
+0- 1
+.names pi19 new_n2107 new_n2108
+-1 1
+1- 1
+.names new_n1935 new_n2108 new_n2109
+-1 1
+1- 1
+.names new_n1185 new_n2109 new_n2110
+-1 1
+0- 1
+.names new_n1075 new_n2110 new_n2111
+-1 1
+0- 1
+.names new_n2112 new_n2111 new_n2113
+11 1
+.names new_n2118 new_n2113 new_n2119
+-1 1
+1- 1
+.names new_n34 new_n2119 new_n2120
+11 1
+.names new_n34 new_n2103
+0 1
+.names pi2 pi3 new_n895
+00 1
+11 1
+.names pi21 pi23 new_n74
+00 1
+.names pi4 pi17 new_n1430
+-1 1
+1- 1
+.names pi24 new_n1430 new_n2095
+01 1
+.names new_n74 new_n2095 new_n2096
+11 1
+.names new_n74 new_n2093
+0 1
+.names pi5 pi20 new_n648
+10 1
+.names pi8 pi9 new_n955
+00 1
+11 1
+.names pi15 pi22 new_n332
+01 1
+.names new_n332 pi11 new_n2088
+-1 1
+0- 1
+.names new_n955 new_n2088 new_n2089
+11 1
+.names new_n955 new_n2086
+0 1
+.names pi14 pi21 new_n87
+-0 1
+1- 1
+.names new_n87 new_n2085
+0 1
+.names new_n2086 new_n2085 new_n2087
+11 1
+.names new_n2089 new_n2087 new_n2090
+-1 1
+1- 1
+.names new_n648 new_n2090 new_n2091
+11 1
+.names new_n648 new_n2083
+0 1
+.names pi9 pi10 new_n2045
+10 1
+01 1
+.names pi12 pi13 new_n1829
+10 1
+.names pi20 pi24 new_n465
+-1 1
+1- 1
+.names new_n1829 new_n465 new_n2080
+-1 1
+0- 1
+.names new_n2045 new_n2080 new_n2081
+11 1
+.names new_n2045 new_n2078
+0 1
+.names pi8 pi15 new_n1125
+10 1
+01 1
+.names pi17 pi22 new_n378
+-0 1
+0- 1
+.names pi11 pi17 new_n1999
+10 1
+.names pi12 pi13 new_n1821
+-0 1
+0- 1
+.names pi4 pi18 new_n1294
+10 1
+01 1
+.names new_n1294 new_n2073
+0 1
+.names new_n1821 new_n2073 new_n2074
+01 1
+.names new_n1999 new_n2074 new_n2075
+-1 1
+1- 1
+.names new_n378 new_n2075 new_n2076
+-1 1
+0- 1
+.names new_n1125 new_n2076 new_n2077
+-1 1
+1- 1
+.names new_n2078 new_n2077 new_n2079
+11 1
+.names new_n2081 new_n2079 new_n2082
+-1 1
+1- 1
+.names new_n2083 new_n2082 new_n2084
+11 1
+.names new_n2091 new_n2084 new_n2092
+-1 1
+1- 1
+.names new_n2093 new_n2092 new_n2094
+11 1
+.names new_n2096 new_n2094 new_n2097
+-1 1
+1- 1
+.names new_n1915 new_n2097 new_n2098
+-1 1
+0- 1
+.names new_n1185 new_n2098 new_n2099
+-1 1
+0- 1
+.names new_n1935 new_n2099 new_n2100
+-1 1
+1- 1
+.names pi19 new_n2100 new_n2101
+-1 1
+1- 1
+.names new_n895 new_n2101 new_n2102
+-1 1
+0- 1
+.names new_n2103 new_n2102 new_n2104
+11 1
+.names new_n2120 new_n2104 new_n2121
+-1 1
+1- 1
+.names new_n2121 po0
+1 1
+.end

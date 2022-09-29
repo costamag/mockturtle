@@ -494,7 +494,7 @@ namespace detail
               { 
                 Inew = information( on_xi, off_xi, on_f, off_f );
                 signal<Ntk> sig = X[support[i]].sig;
-                if(( Inew > Imax ) || ( (Inew == Imax) && ( !ps.is_size_aware || (ntk.nodes_to_size_fanin[ntk.get_node(sig)] < max_fanin_size )) ) )
+                if(( Inew > Imax ) || ( (Inew == Imax) && ( !ps.is_size_aware || (ntk.nodes_to_size_fanin[ntk.get_node(sig)] <= max_fanin_size )) ) )
                 {
                   Imax = Inew;
                   bidx = i;
@@ -567,10 +567,22 @@ namespace detail
         std::vector<uint32_t> reduced_support = support;
 
         reduced_support.erase( reduced_support.begin() + bidx );
+
+        std::vector<uint32_t> pis_support;
+        if( ps.try_xor )
+        {
+          for( uint32_t k = 0; k < reduced_support.size(); ++k )
+          {
+            if( ntk.is_pi( ntk.get_node(X[reduced_support[k]].sig) ) )
+              pis_support.push_back( reduced_support[k] );
+          }
+        }
+        else
+          pis_support = reduced_support;
         
         if( ps.is_informed && ps.try_top_decomposition )
         {
-          sim_top_decomposition_fast res = is_top_decomposable_fast( X, reduced_support, on_f, amask1, amask0, ps.try_xor );
+          sim_top_decomposition_fast res = is_top_decomposable_fast( X, pis_support, on_f, amask1, amask0, ps.try_xor );
         
           if ( res != sim_top_decomposition_fast::none )
           {

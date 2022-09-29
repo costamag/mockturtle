@@ -64,6 +64,7 @@ struct sim_decomposition_fast_params
   bool try_top_decomposition{true};
   bool try_bottom_decomposition{false};
   bool use_correlation{false};
+  bool try_xor{false};
 };
 
 namespace detail
@@ -249,9 +250,21 @@ namespace detail
 
         reduced_support.erase( reduced_support.begin() + bidx );
         
+        std::vector<uint32_t> pis_support;
+        if( ps.try_xor )
+        {
+          for( uint32_t k = 0; k < reduced_support.size(); ++k )
+          {
+            if( ntk.is_pi( ntk.get_node(X[reduced_support[k]].sig) ) )
+              pis_support.push_back( reduced_support[k] );
+          }
+        }
+        else
+          pis_support = reduced_support;
+
         if( ps.try_top_decomposition )
         {
-          sim_top_decomposition_fast res = is_top_decomposable_fast( X, reduced_support, on_f, amask1, amask0 );
+          sim_top_decomposition_fast res = is_top_decomposable_fast( X, pis_support, on_f, amask1, amask0 );
         
           if ( res != sim_top_decomposition_fast::none )
           {
