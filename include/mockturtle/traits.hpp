@@ -910,6 +910,66 @@ template<class Ntk>
 inline constexpr bool has_update_levels_v = has_update_levels<Ntk>::value;
 #pragma endregion
 
+#pragma region has_simulation
+template<class Ntk, class = void>
+struct has_simulation : std::false_type
+{
+};
+
+template<class Ntk>
+struct has_simulation<Ntk, std::void_t<decltype( std::declval<Ntk>().simulation( std::declval<node<Ntk>>() ) )>> : std::true_type
+{
+};
+
+template<class Ntk>
+inline constexpr bool has_simulation_v = has_simulation<Ntk>::value;
+#pragma endregion
+
+#pragma region has_update_simulations
+template<class Ntk, class = void>
+struct has_update_simulations : std::false_type
+{
+};
+
+template<class Ntk>
+struct has_update_simulations<Ntk, std::void_t<decltype( std::declval<Ntk>().update_simulations() )>> : std::true_type
+{
+};
+
+template<class Ntk>
+inline constexpr bool has_update_simulations_v = has_update_simulations<Ntk>::value;
+#pragma endregion
+
+#pragma region has_faninsize
+template<class Ntk, class = void>
+struct has_faninsize : std::false_type
+{
+};
+
+template<class Ntk>
+struct has_faninsize<Ntk, std::void_t<decltype( std::declval<Ntk>().faninsize( std::declval<node<Ntk>>() ) )>> : std::true_type
+{
+};
+
+template<class Ntk>
+inline constexpr bool has_faninsize_v = has_faninsize<Ntk>::value;
+#pragma endregion
+
+#pragma region has_update_faninsizes
+template<class Ntk, class = void>
+struct has_update_faninsizes : std::false_type
+{
+};
+
+template<class Ntk>
+struct has_update_faninsizes<Ntk, std::void_t<decltype( std::declval<Ntk>().update_faninsizes() )>> : std::true_type
+{
+};
+
+template<class Ntk>
+inline constexpr bool has_update_faninsizes_v = has_update_faninsizes<Ntk>::value;
+#pragma endregion
+
 #pragma region has_update_mffcs
 template<class Ntk, class = void>
 struct has_update_mffcs : std::false_type
