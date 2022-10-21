@@ -397,6 +397,32 @@ void clone_outputs( NtkSrc const& ntk, NtkDest& dest, node_map<signal<NtkDest>, 
 
 } // namespace detail
 
+/*! \brief Create a new network without dangling nodes .
+ *
+ * This method copies a network into another omitting dangling nodes.
+ *
+   \verbatim embed:rst
+
+   .. note::
+
+      This method returns the output signals of the destination network.
+   \endverbatim
+ *
+ * **Required network functions:**
+ * - `get_node`
+ * - `node_to_index`
+ * - `get_constant`
+ * - `create_pi`
+ * - `create_po`
+ * - `create_not`
+ * - `is_complemented`
+ * - `foreach_node`
+ * - `foreach_pi`
+ * - `foreach_po`
+ * - `clone_node`
+ * - `is_pi`
+ * - `is_constant`
+ */
 template<typename NtkSrc, typename NtkDest, typename LeavesIterator>
 std::vector<signal<NtkDest>> cleanup_dangling( NtkSrc const& ntk, NtkDest& dest, LeavesIterator begin, LeavesIterator end )
 {

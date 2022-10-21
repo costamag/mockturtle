@@ -28,6 +28,14 @@ algorithm.  Several views are implemented in mockturtle.
 .. doxygenclass:: mockturtle::depth_view
    :members:
 
+`simulation_view`: Compute levels, depth, simulation patterns and transitive fanin size
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Header:** ``mockturtle/views/simulation_view.hpp``
+
+.. doxygenclass:: mockturtle::simulation_view
+   :members:
+
 `mapping_view`: Add mapping interface methods
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
