@@ -1,6 +1,11 @@
 #include <kitty/constructors.hpp>
 #include <mockturtle/algorithms/sfps/bottomup/xminsyn_h.hpp>
+#include <mockturtle/algorithms/simulation.hpp>
 #include <mockturtle/networks/aig.hpp>
+#include <mockturtle/io/write_aiger.hpp>
+#include <mockturtle/io/write_dot.hpp>
+#include <mockturtle/algorithms/cleanup.hpp>
+
 
 using namespace mockturtle;
 
@@ -20,8 +25,51 @@ int main()
     kitty::create_nth_var( x2, 1 ); 
     kitty::create_nth_var( x3, 2 ); 
 
-    table = (~x1 & ~x2 ) | ( x1 & x2 ) | ( x1 & ~x3 ) | ( x2 & x3 );
+    table = (~x2 & ~x1 ) | ( x2 & x1 ) | ( x2 & ~x3 ) | ( x1 & x3 );
 
-    xminsyn_h( aig, table, { s1, s2, s3 } );
+    auto f0 = xminsyn_h( aig, table, { s1, s2, s3 } );
+    aig.create_po(f0);
+
+    aig = cleanup_dangling( aig );
+    write_dot( aig, "test.dot" );
+    
+  default_simulator<kitty::dynamic_truth_table> sim( 3 );
+  const auto tt = simulate<kitty::dynamic_truth_table>( aig, sim )[0];
+  kitty::print_binary( tt );
+  std::cout << std::endl;
+  kitty::print_binary( table );
+  std::cout << std::endl;
+
+  std::cout << ( equal( tt, table ) ? " equal " : " different " ) << std::endl; 
+
+
+  kitty::dynamic_truth_table table1( 4u );
+
+  aig_network aig1;
+  const auto g1 = aig1.create_pi();
+  const auto g2 = aig1.create_pi();
+  const auto g3 = aig1.create_pi();
+  const auto g4 = aig1.create_pi();
+
+  kitty::dynamic_truth_table x4(4u);
+
+  kitty::create_nth_var( x4, 3 ); 
+
+  kitty::create_majority(table1);
+
+  auto f1 = xminsyn_h( aig1, table1, { g1, g2, g3, g4 } );
+  aig1.create_po(f1);
+
+  aig1 = cleanup_dangling( aig1 );
+  write_dot( aig1, "test1.dot" );
+    
+  default_simulator<kitty::dynamic_truth_table> sim1( 4 );
+  const auto tt1 = simulate<kitty::dynamic_truth_table>( aig1, sim1 )[0];
+  kitty::print_binary( tt1 );
+  std::cout << std::endl;
+  kitty::print_binary( table1 );
+  std::cout << std::endl;
+
+  std::cout << ( equal( tt1, table1 ) ? " equal " : " different " ) << std::endl; 
 }
 
