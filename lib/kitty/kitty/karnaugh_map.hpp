@@ -99,44 +99,6 @@ public:
     }
   }
 
-  /*! \brief Prints K-map with don't cares
-      \param os output stream (default = cout)
- */
-  void print( TT mask, std::ostream& os = std::cout )
-  {
-    print_space( vars_col, os );
-    os << "    ";
-    for ( const auto& i : row_seq )
-    {
-      os << binary( i, vars_row );
-      print_space( vars_row, os );
-      os << "    ";
-    }
-    os << std::endl
-       << std::endl;
-
-    for ( const auto& j : col_seq )
-    {
-      os << binary( j, vars_col );
-      os << "    ";
-      for ( const auto& i : row_seq )
-      {
-        uint8_t middle_space = 0;
-        if ( vars_row > 2 )
-          middle_space = vars_row / 2;
-        print_space( middle_space, os );
-        if( get_bit( mask, ( j << vars_row ) + i ) == 1u )
-          os << get_bit( truth_table, ( j << vars_row ) + i );
-        else
-          os << "*";
-        print_space( ( vars_row << 1 ) - 1 - middle_space, os );
-        os << "    ";
-      }
-      os << std::endl
-         << std::endl;
-    }
-  }
-
   /*! \brief Get sequence of values for the least significant variables
    */
   std::vector<uint8_t> get_row_seq() const { return row_seq; }
