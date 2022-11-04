@@ -42,7 +42,7 @@ int main()
 
   std::cout << ( equal( tt, table ) ? " equal " : " different " ) << std::endl; 
 
-
+/*
   kitty::dynamic_truth_table table1( 4u );
 
   aig_network aig1;
@@ -70,6 +70,6 @@ int main()
   kitty::print_binary( table1 );
   std::cout << std::endl;
 
-  std::cout << ( equal( tt1, table1 ) ? " equal " : " different " ) << std::endl; 
+  std::cout << ( equal( tt1, table1 ) ? " equal " : " different " ) << std::endl; */
 }
 

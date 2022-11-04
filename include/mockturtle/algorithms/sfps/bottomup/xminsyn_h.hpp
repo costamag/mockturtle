@@ -102,53 +102,128 @@ private:
     TT mask;
     };
 
+  #pragma region print symmetries
   void print_symmetry( symmetry_info_t s )
   {
+    std::string remap_str = "";
+    std::string i_str = std::to_string(s.i);
+    std::string j_str = std::to_string(s.j);
+    i_str.resize(2, ' ');
+    j_str.resize(2, ' ');
+
+
+
     switch( s.type )
     {
-      case symmetry_types::ES_:  
-        std::cout << fmt::format("ES[ {}, {} ]: {} ", s.i, s.j, ( s.id_ord == 0u ? "00 -> 11 " : "11 -> 00 " ));
+      case symmetry_types::ES_:
+        remap_str += ( s.id_ord == 0u ? "    00 -> 11 " : "    11 -> 00 " );
+        remap_str.resize(20, ' ');
+        remap_str = " ES [ " + i_str + ", " + j_str + "]:" + remap_str;
+        std::cout << remap_str ;
         break;
       case symmetry_types::NES_: 
-        std::cout << fmt::format("NES[ {}, {} ]: {} ", s.i, s.j, ( s.id_ord == 0u ? "01 -> 10 " : "10 -> 01 " ));
+        remap_str += ( s.id_ord == 0u ? "    01 -> 10 " : "    10 -> 01 " );
+        remap_str.resize(20, ' ');
+        remap_str = "NES [ " + i_str + ", " + j_str + "]:" + remap_str;
+        std::cout << remap_str ;
         break;
       case symmetry_types::MS_: 
         if( s.id_ord == 0u )
-          std::cout << fmt::format("MS[ {}, {} ]: {} ", s.i, s.j, "00|01 -> 11|10 " );
+        {
+          remap_str += "    00|01 -> 11|10 ";
+          remap_str.resize(20, ' ');
+          remap_str = " MS [ " + i_str + ", " + j_str + "]:" + remap_str;
+          std::cout << remap_str ;
+        }
         else if( s.id_ord == 1u )
-          std::cout << fmt::format("MS[ {}, {} ]: {} ", s.i, s.j, "01|11 -> 10|00 " );
+        {
+          remap_str += "    01|11 -> 10|00 ";
+          remap_str.resize(20, ' ');
+          remap_str = " MS [ " + i_str + ", " + j_str + "]:" + remap_str;
+          std::cout << remap_str ;
+        }
         else if( s.id_ord == 2u )
-          std::cout << fmt::format("MS[ {}, {} ]: {} ", s.i, s.j, "10|00 -> 01|11 " );
+        {
+          remap_str += "    10|00 -> 01|11 ";
+          remap_str.resize(20, ' ');
+          remap_str = " MS [ " + i_str + ", " + j_str + "]:" + remap_str;
+          std::cout << remap_str ;
+        }
         else if( s.id_ord == 3u )
-          std::cout << fmt::format("MS[ {}, {} ]: {} ", s.i, s.j, "11|10 -> 00|01 " );
+        {
+          remap_str += "    11|10 -> 00|01 ";
+          remap_str.resize(20, ' ');
+          remap_str = " MS [ " + i_str + ", " + j_str + "]:" + remap_str;
+          std::cout << remap_str ;
+        }        
         break;
       case symmetry_types::SVS_: 
         if( s.id_sym == 0u )
-          std::cout << fmt::format("[ SVS {} ] {}': {} ", s.j, s.i, ( s.id_ord == 0u ? "00 -> 10 " : "10 -> 00 " ) );
+        {
+          remap_str += ( s.id_ord == 0u ? "    00 -> 10 " : "    10 -> 00 " );
+          remap_str.resize(20, ' ');
+          remap_str = "[ SVS " + j_str + "]!" + i_str + " :" + remap_str;
+          std::cout << remap_str ;
+        }
         else if( s.id_sym == 1u )
-          std::cout << fmt::format("[ SVS {} ] {} : {} ", s.j, s.i, ( s.id_ord == 0u ? "01 -> 11 " : "11 -> 01 " ) );
+        {
+          remap_str += ( s.id_ord == 0u ? "    01 -> 11 " : "    11 -> 01 " );
+          remap_str.resize(20, ' ');
+          remap_str = "[ SVS " + j_str + "] " + i_str + " :" + remap_str;
+          std::cout << remap_str ;
+        }
         else if( s.id_sym == 2u )
-          std::cout << fmt::format("[ SVS {} ] {}' : {}", s.i, s.j, ( s.id_ord == 0u ? "00 -> 01 " : "01 -> 10 " ) );
+        {
+          remap_str += ( s.id_ord == 0u ? "    00 -> 01 " : "    01 -> 10 " );
+          remap_str.resize(20, ' ');
+          remap_str = "[ SVS " + i_str + "] " + j_str + " :" + remap_str;
+          std::cout << remap_str ;
+        }
         else if( s.id_sym == 3u )
-          std::cout << fmt::format("[ SVS {} ] {} : {} ", s.i, s.j, ( s.id_ord == 0u ? "10 -> 11 " : "11 -> 10 " ) );
+        {
+          remap_str += ( s.id_ord == 0u ? "    10 -> 11 " : "    11 -> 10 " );
+          remap_str.resize(20, ' ');
+          remap_str = "[ SVS " + i_str + "] " + j_str + " :" + remap_str;
+          std::cout << remap_str ;
+        }
         break;
 
       case symmetry_types::CSVS_: 
         if( s.id_sym == 0u )
-          std::cout << fmt::format("CSVS[ {}' {}' ]: {} ", s.i, s.j, ( s.id_ord == 0u ? "00|01 -> 10 " : "10|00 -> 01 " ) );
+        {
+          remap_str += ( s.id_ord == 0u ? "    00|01 -> 10 " : "    10|00 -> 01 " );
+          remap_str.resize(20, ' ');
+          remap_str = "CSVS[!" + i_str + ",!" + j_str + "]:" + remap_str;
+          std::cout << remap_str ;
+        }
         else if( s.id_sym == 1u )
-          std::cout << fmt::format("CSVS[ {}' {} ]: {} ", s.i, s.j, ( s.id_ord == 0u ? "00|01 -> 11 " : "11|01 -> 00 " ) );
+        {
+          remap_str += ( s.id_ord == 0u ? "    00|01 -> 11 " : "    11|01 -> 00 " );
+          remap_str.resize(20, ' ');
+          remap_str = "CSVS[!" + i_str + ", " + j_str + "]:" + remap_str;
+          std::cout << remap_str ;
+        }
         else if( s.id_sym == 2u )
-          std::cout << fmt::format("CSVS[ {} {}' ]: {} ", s.i, s.j, ( s.id_ord == 0u ? "00|10 -> 11 " : "11|10 -> 00 " ) );
+        {
+          remap_str += ( s.id_ord == 0u ? "    00|10 -> 11 " : "    11|10 -> 00 " );
+          remap_str.resize(20, ' ');
+          remap_str = "CSVS[ " + i_str + ",!" + j_str + "]:" + remap_str;
+          std::cout << remap_str ;
+        }
         else if( s.id_sym == 3u )
-          std::cout << fmt::format("CSVS[ {} {} ]: {} ", s.i, s.j, ( s.id_ord == 0u ? "01|11 -> 10 " : "11|10 -> 01 " ) );
+        {
+          remap_str += ( s.id_ord == 0u ? "    01|11 -> 10 " : "    11|10 -> 01 " );
+          remap_str.resize(20, ' ');
+          remap_str = "CSVS[ " + i_str + ", " + j_str + "]:" + remap_str;
+          std::cout << remap_str ;
+        }
         break;
       default: 
         std::cout <<  "NONE";
         break;
     }
   }
-
+  #pragma end region print symmetries
   /*
    * Compute the general cofactor with respect to the cube G
    *            ji 
@@ -613,7 +688,7 @@ private:
     
     gate_with_cost( )
     {}
-    
+
     gate_with_cost( gate_names type, uint32_t area, uint32_t delay ) :
     name( name ), area( area ), delay( delay )
     {}
@@ -636,24 +711,133 @@ private:
 
   uint32_t cost_remapping_cell( symmetry_info_t symmetry )
   {
+    uint32_t d1, d2, d3, d4, dM, nbuf;
     switch ( symmetry.type )
     {
       case symmetry_types::NES_:
-        return and_.area + or_.area + cro_.area + 2*buf_.area + std::abs( or_.delay - and_.delay )*buf_.area + 2*spl_.area;
+        d1 = spl_.delay + and_.delay;
+        d2 = spl_.delay + cro_.delay + or_.delay;
+        d3 = spl_.delay + cro_.delay + and_.delay;
+        d4 = spl_.delay + or_.delay;
+        dM = std::max( { d1, d2, d3, d4 } );
+        nbuf = 4*dM - d1 - d2 - d3 - d4;
+        return and_.area + or_.area + cro_.area + 2*spl_.area + nbuf * buf_.area;
       case symmetry_types::ES_:
-        return 2*( symmetry.id_ord == 0 ? and_.area : or_.area ) + cro_.area + 2*inv_.area + 2*buf_.area + 2*spl_.area;
+        d1 = spl_.delay + and_.delay;
+        d2 = spl_.delay + cro_.delay + or_.delay;
+        d3 = spl_.delay + cro_.delay + and_.delay;
+        d4 = spl_.delay + or_.delay;
+        dM = std::max( { d1, d2, d3, d4 } );
+        nbuf = 4*dM - d1 - d2 - d3 - d4;
+        return and_.area + or_.area + cro_.area + 2*spl_.area + nbuf * buf_.area;
       case symmetry_types::SVS_:
         if( symmetry.id_sym == 0u )
         {
           if( symmetry.id_ord == 0u )
           {
-
+            d1 = spl_.delay;
+            d2 = spl_.delay + inv_.delay + or_.delay;
+            d3 = or_.delay;
+            dM = std::max( { d1, d2, d3 } );
+            nbuf = 3*dM - d1 - d2 - d3 ;
+            return or_.area + spl_.area + inv_.area + nbuf * buf_.area;            
           }
           else
           {
-            return and_.area + buf_.area + spl_.area;
+            d1 = spl_.delay;
+            d2 = spl_.delay + and_.delay;
+            d3 = and_.delay;
+            dM = std::max( { d1, d2, d3 } );
+            nbuf = 3*dM - d1 - d2 - d3 ;
+            return or_.area + spl_.area + inv_.area + nbuf * buf_.area;           
           }
         }
+        else if( symmetry.id_sym == 1u )
+        {
+          if( symmetry.id_ord == 0u )
+          {
+            d1 = spl_.delay;
+            d2 = spl_.delay + or_.delay;
+            d3 = or_.delay;
+            dM = std::max( { d1, d2, d3 } );
+            nbuf = 3*dM - d1 - d2 - d3 ;
+            return or_.area + spl_.area + nbuf * buf_.area;            
+          }
+          else
+          {
+            d1 = spl_.delay;
+            d2 = spl_.delay + and_.delay + inv_.delay;
+            d3 = and_.delay;
+            dM = std::max( { d1, d2, d3 } );
+            nbuf = 3*dM - d1 - d2 - d3 ;
+            return and_.area + spl_.area + inv_.area + nbuf * buf_.area;           
+          }
+        }
+        else if( symmetry.id_sym == 2u )
+        {
+          if( symmetry.id_ord == 0u )
+          {
+            d1 = or_.delay;
+            d2 = spl_.delay + or_.delay + inv_.delay;
+            d3 = spl_.delay;
+            dM = std::max( { d1, d2, d3 } );
+            nbuf = 3*dM - d1 - d2 - d3 ;
+            return or_.area + spl_.area + inv_.area + nbuf * buf_.area;            
+          }
+          else
+          {
+            d1 = and_.delay;
+            d2 = spl_.delay + and_.delay;
+            d3 = spl_.delay;
+            dM = std::max( { d1, d2, d3 } );
+            nbuf = 3*dM - d1 - d2 - d3 ;
+            return and_.area + spl_.area + nbuf * buf_.area;           
+          }
+        }
+        else
+        {
+          if( symmetry.id_ord == 0u )
+          {
+            d1 = or_.delay;
+            d2 = spl_.delay + or_.delay;
+            d3 = spl_.delay;
+            dM = std::max( { d1, d2, d3 } );
+            nbuf = 3*dM - d1 - d2 - d3 ;
+            return or_.area + spl_.area + nbuf * buf_.area;            
+          }
+          else
+          {
+            d1 = and_.delay;
+            d2 = spl_.delay + and_.delay + inv_.delay;
+            d3 = spl_.delay;
+            dM = std::max( { d1, d2, d3 } );
+            nbuf = 3*dM - d1 - d2 - d3 ;
+            return and_.area + spl_.area + inv_.area + nbuf * buf_.area;           
+          }
+        }
+      case symmetry_types::MS_:
+        if( symmetry.id_ord == 0u )
+          return xor_.area + inv_.area ;           
+        else if( symmetry.id_ord == 1u )
+          return xor_.area ;
+        else if( symmetry.id_ord == 2u )
+          return xor_.area + inv_.area ; 
+        else
+          return xor_.area ; 
+
+      case symmetry_types::CSVS_:
+        if( symmetry.id_sym == 0u )
+          return and_.area;
+        else if( ( symmetry.id_sym == 1u ) || ( symmetry.id_sym == 2u  ) )
+        {
+          nbuf = inv_.delay;
+          if( symmetry.id_ord == 0u )
+            return or_.area + inv_.area + nbuf*buf_.area;
+          else 
+            return and_.area + inv_.area + nbuf*buf_.area;
+        }   
+        else
+          return or_.area ; 
 
     }
   }
@@ -691,6 +875,7 @@ public:
 
     auto km_tt = kitty::karnaugh_map( remainder );
     km_tt.print(mask);
+    uint32_t COST = 0;
 
     while( !game_over && ( support.size() > 1 ) )
     {
@@ -710,10 +895,20 @@ public:
 	        {
 	          for( auto s : sym_v )
 	          {
-              std::cout << k++ << " "; print_symmetry(s) ; std::cout << 
-              " |DC|= " << kitty::count_ones( ~s.mask ) //<<
+              std::string ref = std::to_string( k++ );
+              ref.resize(3, ' ');
+
+              std::string dc_string = " |DC|= " + std::to_string( kitty::count_ones( ~s.mask ) );
+              dc_string.resize(11, ' ');
+
+              std::string cost = " |G|= " + std::to_string( COST + cost_remapping_cell( s ) );
+
+              std::cout << ref << " "; 
+              print_symmetry(s) ; 
+              std::cout << dc_string << cost <<  std::endl;
+
+               //<<
               //" |HD|= " << kitty::count_ones( s.func ^ target ) 
-              << std::endl;
               symmetries.push_back( s );
 	          }
 	        }
@@ -726,6 +921,8 @@ public:
         std::cin >> choice;
         std::cout << "Remapping " << " "; print_symmetry( symmetries[choice] ); 
         std::cout << std::endl;
+        COST += cost_remapping_cell( symmetries[choice] );
+
 
         remainder = symmetries[choice].func;
         kitty::print_binary( remainder );
