@@ -1,5 +1,5 @@
 #include <kitty/constructors.hpp>
-#include <mockturtle/algorithms/sfps/bottomup/xminsyn_h.hpp>
+#include <mockturtle/algorithms/sfps/bottomup/xminsyn_auto.hpp>
 #include <mockturtle/algorithms/simulation.hpp>
 #include <mockturtle/networks/aig.hpp>
 #include <mockturtle/io/write_aiger.hpp>
@@ -32,7 +32,7 @@ int main()
 
     table = (~x2 & ~x1 ) | ( x2 & x1 ) | ( x2 & ~x3 ) | ( x1 & x3 );
 
-    auto f0 = xminsyn_h( aig, table, { s1, s2, s3 } );
+    auto f0 = xminsyn_auto( aig, table, { s1, s2, s3 } );
     aig.create_po(f0);
 
     aig = cleanup_dangling( aig );
@@ -69,7 +69,7 @@ int main()
       kitty::create_nth_var( xs[i], i );
     }
 
-    auto f0 = xminsyn_h( aig, table, pis );
+    auto f0 = xminsyn_auto( aig, table, pis );
     aig.create_po(f0);
 
     aig = cleanup_dangling( aig );
@@ -100,7 +100,7 @@ int main()
 
   kitty::create_majority(table1);
 
-  auto f1 = xminsyn_h( aig1, table1, { g1, g2, g3, g4 } );
+  auto f1 = xminsyn_auto( aig1, table1, { g1, g2, g3, g4 } );
   aig1.create_po(f1);
 
   aig1 = cleanup_dangling( aig1 );

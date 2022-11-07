@@ -48,7 +48,7 @@ namespace mockturtle
 {
 
 /*! \brief Parameters for dsd_decomposition */
-struct xminsyn_h_params
+struct xminsyn_auto_params
 {
   /*! \brief Apply XOR decomposition. */
 };
@@ -57,10 +57,10 @@ namespace detail
 {
 
 template<class Ntk, class TT>
-class xminsyn_h_impl
+class xminsyn_auto_impl
 {
 public:
-  xminsyn_h_impl( Ntk& ntk, TT const& func, std::vector<signal<Ntk>> const& children, xminsyn_h_params const& ps )
+  xminsyn_auto_impl( Ntk& ntk, TT const& func, std::vector<signal<Ntk>> const& children, xminsyn_auto_params const& ps )
       : ntk_( ntk ),
         remainder( func ),
         target( func ),
@@ -889,12 +889,11 @@ public:
     auto km_tt = kitty::karnaugh_map( remainder );
     km_tt.print(mask);
     uint32_t COST = 0;
+    uint32_t bestidx{0u};
     
-    std::cout << "b " << support.size() << std::endl;
-
+    
     while( !game_over && ( support.size() > 1 ) )
     {
-      std::cout << "a" << std::endl;
       for( uint32_t i{0u}; i < support.size(); ++i )
       {
         if( equal( remainder&mask, X[support[i]]&mask ) )
@@ -907,6 +906,11 @@ public:
       std::vector<symmetry_info_t> symmetries;
       uint32_t k = 0;
       uint32_t choice;
+      uint32_t maxdc = 0u;
+      uint32_t mincost = std::numeric_limits<uint32_t>::max();
+      uint32_t numdc = 0 ;
+      uint32_t numgates = 0 ;
+
       std::string order;
 
       for ( auto j = 1u; j < support.size(); ++j )
@@ -919,17 +923,27 @@ public:
 	        {
 	          for( auto s : sym_v )
 	          {
-              std::string ref = std::to_string( k++ );
+              std::string ref = std::to_string( k );
               ref.resize(3, ' ');
 
-              std::string dc_string = " |DC|= " + std::to_string( kitty::count_ones( ~s.mask ) );
+              numdc = kitty::count_ones( ~s.mask );
+              std::string dc_string = " |DC|= " + std::to_string( numdc );
               dc_string.resize(11, ' ');
 
-              std::string cost = " |G|= " + std::to_string( COST + cost_remapping_cell( s ) );
+              numgates = COST + cost_remapping_cell( s );
+              std::string cost = " |G|= " + std::to_string( numgates );
 
               std::cout << ref << " "; 
               print_symmetry(s) ; 
               std::cout << dc_string << cost <<  std::endl;
+              if( numdc > maxdc || ( ( numdc == maxdc ) && ( numgates < mincost )  ))
+              {
+                bestidx = k;
+                maxdc = numdc;
+                mincost = numgates;
+              }
+              
+              k++;
 
               symmetries.push_back( s );
 	          }
@@ -939,23 +953,20 @@ public:
       game_over = ( symmetries.size() < 1u ); 
       if( !game_over )
       {
-        std::cout << "Choose the symmetry to exploit: " << std::endl;
-        std::cin >> choice;
-        std::cout << "Remapping " << " "; print_symmetry( symmetries[choice] ); 
+        //std::cout << "Choose the symmetry to exploit: " << std::endl;
+        //std::cin >> choice;
+        std::cout << "Remapping " << " "; print_symmetry( symmetries[bestidx] ); 
         std::cout << std::endl;
-        COST += cost_remapping_cell( symmetries[choice] );
+        COST += cost_remapping_cell( symmetries[bestidx] );
 
 
-        remainder = symmetries[choice].func;
+        remainder = symmetries[bestidx].func;
         kitty::print_binary( remainder );
         std::cout << std::endl;
-        mask = symmetries[choice].mask;
-        remap( symmetries[choice] );
+        mask = symmetries[bestidx].mask;
+        remap( symmetries[bestidx] );
         erase_redundant();
-        for( auto x : support )
-          std::cout << pis[x].index << " ";
-        std::cout << std::endl;
-        last_type = symmetries[choice].type;
+        last_type = symmetries[bestidx].type;
         auto km_tt = kitty::karnaugh_map( remainder );
         km_tt.print(mask);
       }
@@ -976,7 +987,7 @@ private:
   std::vector<uint32_t> support;
   std::vector<signal<Ntk>> pis;
   std::vector<TT> X;
-  xminsyn_h_params const& _ps;
+  xminsyn_auto_params const& _ps;
 
   gate_with_cost inv_;
   gate_with_cost buf_;
@@ -995,9 +1006,9 @@ private:
  * symmetry-based synthesis heuristic.
  */
 template<class Ntk, class TT>
-signal<Ntk> xminsyn_h( Ntk& ntk, TT const& func, std::vector<signal<Ntk>> const& children, xminsyn_h_params const& ps = {} )
+signal<Ntk> xminsyn_auto( Ntk& ntk, TT const& func, std::vector<signal<Ntk>> const& children, xminsyn_auto_params const& ps = {} )
 {
-  detail::xminsyn_h_impl impl( ntk, func, children, ps );
+  detail::xminsyn_auto_impl impl( ntk, func, children, ps );
   return impl.run();
 }
 
