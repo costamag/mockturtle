@@ -51,6 +51,7 @@ namespace mockturtle
 struct xminsyn_auto_params
 {
   /*! \brief Apply XOR decomposition. */
+  bool verbose{false};
 };
 
 namespace detail
@@ -70,18 +71,387 @@ public:
     mask = ~remainder.construct();
     for ( uint32_t i = 0u; i < func.num_vars(); ++i )
     {
-      //if ( kitty::has_var( func, i ) )
-      //{
       support.push_back( i );
 	    TT ipattern = func.construct();
 	    kitty::create_nth_var( ipattern, i );
 	    X.push_back( ipattern );
-      //}
     }
     initialize_gate_library();
   }
 
 private:
+
+  #pragma region decomposition 
+
+  enum class decomposition_types
+  {
+    NONE,
+    OR_,
+    AND_,
+    LT_,
+    LE_,
+    XOR_,
+    OR2_,
+    AND2_
+  };
+
+  struct decomposition_info_t{
+    decomposition_types type { decomposition_types::NONE };
+    uint32_t i;
+    uint32_t j;
+    uint32_t id{0}; 
+    TT func; 
+    TT mask;
+    };
+
+  void print_decompositions( decomposition_info_t s )
+  {
+    std::string remap_str = "";
+    std::string i_str = std::to_string(s.i);
+    std::string j_str = std::to_string(s.j);
+    i_str.resize(2, ' ');
+    j_str.resize(2, ' ');
+
+    switch( s.type )
+    {
+      case symmetry_types::OR_:
+        remap_str += "    X " + i_str + " ";
+        remap_str.resize(20, ' ');
+        remap_str = "[ " + i_str + " OR F0" + "]:" + remap_str;
+        std::cout << remap_str ;
+        break;
+      case symmetry_types::LE_:
+        remap_str += "    X " + i_str + " ";
+        remap_str.resize(20, ' ');
+        remap_str = "[ " + i_str + " LE F1" + "]:" + remap_str;
+        std::cout << remap_str ;
+        break;
+      case symmetry_types::LT_:
+        remap_str += "    X " + i_str + " ";
+        remap_str.resize(20, ' ');
+        remap_str = "[ " + i_str + " LT F0" + "]:" + remap_str;
+        std::cout << remap_str ;
+        break;
+      case symmetry_types::AND_:
+        remap_str += "    X " + i_str + " ";
+        remap_str.resize(20, ' ');
+        remap_str = "[ " + i_str + "AND F1" + "]:" + remap_str;
+        std::cout << remap_str ;
+        break;
+      case symmetry_types::XOR_:
+        remap_str += "    X " + i_str + " ";
+        remap_str.resize(20, ' ');
+        remap_str = "[ " + i_str + "XOR F0" + "]:" + remap_str;
+        std::cout << remap_str ;
+        break;
+      case symmetry_types::OR2_:
+        if( s.id == 0u )
+        {
+          remap_str += "   00 => *  ";
+          remap_str.resize(20, ' ');
+          remap_str = "[!" + j_str + "!" + i_str + " OR R " + "]:" + remap_str;
+          std::cout << remap_str ;
+          break;
+        }
+        else if( s.id == 1u )
+        {
+          remap_str += "   01 => *  ";
+          remap_str.resize(20, ' ');
+          remap_str = "[!" + j_str + " " + i_str + " OR R " + "]:" + remap_str;
+          std::cout << remap_str ;
+          break;
+        }
+        else if( s.id == 2u )
+        {
+          remap_str += "   10 => *  ";
+          remap_str.resize(20, ' ');
+          remap_str = "[ " + j_str + "!" + i_str + " OR R " + "]:" + remap_str;
+          std::cout << remap_str ;
+          break;
+        }
+        else if( s.id == 3u )
+        {
+          remap_str += "   11 => *  ";
+          remap_str.resize(20, ' ');
+          remap_str = "[ " + j_str + " " + i_str + " OR R " + "]:" + remap_str;
+          std::cout << remap_str ;
+          break;
+        }
+      case symmetry_types::AND2_:
+        if( s.id == 0u )
+        {
+          remap_str += "   00 => *  ";
+          remap_str.resize(20, ' ');
+          remap_str = "[!" + j_str + "!" + i_str + " AND R " + "]:" + remap_str;
+          std::cout << remap_str ;
+          break;
+        }
+        else if( s.id == 1u )
+        {
+          remap_str += "   01 => *  ";
+          remap_str.resize(20, ' ');
+          remap_str = "[!" + j_str + " " + i_str + " AND R " + "]:" + remap_str;
+          std::cout << remap_str ;
+          break;
+        }
+        else if( s.id == 2u )
+        {
+          remap_str += "   10 => *  ";
+          remap_str.resize(20, ' ');
+          remap_str = "[ " + j_str + "!" + i_str + " AND R " + "]:" + remap_str;
+          std::cout << remap_str ;
+          break;
+        }
+        else if( s.id == 3u )
+        {
+          remap_str += "   11 => *  ";
+          remap_str.resize(20, ' ');
+          remap_str = "[ " + j_str + " " + i_str + " AND R " + "]:" + remap_str;
+          std::cout << remap_str ;
+          break;
+        }
+      default: 
+        std::cout <<  "NONE";
+        break;
+    }
+  }
+
+  std::vector<decomposition_info_t> check_decomposition_type( TT tt, uint32_t i, uint32_t j )
+  {
+    assert( i < j );
+    std::vector<decomposition_info_t> res;
+    decomposition_info_t dec_info;
+    dec_info.i = i;
+    dec_info.j = j;
+
+    uint32_t xi = support[i];
+    uint32_t xj = support[j];
+
+    const auto tt0 = cofactor0( tt, xj );
+    const auto tt1 = cofactor1( tt, xj );
+
+    const auto tt00 = cofactor0( tt0, xi );
+    const auto tt01 = cofactor1( tt0, xi );
+    const auto tt10 = cofactor0( tt1, xi );
+    const auto tt11 = cofactor1( tt1, xi );
+
+    const auto mk0 = cofactor0( mask, xj );
+    const auto mk1 = cofactor1( mask, xj );
+
+    const auto mk00 = cofactor0( mk0, xi );
+    const auto mk01 = cofactor1( mk0, xi );
+    const auto mk10 = cofactor0( mk1, xi );
+    const auto mk11 = cofactor1( mk1, xi );
+
+    const auto eq00_0 = is_const0( mask & tt00 );
+    const auto eq01_0 = is_const0( mask & tt01 );
+    const auto eq10_0 = is_const0( mask & tt10 );
+    const auto eq11_0 = is_const0( mask & tt11 );
+    const auto eq00_1 = is_const0( mask & ~tt00 );
+    const auto eq01_1 = is_const0( mask & ~tt01 );
+    const auto eq10_1 = is_const0( mask & ~tt10 );
+    const auto eq11_1 = is_const0( mask & ~tt11 );
+
+    const auto num_pairs =
+      static_cast<uint32_t>( eq00_0 ) +
+      static_cast<uint32_t>( eq01_0 ) +
+      static_cast<uint32_t>( eq10_0 ) +
+      static_cast<uint32_t>( eq11_0 ) +
+      static_cast<uint32_t>( eq00_1 ) +
+      static_cast<uint32_t>( eq01_1 ) +
+      static_cast<uint32_t>( eq10_1 ) +
+      static_cast<uint32_t>( eq11_1 );
+    
+
+    if ( num_pairs == 0  )
+    {
+      dec_info.type = decomposition_types::NONE;
+      res.push_back( dec_info );
+      return res;
+    }
+    if ( eq00_0 ) // F01 = F10 NES
+      res.push_back( top2_remapping( 0u, i, j, decomposition_types::AND2_ ) );
+    if ( eq01_0 ) // F00 = F11 ES
+      res.push_back( top2_remapping( 1u, i, j, decomposition_types::AND2_ ) );
+    if ( eq10_0 ) // F00 = F11 ES
+      res.push_back( top2_remapping( 2u, i, j, decomposition_types::AND2_ ) );
+    if ( eq11_0 ) // F00 = F11 ES
+      res.push_back( top2_remapping( 3u, i, j, decomposition_types::AND2_ ) );
+    if ( eq00_1 ) // F01 = F10 NES
+      res.push_back( top2_remapping( 0u, i, j, decomposition_types::OR2_ ) );
+    if ( eq01_1 ) // F00 = F11 ES
+      res.push_back( top2_remapping( 1u, i, j, decomposition_types::OR2_ ) );
+    if ( eq10_1 ) // F00 = F11 ES
+      res.push_back( top2_remapping( 2u, i, j, decomposition_types::OR2_ ) );
+    if ( eq11_1 ) // F00 = F11 ES
+      res.push_back( top2_remapping( 3u, i, j, decomposition_types::OR2_ ) );
+
+    return res;
+  }
+
+  std::vector<decomposition_info_t> check_decomposition_type( TT tt, uint32_t i )
+  {
+    std::vector<decomposition_info_t> res;
+    decomposition_info_t dec_info;
+    dec_info.i = i;
+    dec_info.j = i;
+
+    uint32_t xi = support[i];
+
+    const auto tt0 = cofactor0( tt, xi );
+    const auto tt1 = cofactor1( tt, xi );
+
+    const auto eq0_0 = is_const0( mask & tt0 );
+    const auto eq0_1 = is_const0( mask & ~tt0 );
+    const auto eq1_0 = is_const0( mask & tt1 );
+    const auto eq1_1 = is_const0( mask & ~tt1 );
+    const auto eq10_ = equal( mask & tt1 , mask & ~tt0 );
+
+    const auto num_pairs =
+      static_cast<uint32_t>( eq0_0 ) +
+      static_cast<uint32_t>( eq0_1 ) +
+      static_cast<uint32_t>( eq1_0 ) +
+      static_cast<uint32_t>( eq1_1 ) +
+      static_cast<uint32_t>( eq10_ );
+    
+
+    if ( num_pairs == 0  )
+    {
+      dec_info.type = decomposition_types::NONE;
+      res.push_back( dec_info );
+      return res;
+    }
+    if ( eq0_0 ) // F01 = F10 NES
+      res.push_back( top1_remapping( i, decomposition_types::AND_ ) );
+    if ( eq0_1 ) // F00 = F11 ES
+      res.push_back( top1_remapping( i, decomposition_types::LE_ ) );
+    if ( eq1_0 ) // F00 = F11 ES
+      res.push_back( top1_remapping( i, decomposition_types::LT_ ) );
+    if ( eq1_1 ) // F00 = F11 ES
+      res.push_back( top1_remapping( i, decomposition_types::OR_ ) );
+    if ( eq10_ ) // F01 = F10 NES
+      res.push_back( top1_remapping( i, decomposition_types::XOR_ ) );
+
+    return res;
+  }
+
+  decomposition_info_t top2_remapping( uint32_t id, uint32_t i, uint32_t j, decomposition_types type )
+  {
+    assert( i < j );
+    symmetry_info_t res;
+    res.type = type;
+    res.i = i;
+    res.j = j; 
+    res.id = id;
+    
+    uint32_t xi = support[i];
+    uint32_t xj = support[j];
+
+    TT A = cube_generator( id, xi, xj );
+
+    if( type == decomposition_types::OR2_ )
+      res.mask = ~A & mask ;
+    else
+      res.mask = A & mask ;
+
+    res.func = remainder ;   
+
+    return res;
+  }
+
+  decomposition_info_t top1_remapping( uint32_t i, decomposition_types type )
+  {
+    decomposition_info_t res;
+    
+    res.type = type;
+    res.i = i;
+    res.j = i; 
+    
+    uint32_t xi = support[i];
+
+    TT A = X[xi];
+    TT tt0 = cofactor0( remainder, xi );
+    TT tt1 = cofactor1( remainder, xi );
+
+    if( type == decomposition_types::AND_ )
+    {
+      res.func = tt1;
+      res.mask = A & mask ;
+    }
+    else if( type == decomposition_types::OR_ )
+    {
+      res.func = tt0;
+      res.mask = ~A & mask ;
+    }
+    else if( type == decomposition_types::LT_ )
+    {
+      res.func = tt0;
+      res.mask = ~A & mask ;
+    }
+    else if( type == decomposition_types::LE_ )
+    {
+      res.func = tt1;
+      res.mask = A & mask ;
+    }
+
+    return res;
+  }
+
+  signal<Ntk> dec_remap( decomposition_info_t decomposition )
+  {
+    uint32_t xi = support[decomposition.i];
+    uint32_t xj = support[decomposition.j];
+
+    switch( decomposition.type )
+    {
+
+      case symmetry_types::AND_:
+        support.erase( support.begin() + decomposition.i );
+        return ntk_.create_and( pis[xi], run() );
+        break; 
+      case symmetry_types::OR_:
+        support.erase( support.begin() + decomposition.i );
+        return ntk_.create_or( pis[xi], run() );
+        break; 
+      case symmetry_types::LT_:
+        support.erase( support.begin() + decomposition.i );
+        return ntk_.create_and( ntk_.create_not(pis[xi]), run() );
+        break; 
+      case symmetry_types::LE_:
+        support.erase( support.begin() + decomposition.i );
+        return ntk_.create_or( ntk_.create_not(pis[xi]), ntk_.create_not(run()) );
+        break; 
+      case symmetry_types::XOR_:
+        support.erase( support.begin() + decomposition.i );
+        return ntk_.create_xor( pis[xi], ntk_.create_not(run()) );
+        break;
+      case symmetry_types::OR2_:
+        if( decomposition.id == 0u )
+          return ntk_.create_or( ntk_.create_and(ntk_.create_not(pis[xi]), ntk_.create_not(pis[xj]) ), run()) ;
+        else if( decomposition.id == 1u )
+          return ntk_.create_or( ntk_.create_and(ntk_.create_not(pis[xj]), pis[xi]) , run() ) ;
+        else if( decomposition.id == 2u )
+          return ntk_.create_or( ntk_.create_and(pis[xj], ntk_.create_not(pis[xi]) ) , run() ) ;
+        else if( decomposition.id == 3u )
+          return ntk_.create_or( ntk_.create_and(pis[xj], pis[xi] ) , run() ) ;
+        break; 
+      case symmetry_types::AND2_:
+        if( decomposition.id == 0u )
+          return ntk_.create_and( ntk_.create_and(ntk_.create_not(pis[xi]), ntk_.create_not(pis[xj]) ), run()) ;
+        else if( decomposition.id == 1u )
+          return ntk_.create_and( ntk_.create_and(ntk_.create_not(pis[xj]), pis[xi]) , run() ) ;
+        else if( decomposition.id == 2u )
+          return ntk_.create_and( ntk_.create_and(pis[xj], ntk_.create_not(pis[xi]) ) , run() ) ;
+        else if( decomposition.id == 3u )
+          return ntk_.create_and( ntk_.create_and(pis[xj], pis[xi] ) , run() ) ;
+        break; 
+
+    }
+  }
+  
+  #pragma endregion decomposition
+
+
   enum class symmetry_types
   {
     NONE,
@@ -110,8 +480,6 @@ private:
     std::string j_str = std::to_string(s.j);
     i_str.resize(2, ' ');
     j_str.resize(2, ' ');
-
-
 
     switch( s.type )
     {
@@ -870,7 +1238,7 @@ private:
 
       if( equal( mk0&mk1&tt1, mk0&mk1&tt0 ) )
       {
-        std::cout << "erase " << xi << std::endl;
+        //std::cout << "erase " << xi << std::endl;
         support.erase( support.begin() + i );
       }
     }
@@ -878,22 +1246,33 @@ private:
   #pragma endregion erase redundant
 
 public:
-  //signal<Ntk> run()
   signal<Ntk> run()
   {
-    kitty::print_binary( remainder );
-    std::cout << std::endl;
+    if( _ps.verbose )
+    {
+      kitty::print_binary( remainder );
+      std::cout << std::endl;
+    }
+
     bool game_over {false};
     symmetry_types last_type;
 
-    auto km_tt = kitty::karnaugh_map( remainder );
-    km_tt.print(mask);
+    if( _ps.verbose )
+    {
+      auto km_tt = kitty::karnaugh_map( remainder );
+      km_tt.print(mask);
+    }
+
     uint32_t COST = 0;
     uint32_t bestidx{0u};
     
-    
     while( !game_over && ( support.size() > 1 ) )
     {
+      if( is_const0( remainder&mask ) )
+        return ntk_.get_constant( false );
+      else if( is_const0( ~remainder&mask ) )
+        return ntk_.get_constant( true );
+
       for( uint32_t i{0u}; i < support.size(); ++i )
       {
         if( equal( remainder&mask, X[support[i]]&mask ) )
@@ -933,9 +1312,12 @@ public:
               numgates = COST + cost_remapping_cell( s );
               std::string cost = " |G|= " + std::to_string( numgates );
 
-              std::cout << ref << " "; 
-              print_symmetry(s) ; 
-              std::cout << dc_string << cost <<  std::endl;
+              if( _ps.verbose )
+              {
+                std::cout << ref << " "; 
+                print_symmetry(s) ; 
+                std::cout << dc_string << cost <<  std::endl;
+              }
               if( numdc > maxdc || ( ( numdc == maxdc ) && ( numgates < mincost )  ))
               {
                 bestidx = k;
@@ -955,28 +1337,43 @@ public:
       {
         //std::cout << "Choose the symmetry to exploit: " << std::endl;
         //std::cin >> choice;
-        std::cout << "Remapping " << " "; print_symmetry( symmetries[bestidx] ); 
-        std::cout << std::endl;
+        if( _ps.verbose )
+        {
+          std::cout << "Remapping " << " "; print_symmetry( symmetries[bestidx] ); 
+          std::cout << std::endl;
+        }
         COST += cost_remapping_cell( symmetries[bestidx] );
 
 
         remainder = symmetries[bestidx].func;
-        kitty::print_binary( remainder );
-        std::cout << std::endl;
+        if( _ps.verbose )
+        {
+          kitty::print_binary( remainder );
+          std::cout << std::endl;
+        }
         mask = symmetries[bestidx].mask;
         remap( symmetries[bestidx] );
         erase_redundant();
         last_type = symmetries[bestidx].type;
-        auto km_tt = kitty::karnaugh_map( remainder );
-        km_tt.print(mask);
+        
+        if( _ps.verbose )
+        {
+          auto km_tt = kitty::karnaugh_map( remainder );
+          km_tt.print(mask);
+        }
       }
       else
       {
-        std::cout << "GAME OVER" << std::endl;
+        if( _ps.verbose )
+          std::cout << "GAME OVER" << std::endl;
       }
     }
     
-    return is_const0( remainder & X[support[0]] & mask ) ? !pis[support[0]] : pis[support[0]];
+    if( _ps.verbose )
+    {
+      std::cout << "cost = " << COST << std::endl;
+    }
+    return is_const0( remainder & X[support[0]] & mask ) ? ntk_.create_not(pis[support[0]]) : pis[support[0]];
   }
 
 private:
