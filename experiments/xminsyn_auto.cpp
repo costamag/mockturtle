@@ -16,6 +16,12 @@ int main()
   std::cout << " [1] for example, [2] for arbitrary truth table ";
   uint32_t inp;
   std::cin >> inp;
+
+  xminsyn_auto_params ps;
+  ps.verbose = true;
+  ps.top2_decompose = true;
+  ps.top_decompose = true;
+
   if( inp == 1u )
   {
     kitty::dynamic_truth_table table( 3u );
@@ -28,7 +34,9 @@ int main()
     kitty::dynamic_truth_table x1(3u);
     kitty::dynamic_truth_table x2(3u);
     kitty::dynamic_truth_table x3(3u);
-    kitty::create_nth_var( x1, 0 ); 
+    kitty::create_nth_var( x1, 0 );
+    kitty::print_binary(x1);
+    std::cout << std::endl;
     kitty::create_nth_var( x2, 1 ); 
     kitty::create_nth_var( x3, 2 ); 
 
@@ -41,15 +49,15 @@ int main()
     write_dot( xag, "tmp.dot" );
     write_verilog( xag, "tmp.v" );
     
-  default_simulator<kitty::dynamic_truth_table> sim( 3 );
-  const auto tt = simulate<kitty::dynamic_truth_table>( xag, sim )[0];
-  kitty::print_binary( tt );
-  std::cout << std::endl;
-  kitty::print_binary( table );
-  std::cout << std::endl;
-  std::cout << std::endl;
+    default_simulator<kitty::dynamic_truth_table> sim( 3 );
+    const auto tt = simulate<kitty::dynamic_truth_table>( xag, sim )[0];
+    kitty::print_binary( tt );
+    std::cout << std::endl;
+    kitty::print_binary( table );
+    std::cout << std::endl;
+    std::cout << std::endl;
 
-  std::cout << ( equal( tt, table ) ? " equal " : " different " ) << std::endl; 
+    std::cout << ( equal( tt, table ) ? " equal " : " different " ) << std::endl; 
   }
   else
   {
@@ -73,7 +81,7 @@ int main()
       kitty::create_nth_var( xs[i], i );
     }
 
-    auto f0 = xminsyn_auto( xag, table, pis );
+    auto f0 = xminsyn_auto( xag, table, pis, ps );
     xag.create_po(f0);
 
     xag = cleanup_dangling( xag );
