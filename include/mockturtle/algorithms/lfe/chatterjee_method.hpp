@@ -61,7 +61,7 @@ namespace mockturtle
     struct chatterjee_method_impl
     {
       public:
-        chatterjee_method_impl( std::vector<TT * >& X, TT * Y, int& seed = 123 ) 
+        chatterjee_method_impl( std::vector<TT * >& X, TT * Y, int& seed ) 
           : X(X), 
             Y(Y),
             seed(seed)

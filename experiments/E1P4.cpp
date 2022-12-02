@@ -72,7 +72,7 @@ std::vector<uint32_t> database_lookup( TT const& target, RewritingFn const& rewr
   simulation_view oklut_sim{ oklut };
 
   model M( oklut_sim, pats, Y );
-  std::vector<signal<klut_network>> osignals;
+  std::vector<klut_network::signal> osignals;
   
   result.push_back(0);
 
@@ -83,7 +83,7 @@ std::vector<uint32_t> database_lookup( TT const& target, RewritingFn const& rewr
   selection_ps.support_size = 2;
   selection_ps.max_search_depth = std::numeric_limits<uint32_t>::max();
 
-  std::vector<std::vector<signal<klut_network>>> supports = select_variables( oklut_sim, selection_m, selection_ps );
+  std::vector<std::vector<klut_network::signal>> supports = select_variables( oklut_sim, selection_m, selection_ps );
 
   hdc::detail::creation_method creation_m = hdc::detail::creation_method::ifgenerator1;
   hdc::detail::creation_params creation_ps;

@@ -38,7 +38,7 @@
 #include <kitty/partial_truth_table.hpp>
 #include <fstream>
 #include <string>
-#include <omp.h>
+//#include <omp.h>
 #include <unistd.h>
 #include <mockturtle/io/write_aiger.hpp>
 #include <mockturtle/io/write_blif.hpp>
@@ -196,10 +196,10 @@ XYdataset dataset_loader( std::string file_name )
   return DS;
 }
 
-std::string DEC_ALGO{"f5chatterjee_s4_8192x1"};
+std::string DEC_ALGO{"xarmuesli"};
 using experiment_t = experiments::experiment<std::string, std::string, uint32_t, uint32_t, float, float, float, float>;
-experiment_t exp_res( "/iwls2020/results/COMP/comp", DEC_ALGO, "benchmark", "#gates", "depth", "train", "test", "valid", "runtime" );
-experiment_t exp_res2( "/iwls2020/results/COMP/algorithms/"+DEC_ALGO, DEC_ALGO, "benchmark", "#gates", "depth", "train", "test", "valid", "runtime" );
+experiment_t exp_res( "/iwls2020/results/", DEC_ALGO, "benchmark", "#gates", "depth", "train", "test", "valid", "runtime" );
+experiment_t exp_res2( "/iwls2020/results/"+DEC_ALGO, DEC_ALGO, "benchmark", "#gates", "depth", "train", "test", "valid", "runtime" );
 
 
 #pragma region mutex
@@ -320,7 +320,7 @@ void thread_run( iwls2020_parameters const& iwls2020_ps, std::string const& run_
   std::string train_path = "../experiments/iwls2020/benchmarks/train/";
   std::string test_path = "../experiments/iwls2020/benchmarks/test/";
   std::string valid_path = "../experiments/iwls2020/benchmarks/validation/";
-  std::string output_path = "../experiments/iwls2020/results/COMP/";
+  std::string output_path = "../experiments/iwls2020/results/";
 
   uint32_t id = exp_id++;
 
@@ -348,8 +348,8 @@ void thread_run( iwls2020_parameters const& iwls2020_ps, std::string const& run_
   std::vector<kitty::partial_truth_table> X;
   kitty::partial_truth_table Y;
 
-  auto current_best = *exp_res.get_entry<double>( benchmark, "valid", "best" );
-  auto current_best_gates = *exp_res.get_entry<uint32_t>( benchmark, "#gates", "best" );
+  //auto current_best = *exp_res.get_entry<double>( benchmark, "valid", "best" );
+  //auto current_best_gates = *exp_res.get_entry<uint32_t>( benchmark, "#gates", "best" );
 
   if( iwls2020_ps.frac_valid != 0 )
   {
@@ -627,14 +627,14 @@ void thread_run( iwls2020_parameters const& iwls2020_ps, std::string const& run_
             benchmark, iwls2020_ps.dec_algo, aig.num_gates(), d.depth(), la, Dl.conflicts_count, ta, va,to_seconds(time_dec)  );
 
 
-    if ( va > current_best || ( (va >= current_best) && (aig.num_gates() < current_best_gates) ) )
+   // if ( va > current_best || ( (va >= current_best) && (aig.num_gates() < current_best_gates) ) )
     {
-      fmt::print( "[i] obtained better result on {}: {} > {} or {} < {}\n", benchmark, va, current_best, aig.num_gates(), current_best_gates );
+      //fmt::print( "[i] obtained better result on {}: {} > {} or {} < {}\n", benchmark, va, current_best, aig.num_gates(), current_best_gates );
       depth_view d{aig};
       exp_res( iwls2020_ps.dec_algo, benchmark, aig.num_gates(), d.depth(), la, ta, va, to_seconds(time_dec) );
       write_aiger( aig, output_path + "AIG/" + benchmark + ".aig" );
       write_blif( klut, output_path +"BLIF/"+ benchmark + ".blif" );
-      current_best = va;
+      //current_best = va;
       std::ofstream myfile;
       myfile.open ( (output_path +"RES/"+ benchmark + ".txt") ); 
       myfile << ".a " << iwls2020_ps.dec_algo << std::endl;
@@ -648,17 +648,17 @@ void thread_run( iwls2020_parameters const& iwls2020_ps, std::string const& run_
 
       myfile.close();
     }
-    else
-    {
-      fmt::print( "[i] obtained worse result on {}: {} <= {}\n", benchmark, va, current_best );
-    }
+    //else
+    //{
+    //  fmt::print( "[i] obtained worse result on {}: {} <= {}\n", benchmark, va, current_best );
+    //}
     std::cout << std::endl;
 
     exp_res2( iwls2020_ps.dec_algo, benchmark, aig.num_gates(), d.depth(), la, ta, va, to_seconds(time_dec) );
-    write_aiger( aig, output_path + "algorithms/" + iwls2020_ps.dec_algo + "/AIG/" + benchmark + ".aig" );
-    write_blif( klut, output_path + "algorithms/" + iwls2020_ps.dec_algo + "/BLIF/"+ benchmark + ".blif" );
+    write_aiger( aig, output_path + iwls2020_ps.dec_algo + "/AIG/" + benchmark + ".aig" );
+    write_blif( klut, output_path + iwls2020_ps.dec_algo + "/BLIF/"+ benchmark + ".blif" );
     std::ofstream myfile;
-    myfile.open ( (output_path + "algorithms/" + iwls2020_ps.dec_algo + "/RES/"+ benchmark + ".txt") ); 
+    myfile.open ( (output_path + iwls2020_ps.dec_algo + "/RES/"+ benchmark + ".txt") ); 
     myfile << ".a " << iwls2020_ps.dec_algo << std::endl;
     myfile << ".b " << fmt::format( "{:02}", id ) <<std::endl;
     myfile << ".l " << la <<std::endl;

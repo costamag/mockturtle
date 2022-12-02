@@ -38,7 +38,7 @@ void create_bottomdec( TT const& oldtarget, TT const& target )
   auto X0 = ntk1.create_pi();
   auto X1 = ntk1.create_pi();
   auto X2 = ntk1.create_pi();
-  std::vector<signal<klut_network>> X = { X0, X1, X2 };
+  std::vector<klut_network::signal> X = { X0, X1, X2 };
   auto Xi = ntk1.create_pi();
   auto Xj = ntk1.create_pi();
   auto Xn = ntk1.create_and( Xi, Xj );

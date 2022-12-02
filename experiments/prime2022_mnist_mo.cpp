@@ -37,7 +37,7 @@
 #include <kitty/partial_truth_table.hpp>
 #include <fstream>
 #include <string>
-#include <omp.h>
+//#include <omp.h>
 #include <unistd.h>
 #include <mockturtle/io/write_aiger.hpp>
 #include <mockturtle/io/write_blif.hpp>

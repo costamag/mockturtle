@@ -954,6 +954,7 @@ klut_network project_in_hd( std::vector<kitty::partial_truth_table> examples, st
     {
       hdc::detail::arecovery_method arecovery_m = hdc::detail::arecovery_method::idsdS;
       hdc::detail::arecovery_params arecovery_ps;
+      //arecovery_ps.max_sup=4;
       arecovery_ps.verbose = false;
 
       for( uint32_t y = 0; y < targets.size(); ++y )

@@ -38,7 +38,7 @@
 #include <kitty/partial_truth_table.hpp>
 #include <fstream>
 #include <string>
-#include <omp.h>
+//#include <omp.h>
 #include <unistd.h>
 #include <mockturtle/io/write_aiger.hpp>
 #include <mockturtle/io/write_blif.hpp>
@@ -61,6 +61,8 @@
 using namespace mockturtle;
 using namespace hdc;
 using namespace kitty;
+
+std::vector<uint32_t> IDS = { 90, 91,92,93,94,95,96,97,98,99,8,28,14,48 };
 
 struct XYdataset{
   std::vector<kitty::partial_truth_table> X;
@@ -196,7 +198,7 @@ XYdataset dataset_loader( std::string file_name )
   return DS;
 }
 
-std::string DEC_ALGO{"vhds"};
+std::string DEC_ALGO{"sdec"};
 using experiment_t = experiments::experiment<std::string, uint32_t, uint32_t, float, float, float, float>;
 experiment_t exp_res( "/iwls2020/"+DEC_ALGO, "benchmark", "#gates", "depth", "train", "test", "valid", "runtime" );
 
@@ -236,13 +238,15 @@ void thread_run( iwls2020_parameters const& iwls2020_ps, std::string const& run_
   std::string train_path = "../experiments/iwls2020/benchmarks/train/";
   std::string test_path = "../experiments/iwls2020/benchmarks/test/";
   std::string valid_path = "../experiments/iwls2020/benchmarks/validation/";
-  std::string output_path = "../experiments/iwls2020/results/BLIF/"+iwls2020_ps.dec_algo+"/";
+  std::string output_path = "../experiments/iwls2020/results/"+iwls2020_ps.dec_algo+"/";
 
   uint32_t id = exp_id++;
 
 
   while ( id < 100 )
   {
+    //if(std::count(IDS.begin(), IDS.end(), id))
+    //{
     /* read benchmark */
     std::string benchmark = fmt::format( "ex{:02}", id );
     if ( run_only_one != "" && benchmark != run_only_one )
@@ -431,6 +435,9 @@ void thread_run( iwls2020_parameters const& iwls2020_ps, std::string const& run_
     std::cout << std::endl;
 
     id = exp_id++;
+  //}
+  //else  
+  //  id = exp_id++;
   }
 }
 
@@ -440,7 +447,7 @@ int main( int argc, char* argv[] )
 
   iwls2020_parameters iwls2020_ps;
   iwls2020_ps.dec_algo = DEC_ALGO;
-  iwls2020_ps.frac_valid = 1;
+  iwls2020_ps.frac_valid = 0;
 
   std::string run_only_one = "";
 

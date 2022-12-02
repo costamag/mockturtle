@@ -38,7 +38,7 @@
 #include <kitty/partial_truth_table.hpp>
 #include <fstream>
 #include <string>
-#include <omp.h>
+//#include <omp.h>
 #include <unistd.h>
 #include <mockturtle/io/write_aiger.hpp>
 #include <mockturtle/io/write_blif.hpp>
@@ -161,7 +161,7 @@ XYdataset dataset_loader( std::string file_name )
   return DS;
 }
 
-std::string DEC_ALGO{"random"};
+std::string DEC_ALGO{"ixtsdec"};
 using experiment_t = experiments::experiment<std::string, uint32_t, uint32_t, float, float, float, float>;
 experiment_t exp_res( "/iwls2020/"+DEC_ALGO, "benchmark", "#gates", "depth", "train", "test", "valid", "runtime" );
 
@@ -312,6 +312,11 @@ void thread_run( iwls2020_parameters const& iwls2020_ps)
     {
       auto Y = std::vector{Dl.Y};
       xag = flow_hdp<xag_network>( Dl.X, Y, 3 );
+    }
+    else if( iwls2020_ps.dec_algo == "idsdS" )
+    {
+      auto Y = std::vector{Dl.Y};
+      xag = flow_hdp<xag_network>( Dl.X, Y, 22 );
     }
     else if( iwls2020_ps.dec_algo == "dcsdec" )
     {

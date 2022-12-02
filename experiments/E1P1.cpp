@@ -74,7 +74,7 @@ std::vector<uint32_t> database_lookup( TT const& target, RewritingFn const& rewr
   simulation_view oklut_sim{ oklut };
 
   model M( oklut_sim, pats, Y );
-  std::vector<signal<klut_network>> osignals;
+  std::vector<klut_network::signal> osignals;
   hdc::detail::selcreation_method selcreation_m = hdc::detail::selcreation_method::muesli;
   hdc::detail::selcreation_params selcreation_ps;
   selcreation_ps.re_initialize = false;

@@ -29,7 +29,7 @@ std::vector<int> combination;
 void pretty_print(const std::vector<int>& v) {
   static int count = 0;
   std::cout << "combination no " << (++count) << ": [ ";
-  for (int i = 0; i < v.size(); ++i) { std::cout << v[i] << " "; }
+  for (uint32_t i = 0; i < v.size(); ++i) { std::cout << v[i] << " "; }
   std::cout << "] " << std::endl;
 }
 
@@ -41,7 +41,7 @@ void go(std::vector<uint32_t> Bits, int offset, int k) {
     //pretty_print(combination);
     return;
   }
-  for (int i = offset; i <= Bits.size() - k; ++i) {
+  for (uint32_t i = offset; i <= Bits.size() - k; ++i) {
     combination.push_back(Bits[i]);
     go(Bits, i+1, k-1);
     combination.pop_back();
@@ -60,7 +60,7 @@ double erase_and_verify( std::vector<kitty::partial_truth_table> pats, kitty::pa
 
 
   std::vector<uint32_t> erasable_bits;
-  for (int i = 0; i < Y.num_bits(); ++i) { erasable_bits.push_back(i); }
+  for (uint32_t i = 0; i < Y.num_bits(); ++i) { erasable_bits.push_back(i); }
   combinations = {};
 
   go( erasable_bits, 0, num_erase );

@@ -73,7 +73,7 @@ std::vector<uint32_t> database_lookup( TT const& target, RewritingFn const& rewr
   simulation_view oklut_sim{ oklut };
 
   model M( oklut_sim, pats, Y );
-  std::vector<signal<klut_network>> osignals;
+  std::vector<klut_network::signal> osignals;
   
   result.push_back(0);
 

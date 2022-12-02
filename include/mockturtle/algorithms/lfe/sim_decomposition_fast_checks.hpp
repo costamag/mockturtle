@@ -66,7 +66,7 @@ bool is_xor_decomposable_fast( std::vector<sim_pattern<Ntk>>& X, std::vector<uin
     if( kitty::get_bit( amask0, i ) == 1 )
     {
       std::string minterm = "";
-      for( uint32_t j{0}; j<support.size(); ++j  )
+      for( uint32_t j{0}; j<support.size(); ++j )
         minterm += std::to_string( kitty::get_bit( X[support[j]].pat, i ) ); 
 
       if( kitty::get_bit( onset, i ) == 1 ) // F0(minterm) == 1
