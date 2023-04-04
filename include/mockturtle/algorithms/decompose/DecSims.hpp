@@ -24,8 +24,8 @@
  */
 
 /*!
-  \file Dec_Nodes.hpp
-  \brief data structure for the graph verteces
+  \file DecSims.hpp
+  \brief data structure for storing the Sims
 
   \author Andrea Costamagna
 */
@@ -37,18 +37,18 @@ namespace mockturtle
 {
 
 template<class TT>
-class DecTargets
+class DecSims
 {
 private:
   std::vector<TT>   vFuncs;
   std::vector<TT>   vMasks;
   std::vector<bool> vUsed;
   std::stack<int>   sFree;
-  int nTargets;
+  int nSims;
 
 public:
-  DecTargets();
-  ~DecTargets();
+  DecSims();
+  ~DecSims();
   int size();
   /* modify */
   int insert( const TT&, const TT& );
@@ -56,39 +56,41 @@ public:
   /* read */
   TT * getFuncP( int );
   TT * getMaskP( int );
+  bool isUsed( int );
 
 };
 
 #pragma region constructors
 template<class TT>
-DecTargets<TT>::DecTargets()
+DecSims<TT>::DecSims()
 {
-  nTargets = 0;
+  nSims = 0;
 }
 
 template<class TT>
-DecTargets<TT>::~DecTargets()
+DecSims<TT>::~DecSims()
 {
 }
 #pragma endregion
 
 #pragma region read
-template<class TT> int  DecTargets<TT>::size(){ return nTargets;  }
-template<class TT> TT * DecTargets<TT>::getFuncP( int ref ){  return &vFuncs[ref];  }
-template<class TT> TT * DecTargets<TT>::getMaskP( int ref ){  return &vMasks[ref];  }
+template<class TT> int  DecSims<TT>::size(){ return nSims;  }
+template<class TT> TT * DecSims<TT>::getFuncP( int ref ){  return &vFuncs[ref];  }
+template<class TT> TT * DecSims<TT>::getMaskP( int ref ){  return &vMasks[ref];  }
+template<class TT> bool DecSims<TT>::isUsed( int ref ){ return ( ref<vFuncs.size() & vUsed[ref] ); };
 #pragma endregion
 
 #pragma region modify
 template<class TT>
-int DecTargets<TT>::insert( const TT& func, const TT& mask )
+int DecSims<TT>::insert( const TT& func, const TT& mask )
 {
   assert( vFuncs.size() == vMasks.size() );
   assert( vUsed.size()  == vMasks.size() );
   int ref;
   if( sFree.size() == 0 )
   {
-    assert( nTargets == vFuncs.size() );
-    ref = nTargets;
+    assert( nSims == vFuncs.size() );
+    ref = nSims;
     vFuncs.push_back( func );
     vMasks.push_back( mask );
     vUsed.push_back( true );
@@ -101,14 +103,14 @@ int DecTargets<TT>::insert( const TT& func, const TT& mask )
     vUsed[ref] = true;
     sFree.pop();
   }
-  nTargets++;
+  nSims++;
   return ref;
 }
 
 template<class TT>
-void DecTargets<TT>::remove( int ref )
+void DecSims<TT>::remove( int ref )
 {
-  assert(nTargets>0);
+  assert(nSims>0);
   assert(vFuncs.size()>ref);
   assert(vMasks.size()>ref);
   assert(vUsed.size()>ref);
@@ -117,12 +119,8 @@ void DecTargets<TT>::remove( int ref )
   vFuncs[ref] &= ~vFuncs[ref];
   vMasks[ref] |= ~vMasks[ref];
   sFree.push(ref);
-  nTargets--;
+  nSims--;
 }
 #pragma endregion modify
-
-
-
-
 
 } // namespace mockturtle
