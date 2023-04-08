@@ -30,11 +30,16 @@
   \author Andrea Costamagna
 */
 
+#pragma once
+
 #include <stdio.h>
 #include <stack>
 
 namespace mockturtle
 {
+
+using sim_t  = uint32_t;
+using node_t = uint32_t;
 
 template<class TT>
 class DecSims
@@ -43,7 +48,8 @@ private:
   std::vector<TT>   vFuncs;
   std::vector<TT>   vMasks;
   std::vector<bool> vUsed;
-  std::stack<int>   sFree;
+  std::vector<std::vector<node_t>>  vNodes;
+  std::stack<sim_t>   sFree;
   int nSims;
 
 public:
@@ -51,12 +57,14 @@ public:
   ~DecSims();
   int size();
   /* modify */
-  int insert( const TT&, const TT& );
-  void remove( int );
+  sim_t addSim( const TT&, const TT& );
+  void addNode( sim_t, node_t );
+  void remove( sim_t );
   /* read */
-  TT * getFuncP( int );
-  TT * getMaskP( int );
-  bool isUsed( int );
+  TT * getFuncP( sim_t );
+  TT * getMaskP( sim_t );
+  bool isUsed( sim_t );
+  std::vector<node_t> * getNodesP( sim_t );
 
 };
 
@@ -75,18 +83,19 @@ DecSims<TT>::~DecSims()
 
 #pragma region read
 template<class TT> int  DecSims<TT>::size(){ return nSims;  }
-template<class TT> TT * DecSims<TT>::getFuncP( int ref ){  return &vFuncs[ref];  }
-template<class TT> TT * DecSims<TT>::getMaskP( int ref ){  return &vMasks[ref];  }
-template<class TT> bool DecSims<TT>::isUsed( int ref ){ return ( ref<vFuncs.size() & vUsed[ref] ); };
+template<class TT> TT * DecSims<TT>::getFuncP( sim_t ref ){  return &vFuncs[ref];  }
+template<class TT> TT * DecSims<TT>::getMaskP( sim_t ref ){  return &vMasks[ref];  }
+template<class TT> bool DecSims<TT>::isUsed( sim_t ref ){ return ( ref<vFuncs.size() & vUsed[ref] ); };
+template<class TT> std::vector<node_t> * DecSims<TT>::getNodesP( sim_t ref ){ return &vNodes[ref]; };
 #pragma endregion
 
 #pragma region modify
 template<class TT>
-int DecSims<TT>::insert( const TT& func, const TT& mask )
+sim_t DecSims<TT>::addSim( const TT& func, const TT& mask )
 {
   assert( vFuncs.size() == vMasks.size() );
   assert( vUsed.size()  == vMasks.size() );
-  int ref;
+  sim_t ref;
   if( sFree.size() == 0 )
   {
     assert( nSims == vFuncs.size() );
@@ -94,6 +103,7 @@ int DecSims<TT>::insert( const TT& func, const TT& mask )
     vFuncs.push_back( func );
     vMasks.push_back( mask );
     vUsed.push_back( true );
+    vNodes.emplace_back();
   }
   else
   {
@@ -101,6 +111,7 @@ int DecSims<TT>::insert( const TT& func, const TT& mask )
     vFuncs[ref] = func;
     vMasks[ref] = mask;
     vUsed[ref] = true;
+    vNodes[ref] = {};
     sFree.pop();
   }
   nSims++;
@@ -108,7 +119,13 @@ int DecSims<TT>::insert( const TT& func, const TT& mask )
 }
 
 template<class TT>
-void DecSims<TT>::remove( int ref )
+void DecSims<TT>::addNode( sim_t ref, node_t node )
+{
+  vNodes[ref].push_back(node);
+}
+
+template<class TT>
+void DecSims<TT>::remove( sim_t ref )
 {
   assert(nSims>0);
   assert(vFuncs.size()>ref);
