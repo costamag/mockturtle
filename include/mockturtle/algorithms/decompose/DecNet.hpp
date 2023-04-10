@@ -52,13 +52,15 @@ template<class TT, class Ntk>
 class DecNet
 {
 private:
+  /* nodes & sims */
   DecNodes<Ntk>         nodes;
   DecSims<TT>           sims;
-  std::vector<sim_t>    vTOs;
+  /* basic envelope interface */
   std::vector<signal_t> vPIs;
   std::vector<signal_t> vPOs;
-  std::vector<signal_t> vSigs;
-  std::vector<sim_t>    actTargs;
+  std::vector<signal_t> vTargs;
+  int                   nIns;
+  int                   nOut;
 
 public:
   DecNet();
@@ -68,7 +70,7 @@ public:
   DecNet( const DecNet& );              // Declare copy constructor.
   /* modify */
 public:
-  sim_t create_target( const TT&, const TT& );
+  signal_t create_target( const TT&, const TT& );
   signal_t create_PI( const TT& );
   signal_t create_PO( signal_t );
   signal_t create_xor( signal_t, signal_t );
@@ -83,6 +85,8 @@ public:
   signal_t create_xnor( signal_t, signal_t );
   signal_t create_not( signal_t );
   signal_t create_buf( signal_t );
+  void     init( const std::vector<TT>&, const std::vector<TT>& );
+
 public:
   /* iterate */
   template<typename Fn> void foreach_po( Fn&& );
@@ -93,6 +97,7 @@ public:
 public:
   int numPOs();
   int numPIs();
+  int numTargets();
   sim_t NodeToSim( node_t );
   signal_t NodeToSig( node_t );
   std::vector<node_t> * SimToNodes( sim_t );
@@ -102,6 +107,8 @@ public:
   TT * getTargetMaskP( sim_t );
   signal<Ntk> getNtkSig( signal_t );
   DecFunc_t getFnType( signal_t );
+  std::vector<signal_t> getTargets();
+  std::vector<signal_t> getPIs();
 
   /* properties */
 public:
@@ -119,11 +126,9 @@ DecNet<TT, Ntk>::DecNet( const DecNet<TT, Ntk>& other )
 {
   nodes = other.nodes;
   sims  = other.sims;
-  vTOs  = other.vTOs;
   vPIs  = other.vPIs;
   vPOs  = other.vPOs;
-  vSigs = other.vSigs;
-  actTargs = other.actTargs;
+  vTargs = other.vTargs;
 }
 #pragma endregion
 
@@ -158,6 +163,7 @@ template<class TT, class Ntk> void DecNet<TT,Ntk>::setSig( node_t node, signal<N
 #pragma region read
 template<class TT, class Ntk>  int DecNet<TT, Ntk>::numPOs() { return vPOs.size(); }
 template<class TT, class Ntk>  int DecNet<TT, Ntk>::numPIs() { return vPIs.size(); }
+template<class TT, class Ntk>  int DecNet<TT, Ntk>::numTargets() { return vTargs.size(); }
 template<class TT, class Ntk>  sim_t DecNet<TT, Ntk>::NodeToSim( node_t node ) { return nodes.getSim( node ); }
 template<class TT, class Ntk>  signal_t DecNet<TT, Ntk>::NodeToSig( node_t node ) { sim_t sim = nodes.getSim( node ); return signal_t{ sim, node }; }
 template<class TT, class Ntk>  std::vector<node_t> * DecNet<TT, Ntk>::SimToNodes( sim_t sim ) { return sims.getNodesP( sim ); }
@@ -172,12 +178,12 @@ template<class TT, class Ntk>  DecFunc_t DecNet<TT,Ntk>::getFnType( signal_t sig
 
 #pragma region modify
 template<class TT, class Ntk>
-sim_t DecNet<TT, Ntk>::create_target( const TT& func, const TT& mask )
+signal_t DecNet<TT, Ntk>::create_target( const TT& func, const TT& mask )
 {
-  sim_t simTarget   = sims.addSim( func, mask );
-  vTOs.push_back( simTarget );
-  actTargs.push_back( simTarget );
-  return simTarget;
+  sim_t  sim = sims.addSim( func, mask );
+  node_t node = nodes.addHungNode( sim );
+  signal_t sig { sim, node };
+  return sig;
 }
 
 template<class TT, class Ntk>
@@ -186,7 +192,6 @@ signal_t DecNet<TT, Ntk>::create_PI( const TT& func )
   sim_t  simPI = sims.addSim( func, func | ~func );
   node_t nodePI = nodes.addNode( {}, simPI, DecFunc_t::PI_ );
   signal_t sig { simPI, nodePI };
-  vSigs.push_back( sig );
   vPIs.push_back( sig );
   return sig;
 }
@@ -194,7 +199,6 @@ signal_t DecNet<TT, Ntk>::create_PI( const TT& func )
 template<class TT, class Ntk>
 signal_t DecNet<TT, Ntk>::create_PO( signal_t sig )
 {
-  vSigs.push_back( sig );
   vPOs.push_back( sig );
   return sig;
 }
@@ -307,6 +311,32 @@ signal_t DecNet<TT, Ntk>::create_xnor( signal_t a, signal_t b )
   return sig;
 }
 
+template<class TT, class Ntk> std::vector<signal_t> DecNet<TT, Ntk>::getTargets(){ return vTargs; }
+template<class TT, class Ntk> std::vector<signal_t> DecNet<TT, Ntk>::getPIs(){ return vPIs; }
+
+template<class TT, class Ntk>
+void DecNet<TT, Ntk>::init( const std::vector<TT>& vTruths, const std::vector<TT>& vMasks )
+{
+  assert( vTruths.size() == vMasks.size() );
+  assert( vTruths[0].num_vars() == vMasks[0].num_vars() );
+  nIns = vTruths[0].num_vars();
+  nOut = vTruths.size();
+  /* create normal divisors */
+	TT  x = vTruths[0].construct();
+  for( int i{0}; i < nIns; ++i )
+  {
+	  kitty::create_nth_var( x, i );
+    create_PI( x );
+  }
+  /* create targets */
+  for( int i{0}; i<nOut; ++i )
+  {
+    signal_t target = create_target( vTruths[i], vMasks[i] );
+    vTargs.push_back( target );
+    create_PO( target );
+  }
+  /*  */
+}
 #pragma endregion modify
 
 } // namespace mockturtle

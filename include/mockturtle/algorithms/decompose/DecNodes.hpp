@@ -43,6 +43,7 @@ enum DecFunc_t
   NONE_,
   PI_,
   PO_,
+  HUNG_,
   NOT_,
   BUF_,
   AND_,
@@ -79,6 +80,7 @@ public:
   ~DecNodes();
   /* modify */
   node_t addNode( std::vector<sim_t>, sim_t, DecFunc_t );
+  node_t addHungNode( sim_t );
   void rmNode( node_t );
   void setSig( node_t, signal<Ntk> );
   /* read */
@@ -189,6 +191,42 @@ node_t DecNodes<Ntk>::addNode( std::vector<node_t> Fanins, sim_t pSim, DecFunc_t
   nNodes++;
   return ref;
 }
+
+template<class Ntk>
+node_t DecNodes<Ntk>::addHungNode( sim_t pSim )
+{
+  assert( vInSims.size() == vSims.size() );
+  assert( vInSims.size() == vFnTypes.size() );
+  assert( vInSims.size() == vUsed.size() );
+  assert( vInSims.size() == vSynt.size() );
+  int ref;
+  if( sFree.size() == 0 )
+  {
+    assert( nNodes == vInSims.size() );
+    ref = nNodes;
+    vInSims.emplace_back();
+    vFanIns.emplace_back();
+    vSims.push_back( pSim );
+    vUsed.push_back( true );
+    vSynt.push_back( 0 );
+    vFnTypes.push_back( DecFunc_t::HUNG_ );
+    vSigs.emplace_back();
+  }
+  else
+  {
+    ref = sFree.top();
+    vInSims[ref] = {};
+    vFanIns[ref] = {};
+    vSims[ref] = pSim;
+    vUsed[ref] = true;
+    vSynt[ref] = 0;
+    vFnTypes[ref] = DecFunc_t::HUNG_;
+    sFree.pop();
+  }
+  nNodes++;
+  return ref;
+}
+
 template<class Ntk>
 void DecNodes<Ntk>::rmNode( node_t ref )
 {

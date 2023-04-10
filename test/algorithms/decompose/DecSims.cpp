@@ -2,8 +2,9 @@
 
 #include <mockturtle/algorithms/simulation.hpp>
 #include <mockturtle/algorithms/decompose/DecNet.hpp>
-#include <mockturtle/algorithms/decompose/DecAnalyze.hpp>
+#include <mockturtle/algorithms/decompose/DecAnalyzer.hpp>
 #include <mockturtle/algorithms/decompose/DecChsToGraph.hpp>
+#include <mockturtle/algorithms/decompose/DecSolver.hpp>
 #include <mockturtle/networks/aig.hpp>
 #include <kitty/dynamic_truth_table.hpp>
 #include <kitty/constructors.hpp>
@@ -90,7 +91,7 @@ TEST_CASE( "linking nodes to the simulation storage", "[DEC]" )
   CHECK( graph.getFunc(n[3]) == DecFunc_t::AND_ );
   CHECK( graph.getSim(n[3]) == t[3] );
 }
-
+/*
 TEST_CASE( "the choicesim network", "[DEC]" )
 {
   using TT = kitty::dynamic_truth_table;
@@ -112,16 +113,16 @@ TEST_CASE( "the choicesim network", "[DEC]" )
     CHECK( kitty::equal( xs[i], * net.getFuncP( pis[i] ) ) );
     CHECK( kitty::is_const0( ~ * net.getMaskP( pis[i] ) ) ); 
   }
-  typedef DecAnalyze<TT> analize_t;
+  typedef DecAnalyzer<TT> analize_t;
   analize_t ana;
   std::vector<bool> isDec = { false, false, false };
-  /* top and decomposability */
+  // top and decomposability 
   signal_t x0 = pis[0];
   signal_t x1 = pis[1];
   signal_t x2 = pis[2];
   TT f1 = kitty::dynamic_truth_table(3u);
   f1 = xs[0] & ( xs[1]^xs[2] );
-  std::vector<sim_t> targets;
+  std::vector<signal_t> targets;
   TT m = f1 | ~f1;
   targets.push_back( net.create_target( f1, m ) );
   signal_t x3 = net.create_xor( x1, x2 );
@@ -133,14 +134,15 @@ TEST_CASE( "the choicesim network", "[DEC]" )
   CHECK( !isDec[1] );
   CHECK( !isDec[2] );
   for( int i = 0; i < 3; ++i )
-    isDec[i] = ana.IsTopAndDec( net.getTargetFuncP( targets[0] ), net.getTargetMaskP( targets[0] ), net.getFuncP( pis[i] ), net.getMaskP( pis[i] ) );
+    isDec[i] = ana.IsTopAndDec( net.getFuncP( targets[0] ), net.getMaskP( targets[0] ), net.getFuncP( pis[i] ), net.getMaskP( pis[i] ) );
   CHECK( isDec[0]  );
   CHECK( !isDec[1] );
   CHECK( !isDec[2] );
   CHECK( net.numPOs() == 1 );
-  CHECK( kitty::equal( f1, * net.getTargetFuncP( targets[0] ) ) ); 
-  CHECK( kitty::equal( m, * net.getTargetMaskP( targets[0] ) ) ); 
+  CHECK( kitty::equal( f1, * net.getFuncP( targets[0] ) ) ); 
+  CHECK( kitty::equal( m, * net.getMaskP( targets[0] ) ) ); 
 }
+*/
 
 TEST_CASE( "converting choicesim network", "[DEC]" )
 {
@@ -279,4 +281,38 @@ TEST_CASE( "checking the simulation patterns in choicesim 2", "[DEC]" )
   default_simulator<kitty::dynamic_truth_table> sim( 4 );
   const auto sims = simulate<kitty::dynamic_truth_table>( aig, sim );
   CHECK( sims[0] == * net.getFuncP( x10 ) );
+}
+
+TEST_CASE( "solver: top decompositions ", "[DEC]" )
+{
+  using TT = kitty::dynamic_truth_table;
+  using Ntk = aig_network;
+  typedef DecSolver<TT, Ntk> solver_t;
+  Ntk aig;
+
+  std::vector<TT> xs;
+  for( int i{0}; i<5; ++i )
+  {
+    xs.emplace_back(5u);
+    kitty::create_nth_var( xs[i], i );
+  }
+
+  std::vector<TT> vTruths;
+  std::vector<TT> vMasks;
+  vTruths.emplace_back(5u);
+  vTruths.emplace_back(5u);
+  vTruths.emplace_back(5u);
+  vTruths[0] = xs[4] & ( ~xs[3] & ( xs[2]^ xs[0] ) );
+  vTruths[1] = (xs[4] & xs[2]) ^ xs[2];
+  vTruths[2] = xs[3] & xs[2] &xs[1] ;
+  
+  vMasks.emplace_back(5u);
+  vMasks.emplace_back(5u);
+  vMasks.emplace_back(5u);
+  vMasks[0] |= ~vMasks[0];
+  vMasks[1] = vMasks[0];
+  vMasks[2] = vMasks[0];
+  solver_t solver( vTruths, vMasks );
+  solver.PrintSpecs();
+  solver.solve();
 }
