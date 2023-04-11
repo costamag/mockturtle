@@ -71,6 +71,7 @@ public:
   /* modify */
 public:
   signal_t create_target( const TT&, const TT& );
+  void     close_target( signal_t, signal_t, int );
   signal_t create_PI( const TT& );
   signal_t create_PO( signal_t );
   signal_t create_xor( signal_t, signal_t );
@@ -86,6 +87,7 @@ public:
   signal_t create_not( signal_t );
   signal_t create_buf( signal_t );
   void     init( const std::vector<TT>&, const std::vector<TT>& );
+  void change_sim_info( signal_t, TT, TT );
 
 public:
   /* iterate */
@@ -184,6 +186,15 @@ signal_t DecNet<TT, Ntk>::create_target( const TT& func, const TT& mask )
   node_t node = nodes.addHungNode( sim );
   signal_t sig { sim, node };
   return sig;
+}
+
+template<class TT, class Ntk>
+void DecNet<TT, Ntk>::close_target( signal_t sTrg, signal_t sDiv, int isInv )
+{
+  if( isInv )
+    nodes.attachHunging( sDiv.node, sDiv.sim, sTrg.node, DecFunc_t::NOT_ );
+  else
+    nodes.attachHunging( sDiv.node, sDiv.sim, sTrg.node, DecFunc_t::BUF_ );
 }
 
 template<class TT, class Ntk>
@@ -337,6 +348,15 @@ void DecNet<TT, Ntk>::init( const std::vector<TT>& vTruths, const std::vector<TT
   }
   /*  */
 }
+
+template<class TT, class Ntk>
+void DecNet<TT, Ntk>::change_sim_info( signal_t sig, TT func, TT mask )
+{
+  sims.change_mask( sig.sim, mask );
+  sims.change_func( sig.sim, func );
+}
+
+
 #pragma endregion modify
 
 } // namespace mockturtle

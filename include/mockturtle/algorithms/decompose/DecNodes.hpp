@@ -81,6 +81,8 @@ public:
   /* modify */
   node_t addNode( std::vector<sim_t>, sim_t, DecFunc_t );
   node_t addHungNode( sim_t );
+  void attachHunging( node_t, sim_t, node_t, DecFunc_t );
+
   void rmNode( node_t );
   void setSig( node_t, signal<Ntk> );
   /* read */
@@ -190,6 +192,14 @@ node_t DecNodes<Ntk>::addNode( std::vector<node_t> Fanins, sim_t pSim, DecFunc_t
   }
   nNodes++;
   return ref;
+}
+
+template<class Ntk>
+void DecNodes<Ntk>::attachHunging( node_t inNode, sim_t inSim, node_t out, DecFunc_t FuncT )
+{
+  vFanIns[out].push_back(inNode);
+  vInSims[out].push_back(inSim);
+  vFnTypes[out] = FuncT;
 }
 
 template<class Ntk>

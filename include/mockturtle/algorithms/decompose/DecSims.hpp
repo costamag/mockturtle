@@ -60,6 +60,8 @@ public:
   sim_t addSim( const TT&, const TT& );
   void addNode( sim_t, node_t );
   void remove( sim_t );
+  void change_mask( sim_t, TT );
+  void change_func( sim_t, TT );
   /* read */
   TT * getFuncP( sim_t );
   TT * getMaskP( sim_t );
@@ -137,6 +139,18 @@ void DecSims<TT>::remove( sim_t ref )
   vMasks[ref] |= ~vMasks[ref];
   sFree.push(ref);
   nSims--;
+}
+
+template<class TT>
+void DecSims<TT>::change_mask( sim_t ref, TT mask )
+{
+  vMasks[ref] = mask;
+}
+
+template<class TT>
+void DecSims<TT>::change_func( sim_t ref, TT func )
+{
+  vFuncs[ref] = func;
 }
 #pragma endregion modify
 

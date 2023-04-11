@@ -314,5 +314,5 @@ TEST_CASE( "solver: top decompositions ", "[DEC]" )
   vMasks[2] = vMasks[0];
   solver_t solver( vTruths, vMasks );
   solver.PrintSpecs();
-  solver.solve();
+  solver.man_sym_solve();
 }

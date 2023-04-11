@@ -498,7 +498,7 @@ void create_from_clauses( TT& tt, const std::vector<cube>& clauses, bool esop = 
 template<typename TT, typename = std::enable_if_t<is_complete_truth_table<TT>::value>>
 inline void create_majority( TT& tt )
 {
-  create_threshold( tt, tt.num_vars() >> 1 );
+  create_threshold( tt, ( tt.num_vars() >> 1 ) + 1 );
 }
 
 /*! \brief Constructs threshold function
@@ -516,7 +516,7 @@ void create_threshold( TT& tt, uint8_t threshold )
 
   for ( uint64_t x = 0; x < tt.num_bits(); ++x )
   {
-    if ( __builtin_popcount( static_cast<uint32_t>( x ) ) > threshold )
+    if ( __builtin_popcount( static_cast<uint32_t>( x ) ) >= threshold )
     {
       set_bit( tt, x );
     }

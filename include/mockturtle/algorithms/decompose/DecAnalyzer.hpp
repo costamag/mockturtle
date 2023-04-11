@@ -40,7 +40,7 @@
 namespace mockturtle
 {
 
-enum DecAct_t
+enum class DecAct_t
 {
   ERASE_,
   /* top decompositions */
@@ -54,7 +54,10 @@ enum DecAct_t
   ES_,
   MS_,
   SVS_,
-  CSVS_
+  CSVS_,
+  /* termination */
+  BUF_,
+  INV_
 };
 
 template<class TT>
@@ -80,6 +83,7 @@ private:
   std::vector<action_t<TT>> set_topdec;
   std::vector<action_t<TT>> set_remove;
   std::vector<action_t<TT>> set_remap;
+  std::vector<action_t<TT>> set_closure;
 
 public:
   DecAnalyzer(DecNet<TT, Ntk> *, std::vector<signal_t> *, std::vector<signal_t> *, std::vector<int> *);
@@ -90,11 +94,13 @@ public:
   action_t<TT> compatible_remapping( int, int, int, int, int, int, DecAct_t, int );
 
   /* analyze */
+  void check0();
   void check1();
   void check2();
   std::vector<action_t<TT>> get_topdec();
   std::vector<action_t<TT>> get_remove();
   std::vector<action_t<TT>> get_remap();
+  std::vector<action_t<TT>> get_closure();
   void print_actions(std::vector<action_t<TT>>);
 };
 
@@ -111,15 +117,44 @@ template<class TT, class Ntk> DecAnalyzer<TT, Ntk>::~DecAnalyzer(){}
 template<class TT, class Ntk> std::vector<action_t<TT>> DecAnalyzer<TT, Ntk>::get_topdec(){ return set_topdec; }
 template<class TT, class Ntk> std::vector<action_t<TT>> DecAnalyzer<TT, Ntk>::get_remove(){ return set_remove; }
 template<class TT, class Ntk> std::vector<action_t<TT>> DecAnalyzer<TT, Ntk>::get_remap(){ return set_remap; }
+template<class TT, class Ntk> std::vector<action_t<TT>> DecAnalyzer<TT, Ntk>::get_closure(){ return set_closure; }
+#pragma endregion
+
+#pragma region termination
+template<class TT, class Ntk>
+void DecAnalyzer<TT, Ntk>::check0()
+{
+  for( int iDiv{0}; iDiv < pX->size(); ++iDiv )
+  {
+    for( int iTrg{0}; iTrg < pY->size(); ++iTrg )
+    {
+      TT * pFT = pNet->getFuncP( ((*pY))[iTrg] );
+      TT * pFM = pNet->getMaskP( ((*pY))[iTrg] );
+      TT * pDT = pNet->getFuncP( (*pX)[iDiv] );
+      TT * pDM = pNet->getMaskP( (*pX)[iDiv] );
+      
+      if( kitty::equal( *pFT & *pFM, *pDT & *pDM ) )
+      {
+        action_t<TT> act = { DecAct_t::BUF_, {iTrg, iDiv}, *pFM, *pFT, kitty::count_zeros( *pFM & ~(*pFM) ) };
+        set_closure.push_back( act );
+      }
+      else if( kitty::equal( (~*pFT) & *pFM, *pDT & *pFM ) )
+      {
+        action_t<TT> act = { DecAct_t::INV_, {iTrg, iDiv}, *pFM, *pFT, kitty::count_zeros( *pFM & ~(*pFM) ) };
+        set_closure.push_back( act );
+      }
+    }
+  }
+}
 #pragma endregion
 
 #pragma region decomposability
 template<class TT, class Ntk>
-void DecAnalyzer<TT, Ntk>::check1( )
+void DecAnalyzer<TT, Ntk>::check1()
 {
-  for( int iTrg{0}; iTrg < pY->size(); ++iTrg )
+  for( int iDiv{0}; iDiv < pX->size(); ++iDiv )
   {
-    for( int iDiv{0}; iDiv < pX->size(); ++iDiv )
+    for( int iTrg{0}; iTrg < pY->size(); ++iTrg )
     {
       TT * pFT = pNet->getFuncP( ((*pY))[iTrg] );
       TT * pFM = pNet->getMaskP( ((*pY))[iTrg] );
@@ -140,7 +175,7 @@ void DecAnalyzer<TT, Ntk>::check1( )
 
       if( mask )
       {
-        action_t<TT> act = { DecAct_t::ERASE_, {iDiv, iTrg}, *pFM, *pFT, kitty::count_ones(~*pFM ) };
+        action_t<TT> act = { DecAct_t::ERASE_, {iTrg, iDiv}, *pFM, *pFT, kitty::count_ones(~*pFM ) };
         set_remove.push_back( act );
       }
       else
@@ -483,101 +518,101 @@ void DecAnalyzer<TT, Ntk>::check2()
 template<class TT, class Ntk>
 void DecAnalyzer<TT, Ntk>::print_actions( std::vector<action_t<TT>> actions )
 {
-  printf( "here %d\n", set_topdec.size() );
-
+  printf("==========================================================================================\n");
+  int cMV = 0;
   for( auto act : actions )
   {
     switch ( act.type )
     {
     case DecAct_t::ERASE_:
-      printf( "targ(%2d ):    %d --x \n", act.sigs[0], act.sigs[1] );
+      printf( "%3d | targ(%2d ):    %d --x \n", cMV++, act.sigs[0], act.sigs[1] );
       break;
     case DecAct_t::D1_AND_:
-      printf( "targ(%2d ): %4d  and R : %d\n", act.sigs[0], act.sigs[1], act.reward );
+      printf( "%3d | targ(%2d ): %4d  and R : %d\n", cMV++, act.sigs[0], act.sigs[1], act.reward );
       break;
     case DecAct_t::D1_OR_:
-      printf( "targ(%2d ): %4d  or  R : %d\n", act.sigs[0], act.sigs[1], act.reward );
+      printf( "%3d | targ(%2d ): %4d  or  R : %d\n", cMV++, act.sigs[0], act.sigs[1], act.reward );
       break;
     case DecAct_t::D1_LT_:
-      printf( "targ(%2d ): %4d' and R : %d\n", act.sigs[0], act.sigs[1], act.reward );
+      printf( "%3d | targ(%2d ): %4d' and R : %d\n", cMV++, act.sigs[0], act.sigs[1], act.reward );
       break;
     case DecAct_t::D1_LE_:
-      printf( "targ(%2d ): %4d' or  R : %d\n", act.sigs[0], act.sigs[1], act.reward );
+      printf( "%3d | targ(%2d ): %4d' or  R : %d\n", cMV++, act.sigs[0], act.sigs[1], act.reward );
       break;
     case DecAct_t::D1_XOR_:
-      printf( "targ(%2d ): %4d  xor R : %d\n", act.sigs[0], act.sigs[1], act.reward );
+      printf( "%3d | targ(%2d ): %4d  xor R : %d\n", cMV++, act.sigs[0], act.sigs[1], act.reward );
       break;
     case DecAct_t::NES_:
-      printf( "targ(%2d ):    NES{%2d, %2d }  :  %4d    %s\n", act.sigs[0], act.sigs[1], act.sigs[2], act.reward, 
+      printf( "%3d | targ(%2d ):    NES{%2d, %2d }  :  %4d    %s\n",cMV++, act.sigs[0], act.sigs[1], act.sigs[2], act.reward, 
               ( act.id_ord == 0u ? "{ j ; i } -> {  or(  j,  i ); and(  j,  i ) }" : "{ j ; i } -> { and(  j,  i );  or(  j,  i ) }" ) );
       break;
     case DecAct_t::ES_:
-      printf( "targ(%2d ):     ES{%2d, %2d }  :  %4d    %s\n", act.sigs[0], act.sigs[1], act.sigs[2], act.reward, 
+      printf( "%3d | targ(%2d ):     ES{%2d, %2d }  :  %4d    %s\n", cMV++, act.sigs[0], act.sigs[1], act.sigs[2], act.reward, 
               ( act.id_ord == 0u ? "{ j ; i } -> {  or(  j, ~i );  or( ~j,  i ) }" : "{ j ; i } -> { and(  j, ~i ); and( ~j,  i ) }" ) );
       break;
     case DecAct_t::SVS_:
       if( act.id_sym == 0u )
         {
-          printf( "targ(%2d ):    { SVS %2d }%2d' :  %4d    %s\n", act.sigs[0], act.sigs[2], act.sigs[1], act.reward, 
+          printf( "%3d | targ(%2d ):    { SVS %2d }%2d' :  %4d    %s\n", cMV++, act.sigs[0], act.sigs[2], act.sigs[1], act.reward, 
                   ( act.id_ord == 0u ? "{ j ; i } -> {  or(  j, ~i );        i      }" : "{ j ; i } -> { and(  j,  i );        i      }" ) );
         }
         else if( act.id_sym == 1u )
         {
-          printf( "targ(%2d ):    { SVS %2d }%2d  :  %4d    %s\n", act.sigs[0], act.sigs[2], act.sigs[1], act.reward, 
+          printf( "%3d | targ(%2d ):    { SVS %2d }%2d  :  %4d    %s\n", cMV++, act.sigs[0], act.sigs[2], act.sigs[1], act.reward, 
                   ( act.id_ord == 0u ? "{ j ; i } -> {  or( ~j, ~i );        i      }" : "{ j ; i } -> { and(  j, ~i );        i      }" ) );
         }
         else if( act.id_sym == 2u )
         {
-          printf( "targ(%2d ):    { SVS %2d }%2d  :  %4d    %s\n", act.sigs[0], act.sigs[1], act.sigs[2], act.reward, 
+          printf( "%3d | targ(%2d ):    { SVS %2d }%2d  :  %4d    %s\n", cMV++, act.sigs[0], act.sigs[1], act.sigs[2], act.reward, 
                   ( act.id_ord == 0u ? "{ j ; i } -> {        j     ;  or( ~j,  i ) }" : "{ j ; i } -> {        j     ; and(  j,  i ) }" ) );
         }
         else if( act.id_sym == 3u )
         {
-          printf( "targ(%2d ):    { SVS %2d }%2d  :  %4d    %s\n", act.sigs[0], act.sigs[1], act.sigs[2], act.reward, 
+          printf( "%3d | targ(%2d ):    { SVS %2d }%2d  :  %4d    %s\n", cMV++, act.sigs[0], act.sigs[1], act.sigs[2], act.reward, 
                   ( act.id_ord == 0u ? "{ j ; i } -> {        j     ;  or(  j,  i ) }" : "{ j ; i } -> {        j     ; and( ~j,  i ) }" ) );
         }
         break;
     case DecAct_t::MS_:
       if( act.id_ord == 0u )
       {
-        printf( "targ(%2d ):     MS{%2d, %2d }  :  %4d    %s\n", act.sigs[0], act.sigs[1], act.sigs[2], act.reward, 
+        printf( "%3d | targ(%2d ):     MS{%2d, %2d }  :  %4d    %s\n", cMV++, act.sigs[0], act.sigs[1], act.sigs[2], act.reward, 
                 "{ j ; i } -> {              ; xor( ~j,  i ) }" );
       }
       else if( act.id_ord == 1u )
       {
-        printf( "targ(%2d ):     MS{%2d, %2d }  :  %4d    %s\n", act.sigs[0], act.sigs[1], act.sigs[2], act.reward, 
+        printf( "%3d | targ(%2d ):     MS{%2d, %2d }  :  %4d    %s\n", cMV++, act.sigs[0], act.sigs[1], act.sigs[2], act.reward, 
                 "{ j ; i } -> { xor(  j,  i );               }" );
       }
       else if( act.id_ord == 2u )
       {
-        printf( "targ(%2d ):     MS{%2d, %2d }  :  %4d    %s\n", act.sigs[0], act.sigs[1], act.sigs[2], act.reward, 
+        printf( "%3d | targ(%2d ):     MS{%2d, %2d }  :  %4d    %s\n", cMV++, act.sigs[0], act.sigs[1], act.sigs[2], act.reward, 
                 "{ j ; i } -> { xor( ~j,  i );               }" );
       }
       else if( act.id_ord == 3u )
       {
-        printf( "targ(%2d ):     MS{%2d, %2d }  :  %4d    %s\n", act.sigs[0], act.sigs[1], act.sigs[2], act.reward, 
+        printf( "%3d | targ(%2d ):     MS{%2d, %2d }  :  %4d    %s\n", cMV++, act.sigs[0], act.sigs[1], act.sigs[2], act.reward, 
                 "{ j ; i } -> {              ; xor( ~j,  i ) }" );
       }        
       break;
     case DecAct_t::CSVS_: 
       if( act.id_sym == 0 )
       {
-          printf( "targ(%2d ):    CSVS{ %1d', %2d'}:  %4d    %s\n", act.sigs[0], act.sigs[1], act.sigs[2], act.reward, 
+          printf( "%3d | targ(%2d ):    CSVS{ %1d', %2d'}:  %4d    %s\n", cMV++, act.sigs[0], act.sigs[1], act.sigs[2], act.reward, 
                   ( act.id_ord == 0u ? "{ j ; i } -> {              ; and(  j,  i ) }" : "{ j ; i } -> { and( ~j,  i ) ;              }" ) );
       }
       else if( act.id_sym == 1 )
       {
-         printf( "targ(%2d ):    CSVS{ %1d', %2d }:  %4d    %s\n", act.sigs[0], act.sigs[1], act.sigs[2], act.reward, 
+         printf( "%3d | targ(%2d ):    CSVS{ %1d', %2d }:  %4d    %s\n", cMV++, act.sigs[0], act.sigs[1], act.sigs[2], act.reward, 
                   ( act.id_ord == 0u ? "{ j ; i } -> {              ;  or( ~j,  i ) }" : "{ j ; i } -> { and(  j, ~i ) ;              }" ) );
       }
       else if( act.id_sym == 2 )
       {
-        printf( "targ(%2d ):    CSVS{ %2d, %1d' }:  %4d    %s\n", act.sigs[0], act.sigs[1], act.sigs[2], act.reward, 
+        printf( "%3d | targ(%2d ):    CSVS{ %2d, %1d' }:  %4d    %s\n", cMV++, act.sigs[0], act.sigs[1], act.sigs[2], act.reward, 
                   ( act.id_ord == 0u ? "{ j ; i } -> {  or( j, ~i ) ;              }" : "{ j ; i } -> {              ; and( ~j,  i ) }" ) );
       }
       else if( act.id_sym == 3 )
       {
-        printf( "targ(%2d ):    CSVS{ %2d, %2d }:  %4d    %s\n", act.sigs[0], act.sigs[1], act.sigs[2], act.reward, 
+        printf( "%3d | targ(%2d ):    CSVS{ %2d, %2d }:  %4d    %s\n", cMV++, act.sigs[0], act.sigs[1], act.sigs[2], act.reward, 
                   ( act.id_ord == 0u ? "{ j ; i } -> {  or( j,  i ) ;              }" : "{ j ; i } -> {              ;  or(  j,  i ) }" ) );
       }
       break;
@@ -586,6 +621,8 @@ void DecAnalyzer<TT, Ntk>::print_actions( std::vector<action_t<TT>> actions )
       break;
     }
   }
+  printf("==========================================================================================\n");
+
 }
 
 #pragma endregion visualize
