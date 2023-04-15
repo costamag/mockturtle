@@ -1,5 +1,6 @@
 #include <kitty/constructors.hpp>
 #include <mockturtle/algorithms/decompose/DecSolver.hpp>
+#include <mockturtle/algorithms/simulation.hpp>
 
 using namespace mockturtle;
 
@@ -50,7 +51,7 @@ int main()
   {
     F = propose_game();
     printf(ANSI_COLOR_YELLOW " THE FUNCTION IS " ANSI_COLOR_RESET "" );
-    kitty::print_binary( F ); printf("\n");
+    //kitty::print_binary( F ); printf("\n");
   }
   else if( selection == 'N' || selection == 'n' )
   {
@@ -64,6 +65,8 @@ int main()
 
   printf(ANSI_COLOR_YELLOW " GAME TIME! " ANSI_COLOR_RESET "\n" );
   game_on( &F );
+
+
 
 
   return 0;
@@ -195,14 +198,60 @@ kitty::dynamic_truth_table userdef_game()
 void game_on( kitty::dynamic_truth_table * pF )
 {
   using TT  = kitty::dynamic_truth_table;
-  using Ntk = aig_network;
+  using Ntk = xag_network;
 
   typedef DecSolver<TT, Ntk> solver_t;
-  Ntk aig;
+  Ntk xag;
   
   kitty::dynamic_truth_table mask = (*pF).construct();
   mask = mask | ~mask;
   solver_t solver( {*pF}, {mask} );
   solver.PrintSpecs();
-  solver.man_sym_solve();
+
+  printf(ANSI_COLOR_YELLOW " 0 SYM MANUAL" ANSI_COLOR_RESET "\n" );
+  printf(ANSI_COLOR_YELLOW " 1 DEC MANUAL" ANSI_COLOR_RESET "\n" );
+  printf(ANSI_COLOR_YELLOW " 2 SYM AUTOMATIC" ANSI_COLOR_RESET "\n" );
+  printf(ANSI_COLOR_YELLOW " 3 DEC AUTOMATIC" ANSI_COLOR_RESET "\n" );
+  printf(ANSI_COLOR_YELLOW " 4 DEC AUTOMATIC WEAK" ANSI_COLOR_RESET "\n" );
+  printf(ANSI_COLOR_YELLOW " CHOOSE YOUR METHOD: " ANSI_COLOR_RESET "" );
+  int MET;
+  std::cin >> MET;
+  if( MET == 0 )
+    xag = solver.man_sym_solve();
+  else if( MET == 1 )
+    xag = solver.man_rdec_solve();
+  else if( MET == 2 )
+  {
+    printf(ANSI_COLOR_YELLOW " NUMBER OF ITERATIONS: " ANSI_COLOR_RESET "" );
+    std::cin >> MET;
+    xag = solver.aut_sym_solve( MET );
+  }
+  else if( MET == 3 )
+  {
+    printf(ANSI_COLOR_YELLOW " NUMBER OF ITERATIONS: " ANSI_COLOR_RESET "" );
+    std::cin >> MET;
+    xag = solver.aut_rdec_solve( MET );
+  }
+  else if( MET == 4 )
+  {
+    printf(ANSI_COLOR_YELLOW " NUMBER OF ITERATIONS: " ANSI_COLOR_RESET "" );
+    std::cin >> MET;
+    xag = solver.aut_symGT_solve( MET );
+  }
+  else
+  {
+    printf(ANSI_COLOR_RED " CHOICE NOT MATCHING ANY METHOD " ANSI_COLOR_RESET "\n" );   
+    assert(0);
+  }
+
+  default_simulator<kitty::dynamic_truth_table> sim( (*pF).num_vars() );
+  const auto tt = simulate<kitty::dynamic_truth_table>( xag, sim )[0];
+  //printf("\n");
+  //kitty::print_binary( tt );
+  //std::cout << std::endl;
+  //kitty::print_binary( *pF );
+  //std::cout << std::endl;
+
+  std::cout << ( kitty::equal( tt, *pF ) ? " equal " : " different " ) << std::endl;
+
 }

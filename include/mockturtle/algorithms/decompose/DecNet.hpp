@@ -36,6 +36,9 @@
 #include "DecSims.hpp"
 #include "DecNodes.hpp"
 #include "../../networks/detail/foreach.hpp"
+#include "../../networks/aig.hpp"
+#include "../../networks/xag.hpp"
+#include <kitty/print.hpp>
 
 namespace mockturtle
 {
@@ -61,6 +64,8 @@ private:
   std::vector<signal_t> vTargs;
   int                   nIns;
   int                   nOut;
+  TT                    FuncOSY;
+  TT                    MaskOSY;
 
 public:
   DecNet();
@@ -88,6 +93,8 @@ public:
   signal_t create_buf( signal_t );
   void     init( const std::vector<TT>&, const std::vector<TT>& );
   void change_sim_info( signal_t, TT, TT );
+  void print_net();
+  void print_net_rec(signal_t);
 
 public:
   /* iterate */
@@ -111,6 +118,10 @@ public:
   DecFunc_t getFnType( signal_t );
   std::vector<signal_t> getTargets();
   std::vector<signal_t> getPIs();
+
+  void setOSY( TT, TT );
+  TT   getFuncOSY();
+  TT   getMaskOSY();
 
   /* properties */
 public:
@@ -325,6 +336,26 @@ signal_t DecNet<TT, Ntk>::create_xnor( signal_t a, signal_t b )
 template<class TT, class Ntk> std::vector<signal_t> DecNet<TT, Ntk>::getTargets(){ return vTargs; }
 template<class TT, class Ntk> std::vector<signal_t> DecNet<TT, Ntk>::getPIs(){ return vPIs; }
 
+
+template<class TT, class Ntk>
+void DecNet<TT, Ntk>::setOSY( TT func, TT mask )
+{
+  FuncOSY = func;
+  MaskOSY = mask;
+}
+
+template<class TT, class Ntk>
+TT DecNet<TT, Ntk>::getFuncOSY( )
+{
+  return FuncOSY;
+}
+
+template<class TT, class Ntk>
+TT DecNet<TT, Ntk>::getMaskOSY( )
+{
+  return MaskOSY;
+}
+
 template<class TT, class Ntk>
 void DecNet<TT, Ntk>::init( const std::vector<TT>& vTruths, const std::vector<TT>& vMasks )
 {
@@ -358,5 +389,89 @@ void DecNet<TT, Ntk>::change_sim_info( signal_t sig, TT func, TT mask )
 
 
 #pragma endregion modify
+
+#pragma region print
+template<class TT, class Ntk>
+void DecNet<TT, Ntk>::print_net_rec( signal_t sig )
+{
+        foreach_fanin( sig, [&]( node_t x ) 
+        {   
+            signal_t child = NodeToSig(x);
+            print_net_rec( child );
+        } );
+
+        switch ( getFnType( sig ) )
+        {
+            case DecFunc_t::NOT_:
+                printf("%d = NOT ", sig.node );
+                break;
+            case DecFunc_t::BUF_:
+                printf("%d = BUF", sig.node );
+                break;
+            case DecFunc_t::AND_:
+                printf("%d = AND ", sig.node );
+                break;
+            case DecFunc_t::NAND_:
+                printf("%d = NAND ", sig.node );
+                break;
+            case DecFunc_t::OR_:
+                printf("%d = OR ", sig.node );
+                break;
+            case DecFunc_t::NOR_:
+                printf("%d = NOR ", sig.node );
+                break;
+            case DecFunc_t::XOR_:
+                printf("%d = XOR ", sig.node );
+                break;
+            case DecFunc_t::XNOR_:
+                printf("%d = XNOR ", sig.node );
+                break;
+            case DecFunc_t::LT_:
+                printf("%d = LT ", sig.node );
+                break;
+            case DecFunc_t::GE_:
+                printf("%d = GE ", sig.node );
+                break;
+            case DecFunc_t::LE_:
+                printf("%d = LE ", sig.node );
+                break;
+            case DecFunc_t::GT_:
+                printf("%d = GT ", sig.node );
+                break;
+            default:
+                break;
+        }
+        
+        foreach_fanin( sig, [&]( node_t x ) 
+        {   
+          printf(" %d ", x);
+        } );
+        printf("\n");
+
+}
+
+template<class TT, class Ntk>
+void DecNet<TT, Ntk>::print_net()
+{
+  printf("INPUTS\n");
+    foreach_pi( [&]( const auto& x, auto index ) 
+    {    
+      printf("%d: id %d ", index, x.node );
+      kitty::print_binary( *getFuncP(x) );
+      printf("\n");
+    } );
+    foreach_po( [&]( const auto& x, auto index ) 
+    {   
+        print_net_rec( x );
+    } );
+    printf("OUTPUTS\n");
+    foreach_po( [&]( const auto& x, auto index ) 
+    {   
+      printf("%d: id %d ", index, x.node );
+      kitty::print_binary( *getFuncP(x) );
+      printf("\n");
+    } );
+}
+#pragma endregion print
 
 } // namespace mockturtle

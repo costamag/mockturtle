@@ -37,6 +37,9 @@
 #include "DecNet.hpp"
 #include "DecAnalyzer.hpp"
 #include "DecChsToGraph.hpp"
+#include <mockturtle/algorithms/simulation.hpp>
+#include <random>
+#include <ctime>
 
 #define ANSI_COLOR_RED     "\x1b[31m"
 #define ANSI_COLOR_GREEN   "\x1b[32m"
@@ -56,17 +59,40 @@ private:
     std::vector<TT>  vTruths;
     std::vector<TT>  vMasks;
     /* solver view */
-    std::vector<signal_t> X; // ( remapped ) inputs signals |X| = n
-    std::vector<int>      V;
+    // using only the inputs
+    std::vector<signal_t>               X ; // ( remapped ) inputs signals |X| = n
+    std::vector<std::vector<int>>       vS;
+    // using divisors
+    std::vector<std::vector<signal_t>>  vD;
+
     std::vector<signal_t> Y; // targets signals             |Y| = m
+    TT                    remainder;
+    TT                    mask;
+
+    std::random_device rand_dev;
 
 public:
     DecSolver( const std::vector<TT>&, const std::vector<TT>& );
     ~DecSolver();
     /* solve */
     Ntk man_sym_solve();
+    Ntk aut_sym_solve(int);
+    Ntk aut_symGT_solve(int);
+    Ntk man_rdec_solve();
+    Ntk aut_rdec_solve(int);
+
+    action_t<TT> select_uniformly( std::vector<action_t<TT>> * );
+
+    void remap_nes( DecNet<TT, Ntk> *, action_t<TT> );
+    void remap_es( DecNet<TT, Ntk> *, action_t<TT> );
+    void remap_svs( DecNet<TT, Ntk> *, action_t<TT> );
+    void remap_csvs( DecNet<TT, Ntk> *, action_t<TT> );
+    void remap_ms( DecNet<TT, Ntk> *, action_t<TT> );
     void remap( DecNet<TT, Ntk> *, action_t<TT> );
-    void close( DecNet<TT, Ntk> *, std::vector<action_t<TT>> );
+    void decompose( DecNet<TT, Ntk> *, action_t<TT> );
+    void close_div( DecNet<TT, Ntk> *, std::vector<action_t<TT>> );
+    void close_tar( DecNet<TT, Ntk> *, std::vector<action_t<TT>> );
+    void so_terminate( DecNet<TT, Ntk> *, int );
     /* visualize */
     void PrintSpecs();
     void show_state( DecNet<TT, Ntk> *, std::vector<signal_t> * );
@@ -98,23 +124,36 @@ Ntk DecSolver<TT, Ntk>::man_sym_solve()
     /* init */
     DecNet<TT, Ntk>  net;
     net.init( vTruths, vMasks );
-    X = net.getPIs();
-    for( int i{0}; i < X.size(); ++i )  V.push_back( i );
+    /* info on the outputs */
     Y = net.getTargets();
+    assert( Y.size()==1 );
+    net.setOSY( *net.getFuncP(Y[0]), *net.getMaskP(Y[0]) );
+    /* info on the inputs */
+    X = net.getPIs();
+    std::vector<int> S;
+    for( int i{0}; i < X.size(); ++i )  
+      S.push_back( i );
+    vD={};
+    vS = {};
+    for( int iTrg{0}; iTrg<Y.size(); ++iTrg )
+    {
+      vD.push_back( X );
+      vS.push_back( S );
+    }
 
     /* solve */
-    while( Y.size() > 0 )
+    while( vS.size() > 1 )
     {
       show_state( &net, &Y );
 
-      DecAnalyzer<TT, Ntk> checker( &net, &X, &Y, &V );
+      DecAnalyzer<TT, Ntk> checker( &net, &X, &Y, &vS, &vD );
 
-      checker.check0();
-      std::vector<action_t<TT>> CS = checker.get_closure();
-      if( CS.size() > 0 )
-        close( &net, CS );
-      printf("|CS|=%d\n", CS.size());
-      if( Y.size() > 0 )
+      //checker.check_divclosure();
+      //std::vector<action_t<TT>> CS = checker.get_divclosure();
+      //if( CS.size() > 0 )
+      //  close_div( &net, CS );
+      //printf("|CS|=%d\n", CS.size());
+      if( vS.size() > 1 )
       {
         checker.check2();
         std::vector<action_t<TT>> RP = checker.get_remap();
@@ -126,22 +165,433 @@ Ntk DecSolver<TT, Ntk>::man_sym_solve()
         remap( &net, RP[MV] );
       }
     }
+    so_terminate( &net, 0 );
+
+    net.print_net();
     /* convert result */
     DecChsToGraph<TT, Ntk> conv( net );  
     ntk = conv.convert();
+    printf("num gates = %d", ntk.num_gates());
     //if( ntk.num_gates() < nBest )
     //    ntkBest = ntk;
   }
   return ntk;
 }
 
+template<class TT, class Ntk>
+Ntk DecSolver<TT, Ntk>::man_rdec_solve()
+{
+  Ntk ntk;
+  Ntk ntkBest;
+  int nBest = 100000;
+  for( int it{0}; it<10; ++it )
+  {
+    /* init */
+    /* init */
+    DecNet<TT, Ntk>  net;
+    net.init( vTruths, vMasks );
+    /* info on the outputs */
+    Y = net.getTargets();
+    /* info on the inputs */
+    X = net.getPIs();
+    std::vector<int> S;
+    for( int i{0}; i < X.size(); ++i )  
+      S.push_back( i );
+    vS = {};
+    vD={};
+    for( int iTrg{0}; iTrg<Y.size(); ++iTrg )
+    {
+      vD.push_back( X );
+      vS.push_back( S );
+    }
+
+    /* solve */
+    while( Y.size() > 0 )
+    {
+      DecAnalyzer<TT, Ntk> checker( &net, &X, &Y, &vS, &vD );
+
+      checker.check_tarclosure();
+      std::vector<action_t<TT>> CT = checker.get_trgclosure();
+      if( CT.size() > 0 )
+        close_tar( &net, CT );
+      printf("|close tar|=%d\n", CT.size());      
+
+      checker.check_divclosure();
+      std::vector<action_t<TT>> CD = checker.get_divclosure();
+      if( CD.size() > 0 )
+        close_div( &net, CD );
+      printf("|close div|=%d\n", CD.size());
+      if( Y.size() > 0 )
+      {
+        checker.check_2stepsdec();
+        std::vector<action_t<TT>> SD = checker.get_2stepsdec();
+      //  checker.check2();
+      //  std::vector<action_t<TT>> RP = checker.get_remap();
+        checker.print_actions( SD );
+        int iEnd = SD.size()-1;
+        printf( "Choose the move[%2d-%3d]:", 0, iEnd  );
+        int MV;
+        std::cin >> MV;
+        decompose( &net, SD[MV] );
+      }
+    }
+    //net.print_net();
+
+    /* convert result */
+    DecChsToGraph<TT, Ntk> conv( net );  
+    ntk = conv.convert();
+    printf("**********************************\n");
+    printf("num gates =%d\n", ntk.num_gates());
+    printf("**********************************\n");
+    //if( ntk.num_gates() < nBest )
+    //    ntkBest = ntk;
+  }
+  return ntk;
+}
+
+template<class TT, class Ntk>
+action_t<TT> DecSolver<TT, Ntk>::select_uniformly( std::vector<action_t<TT>> * pvA )
+{
+  std::mt19937       generator(rand_dev());
+  std::uniform_int_distribution<int>  distr(0, (*pvA).size()-1);  
+  int MOVE = distr(generator);
+  printf( "MOVE %d\n", MOVE );
+  return (*pvA)[MOVE];
+}
+
+template<class TT, class Ntk>
+Ntk DecSolver<TT, Ntk>::aut_sym_solve(int nIters)
+{
+
+  std::mt19937       generator(rand_dev());
+
+
+  Ntk ntk;
+  Ntk ntkBest;
+  int nBest = 100000;
+  for( int it{0}; it<nIters; ++it )
+  {
+    std::clock_t start;
+    double duration;
+    start = std::clock();
+    bool CEC;
+    
+    /* init */
+    DecNet<TT, Ntk>  net;
+    net.init( vTruths, vMasks );
+    /* info on the outputs */
+    Y = net.getTargets();
+    
+    assert( Y.size() == 1 );
+    net.setOSY( *net.getFuncP(Y[0]), *net.getMaskP(Y[0]) );
+
+    /* info on the inputs */
+    X = net.getPIs();
+    std::vector<int> S;
+    for( int i{0}; i < X.size(); ++i )  
+      S.push_back( i );
+    vS = {};
+    vD = {};
+    for( int iTrg{0}; iTrg<Y.size(); ++iTrg )
+    {
+      vD.push_back( X );
+      vS.push_back( S );
+    }
+
+    int best_reward{0};
+    /* solve */
+    while( vS[0].size() > 1 )
+    {
+//printf("#  Ehibeg %d\n", vS[0].size());
+      DecAnalyzer<TT, Ntk> checker( &net, &X, &Y, &vS, &vD );
+      /* check for divisors synthesizing the function */
+      //checker.check_divclosure();
+      //std::vector<action_t<TT>> CS = checker.get_divclosure();
+      //if( CS.size() > 0 )
+      //  close_div( &net, CS );
+
+      /* if synthesis is not finished */
+
+      if( vS[0].size() > 1 )
+      {
+//printf("#  here \n");
+
+        checker.check2();
+//printf("# checked \n");
+
+        std::vector<action_t<TT>> RP = checker.get_remap();
+//printf("# about to print actions %d\n", RP.size());
+
+        /* select uniformly at random among the ones with maximum |CDC| */
+//checker.print_actions( RP );
+
+        best_reward=0;
+        std::vector<int> moves; 
+        for( int iRP{0}; iRP<RP.size(); ++iRP )
+        {
+          if( RP[iRP].reward > best_reward )
+          {
+            moves = {iRP};
+            best_reward = RP[iRP].reward;
+          }
+          else if( RP[iRP].reward == best_reward )
+            moves.push_back( iRP );
+        }
+        std::uniform_int_distribution<int>  distr(0, moves.size()-1);  
+        int MOVE = moves[distr(generator)];
+//        printf("MOVE %d\n", MOVE );
+        remap( &net, RP[MOVE] );
+//show_state( &net, &Y );
+
+      }
+//printf("#  Ehilast\n");
+    }
+    so_terminate( &net, 0 );
+
+    /* convert result */
+    DecChsToGraph<TT, Ntk> conv( net ); 
+ 
+    ntk = conv.convert();
+//net.print_net();
+    Y = net.getTargets();
+    default_simulator<kitty::dynamic_truth_table> sim( (*net.getFuncP(Y[0])).num_vars() );
+    const auto tt = simulate<kitty::dynamic_truth_table>( ntk, sim )[0];
+    printf("**********************************\n");
+    printf("num gates =%d\n", ntk.num_gates());
+    for( int iTrg{0}; iTrg<Y.size(); ++iTrg )
+    {
+      TT F = *net.getFuncP( Y[iTrg] );
+      
+//printf("\n");
+//kitty::print_binary(F);
+///printf("\n");
+//kitty::print_binary(tt);
+//printf("\n");
+      CEC = kitty::equal( tt, F );
+
+      if( kitty::equal( tt, F ) )
+        printf( ANSI_COLOR_GREEN " CEC SUCCESFUL " ANSI_COLOR_RESET "\n" );
+      else
+      {
+        printf( ANSI_COLOR_RED " CEC FAILED " ANSI_COLOR_RESET "\n" );
+      }
+    }
+
+    duration = ( std::clock() - start ) / (double) CLOCKS_PER_SEC;
+    printf("%5.5f\n", duration );
+    printf("**********************************\n");
+    if( (ntk.num_gates() < nBest) && CEC )
+        ntkBest = ntk;
+  }
+  return ntkBest;
+}
+
+template<class TT, class Ntk>
+Ntk DecSolver<TT, Ntk>::aut_symGT_solve(int nIters)
+{
+
+  std::mt19937       generator(rand_dev());
+
+
+  Ntk ntk;
+  Ntk ntkBest;
+  int nBest = 100000;
+  for( int it{0}; it<nIters; ++it )
+  {
+    std::clock_t start;
+    double duration;
+    start = std::clock();
+    bool CEC;
+    
+    /* init */
+    DecNet<TT, Ntk>  net;
+    net.init( vTruths, vMasks );
+    /* info on the outputs */
+    Y = net.getTargets();
+    assert( Y.size() == 1 );
+    net.setOSY( *net.getFuncP(Y[0]), *net.getMaskP(Y[0]) );
+
+    /* info on the inputs */
+    X = net.getPIs();
+    std::vector<int> S;
+    for( int i{0}; i < X.size(); ++i )  
+      S.push_back( i );
+    vS = {};
+    vD = {};
+    for( int iTrg{0}; iTrg<Y.size(); ++iTrg )
+    {
+      vD.push_back( X );
+      vS.push_back( S );
+    }
+
+    int best_reward{0};
+    /* solve */
+    while( vS[0].size() > 1 )
+    {
+      DecAnalyzer<TT, Ntk> checker( &net, &X, &Y, &vS, &vD );
+      /* check for divisors synthesizing the function */
+      //checker.check_divclosure();
+      //std::vector<action_t<TT>> CS = checker.get_divclosure();
+      //if( CS.size() > 0 )
+      //  close_div( &net, CS );
+
+      /* if synthesis is not finished */
+      if( vS[0].size() > 1 )
+      {
+        checker.check2();
+        std::vector<action_t<TT>> RP = checker.get_remap();
+        /* select uniformly at random among the ones with maximum |CDC| */
+        //checker.print_actions( RP );
+
+        best_reward=0;
+        std::vector<int> moves; 
+        std::vector<int> rewards; 
+        for( int iRP{0}; iRP<RP.size(); ++iRP )
+        {
+          if( RP[iRP].reward > best_reward )
+          {
+            moves.push_back( iRP );
+            rewards.push_back( RP[iRP].reward );
+          }
+        }
+        std::uniform_int_distribution<int>  distr(0, moves.size()-1);  
+        int MOVE = moves[distr(generator)];
+        best_reward = rewards[MOVE];
+        //printf("MOVE %d\n", MOVE );
+        remap( &net, RP[MOVE] );
+      }
+    }
+    so_terminate( &net, 0 );
+    /* convert result */
+    DecChsToGraph<TT, Ntk> conv( net ); 
+ 
+    ntk = conv.convert();
+    //net.print_net();
+    Y = net.getTargets();
+    default_simulator<kitty::dynamic_truth_table> sim( (*net.getFuncP(Y[0])).num_vars() );
+    const auto tt = simulate<kitty::dynamic_truth_table>( ntk, sim )[0];
+    printf("**********************************\n");
+    printf("num gates =%d\n", ntk.num_gates());
+    for( int iTrg{0}; iTrg<Y.size(); ++iTrg )
+    {
+      TT F = *net.getFuncP( Y[iTrg] );
+      
+      //printf("\n");
+     //kitty::print_binary(F);
+      //printf("\n");
+      //kitty::print_binary(tt);
+      //printf("\n");
+      CEC = kitty::equal( tt, F );
+
+      if( kitty::equal( tt, F ) )
+        printf( ANSI_COLOR_GREEN " CEC SUCCESFUL " ANSI_COLOR_RESET "\n" );
+      else
+      {
+        printf( ANSI_COLOR_RED " CEC FAILED " ANSI_COLOR_RESET "\n" );
+      }
+    }
+
+    duration = ( std::clock() - start ) / (double) CLOCKS_PER_SEC;
+    printf("%5.5f\n", duration );
+    printf("**********************************\n");
+    if( (ntk.num_gates() < nBest) && CEC )
+        ntkBest = ntk;
+  }
+  return ntkBest;
+}
+
+template<class TT, class Ntk>
+Ntk DecSolver<TT, Ntk>::aut_rdec_solve(int nIters)
+{
+  Ntk ntk;
+  Ntk ntkBest;
+  int nBest = 100000;
+  for( int it{0}; it<nIters; ++it )
+  {
+    std::clock_t start;
+    double duration;
+    start = std::clock();
+    bool CEC;
+
+    /* init */
+    DecNet<TT, Ntk>  net;
+    net.init( vTruths, vMasks );
+    /* info on the outputs */
+    Y = net.getTargets();
+    /* info on the inputs */
+    X = net.getPIs();
+    std::vector<int> S;
+    for( int i{0}; i < X.size(); ++i )  
+      S.push_back( i );
+    vS = {};
+    vD={};
+    for( int iTrg{0}; iTrg<Y.size(); ++iTrg )
+    {
+      vD.push_back( X );
+      vS.push_back( S );
+    }
+
+    /* solve */
+    while( Y.size() > 0 )
+    {
+      DecAnalyzer<TT, Ntk> checker( &net, &X, &Y, &vS, &vD );
+
+      checker.check_tarclosure();
+      std::vector<action_t<TT>> CT = checker.get_trgclosure();
+      if( CT.size() > 0 )
+        close_tar( &net, CT );
+
+      checker.check_divclosure();
+      std::vector<action_t<TT>> CD = checker.get_divclosure();
+      if( CD.size() > 0 )
+        close_div( &net, CD );
+
+      if( Y.size() > 0 )
+      {
+        checker.check_2stepsdec();
+        std::vector<action_t<TT>> SD = checker.get_2stepsdec();
+        action_t<TT> act = select_uniformly( &SD );        
+        decompose( &net, act );
+      }
+    }
+    //net.print_net();
+
+    Y = net.getTargets();
+    /* convert result */
+    DecChsToGraph<TT, Ntk> conv( net );  
+    ntk = conv.convert();
+    default_simulator<kitty::dynamic_truth_table> sim( (*net.getFuncP(Y[0])).num_vars() );
+    const auto tt = simulate<kitty::dynamic_truth_table>( ntk, sim )[0];
+    printf("**********************************\n");
+    printf("num gates =%d\n", ntk.num_gates());
+    for( int iTrg{0}; iTrg<Y.size(); ++iTrg )
+    {
+      TT F = *net.getFuncP( Y[iTrg] );
+      CEC = kitty::equal(tt,F);
+      if( kitty::equal( tt, F ) )
+        printf( ANSI_COLOR_GREEN " CEC SUCCESFUL " ANSI_COLOR_RESET "\n"  );
+      else
+      {
+        printf( ANSI_COLOR_RED " CEC FAILED " ANSI_COLOR_RESET "\n" );
+        assert(0);
+      }
+    }
+    duration = ( std::clock() - start ) / (double) CLOCKS_PER_SEC;
+    printf("%5.2f\n", duration );
+    printf("**********************************\n");
+    if( ntk.num_gates() < nBest && CEC )
+        ntkBest = ntk;
+  }
+  return ntkBest;
+}
+
+
 #pragma endregion solve
 
 #pragma region closure
 template<class TT, class Ntk>
-void DecSolver<TT, Ntk>::close( DecNet<TT, Ntk> * pNet, std::vector<action_t<TT>> actions )
+void DecSolver<TT, Ntk>::close_div( DecNet<TT, Ntk> * pNet, std::vector<action_t<TT>> actions )
 {
-  printf("i\n");
   std::vector<int> rm_targs;
   for( int i{0}; i < Y.size(); ++i )
     rm_targs.push_back(0);
@@ -150,202 +600,382 @@ void DecSolver<TT, Ntk>::close( DecNet<TT, Ntk> * pNet, std::vector<action_t<TT>
   {
     if( rm_targs[act.sigs[0]] == 0 )
     {
+      int iTrg = act.sigs[0];
+      int iS   = act.sigs[1];
+      int iDiv = vS[iTrg][iS];
+
       if( act.type == DecAct_t::BUF_ )
-        pNet->close_target( Y[act.sigs[0]], X[act.sigs[1]], 0 );
+        pNet->close_target( Y[iTrg], vD[iTrg][iDiv], 0 );
       else if( act.type == DecAct_t::INV_ )
-        pNet->close_target( Y[act.sigs[0]], X[act.sigs[1]], 1 );
-      printf("a\n");
-        rm_targs[act.sigs[0]] = 1;
+        pNet->close_target( Y[iTrg], vD[iTrg][iDiv], 1 );
+      rm_targs[act.sigs[0]] = 1;
     }
   }
   for( int i{Y.size()-1}; i >= 0; --i )
   {
     if( rm_targs[i] == 1 )
-      Y.erase( Y.begin() + i );  
+    {
+      Y.erase( Y.begin() + i ); 
+      vS.erase( vS.begin() + i );
+    } 
   }
-  printf("e\n");
-  
+}
+
+template<class TT, class Ntk>
+void DecSolver<TT, Ntk>::so_terminate( DecNet<TT, Ntk> * pNet, int iTrg )
+{
+  assert( vS.size() > 0 );
+  assert( vS[0].size() == 1 );
+
+  int iDiv = vS[iTrg][0];
+  TT DT = * pNet->getFuncP( X[iDiv] );
+  TT DM = * pNet->getMaskP( X[iDiv] );
+//  TT FT = * pNet->getFuncP( Y[iTrg] );
+//  TT FM = * pNet->getMaskP( Y[iTrg] );
+  TT FT = pNet->getFuncOSY( );
+  TT FM = pNet->getMaskOSY( );
+
+
+  if( kitty::equal( DT & FM, FT & FM ) )
+    pNet->close_target( Y[iTrg], vD[iTrg][iDiv], 0 );
+  else if( kitty::equal( ~DT & FM, FT & FM ) )
+    pNet->close_target( Y[iTrg], vD[iTrg][iDiv], 1 );
+  else
+  {
+    printf("BAD TERMINATION\n");
+    assert(0);
+  }
+
+}
+
+template<class TT, class Ntk>
+void DecSolver<TT, Ntk>::close_tar( DecNet<TT, Ntk> * pNet, std::vector<action_t<TT>> actions )
+{
+  std::vector<int> rm_targs;
+  for( int i{0}; i < Y.size(); ++i )
+    rm_targs.push_back(0);
+
+  for( auto act : actions )
+  {
+    if( rm_targs[act.sigs[1]] == 0 )
+    {
+      int iTrg1 = act.sigs[0];
+      int iTrg2 = act.sigs[1];
+
+      if( act.type == DecAct_t::BUF_ )
+        pNet->close_target( Y[iTrg2], Y[iTrg1], 0 );
+      else if( act.type == DecAct_t::INV_ )
+        pNet->close_target( Y[iTrg2], Y[iTrg1], 1 );
+      rm_targs[iTrg2] = 1;
+      rm_targs[iTrg1] = 2;
+      
+    }
+  }
+  for( int i{Y.size()-1}; i >= 0; --i )
+  {
+    if( rm_targs[i] == 1 )
+    {
+      Y.erase( Y.begin() + i );  
+      vS.erase( vS.begin() + i );  
+    }
+  }
 }
 #pragma endregion closure
 
 #pragma region remap
+template <class TT, class Ntk>
+void DecSolver<TT, Ntk>::remap_nes(  DecNet<TT, Ntk> * pNet, action_t<TT> act  )
+{
+  int iTrg    = act.sigs[0];
+  int i       = act.sigs[1];
+  int j       = act.sigs[2];
+  int iS      = vS[iTrg][i];  
+  int jS      = vS[iTrg][j];
+  if( act.id_ord == 0 )     
+  { 
+    signal_t ri = pNet->create_and( vD[iTrg][jS], vD[iTrg][iS] );
+    signal_t rj = pNet->create_or ( vD[iTrg][jS], vD[iTrg][iS] );  
+    vD[iTrg][jS] = rj;
+    vD[iTrg][iS] = ri;
+  }
+  else if( act.id_ord == 1 )
+  { 
+    signal_t ri = pNet->create_or ( vD[iTrg][jS], vD[iTrg][iS] ); 
+    signal_t rj = pNet->create_and( vD[iTrg][jS], vD[iTrg][iS] );  
+    vD[iTrg][jS] = rj;
+    vD[iTrg][iS] = ri;
+  }
+  else  
+    std::cerr << "id_ord not valid_ord" << std::endl;
+}
+
+template <class TT, class Ntk>
+void DecSolver<TT, Ntk>::remap_es(  DecNet<TT, Ntk> * pNet, action_t<TT> act  )
+{
+  int iTrg    = act.sigs[0];
+  int i       = act.sigs[1];
+  int j       = act.sigs[2];
+  int iS      = vS[iTrg][i];  
+  int jS      = vS[iTrg][j];
+  if( act.id_ord == 0 )     
+  { 
+    signal_t ri = pNet->create_le( vD[iTrg][jS], vD[iTrg][iS] );
+    signal_t rj = pNet->create_le( vD[iTrg][iS], vD[iTrg][jS] );   
+    vD[iTrg][jS] = rj;
+    vD[iTrg][iS] = ri;
+  }
+  else if( act.id_ord == 1 )
+  { 
+    signal_t ri = pNet->create_lt( vD[iTrg][jS], vD[iTrg][iS] );  
+    signal_t rj = pNet->create_lt( vD[iTrg][iS], vD[iTrg][jS] );  
+
+    vD[iTrg][jS] = rj;
+    vD[iTrg][iS] = ri;
+  }
+  else  
+    std::cerr << "id_ord not valid_ord" << std::endl;
+}
+
+template<class TT, class Ntk>
+void DecSolver<TT, Ntk>::remap_svs(  DecNet<TT, Ntk> * pNet, action_t<TT> act  )
+{
+  int iTrg    = act.sigs[0];
+  int i       = act.sigs[1];
+  int j       = act.sigs[2];
+  int iS      = vS[iTrg][i];  
+  int jS      = vS[iTrg][j];
+  if( act.id_sym == 0 ) // SVS0X_ { SVS Xj } Xi'
+  {
+    if( act.id_ord == 0 )
+      vD[iTrg][jS] = pNet->create_le( vD[iTrg][iS], vD[iTrg][jS] );  // ( Xi & Xj' )'
+    else
+      vD[iTrg][jS] = pNet->create_and( vD[iTrg][jS], vD[iTrg][iS] ); // ( Xi & Xj )
+  }
+  else if( act.id_sym == 1 ) // SVS1X  { SVS Xj } Xi
+  {
+    if( act.id_ord == 0 )
+      vD[iTrg][jS] = pNet->create_or( vD[iTrg][jS], vD[iTrg][iS] ); 
+    else
+      vD[iTrg][jS] = pNet->create_lt( vD[iTrg][iS], vD[iTrg][jS] );
+  }
+  else if( act.id_sym == 2 ) // SVSX0_  { SVS Xi } Xj'
+  {
+    if( act.id_ord == 0 )
+      vD[iTrg][iS] = pNet->create_le( vD[iTrg][jS], vD[iTrg][iS] );
+    else
+      vD[iTrg][iS] = pNet->create_and( vD[iTrg][jS], vD[iTrg][iS] );
+  }
+  else if( act.id_sym == 3 ) //SVSX1_  { SVS Xi } Xj
+  {
+    if( act.id_ord == 0 )
+      vD[iTrg][iS] = pNet->create_or( vD[iTrg][jS], vD[iTrg][iS] );
+    else
+      vD[iTrg][iS] = pNet->create_lt( vD[iTrg][jS], vD[iTrg][iS] );
+  }
+  else
+    std::cerr << "wrong symmetry identifier for SVS" ;
+  
+}
+
+template<class TT, class Ntk>
+void DecSolver<TT, Ntk>::remap_ms( DecNet<TT, Ntk> * pNet, action_t<TT> act )
+{
+  int iTrg    = act.sigs[0];
+  int i       = act.sigs[1];
+  int j       = act.sigs[2];
+  int iS      = vS[iTrg][i];  
+  int jS      = vS[iTrg][j];
+  if( act.id_ord == 0 )
+  {
+    vD[iTrg][iS] = pNet->create_xnor( vD[iTrg][jS], vD[iTrg][iS] ) ;
+    vS[iTrg].erase( vS[iTrg].begin() + j );
+  }
+  else if( act.id_ord == 1 )
+  {
+    vD[iTrg][jS] = pNet->create_xor( vD[iTrg][jS], vD[iTrg][iS] );
+    vS[iTrg].erase( vS[iTrg].begin() + i );
+  }        
+  else if( act.id_ord == 2 )
+  {
+    vD[iTrg][jS] = pNet->create_xnor( vD[iTrg][jS], vD[iTrg][iS] );
+    vS[iTrg].erase( vS[iTrg].begin() + i );
+  }        
+  else if( act.id_ord == 3 )
+  {
+    vD[iTrg][iS] = pNet->create_xor( vD[iTrg][jS], vD[iTrg][iS] );
+    vS[iTrg].erase( vS[iTrg].begin() + j );
+  }  
+}
+
+template< class TT, class Ntk >
+void DecSolver<TT, Ntk>::remap_csvs( DecNet<TT, Ntk> * pNet, action_t<TT> act )
+{
+  int iTrg    = act.sigs[0];
+  int i       = act.sigs[1];
+  int j       = act.sigs[2];
+  int iS      = vS[iTrg][i];  
+  int jS      = vS[iTrg][j];
+
+  if( act.id_sym == 0 )
+  {
+    if( act.id_ord == 0 )
+    {
+      vD[iTrg][iS] = pNet->create_and( vD[iTrg][jS], vD[iTrg][iS] );
+      vS[iTrg].erase( vS[iTrg].begin() + j );  
+    }
+    else
+    {
+      vD[iTrg][jS] = pNet->create_and( vD[iTrg][jS], vD[iTrg][iS] );
+      vS[iTrg].erase( vS[iTrg].begin() + i );
+    }
+  }
+  else if( act.id_sym == 1 )
+  {
+    if( act.id_ord == 0 )
+    {
+      vD[iTrg][iS] = pNet->create_le( vD[iTrg][jS], vD[iTrg][iS] );
+      vS[iTrg].erase( vS[iTrg].begin() + j );
+    }
+    else
+    {
+      vD[iTrg][jS] = pNet->create_lt( vD[iTrg][iS], vD[iTrg][jS] );
+      vS[iTrg].erase( vS[iTrg].begin() + i );
+    }
+  }
+  else if( act.id_sym == 2 )
+  {
+    if( act.id_ord == 0 )
+    {
+      vD[iTrg][jS] = pNet->create_le( vD[iTrg][iS], vD[iTrg][jS] );
+      vS[iTrg].erase( vS[iTrg].begin() + i );
+    }
+    else
+    {
+      vD[iTrg][iS] = pNet->create_lt( vD[iTrg][jS], vD[iTrg][iS] );
+      vS[iTrg].erase( vS[iTrg].begin() + j );
+    }
+  }
+  else if( act.id_sym == 3 )
+  {
+    if( act.id_ord == 0 )
+    {
+      vD[iTrg][jS] =  pNet->create_or( vD[iTrg][jS], vD[iTrg][iS] );
+      vS[iTrg].erase( vS[iTrg].begin() + i );
+    }
+    else
+    {
+      vD[iTrg][iS] =  pNet->create_or( vD[iTrg][jS], vD[iTrg][iS] );
+      vS[iTrg].erase( vS[iTrg].begin() + j );
+    }
+  }
+  else
+    std::cerr << "wrong symmetry identifier for CSVS" ;
+}
+
 template<class TT, class Ntk>
  void DecSolver<TT, Ntk>::remap( DecNet<TT, Ntk> * pNet, action_t<TT> act )
   {
-    pNet->change_sim_info( Y[act.sigs[0]], act.func, act.mask );
+    int iTrg    = act.sigs[0];
 
-    int i = act.sigs[1];  
-    int j = act.sigs[2];
-    signal_t rj = X[j];
-    signal_t ri = X[i];
     switch( act.type )
     {
       case DecAct_t::NES_:
-        if( act.id_ord == 0 )     
-        { 
-          rj = pNet->create_or ( X[i], X[j] );  
-          ri = pNet->create_and( X[i], X[j] ); 
-        }
-        else if( act.id_ord == 1 ){ rj = pNet->create_and( X[i], X[j] );  ri = pNet->create_or ( X[i], X[j] ); }
-        else  std::cerr << "id_ord not valid_ord" << std::endl;
-        
-        X[j] = rj;
-        X[i] = ri;
+        remap_nes( pNet, act );
         break; 
-  
       case DecAct_t::ES_:
-        if( act.id_ord == 0 )     
-        { 
-          rj = pNet->create_le( X[i], X[j] ); 
-          ri = pNet->create_le( X[j], X[i] ); 
-        }
-        else if( act.id_ord == 1 )
-        { 
-          rj = pNet->create_lt( X[i], X[j] ); 
-          ri = pNet->create_lt( X[j], X[i] ); 
-        }
-        else  
-          std::cerr << "id_ord not valid_ord" << std::endl;
-        
-        X[j] = rj;
-        X[i] = ri;
+        remap_es( pNet, act );
         break; 
-
       case DecAct_t::SVS_:
-        if( act.id_sym == 0 ) // SVS0X_ { SVS Xj } Xi'
-        {
-          if( act.id_ord == 0 )
-            rj = pNet->create_le( X[i], X[j] );  // ( Xi & Xj' )'
-          else
-            rj = pNet->create_and( X[i], X[j] ); // ( Xi & Xj )
-          ri = X[i];
-        }
-        else if( act.id_sym == 1 ) // SVS1X  { SVS Xj } Xi
-        {
-          if( act.id_ord == 0 )
-            rj = pNet->create_or( X[i], X[j] ); 
-          else
-            rj = pNet->create_lt( X[i], X[j] );
-          ri = X[i];
-        }
-        else if( act.id_sym == 2 ) // SVSX0_  { SVS Xi } Xj'
-        {
-          rj = X[j];
-          if( act.id_ord == 0 )
-            ri = pNet->create_le( X[j], X[i] );
-          else
-            ri = pNet->create_and( X[i], X[j] );
-        }
-        else if( act.id_sym == 3 ) //SVSX1_  { SVS Xi } Xj
-        {
-          rj = X[j];
-          if( act.id_ord == 0 )
-            ri = pNet->create_or( X[i], X[j] );
-          else
-            ri = pNet->create_lt( X[j], X[i] );
-        }
-        else
-          std::cerr << "wrong symmetry identifier for SVS" ;
-        
-        X[j] = rj;
-        X[i] = ri;
+        remap_svs( pNet, act );
         break;
-
       case DecAct_t::MS_:
-        if( act.id_ord == 0 )
-        {
-          X[i] = pNet->create_xnor( X[i], X[j] ) ;
-          X.erase( X.begin() + j );
-          V.erase( V.begin() + j );
-        }
-        else if( act.id_ord == 1 )
-        {
-          X[j] = pNet->create_xor( X[i], X[j] );
-          X.erase( X.begin() + i );
-          V.erase( V.begin() + i );
-        }        
-        else if( act.id_ord == 2 )
-        {
-          X[j] = pNet->create_xnor( X[i], X[j] );
-          X.erase( X.begin() + i );
-          V.erase( V.begin() + i );
-        }        
-        else if( act.id_ord == 3 )
-        {
-          X[i] = pNet->create_xor( X[i], X[j] );
-          X.erase( X.begin() + j );
-          V.erase( V.begin() + j );
-        }  
+        remap_ms( pNet, act );
         break; 
       case DecAct_t::CSVS_:
-      {
-        if( act.id_sym == 0 )
-        {
-          if( act.id_ord == 0 )
-          {
-            X[i] = pNet->create_and( X[i], X[j] );
-            X.erase( X.begin() + j );
-            V.erase( V.begin() + j );
-          }
-          else
-          {
-            X[j] = pNet->create_and( X[i], X[j] );
-            X.erase( X.begin() + i );
-            V.erase( V.begin() + i );
-          }
-        }
-        else if( act.id_sym == 1 )
-        {
-          if( act.id_ord == 0 )
-          {
-            X[i] = pNet->create_le( X[j], X[i] );
-            X.erase( X.begin() + j );
-            V.erase( V.begin() + j );
-          }
-          else
-          {
-            X[j] = pNet->create_lt( X[i], X[j] );
-            X.erase( X.begin() + i );
-            V.erase( V.begin() + i );
-          }
-        }
-        else if( act.id_sym == 2 )
-        {
-          if( act.id_ord == 0 )
-          {
-            X[j] = pNet->create_le( X[i], X[j] );
-            X.erase( X.begin() + i );
-            V.erase( V.begin() + i );
-          }
-          else
-          {
-            X[i] = pNet->create_lt( X[j], X[i] );
-            X.erase( X.begin() + j );
-            V.erase( V.begin() + j );
-          }
-        }
-        else if( act.id_sym == 3 )
-        {
-          if( act.id_ord == 0 )
-          {
-            X[j] =  pNet->create_or( X[i], X[j] );
-            X.erase( X.begin() + i );
-            V.erase( V.begin() + i );
-          }
-          else
-          {
-            X[i] =  pNet->create_or( X[i], X[j] );
-            X.erase( X.begin() + j );
-            V.erase( V.begin() + j );
-          }
-        }
-        else
-          std::cerr << "wrong symmetry identifier for CSVS" ;
-      }
-      break; 
+        remap_csvs( pNet, act );
+        break; 
     }
+    pNet->setOSY( act.func[0], act.mask[0] );
+    //pNet->change_sim_info( Y[iTrg], act.func[0], act.mask[0] );
   }
 #pragma endregion remap
+
+#pragma region decompose
+template<class TT, class Ntk>
+ void DecSolver<TT, Ntk>::decompose( DecNet<TT, Ntk> * pNet, action_t<TT> act )
+  {
+    //pNet->change_sim_info( Y[act.sigs[0]], act.func[0], act.mask[0] );
+    TT * pT1 = &act.func[1];
+    TT * pT0 = &act.func[0];
+    TT * pM1 = &act.mask[1];
+    TT * pM0 = &act.mask[0];
+
+    bool isAND = kitty::is_const0(   *pT0  & *pM0 );
+    bool isLT  = kitty::is_const0(   *pT1  & *pM1 );
+    bool isOR  = kitty::is_const0( ~(*pT1) & *pM1 );
+    bool isLE  = kitty::is_const0( ~(*pT0) & *pM0 );
+
+    int iTrg = act.sigs[0];  
+    int iS = act.sigs[1];
+    int iDiv = vS[iTrg][iS];
+    signal_t x = vD[iTrg][iDiv];
+
+    if( isAND )
+    {
+      signal_t targ1 = pNet->create_target( act.func[1], act.mask[1] );
+      signal_t targ_source = pNet->create_and( x, targ1 );
+      pNet->close_target( Y[iTrg], targ_source, 0 );
+      Y[iTrg] = targ1;
+      vS[iTrg].erase( vS[iTrg].begin() + iS );
+    }
+    else if( isLT )
+    {
+      signal_t targ0 = pNet->create_target( act.func[0], act.mask[0] );
+      signal_t targ_source = pNet->create_lt( x, targ0 );
+      pNet->close_target( Y[iTrg], targ_source, 0 );
+      Y[iTrg] = targ0;
+      vS[iTrg].erase( vS[iTrg].begin() + iS );
+    }
+    else if( isOR )
+    {
+      signal_t targ0 = pNet->create_target( act.func[0], act.mask[0] );
+      signal_t targ_source = pNet->create_or( x, targ0 );
+      pNet->close_target( Y[iTrg], targ_source, 0 );
+      Y[iTrg] = targ0;
+      vS[iTrg].erase( vS[iTrg].begin() + iS );
+    }
+    else if( isLE )
+    {
+      signal_t targ1 = pNet->create_target( act.func[1], act.mask[1] );
+      signal_t targ_source = pNet->create_le( x, targ1 );
+      pNet->close_target( Y[iTrg], targ_source, 0 );
+      Y[iTrg] = targ1;
+      vS[iTrg].erase( vS[iTrg].begin() + iS );
+    }
+    else
+    {
+      signal_t targ0 = pNet->create_target( act.func[0], act.mask[0] );
+      signal_t targ1 = pNet->create_target( act.func[1], act.mask[1] );
+      signal_t targ_replacement  = pNet->create_or( targ0, targ1 );
+      pNet->close_target( Y[iTrg], targ_replacement, 0 );
+
+      signal_t deeptarg0 = pNet->create_target( act.func[0], act.mask[0] );
+      signal_t deeptarg1 = pNet->create_target( act.func[1], act.mask[1] );
+      signal_t targ_replacement0 = pNet->create_lt( x, deeptarg0 );
+      signal_t targ_replacement1 = pNet->create_and( x, deeptarg1 );
+      pNet->close_target( targ0, targ_replacement0, 0 );
+      pNet->close_target( targ1, targ_replacement1, 0 );
+
+
+      Y[iTrg] = deeptarg0;
+      vS[iTrg].erase( vS[iTrg].begin() + iS );
+      vD.push_back( vD[iTrg] );
+      vS.push_back( vS[iTrg] );
+      Y.push_back(deeptarg1);
+    }
+
+  }
+#pragma endregion decompose
 
 #pragma region visualize
 template<class TT, class Ntk>

@@ -6,6 +6,7 @@
 #include <mockturtle/algorithms/decompose/DecChsToGraph.hpp>
 #include <mockturtle/algorithms/decompose/DecSolver.hpp>
 #include <mockturtle/networks/aig.hpp>
+#include <mockturtle/networks/xag.hpp>
 #include <kitty/dynamic_truth_table.hpp>
 #include <kitty/constructors.hpp>
 #include <kitty/operations.hpp>
@@ -315,4 +316,53 @@ TEST_CASE( "solver: top decompositions ", "[DEC]" )
   solver_t solver( vTruths, vMasks );
   solver.PrintSpecs();
   solver.man_sym_solve();
+}
+
+TEST_CASE( "solver: random decomposition: divisor and target closure ", "[DEC]" )
+{
+  using TT = kitty::dynamic_truth_table;
+  using Ntk = xag_network;
+  typedef DecSolver<TT, Ntk> solver_t;
+  Ntk xag;
+
+  std::vector<TT> xs;
+  for( int i{0}; i<4; ++i )
+  {
+    xs.emplace_back(4u);
+    kitty::create_nth_var( xs[i], i );
+  }
+
+  std::vector<TT> vTruths;
+  std::vector<TT> vMasks;
+  for( int i{0}; i<6; ++i )
+  {
+    vTruths.emplace_back(4u);
+    vMasks.emplace_back(4u);
+    vMasks[i] |= ~vMasks[i];
+  }
+
+  vTruths[0] =  xs[3];
+  vTruths[1] = ~xs[3];
+  vTruths[2] =  xs[2];
+  vTruths[3] =  xs[2]&xs[0]&xs[3];
+  vTruths[4] = ~xs[1];
+  vTruths[5] = ~xs[2];
+  vMasks[5] = ~xs[0]&~xs[1]&~xs[2]&~xs[3] | xs[0]&~xs[1]&~xs[2]&~xs[3];
+
+  solver_t solver( vTruths, vMasks );
+  solver.PrintSpecs();
+  xag = solver.man_rdec_solve();
+  CHECK( xag.num_pos() == 6 );
+  CHECK( xag.num_pis() == 4 );
+  CHECK( xag.num_gates() == 5 );
+
+  default_simulator<kitty::dynamic_truth_table> sim( 4 );
+  const auto sims = simulate<kitty::dynamic_truth_table>( xag, sim );
+  CHECK( kitty::equal(sims[0]&vMasks[0], xs[3]&vMasks[0]) );
+  CHECK( kitty::equal(sims[1]&vMasks[1], ~xs[3]&vMasks[1]) );
+  CHECK( kitty::equal(sims[2]&vMasks[2], xs[2]&vMasks[2]) );
+  CHECK( kitty::equal(sims[3]&vMasks[3], xs[3]&xs[2]&xs[0]&vMasks[3]) );
+  CHECK( kitty::equal(sims[4]&vMasks[4], ~xs[1]&vMasks[4]) );
+  CHECK( kitty::equal(sims[5]&vMasks[5], ~xs[1]&vMasks[5]) );
+
 }
