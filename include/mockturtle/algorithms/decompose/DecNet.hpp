@@ -62,6 +62,7 @@ private:
   std::vector<signal_t> vPIs;
   std::vector<signal_t> vPOs;
   std::vector<signal_t> vTargs;
+  std::vector<signal_t> vNodes;
   int                   nIns;
   int                   nOut;
   TT                    FuncOSY;
@@ -101,6 +102,7 @@ public:
   template<typename Fn> void foreach_po( Fn&& );
   template<typename Fn> void foreach_pi( Fn&& );
   template<typename Fn> void foreach_fanin( signal_t, Fn&& );
+  template<typename Fn> void foreach_gate ( signal_t, Fn&& );
 
   /* read */
 public:
@@ -165,6 +167,13 @@ void DecNet<TT, Ntk>::foreach_fanin( signal_t sig, Fn&& fn )
   std::vector<node_t> * pFanins = nodes.getFanInsP( sig.node );
   detail::foreach_element( pFanins->begin(), pFanins->end(), fn ); 
 }
+
+template<class TT, class Ntk>
+template<typename Fn>
+void DecNet<TT, Ntk>::foreach_gate( signal_t sig, Fn&& fn )
+{ 
+  detail::foreach_element( vNodes.begin(), vNodes.end(), fn ); 
+}
 #pragma endregion
 
 #pragma region properties
@@ -215,6 +224,7 @@ signal_t DecNet<TT, Ntk>::create_PI( const TT& func )
   node_t nodePI = nodes.addNode( {}, simPI, DecFunc_t::PI_ );
   signal_t sig { simPI, nodePI };
   vPIs.push_back( sig );
+  vNodes.push_back( sig );
   return sig;
 }
 
@@ -231,6 +241,7 @@ signal_t DecNet<TT, Ntk>::create_not( signal_t a )
   sim_t  sim = sims.addSim( ~*getFuncP(a), *getMaskP(a) );
   node_t node = nodes.addNode( { a.node}, sim, DecFunc_t::NOT_ );
   signal_t sig { sim, node };
+  vNodes.push_back( sig );
   return sig;
 }
 
@@ -240,6 +251,7 @@ signal_t DecNet<TT, Ntk>::create_buf( signal_t a )
   sim_t  sim = sims.addSim( *getFuncP(a), *getMaskP(a) );
   node_t node = nodes.addNode( { a.node}, sim, DecFunc_t::BUF_ );
   signal_t sig { sim, node };
+  vNodes.push_back( sig );
   return sig;
 }
 
@@ -249,6 +261,8 @@ signal_t DecNet<TT, Ntk>::create_xor( signal_t a, signal_t b )
   sim_t  sim = sims.addSim( *getFuncP(a) ^ *getFuncP(b), *getMaskP(a) & *getMaskP(b) );
   node_t node = nodes.addNode( { a.node, b.node }, sim, DecFunc_t::XOR_ );
   signal_t sig { sim, node };
+  vNodes.push_back( sig );
+
   return sig;
 }
 
@@ -258,6 +272,8 @@ signal_t DecNet<TT, Ntk>::create_and( signal_t a, signal_t b )
   sim_t  sim = sims.addSim( *getFuncP(a) & *getFuncP(b), *getMaskP(a) & *getMaskP(b) );
   node_t node = nodes.addNode( { a.node, b.node }, sim, DecFunc_t::AND_ );
   signal_t sig { sim, node };
+  vNodes.push_back( sig );
+
   return sig;
 }
 
@@ -267,6 +283,8 @@ signal_t DecNet<TT, Ntk>::create_or( signal_t a, signal_t b )
   sim_t  sim = sims.addSim( *getFuncP(a) | *getFuncP(b), *getMaskP(a) & *getMaskP(b) );
   node_t node = nodes.addNode( { a.node, b.node }, sim, DecFunc_t::OR_ );
   signal_t sig { sim, node };
+  vNodes.push_back( sig );
+
   return sig;
 }
 
@@ -276,6 +294,8 @@ signal_t DecNet<TT, Ntk>::create_lt( signal_t a, signal_t b )
   sim_t  sim = sims.addSim( ~*getFuncP(a) & *getFuncP(b), *getMaskP(a) & *getMaskP(b) );
   node_t node = nodes.addNode( { a.node, b.node }, sim, DecFunc_t::LT_ );
   signal_t sig { sim, node };
+  vNodes.push_back( sig );
+
   return sig;
 }
 
@@ -285,6 +305,8 @@ signal_t DecNet<TT, Ntk>::create_gt( signal_t a, signal_t b )
   sim_t  sim = sims.addSim( *getFuncP(a) & ~*getFuncP(b), *getMaskP(a) & *getMaskP(b) );
   node_t node = nodes.addNode( { a.node, b.node }, sim, DecFunc_t::GT_ );
   signal_t sig { sim, node };
+  vNodes.push_back( sig );
+
   return sig;
 }
 
@@ -294,6 +316,8 @@ signal_t DecNet<TT, Ntk>::create_le( signal_t a, signal_t b )
   sim_t  sim = sims.addSim( ~*getFuncP(a) | *getFuncP(b), *getMaskP(a) & *getMaskP(b) );
   node_t node = nodes.addNode( { a.node, b.node }, sim, DecFunc_t::LE_ );
   signal_t sig { sim, node };
+  vNodes.push_back( sig );
+
   return sig;
 }
 
@@ -303,6 +327,8 @@ signal_t DecNet<TT, Ntk>::create_ge( signal_t a, signal_t b )
   sim_t  sim = sims.addSim( *getFuncP(a) | ~*getFuncP(b), *getMaskP(a) & *getMaskP(b) );
   node_t node = nodes.addNode( { a.node, b.node }, sim, DecFunc_t::GE_ );
   signal_t sig { sim, node };
+  vNodes.push_back( sig );
+
   return sig;
 }
 
@@ -312,6 +338,8 @@ signal_t DecNet<TT, Ntk>::create_nand( signal_t a, signal_t b )
   sim_t  sim = sims.addSim( ~(*getFuncP(a) & *getFuncP(b)), *getMaskP(a) & *getMaskP(b) );
   node_t node = nodes.addNode( { a.node, b.node }, sim, DecFunc_t::NAND_ );
   signal_t sig { sim, node };
+  vNodes.push_back( sig );
+
   return sig;
 }
 
@@ -321,6 +349,8 @@ signal_t DecNet<TT, Ntk>::create_nor( signal_t a, signal_t b )
   sim_t  sim = sims.addSim( ~(*getFuncP(a) | *getFuncP(b)), *getMaskP(a) & *getMaskP(b) );
   node_t node = nodes.addNode( { a.node, b.node }, sim, DecFunc_t::NOR_ );
   signal_t sig { sim, node };
+  vNodes.push_back( sig );
+
   return sig;
 }
 
@@ -330,6 +360,8 @@ signal_t DecNet<TT, Ntk>::create_xnor( signal_t a, signal_t b )
   sim_t  sim = sims.addSim( ~(*getFuncP(a) ^ *getFuncP(b)), *getMaskP(a) & *getMaskP(b) );
   node_t node = nodes.addNode( { a.node, b.node }, sim, DecFunc_t::XNOR_ );
   signal_t sig { sim, node };
+  vNodes.push_back( sig );
+
   return sig;
 }
 

@@ -76,6 +76,7 @@ public:
     ~DecSolver();
     /* solve */
     Ntk man_sym_solve();
+    Ntk man_decsym_solve();
     Ntk aut_sym_solve(int);
     Ntk aut_symGT_solve(int);
     Ntk man_rdec_solve();
@@ -142,7 +143,7 @@ Ntk DecSolver<TT, Ntk>::man_sym_solve()
     }
 
     /* solve */
-    while( vS.size() > 1 )
+    while( vS[0].size() > 1 )
     {
       show_state( &net, &Y );
 
@@ -153,9 +154,75 @@ Ntk DecSolver<TT, Ntk>::man_sym_solve()
       //if( CS.size() > 0 )
       //  close_div( &net, CS );
       //printf("|CS|=%d\n", CS.size());
-      if( vS.size() > 1 )
+      if( vS[0].size() > 1 )
       {
         checker.check2();
+        std::vector<action_t<TT>> RP = checker.get_remap();
+        checker.print_actions( RP );
+        int iEnd = RP.size()-1;
+        printf( "Choose the move[%2d-%3d]:", 0, iEnd  );
+        int MV;
+        std::cin >> MV;
+        remap( &net, RP[MV] );
+      }
+    }
+    so_terminate( &net, 0 );
+
+    net.print_net();
+    /* convert result */
+    DecChsToGraph<TT, Ntk> conv( net );  
+    ntk = conv.convert();
+    printf("num gates = %d", ntk.num_gates());
+    //if( ntk.num_gates() < nBest )
+    //    ntkBest = ntk;
+  }
+  return ntk;
+}
+
+
+template<class TT, class Ntk>
+Ntk DecSolver<TT, Ntk>::man_decsym_solve()
+{
+  Ntk ntk;
+  Ntk ntkBest;
+  int nBest = 100000;
+  for( int it{0}; it<1; ++it )
+  {
+    /* init */
+    DecNet<TT, Ntk>  net;
+    net.init( vTruths, vMasks );
+    /* info on the outputs */
+    Y = net.getTargets();
+    assert( Y.size()==1 );
+    net.setOSY( *net.getFuncP(Y[0]), *net.getMaskP(Y[0]) );
+    /* info on the inputs */
+    X = net.getPIs();
+    std::vector<int> S;
+    for( int i{0}; i < X.size(); ++i )  
+      S.push_back( i );
+    vD={};
+    vS = {};
+    for( int iTrg{0}; iTrg<Y.size(); ++iTrg )
+    {
+      vD.push_back( X );
+      vS.push_back( S );
+    }
+
+    /* solve */
+    while( vS[0].size() > 1 )
+    {
+      show_state( &net, &Y );
+
+      DecAnalyzer<TT, Ntk> checker( &net, &X, &Y, &vS, &vD );
+
+      //checker.check_divclosure();
+      //std::vector<action_t<TT>> CS = checker.get_divclosure();
+      //if( CS.size() > 0 )
+      //  close_div( &net, CS );
+      //printf("|CS|=%d\n", CS.size());
+      if( vS[0].size() > 1 )
+      {
+        checker.check_mixed();
         std::vector<action_t<TT>> RP = checker.get_remap();
         checker.print_actions( RP );
         int iEnd = RP.size()-1;
@@ -262,9 +329,14 @@ action_t<TT> DecSolver<TT, Ntk>::select_uniformly( std::vector<action_t<TT>> * p
 template<class TT, class Ntk>
 Ntk DecSolver<TT, Ntk>::aut_sym_solve(int nIters)
 {
+  if( vTruths[0].num_vars() < 10 )
+    PrintSpecs();
 
   std::mt19937       generator(rand_dev());
 
+  double avg_time{0};
+  double avg_num_gates{0};
+  int max_num_gates{0};
 
   Ntk ntk;
   Ntk ntkBest;
@@ -344,7 +416,6 @@ Ntk DecSolver<TT, Ntk>::aut_sym_solve(int nIters)
 //show_state( &net, &Y );
 
       }
-//printf("#  Ehilast\n");
     }
     so_terminate( &net, 0 );
 
@@ -352,7 +423,6 @@ Ntk DecSolver<TT, Ntk>::aut_sym_solve(int nIters)
     DecChsToGraph<TT, Ntk> conv( net ); 
  
     ntk = conv.convert();
-//net.print_net();
     Y = net.getTargets();
     default_simulator<kitty::dynamic_truth_table> sim( (*net.getFuncP(Y[0])).num_vars() );
     const auto tt = simulate<kitty::dynamic_truth_table>( ntk, sim )[0];
@@ -361,14 +431,7 @@ Ntk DecSolver<TT, Ntk>::aut_sym_solve(int nIters)
     for( int iTrg{0}; iTrg<Y.size(); ++iTrg )
     {
       TT F = *net.getFuncP( Y[iTrg] );
-      
-//printf("\n");
-//kitty::print_binary(F);
-///printf("\n");
-//kitty::print_binary(tt);
-//printf("\n");
       CEC = kitty::equal( tt, F );
-
       if( kitty::equal( tt, F ) )
         printf( ANSI_COLOR_GREEN " CEC SUCCESFUL " ANSI_COLOR_RESET "\n" );
       else
@@ -378,11 +441,24 @@ Ntk DecSolver<TT, Ntk>::aut_sym_solve(int nIters)
     }
 
     duration = ( std::clock() - start ) / (double) CLOCKS_PER_SEC;
+
+    avg_time += duration/nIters;
+    avg_num_gates += 1.0*ntk.num_gates()/nIters;
+    if( ntk.num_gates() > max_num_gates )
+      max_num_gates = ntk.num_gates();
+
     printf("%5.5f\n", duration );
     printf("**********************************\n");
     if( (ntk.num_gates() < nBest) && CEC )
-        ntkBest = ntk;
+    {
+      nBest = ntk.num_gates();
+      ntkBest = ntk;
+    }
   }
+  printf("SUMMARY:\n");
+  printf("%10s %10s %10s %10s\n %10d %5.5f %d %5.5f\n", 
+          "min G", "E[G]", "max G", "E[t]\n",
+           nBest, avg_num_gates, max_num_gates, avg_time );
   return ntkBest;
 }
 
@@ -448,7 +524,7 @@ Ntk DecSolver<TT, Ntk>::aut_symGT_solve(int nIters)
         std::vector<int> rewards; 
         for( int iRP{0}; iRP<RP.size(); ++iRP )
         {
-          if( RP[iRP].reward > best_reward )
+          if( RP[iRP].reward > best_reward  )
           {
             moves.push_back( iRP );
             rewards.push_back( RP[iRP].reward );
@@ -474,7 +550,7 @@ Ntk DecSolver<TT, Ntk>::aut_symGT_solve(int nIters)
     printf("num gates =%d\n", ntk.num_gates());
     for( int iTrg{0}; iTrg<Y.size(); ++iTrg )
     {
-      TT F = *net.getFuncP( Y[iTrg] );
+      TT F = vTruths[iTrg];
       
       //printf("\n");
      //kitty::print_binary(F);
@@ -630,8 +706,6 @@ void DecSolver<TT, Ntk>::so_terminate( DecNet<TT, Ntk> * pNet, int iTrg )
   int iDiv = vS[iTrg][0];
   TT DT = * pNet->getFuncP( X[iDiv] );
   TT DM = * pNet->getMaskP( X[iDiv] );
-//  TT FT = * pNet->getFuncP( Y[iTrg] );
-//  TT FM = * pNet->getMaskP( Y[iTrg] );
   TT FT = pNet->getFuncOSY( );
   TT FM = pNet->getMaskOSY( );
 
