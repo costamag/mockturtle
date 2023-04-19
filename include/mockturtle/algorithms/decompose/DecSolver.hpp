@@ -49,6 +49,7 @@
 #define ANSI_COLOR_CYAN    "\x1b[36m"
 #define ANSI_COLOR_RESET   "\x1b[0m"
 
+
 namespace mockturtle
 {
 
@@ -64,6 +65,7 @@ private:
     std::vector<std::vector<int>>       vS;
     // using divisors
     std::vector<std::vector<signal_t>>  vD;
+    std::vector<signal_t>               boolean_chain;
 
     std::vector<signal_t> Y; // targets signals             |Y| = m
     TT                    remainder;
@@ -76,6 +78,8 @@ public:
     ~DecSolver();
     /* solve */
     Ntk man_sym_solve();
+    Ntk man_sym_solve_rs();
+    Ntk aut_sym_solve_rs( int );
     Ntk man_decsym_solve();
     Ntk aut_sym_solve(int);
     Ntk aut_symGT_solve(int);
@@ -89,11 +93,19 @@ public:
     void remap_svs( DecNet<TT, Ntk> *, action_t<TT> );
     void remap_csvs( DecNet<TT, Ntk> *, action_t<TT> );
     void remap_ms( DecNet<TT, Ntk> *, action_t<TT> );
+    void remap_and( DecNet<TT, Ntk> *, action_t<TT> );
+    void remap_or( DecNet<TT, Ntk> *, action_t<TT> );
+    void remap_lt( DecNet<TT, Ntk> *, action_t<TT> );
+    void remap_le( DecNet<TT, Ntk> *, action_t<TT> );
     void remap( DecNet<TT, Ntk> *, action_t<TT> );
     void decompose( DecNet<TT, Ntk> *, action_t<TT> );
     void close_div( DecNet<TT, Ntk> *, std::vector<action_t<TT>> );
     void close_tar( DecNet<TT, Ntk> *, std::vector<action_t<TT>> );
     void so_terminate( DecNet<TT, Ntk> *, int );
+
+    bool check_sat( DecNet<TT, Ntk> *, int ); // WIP
+    bool check_2sat( DecNet<TT, Ntk> *, signal_t, signal_t );
+
     /* visualize */
     void PrintSpecs();
     void show_state( DecNet<TT, Ntk> *, std::vector<signal_t> * );
@@ -167,6 +179,71 @@ Ntk DecSolver<TT, Ntk>::man_sym_solve()
       }
     }
     so_terminate( &net, 0 );
+
+    net.print_net();
+    /* convert result */
+    DecChsToGraph<TT, Ntk> conv( net );  
+    ntk = conv.convert();
+    printf("num gates = %d", ntk.num_gates());
+    //if( ntk.num_gates() < nBest )
+    //    ntkBest = ntk;
+  }
+  return ntk;
+}
+
+
+template<class TT, class Ntk>
+Ntk DecSolver<TT, Ntk>::man_sym_solve_rs()
+{
+  Ntk ntk;
+  Ntk ntkBest;
+  int nBest = 100000;
+  for( int it{0}; it<1; ++it )
+  {
+    /* init */
+    DecNet<TT, Ntk>  net;
+    net.init( vTruths, vMasks );
+    /* info on the outputs */
+    Y = net.getTargets();
+    assert( Y.size()==1 );
+    net.setOSY( *net.getFuncP(Y[0]), *net.getMaskP(Y[0]) );
+    /* info on the inputs */
+    X = net.getPIs();
+    std::vector<int> S;
+    for( int i{0}; i < X.size(); ++i )  
+    {
+      boolean_chain.push_back( X[i] );
+      S.push_back( i );
+    }
+    vD={};
+    vS = {};
+    for( int iTrg{0}; iTrg<Y.size(); ++iTrg )
+    {
+      vD.push_back( X );
+      vS.push_back( S );
+    }
+
+    bool is_sat = false;
+    /* solve */
+    while( !is_sat )
+    {
+      show_state( &net, &Y );
+      is_sat = check_sat( &net, 0 );
+
+      DecAnalyzer<TT, Ntk> checker( &net, &X, &Y, &vS, &vD );
+      if( !is_sat )
+      {
+        checker.check2();
+        std::vector<action_t<TT>> RP = checker.get_remap();
+        checker.print_actions( RP );
+        int iEnd = RP.size()-1;
+        printf( "Choose the move[%2d-%3d]:", 0, iEnd  );
+        int MV;
+        std::cin >> MV;
+        remap( &net, RP[MV] );
+      }
+    }
+    //so_terminate( &net, 0 );
 
     net.print_net();
     /* convert result */
@@ -437,6 +514,7 @@ Ntk DecSolver<TT, Ntk>::aut_sym_solve(int nIters)
       else
       {
         printf( ANSI_COLOR_RED " CEC FAILED " ANSI_COLOR_RESET "\n" );
+        assert(0);
       }
     }
 
@@ -453,6 +531,173 @@ Ntk DecSolver<TT, Ntk>::aut_sym_solve(int nIters)
     {
       nBest = ntk.num_gates();
       ntkBest = ntk;
+    }
+  }
+  printf("SUMMARY:\n");
+  printf("%10s %10s %10s %10s\n %10d %5.5f %d %5.5f\n", 
+          "min G", "E[G]", "max G", "E[t]\n",
+           nBest, avg_num_gates, max_num_gates, avg_time );
+  return ntkBest;
+}
+
+template<class TT, class Ntk>
+Ntk DecSolver<TT, Ntk>::aut_sym_solve_rs( int nIters )
+{
+  if( vTruths[0].num_vars() < 10 )
+    PrintSpecs();
+
+  std::mt19937       generator(rand_dev());
+
+  double avg_time{0};
+  double avg_num_gates{0};
+  int max_num_gates{0};
+
+  Ntk ntk;
+  Ntk ntkBest;
+  int nBest = 100000;
+  for( int it{0}; it<nIters; ++it )
+  {
+
+    std::clock_t start;
+    double duration;
+    start = std::clock();
+    bool CEC;
+
+    /* init */
+    DecNet<TT, Ntk>  net;
+    net.init( vTruths, vMasks );
+    /* info on the outputs */
+    Y = net.getTargets();
+    assert( Y.size()==1 );
+
+    net.setOSY( *net.getFuncP(Y[0]), *net.getMaskP(Y[0]) );
+
+    /* info on the inputs */
+    X = net.getPIs();
+    std::vector<int> S;
+
+    boolean_chain = {}; // clean the vector
+    for( int i{0}; i < X.size(); ++i )  
+    {
+      boolean_chain.push_back( X[i] );
+      S.push_back( i );
+    }
+
+    for( int i{1}; i < X.size(); ++i )  
+    {
+      for( int j{0}; j < i; ++j )  
+      {
+        boolean_chain.push_back(net.create_xor( X[i], X[j] ));
+      }
+    }
+
+
+    vD={};
+    vS = {};
+    for( int iTrg{0}; iTrg<Y.size(); ++iTrg )
+    {
+      vD.push_back( X );
+      vS.push_back( S );
+    }
+
+    int best_reward{0};
+    int old_reward{0};
+    bool is_sat = false;
+    bool is_stuck = false;
+    /* solve */
+    while( !is_sat && !is_stuck )
+    {
+//show_state( &net, &Y );
+      is_sat = check_sat( &net, 0 );
+
+      DecAnalyzer<TT, Ntk> checker( &net, &X, &Y, &vS, &vD );
+      if( !is_sat  )
+      {
+        checker.check2();
+        checker.check_topdec( boolean_chain );
+        
+        std::vector<action_t<TT>> RP = checker.get_remap();
+//checker.print_actions( RP );
+        best_reward=0;
+        std::vector<int> moves; 
+//printf("b \n" );
+
+        for( int iRP{0}; iRP<RP.size(); ++iRP )
+        {
+          int OLD_RWD = 0;
+          if( OLD_RWD == 1 )
+          {
+            if( RP[iRP].reward >= old_reward )
+              moves.push_back( iRP );
+          }
+          else
+          {
+            if( RP[iRP].reward > best_reward )
+            {
+              moves = {iRP};
+              best_reward = RP[iRP].reward;
+            }
+            else if( RP[iRP].reward == best_reward )
+              moves.push_back( iRP );
+          }
+        }
+//printf("a \n" );
+        if( moves.size() == 0 )
+        {
+          is_stuck = true;
+        }
+        else
+        {
+          std::uniform_int_distribution<int>  distr(0, moves.size()-1);  
+          int MOVE = moves[distr(generator)];
+          old_reward = RP[MOVE].reward;
+  //printf("MOVE %d\n", MOVE );
+          remap( &net, RP[MOVE] );
+        }
+      }
+    }
+//net.print_net();
+    /* convert result */
+    if( is_stuck )
+    {
+      printf( ANSI_COLOR_RED " EMPTY SET OF MOVES " ANSI_COLOR_RESET "\n" );
+    }
+    else
+    {
+      DecChsToGraph<TT, Ntk> conv( net ); 
+  
+      ntk = conv.convert();
+      Y = net.getTargets();
+      default_simulator<kitty::dynamic_truth_table> sim( (*net.getFuncP(Y[0])).num_vars() );
+      const auto tt = simulate<kitty::dynamic_truth_table>( ntk, sim )[0];
+      printf("**********************************\n");
+      printf("num gates =%d\n", ntk.num_gates());
+      for( int iTrg{0}; iTrg<Y.size(); ++iTrg )
+      {
+        TT F = *net.getFuncP( Y[iTrg] );
+        CEC = kitty::equal( tt, F );
+        if( kitty::equal( tt, F ) )
+          printf( ANSI_COLOR_GREEN " CEC SUCCESFUL " ANSI_COLOR_RESET "\n" );
+        else
+        {
+          printf( ANSI_COLOR_RED " CEC FAILED " ANSI_COLOR_RESET "\n" );
+          assert(0);
+        }
+      }
+
+      duration = ( std::clock() - start ) / (double) CLOCKS_PER_SEC;
+      avg_time += duration/nIters;
+      avg_num_gates += 1.0*ntk.num_gates()/nIters;
+      if( ntk.num_gates() > max_num_gates )
+        max_num_gates = ntk.num_gates();
+
+      printf("%5.5f\n", duration );
+      printf("**********************************\n");
+      if( (ntk.num_gates() < nBest) && CEC )
+      {
+        nBest = ntk.num_gates();
+        ntkBest = ntk;
+      }
     }
   }
   printf("SUMMARY:\n");
@@ -542,7 +787,7 @@ Ntk DecSolver<TT, Ntk>::aut_symGT_solve(int nIters)
     DecChsToGraph<TT, Ntk> conv( net ); 
  
     ntk = conv.convert();
-    //net.print_net();
+    net.print_net();
     Y = net.getTargets();
     default_simulator<kitty::dynamic_truth_table> sim( (*net.getFuncP(Y[0])).num_vars() );
     const auto tt = simulate<kitty::dynamic_truth_table>( ntk, sim )[0];
@@ -723,6 +968,139 @@ void DecSolver<TT, Ntk>::so_terminate( DecNet<TT, Ntk> * pNet, int iTrg )
 }
 
 template<class TT, class Ntk>
+bool DecSolver<TT, Ntk>::check_2sat( DecNet<TT, Ntk> * pNet, signal_t xi, signal_t xj )
+{
+  TT Tf = * pNet->getFuncP(Y[0]); // WARNING 0
+  TT Mf = * pNet->getMaskP(Y[0]);
+
+  TT Tdi = * pNet->getFuncP( xi );
+  TT Tdj = * pNet->getFuncP( xj );
+
+  if( kitty::equal( Mf&( Tdi & Tdj ), Mf&Tf ) ) // AND
+  {
+    printf( ANSI_COLOR_BLUE " %d AND %d" ANSI_COLOR_RESET "\n", xi.node, xj.node );
+    signal_t f0 = pNet->create_and( xi, xj );
+    pNet->close_target( Y[0], f0, 0 );
+    return true;
+  }
+  else if( kitty::equal( Mf&( ~(Tdi & Tdj) ), Mf&Tf ) ) // NAND
+  {
+    printf( ANSI_COLOR_BLUE " %d NAND %d" ANSI_COLOR_RESET "\n", xi.node, xj.node );
+    signal_t f0 = pNet->create_nand( xi, xj );
+    pNet->close_target( Y[0], f0, 0 );
+    return true;
+  }
+  else if( kitty::equal( Mf&( Tdi | Tdj ), Mf&Tf ) ) // NAND
+  {
+    printf( ANSI_COLOR_BLUE " %d OR %d" ANSI_COLOR_RESET "\n", xi.node, xj.node );
+    signal_t f0 = pNet->create_or( xi, xj );
+    pNet->close_target( Y[0], f0, 0 );
+    return true;
+  }
+  else if( kitty::equal( Mf&( ~(Tdi | Tdj) ), Mf&Tf ) ) // NAND
+  {
+    signal_t f0 = pNet->create_nor( xi, xj );
+    printf( ANSI_COLOR_BLUE " %d NOR %d" ANSI_COLOR_RESET "\n", xi.node, xj.node );
+    pNet->close_target( Y[0], f0, 0 );
+    return true;
+  }
+  else if( kitty::equal( Mf&( ~Tdi & Tdj ), Mf&Tf ) ) // NAND
+  {
+    printf( ANSI_COLOR_BLUE " %d LT %d" ANSI_COLOR_RESET "\n", xi.node, xj.node );
+    signal_t f0 = pNet->create_lt( xi, xj );
+    pNet->close_target( Y[0], f0, 0 );
+    return true;
+  }
+  else if( kitty::equal( Mf&( Tdi& ~Tdj), Mf&Tf ) )// NAND
+  {
+    printf( ANSI_COLOR_BLUE " %d AND %d" ANSI_COLOR_RESET "\n", xj.node, xi.node );
+    signal_t f0 = pNet->create_lt( xj, xi );
+    pNet->close_target( Y[0], f0, 0 );
+    return true;
+  }
+  else if( kitty::equal( Mf&( ~Tdi | Tdj ), Mf&Tf ) ) // NAND
+  {
+    printf( ANSI_COLOR_BLUE " %d LE %d" ANSI_COLOR_RESET "\n", xi.node, xj.node );
+    signal_t f0 = pNet->create_le( xi, xj );
+    pNet->close_target( Y[0], f0, 0 );
+    return true;
+  }
+  else if( kitty::equal( Mf&( Tdi | ~Tdj), Mf&Tf ) )// NAND
+  {
+    printf( ANSI_COLOR_BLUE " %d LE %d" ANSI_COLOR_RESET "\n", xj.node, xi.node );
+    signal_t f0 = pNet->create_le( xj, xi );
+    pNet->close_target( Y[0], f0, 0 );
+    return true;
+  }
+  else if( kitty::equal( Mf&( Tdi ^ Tdj ), Mf&Tf ) ) // NAND
+  {
+    printf( ANSI_COLOR_BLUE " %d XOR %d" ANSI_COLOR_RESET "\n", xi.node, xj.node );
+
+    signal_t f0 = pNet->create_xor( xi, xj );
+    pNet->close_target( Y[0], f0, 0 );
+    return true;
+  }
+  else if( kitty::equal( Mf&( Tdi ^ ~Tdj), Mf&Tf ) )// NAND
+  {
+    printf( ANSI_COLOR_BLUE " %d XNOR %d" ANSI_COLOR_RESET "\n", xi.node, xj.node );
+
+    signal_t f0 = pNet->create_xnor( xi, xj );
+    pNet->close_target( Y[0], f0, 0 );
+    return true;
+  }
+  else
+  {
+    return false;
+  }
+
+}
+
+template<class TT, class Ntk>
+bool DecSolver<TT, Ntk>::check_sat( DecNet<TT, Ntk> * pNet, int iTrg )
+{
+  TT Tf = * pNet->getFuncP(Y[iTrg]);
+  TT Mf = * pNet->getMaskP(Y[iTrg]);
+  int r = boolean_chain.size();
+  for( int i{r-1}; i>=0; --i )
+  {
+    signal_t xi = boolean_chain[i];
+    TT Tdi = * pNet->getFuncP( xi );
+    //printf("CHECK SAT [%d %d]\n",xi.node, xi.sim);
+    //kitty::print_binary( Td );
+    //printf("\n");
+    if( kitty::equal( Mf&Tdi, Mf&Tf ) )
+    {
+      pNet->close_target( Y[iTrg], xi, 0 );
+      return true;
+    }
+    else if( kitty::equal( Mf&~Tdi, Mf&Tf ) )
+    {
+      pNet->close_target( Y[iTrg], xi, 1 );
+      return true;
+    }
+
+    // second loop: the previous variables
+    if( i > 0 )
+    {
+      for( int j{i-1}; j>=0; --j )
+      {
+        signal_t xj = boolean_chain[j];
+        TT Tdj = * pNet->getFuncP( xj );
+        if( check_2sat( pNet, xi, xj ) )
+        {
+          return true;
+        }
+      }
+    }
+
+  }
+  return false;
+
+}
+
+
+
+template<class TT, class Ntk>
 void DecSolver<TT, Ntk>::close_tar( DecNet<TT, Ntk> * pNet, std::vector<action_t<TT>> actions )
 {
   std::vector<int> rm_targs;
@@ -781,6 +1159,12 @@ void DecSolver<TT, Ntk>::remap_nes(  DecNet<TT, Ntk> * pNet, action_t<TT> act  )
   }
   else  
     std::cerr << "id_ord not valid_ord" << std::endl;
+
+  boolean_chain.push_back( vD[iTrg][iS] );
+  boolean_chain.push_back( vD[iTrg][jS] );
+  
+  pNet->setOSY( act.func[0], act.mask[0] );
+
 }
 
 template <class TT, class Ntk>
@@ -808,6 +1192,13 @@ void DecSolver<TT, Ntk>::remap_es(  DecNet<TT, Ntk> * pNet, action_t<TT> act  )
   }
   else  
     std::cerr << "id_ord not valid_ord" << std::endl;
+  
+  boolean_chain.push_back( vD[iTrg][iS] );
+  boolean_chain.push_back( vD[iTrg][jS] );
+
+  pNet->setOSY( act.func[0], act.mask[0] );
+
+
 }
 
 template<class TT, class Ntk>
@@ -824,6 +1215,8 @@ void DecSolver<TT, Ntk>::remap_svs(  DecNet<TT, Ntk> * pNet, action_t<TT> act  )
       vD[iTrg][jS] = pNet->create_le( vD[iTrg][iS], vD[iTrg][jS] );  // ( Xi & Xj' )'
     else
       vD[iTrg][jS] = pNet->create_and( vD[iTrg][jS], vD[iTrg][iS] ); // ( Xi & Xj )
+    
+    boolean_chain.push_back( vD[iTrg][jS] );
   }
   else if( act.id_sym == 1 ) // SVS1X  { SVS Xj } Xi
   {
@@ -831,6 +1224,8 @@ void DecSolver<TT, Ntk>::remap_svs(  DecNet<TT, Ntk> * pNet, action_t<TT> act  )
       vD[iTrg][jS] = pNet->create_or( vD[iTrg][jS], vD[iTrg][iS] ); 
     else
       vD[iTrg][jS] = pNet->create_lt( vD[iTrg][iS], vD[iTrg][jS] );
+
+    boolean_chain.push_back( vD[iTrg][jS] );
   }
   else if( act.id_sym == 2 ) // SVSX0_  { SVS Xi } Xj'
   {
@@ -838,6 +1233,8 @@ void DecSolver<TT, Ntk>::remap_svs(  DecNet<TT, Ntk> * pNet, action_t<TT> act  )
       vD[iTrg][iS] = pNet->create_le( vD[iTrg][jS], vD[iTrg][iS] );
     else
       vD[iTrg][iS] = pNet->create_and( vD[iTrg][jS], vD[iTrg][iS] );
+
+    boolean_chain.push_back( vD[iTrg][iS] );
   }
   else if( act.id_sym == 3 ) //SVSX1_  { SVS Xi } Xj
   {
@@ -845,10 +1242,14 @@ void DecSolver<TT, Ntk>::remap_svs(  DecNet<TT, Ntk> * pNet, action_t<TT> act  )
       vD[iTrg][iS] = pNet->create_or( vD[iTrg][jS], vD[iTrg][iS] );
     else
       vD[iTrg][iS] = pNet->create_lt( vD[iTrg][jS], vD[iTrg][iS] );
+
+    boolean_chain.push_back( vD[iTrg][iS] );
   }
   else
     std::cerr << "wrong symmetry identifier for SVS" ;
-  
+
+  pNet->setOSY( act.func[0], act.mask[0] );
+
 }
 
 template<class TT, class Ntk>
@@ -863,22 +1264,29 @@ void DecSolver<TT, Ntk>::remap_ms( DecNet<TT, Ntk> * pNet, action_t<TT> act )
   {
     vD[iTrg][iS] = pNet->create_xnor( vD[iTrg][jS], vD[iTrg][iS] ) ;
     vS[iTrg].erase( vS[iTrg].begin() + j );
+    boolean_chain.push_back( vD[iTrg][iS] );
   }
   else if( act.id_ord == 1 )
   {
     vD[iTrg][jS] = pNet->create_xor( vD[iTrg][jS], vD[iTrg][iS] );
     vS[iTrg].erase( vS[iTrg].begin() + i );
+    boolean_chain.push_back( vD[iTrg][jS] );
   }        
   else if( act.id_ord == 2 )
   {
     vD[iTrg][jS] = pNet->create_xnor( vD[iTrg][jS], vD[iTrg][iS] );
     vS[iTrg].erase( vS[iTrg].begin() + i );
+    boolean_chain.push_back( vD[iTrg][jS] );
   }        
   else if( act.id_ord == 3 )
   {
     vD[iTrg][iS] = pNet->create_xor( vD[iTrg][jS], vD[iTrg][iS] );
     vS[iTrg].erase( vS[iTrg].begin() + j );
+    boolean_chain.push_back( vD[iTrg][iS] );
   }  
+  
+  pNet->setOSY( act.func[0], act.mask[0] );
+
 }
 
 template< class TT, class Ntk >
@@ -944,6 +1352,88 @@ void DecSolver<TT, Ntk>::remap_csvs( DecNet<TT, Ntk> * pNet, action_t<TT> act )
   }
   else
     std::cerr << "wrong symmetry identifier for CSVS" ;
+
+  boolean_chain.push_back( vD[iTrg][iS] );
+  boolean_chain.push_back( vD[iTrg][jS] );
+
+  pNet->setOSY( act.func[0], act.mask[0] );
+
+}
+
+
+template<class TT, class Ntk>
+void DecSolver<TT, Ntk>::remap_and( DecNet<TT, Ntk> * pNet, action_t<TT> act )
+{
+
+  printf( ANSI_COLOR_MAGENTA "TOP AND" ANSI_COLOR_RESET "\n" );
+  int iTrg = act.sigs[0];
+  assert( iTrg == 0 );
+  int iDiv = act.sigs[1];
+  signal_t xi = boolean_chain[iDiv];
+  signal_t targ1 = pNet->create_target( act.func[0], act.mask[0] );
+  signal_t targ_source = pNet->create_and( xi, targ1 );
+  pNet->close_target( Y[iTrg], targ_source, 0 );
+  Y[iTrg] = targ1;
+  boolean_chain.erase( boolean_chain.begin() + iDiv );
+}
+
+template<class TT, class Ntk>
+void DecSolver<TT, Ntk>::remap_or( DecNet<TT, Ntk> * pNet, action_t<TT> act )
+{
+  printf( ANSI_COLOR_MAGENTA "TOP OR" ANSI_COLOR_RESET "\n" );
+  //TT Mf = pNet->getMaskOSY();
+
+  int iTrg = act.sigs[0];
+  assert( iTrg == 0 );
+  int iDiv = act.sigs[1];
+  signal_t xi = boolean_chain[iDiv];
+  signal_t targ1 = pNet->create_target( act.func[0], act.mask[0] );
+  signal_t targ_source = pNet->create_or( xi, targ1 );
+  pNet->close_target( Y[iTrg], targ_source, 0 );
+  Y[iTrg] = targ1;
+  boolean_chain.erase( boolean_chain.begin() + iDiv );
+  //pNet->setOSY( act.func[0], act.mask[0] );
+
+}
+
+template<class TT, class Ntk>
+void DecSolver<TT, Ntk>::remap_lt( DecNet<TT, Ntk> * pNet, action_t<TT> act )
+{
+  printf( ANSI_COLOR_MAGENTA "TOP LT" ANSI_COLOR_RESET "\n" );
+
+  int iTrg = act.sigs[0];
+  assert( iTrg == 0 );
+  int iDiv = act.sigs[1];
+  signal_t xi = boolean_chain[iDiv];
+  signal_t targ1 = pNet->create_target( act.func[0], act.mask[0] );
+  signal_t targ_source = pNet->create_lt( xi, targ1 );
+  pNet->close_target( Y[iTrg], targ_source, 0 );
+  Y[iTrg] = targ1;
+  boolean_chain.erase( boolean_chain.begin() + iDiv );
+
+  //TT Mf = pNet->getMaskOSY();
+  //pNet->setOSY( act.func[0], act.mask[0] );
+
+}
+
+template<class TT, class Ntk>
+void DecSolver<TT, Ntk>::remap_le( DecNet<TT, Ntk> * pNet, action_t<TT> act )
+{
+  printf( ANSI_COLOR_MAGENTA "TOP LE" ANSI_COLOR_RESET "\n" );
+
+  int iTrg = act.sigs[0];
+  assert( iTrg == 0 );
+  int iDiv = act.sigs[1];
+  signal_t xi = boolean_chain[iDiv];
+  signal_t targ1 = pNet->create_target( act.func[0], act.mask[0] );
+  signal_t targ_source = pNet->create_le( xi, targ1 );
+  pNet->close_target( Y[iTrg], targ_source, 0 );
+  Y[iTrg] = targ1;
+  boolean_chain.erase( boolean_chain.begin() + iDiv );
+
+  //TT Mf = pNet->getMaskOSY();
+  //pNet->setOSY( act.func[0], act.mask[0] );
+
 }
 
 template<class TT, class Ntk>
@@ -967,9 +1457,20 @@ template<class TT, class Ntk>
         break; 
       case DecAct_t::CSVS_:
         remap_csvs( pNet, act );
+        break;
+      case DecAct_t::T1_AND_:
+        remap_and( pNet, act );
+        break; 
+      case DecAct_t::T1_OR_:
+        remap_or( pNet, act );
+        break; 
+      case DecAct_t::T1_LT_:
+        remap_lt( pNet, act );
+        break; 
+      case DecAct_t::T1_LE_:
+        remap_le( pNet, act );
         break; 
     }
-    pNet->setOSY( act.func[0], act.mask[0] );
     //pNet->change_sim_info( Y[iTrg], act.func[0], act.mask[0] );
   }
 #pragma endregion remap
@@ -1068,8 +1569,8 @@ void DecSolver<TT, Ntk>::show_state( DecNet<TT, Ntk> * pNet, std::vector<signal_
   {
     printf( ANSI_COLOR_YELLOW " TARGET #%d" ANSI_COLOR_RESET "", i );
     printf( ANSI_COLOR_YELLOW );
-    TT F = *pNet->getFuncP( (*pY)[i] );
-    TT M = *pNet->getMaskP( (*pY)[i] );
+    TT F = pNet->getFuncOSY(  );
+    TT M = pNet->getMaskOSY(  );
     printf("\n");
     kitty::print_binary( F );
     printf("\n");

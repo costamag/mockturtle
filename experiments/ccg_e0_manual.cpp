@@ -85,7 +85,6 @@ int main()
   int NTK;
   
   std::cin >> NTK;
-  //NTK = 1;
 
   if( NTK == 0 )
   {
@@ -109,7 +108,7 @@ int main()
     assert(0);
   }
 
-  //printf(ANSI_COLOR_YELLOW " GAME TIME! " ANSI_COLOR_RESET "\n" );
+  printf(ANSI_COLOR_YELLOW " GAME TIME! " ANSI_COLOR_RESET "\n" );
   
   return 0;
 }
@@ -220,7 +219,6 @@ kitty::dynamic_truth_table propose_game( std::string * pInfo )
     printf(ANSI_COLOR_YELLOW " 3 PARITY    " ANSI_COLOR_RESET "\n" );
     printf(ANSI_COLOR_YELLOW " CHOOSE THE FUNCTION TYPE: " ANSI_COLOR_RESET "" );
     std::cin >> INPUT;
-    //INPUT = 2;
     switch (INPUT)
     {
     case 0:
@@ -255,7 +253,6 @@ kitty::dynamic_truth_table userdef_game()
   {
     printf(ANSI_COLOR_YELLOW " ENTER THE BINARY STRING: " ANSI_COLOR_RESET "" );
     std::cin >> ISTR;
-    //printf(ANSI_COLOR_YELLOW " ENTER THE NUMBER OF INPUTS: " ANSI_COLOR_RESET "" );
     int nBits = ISTR.size();
     if( nBits % 2 != 0 )
     {
@@ -294,38 +291,38 @@ kitty::dynamic_truth_table knuth_game( std::string * pInfo )
     int INPUT;
     int nVars{0};
 
-    printf(ANSI_COLOR_YELLOW " 0  n=4 S(4)" ANSI_COLOR_RESET "\n" );
-    printf(ANSI_COLOR_YELLOW " 1  n=4 S(3)" ANSI_COLOR_RESET "\n" );
-    printf(ANSI_COLOR_YELLOW " 2  n=4 S(3,4)" ANSI_COLOR_RESET "\n" );
-    printf(ANSI_COLOR_YELLOW " 3  n=4 S(2)" ANSI_COLOR_RESET "\n" );
-    printf(ANSI_COLOR_YELLOW " 4  n=4 S(2,4)" ANSI_COLOR_RESET "\n" );
-    printf(ANSI_COLOR_YELLOW " 5  n=4 S(2,3)" ANSI_COLOR_RESET "\n" );
-    printf(ANSI_COLOR_YELLOW " 6  n=4 S(2,3,4)" ANSI_COLOR_RESET "\n" );
-    printf(ANSI_COLOR_YELLOW " 7  n=4 S(1)" ANSI_COLOR_RESET "\n" );
-    printf(ANSI_COLOR_YELLOW " 8  n=4 S(1,4)" ANSI_COLOR_RESET "\n" );
-    printf(ANSI_COLOR_YELLOW " 9  n=4 S(1,3)" ANSI_COLOR_RESET "\n" );
-    printf(ANSI_COLOR_YELLOW " 10 n=4 S(1,3,4)" ANSI_COLOR_RESET "\n" );
-    printf(ANSI_COLOR_YELLOW " 11 n=4 S(1,2)" ANSI_COLOR_RESET "\n" );
-    printf(ANSI_COLOR_YELLOW " 12 n=4 S(1,2,4)" ANSI_COLOR_RESET "\n" );
-    printf(ANSI_COLOR_YELLOW " 13 n=4 S(1,2,3)" ANSI_COLOR_RESET "\n" );
-    printf(ANSI_COLOR_YELLOW " 14 n=4 S(1,2,3,4)" ANSI_COLOR_RESET "\n" );
+    printf(ANSI_COLOR_YELLOW " 0  n=4 S(4)        C(f)=3 <= 3" ANSI_COLOR_RESET "\n" );
+    printf(ANSI_COLOR_YELLOW " 1  n=4 S(3)        C(f)=7 <= 7" ANSI_COLOR_RESET "\n" );
+    printf(ANSI_COLOR_YELLOW " 2  n=4 S(3,4)      C(f)=7 <= 7" ANSI_COLOR_RESET "\n" );
+    printf(ANSI_COLOR_YELLOW " 3  n=4 S(2)        C(f)=6 <= 7" ANSI_COLOR_RESET "\n" );
+    printf(ANSI_COLOR_YELLOW " 4  n=4 S(2,4)      C(f)=6 <= 7" ANSI_COLOR_RESET "\n" );
+    printf(ANSI_COLOR_YELLOW " 5  n=4 S(2,3)      C(f)=6 <= 9" ANSI_COLOR_RESET "\n" );
+    printf(ANSI_COLOR_YELLOW " 6  n=4 S(2,3,4)    C(f)=7 <= 7" ANSI_COLOR_RESET "\n" );
+    printf(ANSI_COLOR_YELLOW " 7  n=4 S(1)        C(f)=7 <= 7" ANSI_COLOR_RESET "\n" );
+    printf(ANSI_COLOR_YELLOW " 8  n=4 S(1,4)      C(f)=7 <= 9" ANSI_COLOR_RESET "\n" );
+    printf(ANSI_COLOR_YELLOW " 9  n=4 S(1,3)      C(f)=3 <= 3" ANSI_COLOR_RESET "\n" );
+    printf(ANSI_COLOR_YELLOW " 10 n=4 S(1,3,4)    C(f)=6 <= 7" ANSI_COLOR_RESET "\n" );
+    printf(ANSI_COLOR_YELLOW " 11 n=4 S(1,2)      C(f)=6 <= 9" ANSI_COLOR_RESET "\n" );
+    printf(ANSI_COLOR_YELLOW " 12 n=4 S(1,2,4)    C(f)=7 <= 9" ANSI_COLOR_RESET "\n" );
+    printf(ANSI_COLOR_YELLOW " 13 n=4 S(1,2,3)    C(f)=5 <= 7" ANSI_COLOR_RESET "\n" );
+    printf(ANSI_COLOR_YELLOW " 14 n=4 S(1,2,3,4)  C(f)=3 <= 3" ANSI_COLOR_RESET "\n" );
     printf(ANSI_COLOR_YELLOW " =================" ANSI_COLOR_RESET "\n" );
-    printf(ANSI_COLOR_YELLOW " 15 n=5 S(4)" ANSI_COLOR_RESET "\n" );
-    printf(ANSI_COLOR_YELLOW " 16 n=5 S(4,5)" ANSI_COLOR_RESET "\n" );
-    printf(ANSI_COLOR_YELLOW " 17 n=5 S(3)" ANSI_COLOR_RESET "\n" );
-    printf(ANSI_COLOR_YELLOW " 18 n=5 S(3,5)" ANSI_COLOR_RESET "\n" );
-    printf(ANSI_COLOR_YELLOW " 19 n=5 S(3,4)" ANSI_COLOR_RESET "\n" );
-    printf(ANSI_COLOR_YELLOW " 20 n=5 S(3,4,5)" ANSI_COLOR_RESET "\n" );
-    printf(ANSI_COLOR_YELLOW " 21 n=5 S(2,5)" ANSI_COLOR_RESET "\n" );
-    printf(ANSI_COLOR_YELLOW " 22 n=5 S(2,4)" ANSI_COLOR_RESET "\n" );
-    printf(ANSI_COLOR_YELLOW " 23 n=5 S(2,4,5)" ANSI_COLOR_RESET "\n" );
-    printf(ANSI_COLOR_YELLOW " 24 n=5 S(2,3,5)" ANSI_COLOR_RESET "\n" );
-    printf(ANSI_COLOR_YELLOW " 25 n=5 S(2,3)" ANSI_COLOR_RESET "\n" );
-    printf(ANSI_COLOR_YELLOW " 26 n=5 S(2,3,4)" ANSI_COLOR_RESET "\n" );
-    printf(ANSI_COLOR_YELLOW " 27 n=5 S(1,5)" ANSI_COLOR_RESET "\n" );
-    printf(ANSI_COLOR_YELLOW " 28 n=5 S(1,4)" ANSI_COLOR_RESET "\n" );
-    printf(ANSI_COLOR_YELLOW " 29 n=5 S(1,3,4)" ANSI_COLOR_RESET "\n" );
-    printf(ANSI_COLOR_YELLOW " 30 n=5 S(1,2,5)" ANSI_COLOR_RESET "\n" );
+    printf(ANSI_COLOR_YELLOW " 15 n=5 S(4)        C(f)=10 <= 10" ANSI_COLOR_RESET "\n" );
+    printf(ANSI_COLOR_YELLOW " 16 n=5 S(4,5)      C(f)=10 <= 10" ANSI_COLOR_RESET "\n" );
+    printf(ANSI_COLOR_YELLOW " 17 n=5 S(3)        C(f)=9  <= 12" ANSI_COLOR_RESET "\n" );
+    printf(ANSI_COLOR_YELLOW " 18 n=5 S(3,5)      C(f)=10 <= 10" ANSI_COLOR_RESET "\n" );
+    printf(ANSI_COLOR_YELLOW " 19 n=5 S(3,4)      C(f)=10 <= 13" ANSI_COLOR_RESET "\n" );
+    printf(ANSI_COLOR_YELLOW " 20 n=5 S(3,4,5)    C(f)=9  <= 10" ANSI_COLOR_RESET "\n" );
+    printf(ANSI_COLOR_YELLOW " 21 n=5 S(2,5)      C(f)=10 <= 14" ANSI_COLOR_RESET "\n" );
+    printf(ANSI_COLOR_YELLOW " 22 n=5 S(2,4)      C(f)=8  <= 10" ANSI_COLOR_RESET "\n" );
+    printf(ANSI_COLOR_YELLOW " 23 n=5 S(2,4,5)    C(f)=9  <= 12" ANSI_COLOR_RESET "\n" );
+    printf(ANSI_COLOR_YELLOW " 24 n=5 S(2,3,5)    C(f)=10 <= 15" ANSI_COLOR_RESET "\n" );
+    printf(ANSI_COLOR_YELLOW " 25 n=5 S(2,3)      C(f)=8  <= 15" ANSI_COLOR_RESET "\n" );
+    printf(ANSI_COLOR_YELLOW " 26 n=5 S(2,3,4)    C(f)=10 <= 13" ANSI_COLOR_RESET "\n" );
+    printf(ANSI_COLOR_YELLOW " 27 n=5 S(1,5)      C(f)=9  <= 13" ANSI_COLOR_RESET "\n" );
+    printf(ANSI_COLOR_YELLOW " 28 n=5 S(1,4)      C(f)=9  <= 15" ANSI_COLOR_RESET "\n" );
+    printf(ANSI_COLOR_YELLOW " 29 n=5 S(1,3,4)    C(f)=11 <= 13" ANSI_COLOR_RESET "\n" );
+    printf(ANSI_COLOR_YELLOW " 30 n=5 S(1,2,5)    C(f)=9  <= 15" ANSI_COLOR_RESET "\n" );
 
 
     printf(ANSI_COLOR_YELLOW " CHOOSE THE FUNCTION TYPE: " ANSI_COLOR_RESET "" );
@@ -342,7 +339,6 @@ kitty::dynamic_truth_table knuth_game( std::string * pInfo )
 
     kitty::dynamic_truth_table F( nVars );
 
-    //INPUT = 2;
     std::vector<uint32_t> VALS;
     switch (INPUT)
     {
@@ -407,9 +403,12 @@ Ntk game_on( kitty::dynamic_truth_table * pF )
   printf(ANSI_COLOR_YELLOW " 2 SYM AUTOMATIC" ANSI_COLOR_RESET "\n" );
   printf(ANSI_COLOR_YELLOW " 3 DEC AUTOMATIC" ANSI_COLOR_RESET "\n" );
   printf(ANSI_COLOR_YELLOW " 4 DEC AUTOMATIC WEAK" ANSI_COLOR_RESET "\n" );
+  printf(ANSI_COLOR_YELLOW " 5 SYM MANUAL RS" ANSI_COLOR_RESET "\n" );
+  printf(ANSI_COLOR_YELLOW " 6 SYM AUTOMATIC RS" ANSI_COLOR_RESET "\n" );
   printf(ANSI_COLOR_YELLOW " CHOOSE YOUR METHOD: " ANSI_COLOR_RESET "" );
   int MET;
   std::cin >> MET;
+  
   if( MET == 0 )
     ntk = solver.man_sym_solve();
   else if( MET == 1 )
@@ -433,6 +432,16 @@ Ntk game_on( kitty::dynamic_truth_table * pF )
     std::cin >> MET;
     ntk = solver.aut_symGT_solve( MET );
   }
+  else if( MET == 5 )
+  {
+    ntk = solver.man_sym_solve_rs( );
+  }
+  else if( MET == 6 )
+  {
+    printf(ANSI_COLOR_YELLOW " NUMBER OF ITERATIONS: " ANSI_COLOR_RESET "" );
+    std::cin >> MET;
+    ntk = solver.aut_sym_solve_rs( MET );
+  }
   else
   {
     printf(ANSI_COLOR_RED " CHOICE NOT MATCHING ANY METHOD " ANSI_COLOR_RESET "\n" );   
@@ -443,7 +452,7 @@ Ntk game_on( kitty::dynamic_truth_table * pF )
   const auto tt = simulate<kitty::dynamic_truth_table>( ntk, sim )[0];
   if( tt.num_vars() < 10 )
   {
-    printf("simulation\n");
+    printf("\n simulation\n");
     kitty::print_binary( tt );
     std::cout << std::endl;
     printf("function returned\n");

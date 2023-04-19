@@ -114,7 +114,7 @@ public:
   void check_2stepsdec();
   void check1();
   void check2();
-  void check_mixed();
+  void check_topdec( std::vector<signal_t> );
   std::vector<action_t<TT>> get_topdec();
   std::vector<action_t<TT>> get_remove();
   std::vector<action_t<TT>> get_remap();
@@ -402,7 +402,7 @@ template<class TT, class Ntk>
     TT DTi = *pNet->getFuncP( (*pX)[xi] );
     TT DTj = *pNet->getFuncP( (*pX)[xj] );
     //TT FT  = *pNet->getFuncP( (*pY)[iTrg] );
-    //TT FM  = *pNet->getMaskP( (*pY)[iTrg] );
+    TT Ms  = *pNet->getMaskP( (*pY)[iTrg] );
     TT FT = pNet->getFuncOSY();
     TT FM = pNet->getMaskOSY();
 
@@ -414,13 +414,13 @@ template<class TT, class Ntk>
     TT mkB = cofactorG( FM, to, xi, xj );
 
     res.mask.push_back( ( FM & ~A ) | ( B & mkA ) );//( ~A & *pFM ) | ( B ));//& mkA ));  //
-    res.reward = kitty::count_zeros( res.mask[iTrg] );
+    res.reward = kitty::count_zeros( res.mask[iTrg]&Ms );
 
     TT TA = A & FT; /* remapping for A */
     TT TB = B & ( ( mkB & FT ) | ( mkA & ttA ) ); /* remapping for B */
     TT TR = ( ~A & ~B & FT );
 
-    res.func.push_back( FT );//TA | TB | TR );//FT );//
+    res.func.push_back( TA | TB | TR );//FT
     
     return res;
   }
@@ -442,7 +442,7 @@ action_t<TT> DecAnalyzer<TT, Ntk>::multiform_remapping( int from1, int i, int j,
     TT DTi = *pNet->getFuncP( (*pX)[xi] );
     TT DTj = *pNet->getFuncP( (*pX)[xj] );
     //TT FT  = *pNet->getFuncP( (*pY)[iTrg] );
-    //TT FM  = *pNet->getMaskP( (*pY)[iTrg] );
+    TT Ms  = *pNet->getMaskP( (*pY)[iTrg] );
     TT FT = pNet->getFuncOSY();
     TT FM = pNet->getMaskOSY();
 
@@ -467,7 +467,7 @@ action_t<TT> DecAnalyzer<TT, Ntk>::multiform_remapping( int from1, int i, int j,
     TT mkD = cofactorG( FM, to2, xi, xj );
 
     res.mask.push_back(( ~B & ~A & FM ) | ( ( C & mkA ) | ( D & mkB ) ));
-    res.reward = kitty::count_zeros( res.mask[0] );
+    res.reward = kitty::count_zeros( res.mask[0]&Ms ); // @ltry
     
     TT preserved = (~A&~B&~C&~D)&(FT);
 
@@ -477,7 +477,7 @@ action_t<TT> DecAnalyzer<TT, Ntk>::multiform_remapping( int from1, int i, int j,
     TT modifiedC = C & ( ( mkA & ~mkC & ttA ) | ( mkC & FT ) );
     TT modifiedD = D & ( ( mkB & ~mkD & ttB ) | ( mkD & FT ) );
 
-    res.func.push_back( FT );//preserved | modifiedA | modifiedC | modifiedB | modifiedD);//
+    res.func.push_back( preserved | modifiedA | modifiedC | modifiedB | modifiedD);//
     
     return res;
   }
@@ -500,7 +500,7 @@ action_t<TT> DecAnalyzer<TT, Ntk>::compatible_remapping( int from1, int from2, i
     TT DTi = *pNet->getFuncP( (*pX)[xi] );
     TT DTj = *pNet->getFuncP( (*pX)[xj] );
     //TT FT  = *pNet->getFuncP( (*pY)[iTrg] );
-    //TT FM  = *pNet->getMaskP( (*pY)[iTrg] );
+    TT Ms = *pNet->getMaskP( (*pY)[iTrg] );
     TT FT = pNet->getFuncOSY();
     TT FM = pNet->getMaskOSY();
 
@@ -521,14 +521,14 @@ action_t<TT> DecAnalyzer<TT, Ntk>::compatible_remapping( int from1, int from2, i
 
     res.mask.push_back( ( ~B & ~A & FM ) | ( C & ( mkA | mkB ) ) );
     
-    res.reward = kitty::count_zeros( res.mask[iTrg] );
+    res.reward = kitty::count_zeros( res.mask[iTrg]&Ms ); //@ltry
 
     TT TA = A & FT;
     TT TB = B & FT;
     TT TC = C & ( ( mkA & ttA ) | ( mkB & ttB ) | ( mkC & FT ) );
     TT TR = ~A & ~B & ~C & FT;
 
-    res.func.push_back( FT );//TA | TB | TC | TR );
+    res.func.push_back( TA | TB | TC | TR );//FT );/
     
     return res;
   }
@@ -656,151 +656,54 @@ void DecAnalyzer<TT, Ntk>::check2()
 
 
 template<class TT, class Ntk>
-void DecAnalyzer<TT, Ntk>::check_mixed()
+void DecAnalyzer<TT, Ntk>::check_topdec( std::vector<signal_t> boolean_chain )
 {
+  assert( pY->size() == 1 );
+  int r = boolean_chain.size();
 
-  for( int iTrg{0}; iTrg<pY->size(); ++iTrg )
+  TT Tf = * pNet->getFuncP( (*pY)[0] );
+  TT Mf = * pNet->getMaskP( (*pY)[0] ); 
+  TT Mo = pNet->getMaskOSY();
+
+
+  for( int i{r-1}; i>=0; --i )
   {
-    for ( auto j = 1u; j < (*pvS)[iTrg].size(); ++j )
+    signal_t xi = boolean_chain[i];
+    TT Tdi = * pNet->getFuncP( xi );
+    if( kitty::is_const0( (~Tdi) & Tf & Mf ) ) // F0 = 0 -> top and
     {
-      for ( auto i = 0u; i < j; ++i )
-      {
-        uint32_t xi = (*pvS)[iTrg][i];
-        uint32_t xj = (*pvS)[iTrg][j];
-
-        //TT FT = * pNet->getFuncP( (*pY)[iTrg] );
-        //TT FM = * pNet->getMaskP( (*pY)[iTrg] );
-        TT FT = pNet->getFuncOSY();
-        TT FM = pNet->getMaskOSY();
-
-        TT tti0  = kitty::cofactor0( FT, xi );
-        TT tti1  = kitty::cofactor1( FT, xi );
-        TT mki0  = kitty::cofactor0( FM, xi );
-        TT mki1  = kitty::cofactor1( FM, xi );
-
-        TT ttj0  = kitty::cofactor0( FT, xj );
-        TT ttj1  = kitty::cofactor1( FT, xj );
-        TT mkj0  = kitty::cofactor0( FM, xj );
-        TT mkj1  = kitty::cofactor1( FM, xj );
-
-        const auto tt00 = cofactor0( ttj0, xi );
-        const auto tt01 = cofactor1( ttj0, xi );
-        const auto tt10 = cofactor0( ttj1, xi );
-        const auto tt11 = cofactor1( ttj1, xi );
-        const auto mk00 = cofactor0( mkj0, xi );
-        const auto mk01 = cofactor1( mkj0, xi );
-        const auto mk10 = cofactor0( mkj1, xi );
-        const auto mk11 = cofactor1( mkj1, xi );
-
-        const auto eq01 = equal( mk00&mk01&tt00, mk00&mk01&tt01 );
-        const auto eq02 = equal( mk00&mk10&tt00, mk00&mk10&tt10 );
-        const auto eq03 = equal( mk00&mk11&tt00, mk00&mk11&tt11 );
-        const auto eq12 = equal( mk10&mk01&tt01, mk10&mk01&tt10 );
-        const auto eq13 = equal( mk01&mk11&tt01, mk01&mk11&tt11 );
-        const auto eq23 = equal( mk10&mk11&tt10, mk10&mk11&tt11 );
-
-        const auto num_pairs =
-          static_cast<uint32_t>( eq01 ) +
-          static_cast<uint32_t>( eq02 ) +
-          static_cast<uint32_t>( eq03 ) +
-          static_cast<uint32_t>( eq12 ) +
-          static_cast<uint32_t>( eq13 ) +
-          static_cast<uint32_t>( eq23 );
-
-        //if(  )
-        if( (num_pairs != 0) )//&& !equal( mkj0 & mkj1 & ttj1 , mkj0 & mkj1 & ttj0 ) )   
-        {     
-          //if( !equal( mki0 & mki1 & tti1 , mki0 & mki1 & tti0 ) )
-          {
-            if ( eq12 ) // F01 = F10 NES
-            {
-              set_remap.push_back( simple_remapping( 1, 2, i, j, iTrg, DecAct_t::NES_, 0 ) );
-              set_remap.push_back( simple_remapping( 2, 1, i, j, iTrg, DecAct_t::NES_, 0 ) );
-            }
-            if ( eq03 ) // F00 = F11 ES
-            {
-              set_remap.push_back( simple_remapping( 0, 3, i, j, iTrg, DecAct_t::ES_, 0 ) ) ;
-              set_remap.push_back( simple_remapping( 3, 0, i, j, iTrg, DecAct_t::ES_, 0 ) ) ;
-            }
-            if ( eq02 ) // F00=F10
-            {
-              set_remap.push_back( simple_remapping( 0, 2, i, j, iTrg, DecAct_t::SVS_, 0u ) ); // SVS0X_
-              set_remap.push_back( simple_remapping( 2, 0, i, j, iTrg, DecAct_t::SVS_, 0u ) );
-            }
-            if ( eq13 ) // F01=F11
-            {
-              set_remap.push_back(  simple_remapping( 1, 3, i, j, iTrg, DecAct_t::SVS_, 1 ) ); // SVS1X_
-              set_remap.push_back(  simple_remapping( 3, 1, i, j, iTrg, DecAct_t::SVS_, 1 ) );
-            }
-            if ( eq01 ) // F01=F00
-            {
-              set_remap.push_back(  simple_remapping( 0, 1, i, j, iTrg, DecAct_t::SVS_, 2 ) ); // SVSX0
-              set_remap.push_back(  simple_remapping( 1, 0, i, j, iTrg, DecAct_t::SVS_, 2 ) );    
-            }
-            if ( eq23 ) // F11=F10
-            {
-              set_remap.push_back(  simple_remapping( 2, 3, i, j, iTrg, DecAct_t::SVS_, 3 ) ); // SVSX1_
-              set_remap.push_back(  simple_remapping( 3, 2, i, j, iTrg, DecAct_t::SVS_, 3 ) );
-            }
-            if ( eq12 && eq03 ) // F01=F10 and F00=F11
-            {
-              set_remap.push_back(  multiform_remapping( 0, i, j, iTrg, DecAct_t::MS_ ) );
-              set_remap.push_back(  multiform_remapping( 1, i, j, iTrg, DecAct_t::MS_ ) );      
-              set_remap.push_back(  multiform_remapping( 2, i, j, iTrg, DecAct_t::MS_ ) );      
-              set_remap.push_back(  multiform_remapping( 3, i, j, iTrg, DecAct_t::MS_ ) );
-            }
-            if( eq02 && eq01 && eq12 )
-            {
-              set_remap.push_back(  compatible_remapping( 0, 1, 2, i, j, iTrg, DecAct_t::CSVS_, 0 ) ); // CSVS00_
-              set_remap.push_back(  compatible_remapping( 2, 0, 1, i, j, iTrg, DecAct_t::CSVS_, 0 ) );
-            }
-            if( eq13 && eq01 && eq03 )
-            {
-              set_remap.push_back(  compatible_remapping( 0, 1, 3, i, j, iTrg, DecAct_t::CSVS_, 1 ) ); // CSVS10_ old ij, new ji
-              set_remap.push_back(  compatible_remapping( 3, 1, 0, i, j, iTrg, DecAct_t::CSVS_, 1 ) );
-            }
-            if( eq02 && eq23 && eq03 )
-            {
-              set_remap.push_back(  compatible_remapping( 0, 2, 3, i, j, iTrg, DecAct_t::CSVS_, 2 ) ); // CSVS01_ old ij, new ji
-              set_remap.push_back(  compatible_remapping( 3, 2, 0, i, j, iTrg, DecAct_t::CSVS_, 2 ) );
-            }
-            if( eq13 && eq23 && eq12 )
-            {
-              set_remap.push_back(  compatible_remapping( 1, 3, 2, i, j, iTrg, DecAct_t::CSVS_, 3 ) ); // CSVS11_
-              set_remap.push_back(  compatible_remapping( 3, 2, 1, i, j, iTrg, DecAct_t::CSVS_, 3 ) );
-            }
-          }
-        }
-      }
+      TT M1 = Mf&Tdi;
+      TT M2 = Mo&Mf&Tdi;
+      action_t<TT> act = { DecAct_t::T1_AND_, {0, i }, { M1 }, {Tf}, kitty::count_zeros(M2) };
+      set_remap.push_back(act);
     }
-
-    TT FT = pNet->getFuncOSY();
-    TT FM = pNet->getMaskOSY();
-    TT F0 = FT.construct();
-    TT F1 = FT.construct();
-    TT TD = FT.construct();
-    pNet->foreach_gate( [&]( signal_t x ) 
-    {   
-        TD = * pNet->getFuncP( x ); 
-        F1 =  TD & FT;
-        F0 = ~TD & FT;
-
-        if( kitty::is_const0( F0 ) ) // F = D .AND. F
-        {
-          action_t<TT> act = { DecAct_t::T1_AND_, {iTrg, x.node, x.sim}, {~FD & FM}, {FT}, kitty::count_zeros(~FD & FM) };
-          set_remap.push_back( act );
-        }
-        if( kitty::is_const0( F1 ) ) // F = D .AND. F
-        {
-          action_t<TT> act = { DecAct_t::T1_AND_, {iTrg, x.node, x.sim}, {~FD & FM}, {FT}, kitty::count_zeros(~FD & FM) };
-          set_remap.push_back( act );
-        }
-
-
-    } );
-
+    if( kitty::is_const0( Tdi & Tf & Mf ) ) // F1 = 0 -> top lt
+    {
+      TT M1 = Mf&(~Tdi);
+      TT M2 = Mo&Mf&(~Tdi);
+      action_t<TT> act = { DecAct_t::T1_LT_, {0, i }, { M1 }, {Tf}, kitty::count_zeros(M2) };
+      set_remap.push_back(act);
+    }
+    if( kitty::equal( Tdi & Mf, Tdi & Tf & Mf ) ) // F = 0 -> top or
+    {      
+      TT M1 = Mf&(~Tdi);
+      TT M2 = Mo&Mf&(~Tdi);
+      action_t<TT> act = { DecAct_t::T1_OR_, {0, i }, { M1 }, {Tf}, kitty::count_zeros(M2) };
+      set_remap.push_back(act);
+    }    
+    if( kitty::equal( (~Tdi) & Mf, (~Tdi) & Tf & Mf ) ) // F = 0 -> top or
+    {
+      TT M1 = Mf&(Tdi);
+      TT M2 = Mo&Mf&(Tdi);
+      action_t<TT> act = { DecAct_t::T1_LE_, {0, i }, { M1 }, {Tf}, kitty::count_zeros(M2) };
+      set_remap.push_back(act);
+    }
   }
 }
+
+
+
+
 
 #pragma endregion
 
@@ -830,6 +733,21 @@ void DecAnalyzer<TT, Ntk>::print_actions( std::vector<action_t<TT>> actions )
       printf( "%3d | targ(%2d ): %4d' or  R : %d\n", cMV++, act.sigs[0], act.sigs[1], act.reward );
       break;
     case DecAct_t::D1_XOR_:
+      printf( "%3d | targ(%2d ): %4d  xor R : %d\n", cMV++, act.sigs[0], act.sigs[1], act.reward );
+      break;
+    case DecAct_t::T1_AND_:
+      printf( "%3d | targ(%2d ): %4d  and R : %d\n", cMV++, act.sigs[0], act.sigs[1], act.reward );
+      break;
+    case DecAct_t::T1_OR_:
+      printf( "%3d | targ(%2d ): %4d  or  R : %d\n", cMV++, act.sigs[0], act.sigs[1], act.reward );
+      break;
+    case DecAct_t::T1_LT_:
+      printf( "%3d | targ(%2d ): %4d' and R : %d\n", cMV++, act.sigs[0], act.sigs[1], act.reward );
+      break;
+    case DecAct_t::T1_LE_:
+      printf( "%3d | targ(%2d ): %4d' or  R : %d\n", cMV++, act.sigs[0], act.sigs[1], act.reward );
+      break;
+    case DecAct_t::T1_XOR_:
       printf( "%3d | targ(%2d ): %4d  xor R : %d\n", cMV++, act.sigs[0], act.sigs[1], act.reward );
       break;
     case DecAct_t::NES_:
