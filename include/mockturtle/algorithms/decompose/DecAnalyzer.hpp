@@ -64,6 +64,7 @@ enum class DecAct_t
   MS_,
   SVS_,
   CSVS_,
+  STR_,
   /* termination */
   BUF_,
   INV_
@@ -107,6 +108,7 @@ public:
   action_t<TT> simple_remapping( int, int, int, int, int, DecAct_t, int );
   action_t<TT> multiform_remapping( int, int, int, int, DecAct_t );
   action_t<TT> compatible_remapping( int, int, int, int, int, int, DecAct_t, int );
+  action_t<TT> spectral_translation( int, int, int, DecAct_t, int );
 
   /* analyze */
   void check_tarclosure();
@@ -114,6 +116,7 @@ public:
   void check_2stepsdec();
   void check1();
   void check2();
+  void check_str();
   void check_topdec( std::vector<signal_t> );
   std::vector<action_t<TT>> get_topdec();
   std::vector<action_t<TT>> get_remove();
@@ -121,6 +124,8 @@ public:
   std::vector<action_t<TT>> get_divclosure();
   std::vector<action_t<TT>> get_trgclosure();
   std::vector<action_t<TT>> get_2stepsdec();
+
+  int CountNodes( DecAct_t );
 
   TT cube_generator( int, TT, TT );
 
@@ -227,6 +232,32 @@ void DecAnalyzer<TT, Ntk>::check_tarclosure()
   }
 }
 #pragma endregion
+
+template<class TT, class Ntk> 
+int DecAnalyzer<TT, Ntk>::CountNodes( DecAct_t type)
+{
+  switch (type)
+  {
+  case DecAct_t::NES_ :
+    return 2;
+    break;
+  case DecAct_t::ES_ :
+    return 2;
+    break;
+  case DecAct_t::SVS_:
+    return 1;
+    break;
+  case DecAct_t::CSVS_:
+    return 1;
+    break;
+  case DecAct_t::MS_:
+    return 1;
+    break;
+  default:
+    return -1;
+    break;
+  }
+}
 
 #pragma region decomposability
 template<class TT, class Ntk>
@@ -652,6 +683,59 @@ void DecAnalyzer<TT, Ntk>::check2()
       }
     }
   }
+}
+
+template<class TT, class Ntk>
+  action_t<TT> DecAnalyzer<TT, Ntk>::spectral_translation( int i, int j, int iTrg, DecAct_t type, int id_symmetry )
+  {
+//printf("@@a\n");
+    action_t<TT> res;
+    res.type = type;
+    res.sigs = {};
+    res.sigs.push_back(iTrg);
+    res.sigs.push_back(i);
+    res.sigs.push_back(j); 
+//printf("@@a2\n");
+    uint32_t xi = (*pvS)[iTrg][i];
+    uint32_t xj = (*pvS)[iTrg][j];
+//printf("@@a3\n");
+    //TT FT  = *pNet->getFuncP( (*pY)[iTrg] );
+    TT Ms = *pNet->getMaskP( (*pY)[iTrg] );
+    TT FT = pNet->getFuncOSY();
+    TT FM = pNet->getMaskOSY();
+    TT DTi = *pNet->getFuncP( (*pX)[xi] );
+    TT DTj = *pNet->getFuncP( (*pX)[xj] );
+    TT tti0 = kitty::cofactor0( FT, xi );
+    TT tti1 = kitty::cofactor1( FT, xi );
+    TT ttj0 = kitty::cofactor0( FT, xj );
+    TT ttj1 = kitty::cofactor1( FT, xj );
+    TT mki0 = kitty::cofactor0( FM, xi );
+    TT mki1 = kitty::cofactor1( FM, xi );
+    TT mkj0 = kitty::cofactor0( FM, xj );
+    TT mkj1 = kitty::cofactor1( FM, xj );
+    res.reward = kitty::count_zeros( FM&Ms );
+    res.func.push_back( (~DTj & FT) | (DTj&((DTi&~FT)|(~DTi&FT))) );//FT
+    res.mask.push_back( (~DTj & FM) | (DTj&((DTi&~FM)|(~DTi&FM))) );//FT
+    return res;
+  }
+
+template<class TT, class Ntk>
+void DecAnalyzer<TT, Ntk>::check_str()
+{
+//printf("@@c\n");
+  for( int iTrg{0}; iTrg<pY->size(); ++iTrg )
+  {
+    for ( auto j = 1u; j < (*pvS)[iTrg].size(); ++j )
+    {
+      for ( auto i = 0u; i < j; ++i )
+      {
+        set_remap.push_back( spectral_translation( i, j, iTrg, DecAct_t::STR_, 0 ) );
+        set_remap.push_back( spectral_translation( j, i, iTrg, DecAct_t::STR_, 0 ) );
+      }
+    }
+  }
+//printf("@@d\n");
+
 }
 
 

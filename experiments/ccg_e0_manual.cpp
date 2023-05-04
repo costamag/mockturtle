@@ -108,7 +108,7 @@ int main()
     assert(0);
   }
 
-  printf(ANSI_COLOR_YELLOW " GAME TIME! " ANSI_COLOR_RESET "\n" );
+  //printf(ANSI_COLOR_YELLOW " GAME TIME! " ANSI_COLOR_RESET "\n" );
   
   return 0;
 }
@@ -405,6 +405,7 @@ Ntk game_on( kitty::dynamic_truth_table * pF )
   printf(ANSI_COLOR_YELLOW " 4 DEC AUTOMATIC WEAK" ANSI_COLOR_RESET "\n" );
   printf(ANSI_COLOR_YELLOW " 5 SYM MANUAL RS" ANSI_COLOR_RESET "\n" );
   printf(ANSI_COLOR_YELLOW " 6 SYM AUTOMATIC RS" ANSI_COLOR_RESET "\n" );
+  printf(ANSI_COLOR_YELLOW " 7 SYM AUTOMATIC XOR" ANSI_COLOR_RESET "\n" );
   printf(ANSI_COLOR_YELLOW " CHOOSE YOUR METHOD: " ANSI_COLOR_RESET "" );
   int MET;
   std::cin >> MET;
@@ -441,6 +442,12 @@ Ntk game_on( kitty::dynamic_truth_table * pF )
     printf(ANSI_COLOR_YELLOW " NUMBER OF ITERATIONS: " ANSI_COLOR_RESET "" );
     std::cin >> MET;
     ntk = solver.aut_sym_solve_rs( MET );
+  }
+  else if( MET == 7 )
+  {
+    printf(ANSI_COLOR_YELLOW " NUMBER OF ITERATIONS: " ANSI_COLOR_RESET "" );
+    std::cin >> MET;
+    ntk = solver.aut_sym_solve_xor( MET );
   }
   else
   {

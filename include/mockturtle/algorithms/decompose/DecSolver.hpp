@@ -80,6 +80,7 @@ public:
     Ntk man_sym_solve();
     Ntk man_sym_solve_rs();
     Ntk aut_sym_solve_rs( int );
+    Ntk aut_sym_solve_xor( int );
     Ntk man_decsym_solve();
     Ntk aut_sym_solve(int);
     Ntk aut_symGT_solve(int);
@@ -97,13 +98,14 @@ public:
     void remap_or( DecNet<TT, Ntk> *, action_t<TT> );
     void remap_lt( DecNet<TT, Ntk> *, action_t<TT> );
     void remap_le( DecNet<TT, Ntk> *, action_t<TT> );
+    void remap_str( DecNet<TT, Ntk> *, action_t<TT> );
     void remap( DecNet<TT, Ntk> *, action_t<TT> );
     void decompose( DecNet<TT, Ntk> *, action_t<TT> );
     void close_div( DecNet<TT, Ntk> *, std::vector<action_t<TT>> );
     void close_tar( DecNet<TT, Ntk> *, std::vector<action_t<TT>> );
     void so_terminate( DecNet<TT, Ntk> *, int );
 
-    bool check_sat( DecNet<TT, Ntk> *, int ); // WIP
+    bool check_sat( DecNet<TT, Ntk> *, int, int ); // WIP
     bool check_2sat( DecNet<TT, Ntk> *, signal_t, signal_t );
 
     /* visualize */
@@ -228,7 +230,7 @@ Ntk DecSolver<TT, Ntk>::man_sym_solve_rs()
     while( !is_sat )
     {
       show_state( &net, &Y );
-      is_sat = check_sat( &net, 0 );
+      is_sat = check_sat( &net, 0, 0 );
 
       DecAnalyzer<TT, Ntk> checker( &net, &X, &Y, &vS, &vD );
       if( !is_sat )
@@ -608,7 +610,7 @@ Ntk DecSolver<TT, Ntk>::aut_sym_solve_rs( int nIters )
     while( !is_sat && !is_stuck )
     {
 //show_state( &net, &Y );
-      is_sat = check_sat( &net, 0 );
+      is_sat = check_sat( &net, 0, 0 );
 
       DecAnalyzer<TT, Ntk> checker( &net, &X, &Y, &vS, &vD );
       if( !is_sat  )
@@ -624,7 +626,7 @@ Ntk DecSolver<TT, Ntk>::aut_sym_solve_rs( int nIters )
 
         for( int iRP{0}; iRP<RP.size(); ++iRP )
         {
-          int OLD_RWD = 0;
+          int OLD_RWD = 1;
           if( OLD_RWD == 1 )
           {
             if( RP[iRP].reward >= old_reward )
@@ -706,6 +708,196 @@ Ntk DecSolver<TT, Ntk>::aut_sym_solve_rs( int nIters )
            nBest, avg_num_gates, max_num_gates, avg_time );
   return ntkBest;
 }
+
+template<class TT, class Ntk>
+Ntk DecSolver<TT, Ntk>::aut_sym_solve_xor( int nIters )
+{
+  printf("xor\n");
+  if( vTruths[0].num_vars() < 10 )
+    PrintSpecs();
+
+  std::mt19937       generator(rand_dev());
+
+  double avg_time{0};
+  double avg_num_gates{0};
+  int max_num_gates{0};
+
+  Ntk ntk;
+  Ntk ntkBest;
+  int nBest = 100000;
+  for( int it{0}; it<nIters; ++it )
+  {
+
+    std::clock_t start;
+    double duration;
+    start = std::clock();
+    bool CEC;
+
+    /* init */
+    DecNet<TT, Ntk>  net;
+    net.init( vTruths, vMasks );
+    /* info on the outputs */
+    Y = net.getTargets();
+    assert( Y.size()==1 );
+
+    net.setOSY( *net.getFuncP(Y[0]), *net.getMaskP(Y[0]) );
+
+    /* info on the inputs */
+    X = net.getPIs();
+    std::vector<int> S;
+
+    boolean_chain = {}; // clean the vector
+    for( int i{0}; i < X.size(); ++i )  
+    {
+      boolean_chain.push_back( X[i] );
+      S.push_back( i );
+    }
+
+    for( int i{1}; i < X.size(); ++i )  
+    {
+      for( int j{0}; j < i; ++j )  
+      {
+        boolean_chain.push_back(net.create_xor( X[i], X[j] ));
+      }
+    }
+
+
+    vD={};
+    vS = {};
+    for( int iTrg{0}; iTrg<Y.size(); ++iTrg )
+    {
+      vD.push_back( X );
+      vS.push_back( S );
+    }
+
+    int best_reward{0};
+    int old_reward{0};
+    bool is_sat = false;
+    bool is_stuck = false;
+    int nNewNodes = boolean_chain.size();
+    /* solve */
+    std::uniform_int_distribution<int>  distr2(0, 100);  
+
+    while( !is_sat && !is_stuck )
+    {
+//show_state( &net, &Y );
+      is_sat = check_sat( &net, 0, boolean_chain.size()-nNewNodes );
+
+      DecAnalyzer<TT, Ntk> checker( &net, &X, &Y, &vS, &vD );
+      if( !is_sat  )
+      {
+        checker.check2();
+        checker.check_topdec( boolean_chain );
+        checker.check_str( );
+        
+        std::vector<action_t<TT>> RP = checker.get_remap();
+//checker.print_actions( RP );
+        best_reward=0;
+        std::vector<int> moves; 
+//printf("b \n" );
+
+        for( int iRP{0}; iRP<RP.size(); ++iRP )
+        {
+          int OLD_RWD = 1;
+          if( OLD_RWD == 1 )
+          {
+            if( RP[iRP].reward >= old_reward && RP[iRP].type != DecAct_t::STR_ ) // there was =
+              moves.push_back( iRP );
+          }
+          else
+          {
+            if( RP[iRP].reward > best_reward )
+            {
+              moves = {iRP};
+              best_reward = RP[iRP].reward;
+            }
+            else if( RP[iRP].reward == best_reward )
+              moves.push_back( iRP );
+          }
+        }
+        int TCONS = -1;
+        if(TCONS < 100)
+        {
+          for( int iRP{0}; iRP<RP.size(); ++iRP )
+          {
+            if( RP[iRP].type == DecAct_t::STR_ )
+            {
+              if( distr2(generator) > TCONS )
+                moves.push_back( iRP );
+            }
+          }
+        }
+//printf("a \n" );
+        if( moves.size() == 0 )
+        {
+          is_stuck = true;
+        }
+        else
+        {
+          std::uniform_int_distribution<int>  distr(0, moves.size()-1);  
+          int MOVE = moves[distr(generator)];
+          old_reward = RP[MOVE].reward;
+  //printf("MOVE %d\n", MOVE );
+          remap( &net, RP[MOVE] );
+          nNewNodes = checker.CountNodes(RP[MOVE].type);
+
+          if( nNewNodes < 0 )
+            nNewNodes = boolean_chain.size();
+
+        }
+      }
+    }
+//net.print_net();
+    /* convert result */
+    if( is_stuck )
+    {
+      printf( ANSI_COLOR_RED " EMPTY SET OF MOVES " ANSI_COLOR_RESET "\n" );
+    }
+    else
+    {
+      DecChsToGraph<TT, Ntk> conv( net ); 
+  
+      ntk = conv.convert();
+      Y = net.getTargets();
+      default_simulator<kitty::dynamic_truth_table> sim( (*net.getFuncP(Y[0])).num_vars() );
+      const auto tt = simulate<kitty::dynamic_truth_table>( ntk, sim )[0];
+      printf("**********************************\n");
+      printf("num gates =%d\n", ntk.num_gates());
+      for( int iTrg{0}; iTrg<Y.size(); ++iTrg )
+      {
+        TT F = *net.getFuncP( Y[iTrg] );
+        CEC = kitty::equal( tt, F );
+        if( kitty::equal( tt, F ) )
+          printf( ANSI_COLOR_GREEN " CEC SUCCESFUL " ANSI_COLOR_RESET "\n" );
+        else
+        {
+          printf( ANSI_COLOR_RED " CEC FAILED " ANSI_COLOR_RESET "\n" );
+          assert(0);
+        }
+      }
+
+      duration = ( std::clock() - start ) / (double) CLOCKS_PER_SEC;
+      avg_time += duration/nIters;
+      avg_num_gates += 1.0*ntk.num_gates()/nIters;
+      if( ntk.num_gates() > max_num_gates )
+        max_num_gates = ntk.num_gates();
+
+      printf("%5.5f\n", duration );
+      printf("**********************************\n");
+      if( (ntk.num_gates() < nBest) && CEC )
+      {
+        nBest = ntk.num_gates();
+        ntkBest = ntk;
+      }
+    }
+  }
+  printf("SUMMARY:\n");
+  printf("%10s %10s %10s %10s\n %10d %5.5f %d %5.5f\n", 
+          "min G", "E[G]", "max G", "E[t]\n",
+           nBest, avg_num_gates, max_num_gates, avg_time );
+  return ntkBest;
+}
+
 
 template<class TT, class Ntk>
 Ntk DecSolver<TT, Ntk>::aut_symGT_solve(int nIters)
@@ -1056,12 +1248,12 @@ bool DecSolver<TT, Ntk>::check_2sat( DecNet<TT, Ntk> * pNet, signal_t xi, signal
 }
 
 template<class TT, class Ntk>
-bool DecSolver<TT, Ntk>::check_sat( DecNet<TT, Ntk> * pNet, int iTrg )
+bool DecSolver<TT, Ntk>::check_sat( DecNet<TT, Ntk> * pNet, int iTrg, int newBound )
 {
   TT Tf = * pNet->getFuncP(Y[iTrg]);
   TT Mf = * pNet->getMaskP(Y[iTrg]);
   int r = boolean_chain.size();
-  for( int i{r-1}; i>=0; --i )
+  for( int i{r-1}; i>=newBound; --i )
   {
     signal_t xi = boolean_chain[i];
     TT Tdi = * pNet->getFuncP( xi );
@@ -1436,6 +1628,28 @@ void DecSolver<TT, Ntk>::remap_le( DecNet<TT, Ntk> * pNet, action_t<TT> act )
 
 }
 
+template <class TT, class Ntk>
+void DecSolver<TT, Ntk>::remap_str(  DecNet<TT, Ntk> * pNet, action_t<TT> act  )
+{
+//printf("@@e\n");
+  printf( ANSI_COLOR_YELLOW "STR" ANSI_COLOR_RESET "\n" );
+
+  int iTrg    = act.sigs[0];
+  int i       = act.sigs[1];
+  int j       = act.sigs[2];
+  int iS      = vS[iTrg][i];  
+  int jS      = vS[iTrg][j];
+  
+  vD[iTrg][iS] = pNet->create_xor( vD[iTrg][jS], vD[iTrg][iS] );
+
+  boolean_chain.push_back( vD[iTrg][iS] );
+
+  pNet->setOSY( act.func[0], act.mask[0] );
+
+//printf("@@f\n");
+
+}
+
 template<class TT, class Ntk>
  void DecSolver<TT, Ntk>::remap( DecNet<TT, Ntk> * pNet, action_t<TT> act )
   {
@@ -1469,6 +1683,9 @@ template<class TT, class Ntk>
         break; 
       case DecAct_t::T1_LE_:
         remap_le( pNet, act );
+        break;
+      case DecAct_t::STR_:
+        remap_str( pNet, act );
         break; 
     }
     //pNet->change_sim_info( Y[iTrg], act.func[0], act.mask[0] );
