@@ -1,0 +1,309 @@
+/* mockturtle: C++ logic network library
+ * Copyright (C) 2018-2022  EPFL
+ *
+ * Permission is hereby granted, free of charge, to any person
+ * obtaining a copy of this software and associated documentation
+ * files (the "Software"), to deal in the Software without
+ * restriction, including without limitation the rights to use,
+ * copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following
+ * conditions:
+ *
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+ * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+ * HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
+ */
+
+/*!
+  \file boolean_chain.hpp
+  \brief data structure for storing boolean function representations
+
+  \author Andrea Costamagna
+*/
+#pragma once
+#include <kitty/print.hpp>
+#include <stdio.h>
+#include <stack>
+
+namespace mockturtle
+{
+
+enum ccgates_t: std::uint32_t
+{
+    A00_ = 1u,
+    A01_ = 2u,
+    A10_ = 4u,
+    A11_ = 8u,
+    XOR_ = 6u,
+    INV_ = 3u,
+    BUF_ = 12u
+};
+
+enum ccgtypes_t: std::uint32_t
+{
+    INP_ = 0x0,
+    BOT_ = 0x1,
+    TOP_ = 0x2,
+    UNU_ = 0x2,
+    OUT_ = 0xF
+};
+
+enum ccgmasks_t: std::uint32_t
+{
+    MKA_ = 0xF0000000,
+    MKI_ = 0x0FFF0000,
+    MKJ_ = 0x0000FFF0,
+    MKZ_ = 0x0000000F
+};
+
+template<class TT>
+class boolean_chain
+{
+
+private:
+    std::vector<uint32_t> chain_;
+    std::vector<TT>       funcs_;
+    uint32_t              npis_;
+    uint32_t              npos_;
+    uint32_t              ncap_;
+    uint32_t              nbot_;
+
+public:
+  /* genesis and apocalypse */
+  boolean_chain();
+  ~boolean_chain();
+  /* initialization */
+  void init( std::vector<TT>, std::vector<TT>, uint32_t );
+  void add_input ( uint32_t, TT * );
+  void add_bottom( uint32_t, uint32_t, uint32_t );
+  void add_unused( uint32_t );
+  void add_output( uint32_t, TT * );
+
+  bool is_input ( uint32_t );
+  bool is_bottom( uint32_t );
+  bool is_unused( uint32_t );
+  bool is_topper( uint32_t );
+  bool is_output( uint32_t );
+
+  uint32_t get_type( uint32_t );
+  uint32_t get_varj( uint32_t );
+  uint32_t get_vari( uint32_t );
+  uint32_t get_info( uint32_t );
+
+  void increase_xj( uint32_t );
+  void increase_xi( uint32_t );
+  void decrease_xj( uint32_t );
+  void decrease_xi( uint32_t );
+
+  /* visualization */
+  void print();
+  void print_state();
+};
+
+/* genesis and apocalypse */
+template<class TT> boolean_chain<TT>::boolean_chain(){}
+template<class TT> boolean_chain<TT>::~boolean_chain(){}
+
+/* initialization */
+#pragma region initialization
+template<class TT>  
+void boolean_chain<TT>::add_input( uint32_t id, TT * pSim )
+{
+    chain_[id] = id; 
+    funcs_[id] = *pSim;
+}
+
+template<class TT>  
+void boolean_chain<TT>::add_output( uint32_t id, TT * pSim )
+{
+    chain_[npis_+ncap_+id] = MKA_ | id; 
+    funcs_[npis_+ncap_+id] = *pSim;
+}
+
+template<class TT>  
+void boolean_chain<TT>::add_unused( uint32_t id )
+{
+    chain_[id] = ( UNU_ << 28u ) | id;
+    funcs_[id] = *pSim & ~*pSim;    
+}
+
+template<class TT>  
+void boolean_chain<TT>::add_bottom( uint32_t xi, uint32_t xj, uint32_t gate ) // fn = gate( xj, xi )
+{
+    assert( xj >= xi );
+    assert( xi < npis_ + nbot_ );
+    assert( xj < npis_ + nbot_ );
+    assert( nbot_ < ncap_ );
+
+    uint32_t xnew = 0x10000000 | ( xi << 16 ) | ( xj << 4 ) | gate;
+    uint32_t ins = npis_ + nbot_;
+    /* find were to intert it */
+    for( uint32_t k = npis_ + nbot_ - 1; k >= npis_; --k )
+    {
+        if( xnew > chain_[k] )  break;
+        ins--;
+    }
+    /* make space for the new active node */
+    uint32_t vari, varj;
+    for( uint32_t k = npis_ + ncap_ - 1; k >= ins; --k )
+    {
+        vari = get_vari(chain_[k]);
+        varj = get_varj(chain_[k]);
+        if( get_type( chain_[k] ) == TOP_ )
+        {
+            if( vari < ( ncap_+npis_-ntop_ ) && vari >= ins )  increase_xi(chain_[k]);
+            if( varj < ( ncap_+npis_-ntop_ ) && varj >= ins )  increase_xj(chain_[k]);
+        }
+        else if( get_type( chain_[k] ) == BOT_ )
+        {
+            if( get_vari(chain_[k]) >= ins )  increase_xi(chain_[k]);
+            if( get_varj(chain_[k]) >= ins )  increase_xj(chain_[k]);
+            chain_[k+1]=chain_[k];
+            funcs_[k+1]=funcs_[k];
+        }
+    }
+    /*  insert the new active node */
+    chain_[ins] = xnew;
+    switch ( gate )
+    {
+        case A00_:  funcs_[ins] = ~funcs_[xj] & ~funcs_[xi];    break;
+        case A01_:  funcs_[ins] = ~funcs_[xj] &  funcs_[xi];    break;
+        case A10_:  funcs_[ins] =  funcs_[xj] & ~funcs_[xi];    break;
+        case A11_:  funcs_[ins] =  funcs_[xj] &  funcs_[xi];    break;
+        case XOR_:  funcs_[ins] =  funcs_[xj] ^  funcs_[xi];    break;
+        case INV_:  assert( xi == xj ); funcs_[ins] =  ~funcs_[xj]; break;
+        case BUF_:  assert( xi == xj ); funcs_[ins] =   funcs_[xj]; break;
+        default:    break;
+    }
+    nbot_++;
+}
+
+template<class TT>  
+void boolean_chain<TT>::add_topper( uint32_t xi, uint32_t xj, uint32_t gate, TT * pSim ) // fn = gate( xj, xi )
+{
+    assert( xj >= xi );
+    assert( ( xi < npis_ + nbot_ || xi >= ncap_ - ntop_ ) );
+    assert( ( xj < npis_ + nbot_ || xj >= ncap_ - ntop_ ) );
+    assert( nbot_ + ntop_ < ncap_ );
+
+    uint32_t xnew = 0x30000000 | ( xi << 16 ) | ( xj << 4 ) | gate;
+    uint32_t ins = npis_ + ncap_ - 1;
+    /* find were to intert it */
+    for( uint32_t k = npis_ + ncap_ - 1; k >= npis_ + ncap_ - ntop_; --k )
+    {
+        if( xnew > chain_[k] )  break;
+        ins--;
+    }
+    /* make space for the new active node */
+    uint32_t vari, varj;
+    if( ins > npis_ + ncap_ - ntop_ - 1 )
+    {
+        for( uint32_t k = npis_ + ncap_ - ntop_; k < npis_ + ncap_; ++k )
+        {
+            vari = get_vari(chain_[k]);
+            varj = get_varj(chain_[k]);
+            if( vari < ( ncap_+npis_ ) && vari <= ins )  decrease_xi(chain_[k]);
+            if( varj < ( ncap_+npis_ ) && varj <= ins )  decrease_xj(chain_[k]);
+        }
+    }
+    chain_[ins] = xnew;
+    funcs_[ins] = *pSim;
+    ntop_++;
+}
+
+template<class TT> uint32_t boolean_chain<TT>::get_type( uint32_t x ){ return ( MKA_ & x ) >> 28u ; }
+template<class TT> uint32_t boolean_chain<TT>::get_varj( uint32_t x ){ return ( MKJ_ & x ) >> 4u  ; }
+template<class TT> uint32_t boolean_chain<TT>::get_vari( uint32_t x ){ return ( MKI_ & x ) >> 16u ; }
+template<class TT> uint32_t boolean_chain<TT>::get_info( uint32_t x ){ return ( MKZ_ & x );         }
+
+template<class TT> void boolean_chain<TT>::increase_xi( uint32_t x ){ return ( x & ~MKI_ ) | ( ( ( ( x & MKI_ ) >> 16 ) + 1 ) << 16 ); }
+template<class TT> void boolean_chain<TT>::increase_xj( uint32_t x ){ return ( x & ~MKJ_ ) | ( ( ( ( x & MKJ_ ) >> 4  ) + 1 ) << 4  ); }
+template<class TT> void boolean_chain<TT>::decrease_xi( uint32_t x ){ return ( x & ~MKI_ ) | ( ( ( ( x & MKI_ ) >> 16 ) - 1 ) << 16 ); }
+template<class TT> void boolean_chain<TT>::decrease_xj( uint32_t x ){ return ( x & ~MKJ_ ) | ( ( ( ( x & MKJ_ ) >> 4  ) - 1 ) << 4  ); }
+
+template<class TT> bool boolean_chain<TT>::is_input( uint32_t x ) { return get_type(x) == INP_ ; }
+template<class TT> bool boolean_chain<TT>::is_bottom( uint32_t x ){ return get_type(x) == BOT_ ; }
+template<class TT> bool boolean_chain<TT>::is_unused( uint32_t x ){ return get_type(x) == UNU_ ; }
+template<class TT> bool boolean_chain<TT>::is_topper( uint32_t x ){ return get_type(x) == TOP_ ; }
+template<class TT> bool boolean_chain<TT>::is_output( uint32_t x ){ return get_type(x) == OUT_ ; }
+
+template<class TT> 
+void boolean_chain<TT>::init( std::vector<TT> pis_sims, std::vector<TT> pos_sims, uint32_t max_size )
+{
+    nbot_ = 0;
+    ntop_ = 0;
+    npis_ = pis_sims.size();
+    npos_ = pos_sims.size();
+    ncap_ = max_size;
+    
+    chain_.reserve( npis_ + ncap_ + npos_ + 1 ); //[PIS][NODES][POS]
+    funcs_.reserve( npis_ + ncap_ + npos_ + 1 );
+
+    for( uint32_t i{0}; i < npis_ + ncap_ + npos_ + 1; ++i )
+    {
+        chain_.emplace_back();
+        funcs_.emplace_back();
+        if( i < npis_ + 1 )
+            add_input( i, &pis_sims[i] );
+        else if( i >= npis_ + ncap_ )
+            add_output( i-npis_-ncap_, &pos_sims[i-npis_-ncap_] );
+        else
+            add_unused(i);
+    }
+}
+#pragma endregion initialization
+
+#pragma region visualization
+template<class TT>
+void boolean_chain<TT>::print()
+{
+    int i{0};
+    while( chain_[i] < 0xF0000000 )
+    {
+        if( is_input( chain_[i] ) )
+        {
+            kitty::print_binary( funcs_[i] );
+            printf( " : pi %2d\n", get_info( chain_[i] ) );
+        }
+
+        if( is_bottom( chain_[i] ) )
+        {
+            kitty::print_binary( funcs_[i] );
+            switch (get_info(chain_[i]))
+            {
+                case A00_:  printf( " : %d = %2d'&%2d' \n", i, get_vari( chain_[i] ), get_varj( chain_[i] ) );  break;
+                case A01_:  printf( " : %d = %2d &%2d' \n", i, get_vari( chain_[i] ), get_varj( chain_[i] ) );  break;
+                case A10_:  printf( " : %d = %2d'&%2d  \n", i, get_vari( chain_[i] ), get_varj( chain_[i] ) );  break;
+                case A11_:  printf( " : %d = %2d &%2d  \n", i, get_vari( chain_[i] ), get_varj( chain_[i] ) );  break;
+                case XOR_:  printf( " : %d = %2d ^%2d  \n", i, get_vari( chain_[i] ), get_varj( chain_[i] ) );  break;
+                case INV_:  printf( " : %d = %2d'  \n", i, get_varj( chain_[i] ) ); break;
+                case BUF_:  printf( " : %d = %2d  \n", i, get_varj( chain_[i] ) );  break;
+                default  :  break;
+            }
+        }
+        i++;
+    }
+}
+
+template<class TT>
+void boolean_chain<TT>::print_state()
+{
+    for( uint32_t i{0}; i<npis_+ncap_+npos_; ++i )
+        printf("%u.", chain_[i] );
+    printf("\n");
+
+    for( uint32_t i{0}; i<npis_+ncap_+npos_; ++i )
+        printf("%u %u %u %u.", get_type(chain_[i]), get_vari(chain_[i]), get_varj(chain_[i]), get_info(chain_[i]) );
+    printf("\n");
+}
+#pragma endregion visualization
+} // namespace mockturtle

@@ -1,0 +1,738 @@
+/* mockturtle: C++ logic network library
+ * Copyright (C) 2018-2022  EPFL
+ *
+ * Permission is hereby granted, free of charge, to any person
+ * obtaining a copy of this software and associated documentation
+ * files (the "Software"), to deal in the Software without
+ * restriction, including without limitation the rights to use,
+ * copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following
+ * conditions:
+ *
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+ * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+ * HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
+ */
+
+/*!
+  \file DecSims.hpp
+  \brief data structure for synthesizing an network
+
+  \author Andrea Costamagna
+*/
+
+#pragma once
+
+#include <stdio.h>
+#include <kitty/print.hpp>
+#include "DecNet.hpp"
+#include "CcgAnalyzer.hpp"
+#include "DecChsToGraph.hpp"
+#include <mockturtle/algorithms/simulation.hpp>
+#include <mockturtle/algorithms/cleanup.hpp>
+#include <random>
+#include <ctime>
+
+#define ANSI_COLOR_RED     "\x1b[31m"
+#define ANSI_COLOR_GREEN   "\x1b[32m"
+#define ANSI_COLOR_YELLOW  "\x1b[33m"
+#define ANSI_COLOR_BLUE    "\x1b[34m"
+#define ANSI_COLOR_MAGENTA "\x1b[35m"
+#define ANSI_COLOR_CYAN    "\x1b[36m"
+#define ANSI_COLOR_RESET   "\x1b[0m"
+
+
+namespace mockturtle
+{
+
+template<class TT, class Ntk>
+struct ccg_helpers_t
+{
+  std::clock_t vClk[2];// [0 start global] [1 start local]
+  double vDeltaT[2]; // [0 end-start global] [1 end-start local]
+  double avg_time;
+  double avg_gates;
+  int  ntk_sizes[3]; // [0 initial] [1 best] [2 max]
+  Ntk  ntk_best;
+  int  rwd_best; // [0 old] [1 best] 
+  int  rwd_old; // [0 old] [1 best] 
+  bool is_cec;
+  bool is_sat;
+  bool is_stuck;
+  std::vector<ccg_action_t<TT>> actions;
+  std::vector<ccg_action_t<TT>> moves;
+};
+
+template<class TT, class Ntk>
+struct ccg_target_t
+{
+  signal_t sig; // evolving target signals
+  TT       tt;  // evolving target functions
+  TT       cdc;  // evolving CDCs
+  TT       odc;  // evolving ODCs
+  
+}
+
+template<class TT, class Ntk>
+class CcgSolver
+{
+private:
+    /* immutables */
+    std::vector<TT> vTt0_; // fixed target truth tables
+    std::vector<TT> vMk0_; // fixed target masks
+    /* mutables */
+    std::vector<signal_t> vSigF_; // evolving target signals
+    std::vector<TT>       vTtF_;  // evolving target functions
+    std::vector<TT>       vCDC_;  // evolving CDCs
+    std::vector<TT>       vODC_;  // evolving ODCs
+    /* evolvables */
+    std::vector<signal_t> chain_;    // contains the signals in the chain
+    std::vector<std::pair<int,int>>  cut_; // cut_[i][0] = variable id cut_[i][1] where to find it in the chain 
+
+    /* parameters */
+    ccg_helpers_t<TT, Ntk> help_;
+
+public:
+    CcgSolver( const std::vector<TT>&, const std::vector<TT>& );
+    ~CcgSolver();
+    /* solve */
+    Ntk ccg_sym( int );
+
+    ccg_action_t<TT> select_uniformly( std::vector<ccg_action_t<TT>> * );
+
+    /* remapping */
+    void remap_nes ( DecNet<TT, Ntk> *, ccg_action_t<TT> );
+    void remap_es  ( DecNet<TT, Ntk> *, ccg_action_t<TT> );
+    void remap_svs ( DecNet<TT, Ntk> *, ccg_action_t<TT> );
+    void remap_csvs( DecNet<TT, Ntk> *, ccg_action_t<TT> );
+    void remap_ms  ( DecNet<TT, Ntk> *, ccg_action_t<TT> );
+    void remap     ( DecNet<TT, Ntk> *, ccg_action_t<TT> );
+   
+    void choose_action( DecNet<TT, Ntk> * );
+    void add_if_valid( Ntk * );
+    void close     ( DecNet<TT, Ntk> *, ccg_action_t<TT> );
+    /* utils */
+    void reset_solver_info( DecNet<TT, Ntk> * );
+    void init_iter( );
+    Ntk  find_best_ntk( DecNet<TT, Ntk> * );
+    void reser_solver_info( DecNet<TT, Ntk> * );
+
+    /* visualize */
+    void PrintSpecs();
+    void show_state( DecNet<TT, Ntk> *, std::vector<signal_t> * );
+
+};
+
+template<class TT, class Ntk>
+CcgSolver<TT, Ntk>::CcgSolver( const std::vector<TT>& vTt0, const std::vector<TT>& vMk0 ) :
+vTt0_( vTt0 ),
+vMk0_( vMk0 )
+{
+}
+
+template<class TT, class Ntk>
+CcgSolver<TT, Ntk>::~CcgSolver()
+{
+}
+
+#pragma region solve
+
+template<class TT, class Ntk>
+void CcgSolver<TT, Ntk>::reset_solver_info( DecNet<TT, Ntk> * pNet )
+{
+  vTtF_    = vTt0_;
+  vCDC_    = vMk0_;
+  vODC_    = vMk0_;
+  cut_     = {};           
+  chain_   = pNet->getPIs(); 
+  for( int i{0}; i < chain_.size(); ++i ) 
+  {
+    cut_.push_back( std::make_pair( i, i ) );
+  }
+  assert( kitty::equal( *pNet->getMaskP( vSigF_[0] ), vMk0_[0] ) );
+  assert( kitty::equal( *pNet->getFuncP( vSigF_[0] ), vTt0_[0] ) );
+}
+
+template<class TT, class Ntk>
+void CcgSolver<TT, Ntk>::init_iter( )
+{
+  help_.vClk[1] = std::clock();
+  help_.rwd_old  = 0;
+  help_.rwd_best = 0;
+  help_.is_sat   = false;
+  help_.is_stuck = false;
+}
+
+/* uniformly select an action */
+template<class TT, class Ntk>
+ccg_action_t<TT> CcgSolver<TT, Ntk>::select_uniformly( std::vector<ccg_action_t<TT>> * pvA )
+{
+  std::mt19937       generator(5);
+  std::uniform_int_distribution<int>  distr(0, (*pvA).size()-1);  
+  int CHOICE = distr( generator );
+  return (*pvA)[CHOICE];
+}
+
+/* select action among candidate choices */
+template<class TT, class Ntk>
+void CcgSolver<TT, Ntk>::choose_action( DecNet<TT, Ntk> * pNet )
+{
+  std::mt19937       generator(5);
+  help_.rwd_best = 0;
+  std::vector<int> MOVES;
+  help_.moves = {}; 
+  for( int iRmp{0}; iRmp < help_.actions.size(); ++iRmp )
+  {
+    int OLD_RWD = 0;
+    if( OLD_RWD == 1 )
+    {
+      if( help_.actions[iRmp].reward > help_.rwd_old )
+        MOVES.push_back( iRmp );
+    }
+    else
+    {
+      if( help_.actions[iRmp].reward > help_.rwd_best )
+      {
+        MOVES = {iRmp};
+        help_.rwd_best = help_.actions[iRmp].reward;
+      }
+      else if( help_.actions[iRmp].reward == help_.rwd_best )
+        MOVES.push_back( iRmp );
+    }
+  }
+
+  if( MOVES.size() == 0 )
+  {
+    help_.is_stuck = true;
+  }
+  else
+  {
+    std::uniform_int_distribution<int>  distr(0, MOVES.size()-1);  
+    int MOVE = MOVES[distr(generator)];
+    help_.rwd_old = help_.actions[MOVE].reward;
+    remap( pNet, help_.actions[MOVE] );
+  }
+}
+
+template<class TT, class Ntk>
+Ntk CcgSolver<TT, Ntk>::find_best_ntk( DecNet<TT, Ntk> * pNet )
+{
+  Ntk ntk_tmp;
+  Ntk ntk_best;
+  int nBest_loc = 1000;
+
+  for( int iClosure = 0; iClosure<help_.actions.size(); ++iClosure )
+  {
+    DecNet<TT, Ntk> net_tmp = *pNet;
+    close( &net_tmp, help_.actions[iClosure] );
+    DecChsToGraph<TT, Ntk> conv( net_tmp ); 
+    ntk_tmp = conv.convert();
+    ntk_tmp = cleanup_dangling( ntk_tmp );
+    if( ntk_tmp.num_gates() < nBest_loc )
+    {
+      ntk_best = ntk_tmp;
+      nBest_loc = ntk_tmp.num_gates();
+    }
+net_tmp.print_net();
+  }
+  return ntk_best;
+}
+
+template<class TT, class Ntk>
+void CcgSolver<TT, Ntk>::add_if_valid( Ntk * pNtk )
+{
+  default_simulator<kitty::dynamic_truth_table> sim( (vTt0_[0]).num_vars() );
+  const auto tt = simulate<kitty::dynamic_truth_table>( *pNtk, sim )[0];
+
+  printf("**********************************\n");
+
+  help_.is_cec = kitty::equal( tt, vTt0_[0] );
+  if( help_.is_cec )
+    printf( ANSI_COLOR_GREEN " CEC SUCCESFUL " ANSI_COLOR_RESET "\n" );
+  else
+  {
+    printf( ANSI_COLOR_RED " CEC FAILED " ANSI_COLOR_RESET "\n" );
+    assert(0);
+  }
+
+  help_.vDeltaT[1] = ( std::clock() - help_.vClk[1] ) / (double) CLOCKS_PER_SEC;
+  if( pNtk->num_gates() > help_.ntk_sizes[2] )
+    help_.ntk_sizes[2] = pNtk->num_gates();
+
+  printf("%5.5f\n", help_.vDeltaT[1] );
+  printf("**********************************\n");
+  if( (pNtk->num_gates() < help_.ntk_sizes[1]) && help_.is_cec )
+  {
+    help_.ntk_sizes[1] = pNtk->num_gates();
+    help_.ntk_best = *pNtk;
+  }
+}
+
+template<class TT, class Ntk>
+Ntk CcgSolver<TT, Ntk>::ccg_sym( int nIters )
+{
+  help_.vClk[0] = std::clock();
+
+  help_.ntk_sizes[1] = 10000;
+  Ntk ntk;
+  int it = 0;
+  while( it < nIters )
+  {
+    DecNet<TT, Ntk>  net;
+    net.init( vTt0_, vMk0_ );
+    reset_solver_info( &net );
+
+    init_iter();
+    vSigF_   = net.getTargets();
+    CcgAnalyzer<TT, Ntk> checker( &net, &chain_, &vSigF_, &vCut_, &vChain_ );
+
+    while( !help_.is_stuck && !help_.is_sat )
+    {
+      /* check for closure */
+      //checker.check_closure( chain_, 0 );
+      //help_.actions = checker.get_closure();
+      help_.is_sat = help_.actions.size() != 0;
+      /* check for synthesis */
+      if( !help_.is_sat )
+      {
+      //  checker.check_remap();
+      //  help_.actions = checker.get_remap();
+        choose_action( &net );
+      }
+    }
+    /* convert result */
+    if( help_.is_stuck )
+      printf( ANSI_COLOR_RED " EMPTY SET OF MOVES " ANSI_COLOR_RESET "\n" );
+    else if( help_.actions.size() == 0 )
+      printf( ANSI_COLOR_RED " NO CLOSURE " ANSI_COLOR_RESET "\n" );
+    else
+    {
+      ntk = find_best_ntk( &net );
+      add_if_valid( &ntk );
+
+      if( it++ == 0 ) help_.ntk_sizes[0] = ntk.num_gates();
+    }
+    help_.vDeltaT[0] = ( std::clock() - help_.vClk[0] ) / (double) CLOCKS_PER_SEC;
+  }
+  printf("SUMMARY:\n");
+  printf("%10s %10s %10s %10s\n %10d %10d %10d %5.5f\n", 
+          "Ginit", "Gmin", "Gmax" , "T[s]\n",
+           help_.ntk_sizes[0], help_.ntk_sizes[1], help_.ntk_sizes[2], help_.vDeltaT[0] );
+  
+  printf("%10s %10s %10s %10s\n %10d %10d %10d %10d\n", 
+          "nIts", "dinit", "nmin", "+dmax",
+          it, help_.ntk_sizes[0]-help_.ntk_sizes[1], help_.ntk_sizes[1], help_.ntk_sizes[2]-help_.ntk_sizes[1] );
+  return help_.ntk_best;
+}
+
+#pragma endregion solve
+
+#pragma region remap
+template <class TT, class Ntk>
+void CcgSolver<TT, Ntk>::remap_nes(  DecNet<TT, Ntk> * pNet, ccg_action_t<TT> act  )
+{
+  int iTrg    = act.sigs[0];
+  int i       = act.sigs[1];
+  int j       = act.sigs[2];
+  int iS      = cut_[i];  
+  int jS      = cut_[j];
+  if( act.id_ord == 0 )     
+  { 
+    signal_t ri = pNet->create_and( chain_[jS], chain_[iS] );
+    signal_t rj = pNet->create_or ( chain_[jS], chain_[iS] );  
+    chain_[jS] = rj;
+    chain_[iS] = ri;
+  }
+  else if( act.id_ord == 1 )
+  { 
+    signal_t ri = pNet->create_or ( chain_[jS], chain_[iS] ); 
+    signal_t rj = pNet->create_and( chain_[jS], chain_[iS] );  
+    chain_[jS] = rj;
+    chain_[iS] = ri;
+  }
+  else  
+    std::cerr << "id_ord not valid_ord" << std::endl;
+
+  chain_.push_back( chain_[iS] );
+  chain_.push_back( chain_[jS] );
+  
+  pNet->setOSY( act.func[0], act.mask[0] );
+
+}
+
+template <class TT, class Ntk>
+void CcgSolver<TT, Ntk>::remap_es(  DecNet<TT, Ntk> * pNet, ccg_action_t<TT> act  )
+{
+  int iTrg    = act.sigs[0];
+  int i       = act.sigs[1];
+  int j       = act.sigs[2];
+  int iS      = cut_[i];  
+  int jS      = cut_[j];
+  if( act.id_ord == 0 )     
+  { 
+    signal_t ri = pNet->create_le( chain_[jS], chain_[iS] );
+    signal_t rj = pNet->create_le( chain_[iS], chain_[jS] );   
+    chain_[jS] = rj;
+    chain_[iS] = ri;
+  }
+  else if( act.id_ord == 1 )
+  { 
+    signal_t ri = pNet->create_lt( chain_[jS], chain_[iS] );  
+    signal_t rj = pNet->create_lt( chain_[iS], chain_[jS] );  
+
+    chain_[jS] = rj;
+    chain_[iS] = ri;
+  }
+  else  
+    std::cerr << "id_ord not valid_ord" << std::endl;
+  
+  chain_.push_back( chain_[iS] );
+  chain_.push_back( chain_[jS] );
+  pNet->setOSY( act.func[0], act.mask[0] );
+}
+
+template<class TT, class Ntk>
+void CcgSolver<TT, Ntk>::remap_svs(  DecNet<TT, Ntk> * pNet, ccg_action_t<TT> act  )
+{
+  int iTrg    = act.sigs[0];
+  int i       = act.sigs[1];
+  int j       = act.sigs[2];
+  int iS      = cut_[i];  
+  int jS      = cut_[j];
+  if( act.id_sym == 0 ) // SVS0X_ { SVS Xj } Xi'
+  {
+    if( act.id_ord == 0 )
+      chain_[jS] = pNet->create_le( chain_[iS], chain_[jS] );  // ( Xi & Xj' )'
+    else
+      chain_[jS] = pNet->create_and( chain_[jS], chain_[iS] ); // ( Xi & Xj )
+    
+    chain_.push_back( chain_[jS] );
+  }
+  else if( act.id_sym == 1 ) // SVS1X  { SVS Xj } Xi
+  {
+    if( act.id_ord == 0 )
+      chain_[jS] = pNet->create_or( chain_[jS], chain_[iS] ); 
+    else
+      chain_[jS] = pNet->create_lt( chain_[iS], chain_[jS] );
+
+    chain_.push_back( chain_[jS] );
+  }
+  else if( act.id_sym == 2 ) // SVSX0_  { SVS Xi } Xj'
+  {
+    if( act.id_ord == 0 )
+      chain_[iS] = pNet->create_le( chain_[jS], chain_[iS] );
+    else
+      chain_[iS] = pNet->create_and( chain_[jS], chain_[iS] );
+
+    chain_.push_back( chain_[iS] );
+  }
+  else if( act.id_sym == 3 ) //SVSX1_  { SVS Xi } Xj
+  {
+    if( act.id_ord == 0 )
+      chain_[iS] = pNet->create_or( chain_[jS], chain_[iS] );
+    else
+      chain_[iS] = pNet->create_lt( chain_[jS], chain_[iS] );
+
+    chain_.push_back( chain_[iS] );
+  }
+  else
+    std::cerr << "wrong symmetry identifier for SVS" ;
+
+  pNet->setOSY( act.func[0], act.mask[0] );
+
+}
+
+template<class TT, class Ntk>
+void CcgSolver<TT, Ntk>::remap_ms( DecNet<TT, Ntk> * pNet, ccg_action_t<TT> act )
+{
+  int iTrg    = act.sigs[0];
+  int i       = act.sigs[1];
+  int j       = act.sigs[2];
+  int iS      = cut_[i];  
+  int jS      = cut_[j];
+  if( act.id_ord == 0 )
+  {
+    chain_[iS] = pNet->create_xnor( chain_[jS], chain_[iS] ) ;
+    cut_.erase( cut_.begin() + j );
+    chain_.push_back( chain_[iS] );
+  }
+  else if( act.id_ord == 1 )
+  {
+    chain_[jS] = pNet->create_xor( chain_[jS], chain_[iS] );
+    cut_.erase( cut_.begin() + i );
+    chain_.push_back( chain_[jS] );
+  }        
+  else if( act.id_ord == 2 )
+  {
+    chain_[jS] = pNet->create_xnor( chain_[jS], chain_[iS] );
+    cut_.erase( cut_.begin() + i );
+    chain_.push_back( chain_[jS] );
+  }        
+  else if( act.id_ord == 3 )
+  {
+    chain_[iS] = pNet->create_xor( chain_[jS], chain_[iS] );
+    cut_.erase( cut_.begin() + j );
+    chain_.push_back( chain_[iS] );
+  }  
+  
+  pNet->setOSY( act.func[0], act.mask[0] );
+
+}
+
+template< class TT, class Ntk >
+void CcgSolver<TT, Ntk>::remap_csvs( DecNet<TT, Ntk> * pNet, ccg_action_t<TT> act )
+{
+  int iTrg    = act.sigs[0];
+  int i       = act.sigs[1];
+  int j       = act.sigs[2];
+  int iS      = cut_[i];  
+  int jS      = cut_[j];
+
+  if( act.id_sym == 0 )
+  {
+    if( act.id_ord == 0 )
+    {
+      chain_[iS] = pNet->create_and( chain_[jS], chain_[iS] );
+      cut_.erase( cut_.begin() + j );  
+    }
+    else
+    {
+      chain_[jS] = pNet->create_and( chain_[jS], chain_[iS] );
+      cut_.erase( cut_.begin() + i );
+    }
+  }
+  else if( act.id_sym == 1 )
+  {
+    if( act.id_ord == 0 )
+    {
+      chain_[iS] = pNet->create_le( chain_[jS], chain_[iS] );
+      cut_.erase( cut_.begin() + j );
+    }
+    else
+    {
+      chain_[jS] = pNet->create_lt( chain_[iS], chain_[jS] );
+      cut_.erase( cut_.begin() + i );
+    }
+  }
+  else if( act.id_sym == 2 )
+  {
+    if( act.id_ord == 0 )
+    {
+      chain_[jS] = pNet->create_le( chain_[iS], chain_[jS] );
+      cut_.erase( cut_.begin() + i );
+    }
+    else
+    {
+      chain_[iS] = pNet->create_lt( chain_[jS], chain_[iS] );
+      cut_.erase( cut_.begin() + j );
+    }
+  }
+  else if( act.id_sym == 3 )
+  {
+    if( act.id_ord == 0 )
+    {
+      chain_[jS] =  pNet->create_or( chain_[jS], chain_[iS] );
+      cut_.erase( cut_.begin() + i );
+    }
+    else
+    {
+      chain_[iS] =  pNet->create_or( chain_[jS], chain_[iS] );
+      cut_.erase( cut_.begin() + j );
+    }
+  }
+  else
+    std::cerr << "wrong symmetry identifier for CSVS" ;
+
+  chain_.push_back( chain_[iS] );
+  chain_.push_back( chain_[jS] );
+
+  pNet->setOSY( act.func[0], act.mask[0] );
+
+}
+
+template<class TT, class Ntk>
+ void CcgSolver<TT, Ntk>::remap( DecNet<TT, Ntk> * pNet, ccg_action_t<TT> act )
+  {
+    int iTrg    = act.sigs[0];
+
+    switch( act.type )
+    {
+      case CcgAct_t::NES_:
+        remap_nes( pNet, act );
+        break; 
+      case CcgAct_t::ES_:
+        remap_es( pNet, act );
+        break; 
+      case CcgAct_t::SVS_:
+        remap_svs( pNet, act );
+        break;
+      case CcgAct_t::MS_:
+        remap_ms( pNet, act );
+        break; 
+      case CcgAct_t::CSVS_:
+        remap_csvs( pNet, act );
+        break;
+    }
+    //pNet->change_sim_info( Y[iTrg], act.func[0], act.mask[0] );
+  }
+#pragma endregion remap
+
+#pragma region closure
+template<class TT, class Ntk>
+void CcgSolver<TT, Ntk>::close( DecNet<TT, Ntk> * pNet, ccg_action_t<TT> act )
+{
+  int iTrg    = act.sigs[0];
+  int i       = act.sigs[1];
+  int j       = act.sigs[2];
+  int d       = act.sigs.size() > 3 ? act.sigs[3] : 0;
+  signal_t xi = chain_[i];
+  signal_t xj = chain_[j];
+  signal_t xd = chain_[d];
+
+  TT Tf = * pNet->getFuncP(vSigF_[0]); // WARNING 0
+  TT Mf = * pNet->getMaskP(vSigF_[0]);
+
+  TT Tdi = * pNet->getFuncP( xi );
+  TT Tdj = * pNet->getFuncP( xj );
+  TT Tdd = * pNet->getFuncP( xd );
+
+  signal_t f0 {0,0};
+  signal_t fx {0,0};
+
+  switch ( act.type )
+  {
+  case CcgAct_t::XCL_AND_:
+    //printf( ANSI_COLOR_BLUE "^ %d AND %d^" ANSI_COLOR_RESET "\n", xi.node, xj.node );
+    f0 = pNet->create_and( xi, xj );
+    fx = pNet->create_xor( f0, xd );
+    pNet->close_target( vSigF_[0], fx, 0 );
+    break;
+  case CcgAct_t::XCL_NAND_:
+    //printf( ANSI_COLOR_BLUE "^%d NAND %d^" ANSI_COLOR_RESET "\n", xi.node, xj.node );
+    f0 = pNet->create_nand( xi, xj );
+    fx = pNet->create_xor( f0, xd );
+    pNet->close_target( vSigF_[0], fx, 0 );
+    break;
+  case CcgAct_t::XCL_OR_:
+    //printf( ANSI_COLOR_BLUE "^%d OR %d^" ANSI_COLOR_RESET "\n", xi.node, xj.node );
+    f0 = pNet->create_or( xi, xj );
+    fx = pNet->create_xor( f0, xd );
+    pNet->close_target( vSigF_[0], fx, 0 );
+    break;
+  case CcgAct_t::XCL_NOR_:
+    f0 = pNet->create_nor( xi, xj );
+    //printf( ANSI_COLOR_BLUE "^%d NOR %d^" ANSI_COLOR_RESET "\n", xi.node, xj.node );
+    fx = pNet->create_xor( f0, xd );
+    pNet->close_target( vSigF_[0], fx, 0 );
+    break;
+  case CcgAct_t::XCL_LT_:
+    //printf( ANSI_COLOR_BLUE "^%d LT %d^" ANSI_COLOR_RESET "\n", xi.node, xj.node );
+    f0 = pNet->create_lt( xi, xj );
+    fx = pNet->create_xor( f0, xd );
+    pNet->close_target( vSigF_[0], fx, 0 );
+    break;
+  case CcgAct_t::XCL_LE_:
+    //printf( ANSI_COLOR_BLUE "^%d LE %d^" ANSI_COLOR_RESET "\n", xi.node, xj.node );
+    f0 = pNet->create_le( xi, xj );
+    fx = pNet->create_xor( f0, xd );
+    pNet->close_target( vSigF_[0], fx, 0 );
+    break;
+  case CcgAct_t::XCL_XOR_:
+    //printf( ANSI_COLOR_BLUE "^%d XOR %d^" ANSI_COLOR_RESET "\n", xi.node, xj.node );
+    f0 = pNet->create_xor( xi, xj );
+    fx = pNet->create_xor( f0, xd );
+    pNet->close_target( vSigF_[0], fx, 0 );
+    break;
+  case CcgAct_t::XCL_XNOR_:
+    //printf( ANSI_COLOR_BLUE "^%d XNOR %d^" ANSI_COLOR_RESET "\n", xi.node, xj.node );
+    f0 = pNet->create_xnor( xi, xj );
+    fx = pNet->create_xor( f0, xd );
+    pNet->close_target( vSigF_[0], fx, 0 );
+    break;
+  case CcgAct_t::CL_AND_:
+    //printf( ANSI_COLOR_BLUE "^ %d AND %d^" ANSI_COLOR_RESET "\n", xi.node, xj.node );
+    f0 = pNet->create_and( xi, xj );
+    pNet->close_target( vSigF_[0], f0, 0 );
+    break;
+  case CcgAct_t::CL_NAND_:
+    //printf( ANSI_COLOR_BLUE "^%d NAND %d^" ANSI_COLOR_RESET "\n", xi.node, xj.node );
+    f0 = pNet->create_nand( xi, xj );
+    pNet->close_target( vSigF_[0], f0, 0 );
+    break;
+  case CcgAct_t::CL_OR_:
+    //printf( ANSI_COLOR_BLUE "^%d OR %d^" ANSI_COLOR_RESET "\n", xi.node, xj.node );
+    f0 = pNet->create_or( xi, xj );
+    pNet->close_target( vSigF_[0], f0, 0 );
+    break;
+  case CcgAct_t::CL_NOR_:
+    f0 = pNet->create_nor( xi, xj );
+    //printf( ANSI_COLOR_BLUE "^%d NOR %d^" ANSI_COLOR_RESET "\n", xi.node, xj.node );
+    pNet->close_target( vSigF_[0], f0, 0 );
+    break;
+  case CcgAct_t::CL_LT_:
+    //printf( ANSI_COLOR_BLUE "^%d LT %d^" ANSI_COLOR_RESET "\n", xi.node, xj.node );
+    f0 = pNet->create_lt( xi, xj );
+    pNet->close_target( vSigF_[0], f0, 0 );
+    break;
+  case CcgAct_t::CL_LE_:
+    //printf( ANSI_COLOR_BLUE "^%d LE %d^" ANSI_COLOR_RESET "\n", xi.node, xj.node );
+    f0 = pNet->create_le( xi, xj );
+    pNet->close_target( vSigF_[0], f0, 0 );
+    break;
+  case CcgAct_t::CL_XOR_:
+    //printf( ANSI_COLOR_BLUE "^%d XOR %d^" ANSI_COLOR_RESET "\n", xi.node, xj.node );
+    f0 = pNet->create_xor( xi, xj );
+    pNet->close_target( vSigF_[0], f0, 0 );
+    break;
+  case CcgAct_t::CL_XNOR_:
+    //printf( ANSI_COLOR_BLUE "^%d XNOR %d^" ANSI_COLOR_RESET "\n", xi.node, xj.node );
+    f0 = pNet->create_xnor( xi, xj );
+    pNet->close_target( vSigF_[0], f0, 0 );
+    break;
+  default:
+    break;
+  }
+
+}
+#pragma endregion closure
+
+#pragma region visualize
+template<class TT, class Ntk>
+void CcgSolver<TT, Ntk>::PrintSpecs()
+{
+    printf("TRUTHS:\n");
+    for( int i{0}; i<vTt0_.size(); ++i ){ printf("%d ", i ); kitty::print_binary( vTt0_[i] ); printf("\n");}
+    printf("MASKS:\n");
+    for( int i{0}; i<vMk0_.size(); ++i ){ printf("%d ", i ); kitty::print_binary( vMk0_[i] ); printf("\n");}
+}
+
+template<class TT, class Ntk>
+void CcgSolver<TT, Ntk>::show_state( DecNet<TT, Ntk> * pNet, std::vector<signal_t> * pY )
+{
+  for( int i{0}; i<(*pY).size(); ++i )
+  {
+    printf( ANSI_COLOR_YELLOW " TARGET #%d" ANSI_COLOR_RESET "", i );
+    printf( ANSI_COLOR_YELLOW );
+    TT F = pNet->getFuncOSY(  );
+    TT M = pNet->getMaskCDC(  );
+    printf("\n");
+    kitty::print_binary( F );
+    printf("\n");
+    auto km_tt = kitty::karnaugh_map( F );
+    km_tt.print( M );
+    printf( ANSI_COLOR_RESET );
+  }
+}
+#pragma endregion visualize
+
+
+} // namespace mockturtle

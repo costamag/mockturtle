@@ -1,5 +1,6 @@
 #include <kitty/constructors.hpp>
 #include <mockturtle/algorithms/decompose/DecSolver.hpp>
+#include <mockturtle/algorithms/dcsynthesis/dc_solver.hpp>
 #include <mockturtle/algorithms/simulation.hpp>
 #include <mockturtle/io/write_aiger.hpp>
 #include <mockturtle/io/write_dot.hpp>
@@ -435,11 +436,11 @@ Ntk game_on( kitty::dynamic_truth_table * pF )
 
   typedef DecSolver<TT, Ntk> solver_t;
   Ntk ntk;
+  xag_network xag;
   
   kitty::dynamic_truth_table mask = (*pF).construct();
   mask = mask | ~mask;
   solver_t solver( {*pF}, {mask} );
-  //sym_solver_t sym_solver( {*pF}, {mask} );
   //solver.PrintSpecs();
 
   printf(ANSI_COLOR_YELLOW " 0 SYM MANUAL" ANSI_COLOR_RESET "\n" );
@@ -458,7 +459,7 @@ Ntk game_on( kitty::dynamic_truth_table * pF )
   printf(ANSI_COLOR_YELLOW " ===================" ANSI_COLOR_RESET "\n" );
   printf(ANSI_COLOR_YELLOW " =   NEW VERSION   =" ANSI_COLOR_RESET "\n" );
   printf(ANSI_COLOR_YELLOW " ===================" ANSI_COLOR_RESET "\n" );
-
+  printf(ANSI_COLOR_YELLOW " 12 COVERING" ANSI_COLOR_RESET "\n" );
   printf(ANSI_COLOR_YELLOW " CHOOSE YOUR METHOD: " ANSI_COLOR_RESET "" );
   int MET;
   
@@ -543,13 +544,19 @@ Ntk game_on( kitty::dynamic_truth_table * pF )
     std::cin >> MET;
     ntk = solver.ccgX( MET );
   }
-  /*else if( MET == 12 )
+  else if( MET == 12 )
   {
-    printf(ANSI_COLOR_YELLOW " NUMBER OF ITERATIONS: " ANSI_COLOR_RESET "" );
-    MET = 100;
-    //std::cin >> MET;
-    ntk = sym_solver.ccg_sym( MET );
-  }*/
+    std::vector<kitty::partial_truth_table> xs;
+    kitty::partial_truth_table Fpart(pow(2,pF->num_vars()));
+    kitty::create_from_binary_string( Fpart, kitty::to_binary(*pF) );
+    for( int i{0}; i<pF->num_vars(); ++i )
+    {
+      xs.emplace_back( pow(2,pF->num_vars()) );
+      kitty::create_nth_var( xs[i], i );
+    }
+    dc_solver<Ntk> solver( xs, {Fpart});
+    solver.solve_greedy(&ntk);
+  }
   else
   {
     printf(ANSI_COLOR_RED " CHOICE NOT MATCHING ANY METHOD " ANSI_COLOR_RESET "\n" );   
@@ -569,6 +576,7 @@ Ntk game_on( kitty::dynamic_truth_table * pF )
   }
 
   std::cout << ( kitty::equal( tt, *pF ) ? " equal " : " different " ) << std::endl;
+
 
   return ntk;
 

@@ -66,7 +66,7 @@ private:
   int                   nIns;
   int                   nOut;
   TT                    FuncOSY;
-  TT                    MaskOSY;
+  TT                    MaskCDC;
 
 public:
   DecNet();
@@ -123,7 +123,7 @@ public:
 
   void setOSY( TT, TT );
   TT   getFuncOSY();
-  TT   getMaskOSY();
+  TT   getMaskCDC();
 
   /* properties */
 public:
@@ -373,7 +373,7 @@ template<class TT, class Ntk>
 void DecNet<TT, Ntk>::setOSY( TT func, TT mask )
 {
   FuncOSY = func;
-  MaskOSY = mask;
+  MaskCDC = mask;
 }
 
 template<class TT, class Ntk>
@@ -383,9 +383,9 @@ TT DecNet<TT, Ntk>::getFuncOSY( )
 }
 
 template<class TT, class Ntk>
-TT DecNet<TT, Ntk>::getMaskOSY( )
+TT DecNet<TT, Ntk>::getMaskCDC( )
 {
-  return MaskOSY;
+  return MaskCDC;
 }
 
 template<class TT, class Ntk>

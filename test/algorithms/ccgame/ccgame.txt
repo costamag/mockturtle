@@ -1,0 +1,35 @@
+#include <catch.hpp>
+
+#include <mockturtle/algorithms/ccgame/boolean_chain.hpp>
+#include <kitty/dynamic_truth_table.hpp>
+#include <kitty/constructors.hpp>
+
+using namespace mockturtle;
+
+TEST_CASE( "boolean chain", "[CCG]" )
+{
+    using TT = kitty::dynamic_truth_table;
+    std::vector<TT> xs;
+    for( int i{0}; i<4; ++i )
+    {
+        xs.emplace_back(4u);
+        kitty::create_nth_var( xs[i], i );
+    }
+    TT maj4(4u);
+    TT par4(4u);
+    kitty::create_majority(maj4);
+    kitty::create_parity(par4);
+
+    boolean_chain<TT> repr;
+    repr.init( xs, {maj4, par4}, 10 );
+    repr.print();
+    printf("\n");
+    repr.add_active( 0, 1, XOR_ );
+    repr.add_active( 0, 1, A11_ );
+    repr.add_active( 2, 3, A11_ );
+    repr.add_active( 1, 4, A11_ );
+    repr.print();
+
+    repr.print_state();
+
+}
