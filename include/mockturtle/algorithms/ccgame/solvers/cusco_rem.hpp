@@ -77,6 +77,42 @@ template<class Ntk>
 cusco_rem<Ntk>::~cusco_rem(){}
 
 template<class Ntk>
+int sym_cost( symmetry_t sym )
+{
+  int costAND = 1u;
+  int costINV = 0u;
+  int costXOR = std::is_same<Ntk, xag_network>::value ? 1 : 3;
+  switch ( sym.type )
+  {
+      case 0x33: return 2*costAND + 4*costINV; break; // nand( l', r )   nand( l , r')
+      case 0xCC: return 2*costAND + 2*costINV; break; //  and( l , r')    and( l', r )
+      case 0x66: return 2*costAND + 3*costINV; break; //   or( l , r )    and( l , r )
+      case 0x99: return 2*costAND + 3*costINV; break; //  and( l , r )     or( l , r )
+      case 0x44: return costAND;               break; // l                and( l , r )
+      case 0x11: return costAND   + 2*costINV; break; // l               nand( l , r')
+      case 0x77: return costAND   + 3*costINV; break; //   or( l , r )   r            
+      case 0xDD: return costAND   +   costINV; break; //  and( l , r')   r            
+      case 0x88: return costAND              ; break; //  and( l , r )   r            
+      case 0x22: return costAND   + 2*costINV; break; // nand( l', r )   r            
+      case 0xBB: return costAND   + 3*costINV; break; // l                 or( l , r )
+      case 0xEE: return costAND   +   costINV; break; // l                and( l', r )
+      case 0x36: return costXOR   +   costINV; break; // ]               xnor( l , r )
+      case 0x6C: return costXOR              ; break; //  xor( l , r )   ]            
+      case 0x9C: return costXOR              ; break; // ]                xor( l , r )
+      case 0x39: return costXOR   +   costINV; break; // xnor( l , r )   ]            
+      case 0x19: return costAND              ; break; //  and( l , r )   ]            
+      case 0x26: return costAND              ; break; // ]                and( l , r )
+      case 0x37: return costAND   + 2*costINV; break; // ]               nand( l , r')
+      case 0x4C: return costAND   +   costINV; break; //  and( l , r')   ]            
+      case 0x8C: return costAND   +   costINV; break; // ]                and( l', r )
+      case 0x3B: return costAND   + 2*costINV; break; // nand( l', r )   ]            
+      case 0x6E: return costAND   + 3*costINV; break; //   or( l , r )   ]            
+      case 0x9D: return costAND   + 3*costINV; break; //   or( l , r ) 
+    break;
+  }
+}
+
+template<class Ntk>
 Ntk cusco_rem<Ntk>::solve_random( cusco_rem_ps const& ps )
 {
   std::random_device rd;  // a seed source for the random number engine
@@ -108,12 +144,15 @@ Ntk cusco_rem<Ntk>::solve_random( cusco_rem_ps const& ps )
     while( net.nHunging > 0 )
     {
       std::vector<symmetry_t> candidates = net.symmetry_analysis( xs, idBound );
+      int bestCost = 1000;
       for( int i{0}; i<candidates.size(); ++i )
       {
-        if( candidates[i].rwd >= bestRwd )
+        int cost = sym_cost<Ntk>( candidates[i] );
+        if( candidates[i].rwd > bestRwd || ( candidates[i].rwd == bestRwd && cost < bestCost ) )
         {
           bestSym = candidates[i];
           bestRwd = candidates[i].rwd;
+          bestCost = cost;
         }
       }
       if( ( bestSym.idL == idBound ) || ( bestSym.idR == idBound  ) )

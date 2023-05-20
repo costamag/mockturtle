@@ -90,6 +90,9 @@ cusco<Ntk>::~cusco(){}
 template<class Ntk>
 Ntk cusco<Ntk>::solve( cusco_ps const& ps )
 {
+  std::clock_t start;
+  double duration;
+  start = std::clock();
   Ntk ntk;
   switch ( ps.type )
   {
@@ -109,6 +112,11 @@ Ntk cusco<Ntk>::solve( cusco_ps const& ps )
       break;
     }
   }
+  duration = ( std::clock() - start ) / (double) CLOCKS_PER_SEC;
+
+  printf("SUMMARY:\n");
+  printf( "ngates = %d  time = %.2f\n", ntk.num_gates(), duration );
+
   return ntk;
 }
 
