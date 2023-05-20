@@ -64,8 +64,12 @@ public:
   cut_t enumerate_divs();
   std::vector<symmetry_t> symmetry_analysis( std::vector<DTT>, int );
   void add_cut( cut_t );
+  void add_cut( symmetry_t );
+  void add_node_symL( cut_t *, symmetry_t );
+  void add_node_symR( cut_t *, symmetry_t );
   void complete_cut( cut_t );
   cut_t check_closure( cut_t );
+  bool check_sym_closure( );
   cut_t get_last_cut();
 
   template<class Ntk> Ntk convert();
@@ -82,11 +86,11 @@ net_t::net_t( std::vector<TT> const& X, std::vector<TT> const& Y )
 
   /* inputs */
   cut_t cut;
-  cut.set_id(0u);
+  cut.set_id(0x00000000);
   
   for( uint32_t i{0u}; i < X.size(); ++i )
   {
-    cut.add_node( X[i], gate_t::PIS, INFTY, INFTY );
+    cut.add_node( X[i], gate_t::PIS, i, i );
     nNodes++;
   }
   cuts.push_back(cut);
@@ -139,7 +143,6 @@ std::vector<symmetry_t> net_t::symmetry_analysis( std::vector<DTT> xs, int idBou
       sym1.push_back( x );
   }
   /* now in sym1 there should be all the symmetries */
-  analyzer.print_symmetries( sym1 );
   return sym1;
 }
 #pragma endregion inquiring
@@ -154,6 +157,127 @@ void net_t::add_cut( cut_t cut )
   for( uint32_t i{0}; i < cut.size(); ++i )
     newCut.add_node( cut.nodes[i] );
   nNodes += newCut.size();
+  cuts.push_back( newCut );
+}
+
+void net_t::add_node_symL( cut_t * pCut, symmetry_t sym )
+{
+  cut_t oldCut = get_last_cut();
+  node_t xL, xR;
+  for( int i{0}; i < oldCut.nodes.size(); ++i )
+  {
+    if( oldCut.nodes[i].is_remapped() )
+    {
+      if( oldCut.nodes[i].remapped_pi() == sym.idL )
+        xL = oldCut.nodes[i];
+      else if( oldCut.nodes[i].remapped_pi() == sym.idR )
+        xR = oldCut.nodes[i];
+    }
+  }
+  switch ( sym.type )
+  {
+    case 0x33: pCut->add_node( ~( ~xL.tt &  xR.tt ), OI01, xL.id, xR.id ); break;  //nand( l', r )
+    case 0xCC: pCut->add_node(  (  xL.tt & ~xR.tt ), AI10, xL.id, xR.id ); break;  // and( l , r')
+    case 0x66: pCut->add_node( ~( ~xL.tt & ~xR.tt ), OI00, xL.id, xR.id ); break;  //or( l , r )
+    case 0x99: pCut->add_node(  (  xL.tt &  xR.tt ), AI11, xL.id, xR.id ); break;  //and( l , r )
+    case 0x44: pCut->add_node(                xL.tt, PRJL, xL.id, xL.id ); break;  // l            
+    case 0x11: pCut->add_node(                xL.tt, PRJL, xL.id, xL.id ); break;  // l            
+    case 0x77: pCut->add_node( ~( ~xL.tt & ~xR.tt ), OI00, xL.id, xR.id ); break;  //   or( l , r )
+    case 0xDD: pCut->add_node(  (  xL.tt & ~xR.tt ), AI10, xL.id, xR.id ); break;  //  and( l , r')
+    case 0x88: pCut->add_node(  (  xL.tt &  xR.tt ), AI11, xL.id, xR.id ); break;  //  and( l , r )
+    case 0x22: pCut->add_node( ~( ~xL.tt &  xR.tt ), OI01, xL.id, xR.id ); break;  // nand( l', r )
+    case 0xBB: pCut->add_node(                xL.tt, PRJL, xL.id, xL.id ); break;  // l            
+    case 0xEE: pCut->add_node(                xL.tt, PRJL, xL.id, xL.id ); break;  // l            
+    case 0x36: break;  // ]            
+    case 0x6C: pCut->add_node(  (  xL.tt ^  xR.tt ), EXOR, xL.id, xR.id ); break;  //  xor( l , r )
+    case 0x9C: break;  // ]            
+    case 0x39: pCut->add_node( ~(  xL.tt ^  xR.tt ), XNOR, xL.id, xR.id ); break;  // xnor( l , r )
+    case 0x19: pCut->add_node(  (  xL.tt &  xR.tt ), AI11, xL.id, xR.id ); break;  //  and( l , r )
+    case 0x26: break;  // ]            
+    case 0x37: break;  // ]            
+    case 0x4C: pCut->add_node(  (  xL.tt & ~xR.tt ), AI10, xL.id, xR.id ); break;  //  and( l , r')
+    case 0x8C: break;  // ]            
+    case 0x3B: pCut->add_node(  ( ~xL.tt &  xR.tt ), AI01, xL.id, xR.id ); break;  // nand( l', r )
+    case 0x6E: pCut->add_node( ~( ~xL.tt & ~xR.tt ), OI00, xL.id, xR.id ); break;  //   or( l , r )
+    case 0x9D: break;  // ]            
+  }
+}
+
+void net_t::add_node_symR( cut_t * pCut, symmetry_t sym )
+{
+  cut_t oldCut = get_last_cut();
+  node_t xL, xR;
+  for( int i{0}; i < oldCut.nodes.size(); ++i )
+  {
+    if( oldCut.nodes[i].is_remapped() )
+    {
+      if( oldCut.nodes[i].remapped_pi() == sym.idL )
+        xL = oldCut.nodes[i];
+      else if( oldCut.nodes[i].remapped_pi() == sym.idR )
+        xR = oldCut.nodes[i];
+    }
+  }
+  switch ( sym.type )
+  {
+    case 0x33: pCut->add_node( ~(  xL.tt & ~xR.tt ), OI10, xL.id, xR.id ); break;// nand( l , r')
+    case 0xCC: pCut->add_node(  ( ~xL.tt &  xR.tt ), AI01, xL.id, xR.id ); break;//  and( l', r )
+    case 0x66: pCut->add_node(  (  xL.tt &  xR.tt ), AI11, xL.id, xR.id ); break;//  and( l , r )
+    case 0x99: pCut->add_node( ~( ~xL.tt & ~xR.tt ), OI00, xL.id, xR.id ); break;//   or( l , r )
+    case 0x44: pCut->add_node(  (  xL.tt &  xR.tt ), AI11, xL.id, xR.id ); break;//  and( l , r )
+    case 0x11: pCut->add_node( ~(  xL.tt & ~xR.tt ), OI10, xL.id, xR.id ); break;// nand( l , r')
+    case 0x77: pCut->add_node(                xR.tt, PRJR, xR.id, xR.id ); break;// r            
+    case 0xDD: pCut->add_node(                xR.tt, PRJR, xR.id, xR.id ); break;// r            
+    case 0x88: pCut->add_node(                xR.tt, PRJR, xR.id, xR.id ); break;// r            
+    case 0x22: pCut->add_node(                xR.tt, PRJR, xR.id, xR.id ); break;// r            
+    case 0xBB: pCut->add_node( ~( ~xL.tt & ~xR.tt ), OI00, xL.id, xR.id ); break;//   or( l , r )
+    case 0xEE: pCut->add_node(  ( ~xL.tt &  xR.tt ), AI01, xL.id, xR.id ); break;//  and( l', r )
+    case 0x36: pCut->add_node( ~(  xL.tt ^  xR.tt ), XNOR, xL.id, xR.id ); break;// xnor( l , r )
+    case 0x6C: break;// ]            
+    case 0x9C: pCut->add_node(  (  xL.tt ^  xR.tt ), EXOR, xL.id, xR.id ); break;//  xor( l , r )
+    case 0x39: break;// ]            
+    case 0x19: break;// ]            
+    case 0x26: pCut->add_node(  (  xL.tt &  xR.tt ), AI11, xL.id, xR.id ); break;//  and( l , r )
+    case 0x37: pCut->add_node( ~(  xL.tt & ~xR.tt ), OI10, xL.id, xR.id ); break;// nand( l , r')
+    case 0x4C: break;// ]            
+    case 0x8C: pCut->add_node(  ( ~xL.tt &  xR.tt ), AI01, xL.id, xR.id ); break;//  and( l', r )
+    case 0x3B: break;// ]            
+    case 0x6E: break;// ]            
+    case 0x9D: pCut->add_node( ~( ~xL.tt & ~xR.tt ), OI00, xL.id, xR.id ); break;//   or( l , r )
+  }
+}
+
+/*! \brief Add a cut to the network after adjusting its identifier. */
+void net_t::add_cut( symmetry_t sym )
+{
+  cut_t oldCut = cuts[nCuts-1];
+  cut_t newCut;
+  newCut.set_id( nCuts++ );
+
+  for( uint32_t i{0}; i < oldCut.size(); ++i )
+  {
+    int nNodes0 = newCut.nNodes;
+    bool isRem = oldCut.nodes[i].is_remapped();
+    int idPi   = oldCut.nodes[i].remapped_pi();
+    if( isRem && ( idPi == sym.idL || idPi == sym.idR ) )
+    {
+      if( idPi == sym.idL ) 
+      {
+        add_node_symL( &newCut, sym );
+      }
+      else
+        add_node_symR( &newCut, sym );
+      if( newCut.nNodes > nNodes0 ) newCut.nodes[nNodes0].idPi = idPi;
+    }
+    else
+    {
+      newCut.add_node( oldCut.nodes[i].tt, gate_t::PRJL, oldCut.nodes[i].id, oldCut.nodes[i].id );
+      if( oldCut.nodes[i].is_remapped() ) newCut.nodes[nNodes0].idPi = idPi;
+    }
+  }
+  nNodes += newCut.size();
+  newCut.tt = sym.tt;
+  newCut.mk = sym.mk;
+
   cuts.push_back( newCut );
 }
 
@@ -230,6 +354,34 @@ cut_t net_t::check_closure( cut_t candidates )
   return newCut;
 }
 
+/*! \brief Check if there is a node in the input cut synthesizing an output*/
+bool net_t::check_sym_closure()
+{
+  node_t * pOut = &outCut.nodes[0];
+  node_t * pDiv;
+  cut_t lstCut = get_last_cut();
+  for( int i{0}; i < lstCut.size(); ++i )
+  {
+    pDiv = &lstCut.nodes[i];
+    if( kitty::equal( pOut->tt, pDiv->tt ) )
+    {
+      pOut->gate = gate_t::PRJL;
+      pOut->idL  = pDiv->id;
+      pOut->idR  = pDiv->id;
+      nHunging--;
+      return true;
+    }
+    else if( kitty::equal( ~pOut->tt, pDiv->tt ) )
+    {
+      pOut->gate = gate_t::CMPL;
+      pOut->idL  = pDiv->id;
+      pOut->idR  = pDiv->id;
+      nHunging--;
+      return true;
+    }
+  }
+  return false;
+}
 
 #pragma endregion manipulate
 

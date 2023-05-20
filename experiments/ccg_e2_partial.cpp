@@ -1,6 +1,6 @@
 #include <kitty/constructors.hpp>
 #include <mockturtle/algorithms/decompose/DecSolver.hpp>
-#include <mockturtle/algorithms/dcsynthesis/dc_solver.hpp>
+#include <mockturtle/algorithms/ccgame/solvers/cusco.hpp>
 #include <mockturtle/algorithms/simulation.hpp>
 #include <mockturtle/io/write_aiger.hpp>
 #include <mockturtle/io/write_dot.hpp>
@@ -14,6 +14,7 @@
 
 
 using namespace mockturtle;
+using namespace ccgame;
 
 #define ANSI_COLOR_RED     "\x1b[31m"
 #define ANSI_COLOR_GREEN   "\x1b[32m"
@@ -459,7 +460,8 @@ Ntk game_on( kitty::dynamic_truth_table * pF )
   printf(ANSI_COLOR_YELLOW " ===================" ANSI_COLOR_RESET "\n" );
   printf(ANSI_COLOR_YELLOW " =   NEW VERSION   =" ANSI_COLOR_RESET "\n" );
   printf(ANSI_COLOR_YELLOW " ===================" ANSI_COLOR_RESET "\n" );
-  printf(ANSI_COLOR_YELLOW " 12 COVERING" ANSI_COLOR_RESET "\n" );
+  printf(ANSI_COLOR_YELLOW " 12 CUSCO COV" ANSI_COLOR_RESET "\n" );
+  printf(ANSI_COLOR_YELLOW " 13 CUSCO SYM" ANSI_COLOR_RESET "\n" );
   printf(ANSI_COLOR_YELLOW " CHOOSE YOUR METHOD: " ANSI_COLOR_RESET "" );
   int MET;
   
@@ -554,8 +556,33 @@ Ntk game_on( kitty::dynamic_truth_table * pF )
       xs.emplace_back( pow(2,pF->num_vars()) );
       kitty::create_nth_var( xs[i], i );
     }
-    dc_solver<Ntk> solver( xs, {Fpart});
-    solver.solve_greedy(&ntk);
+
+    /* define the parameters */    
+    int nIters = 20;
+    cusco_ps ps( ccgame::solver_t::_COV_RND, nIters );
+    /* solve */
+    cusco<Ntk> solver( xs, {Fpart} );
+    ntk = solver.solve( ps );
+
+    //dc_solver<Ntk> solver( xs, {Fpart});
+    //solver.solve_greedy(&ntk);
+  }
+  else if( MET == 13 )
+  {
+    std::vector<kitty::partial_truth_table> xs;
+    kitty::partial_truth_table Fpart(pow(2,pF->num_vars()));
+    kitty::create_from_binary_string( Fpart, kitty::to_binary(*pF) );
+    for( int i{0}; i<pF->num_vars(); ++i )
+    {
+      xs.emplace_back( pow(2,pF->num_vars()) );
+      kitty::create_nth_var( xs[i], i );
+    }
+    /* define the parameters */
+    int nIters = 1;
+    cusco_ps ps( ccgame::solver_t::_SYM_RND, nIters );
+    /* solve */
+    cusco<Ntk> solver( xs, {Fpart} );
+    ntk = solver.solve( ps );
   }
   else
   {

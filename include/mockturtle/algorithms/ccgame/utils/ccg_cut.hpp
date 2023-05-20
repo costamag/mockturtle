@@ -82,7 +82,7 @@ cut_t::~cut_t(){}
 void cut_t::set_id( uint32_t identifier )
 { 
   id = identifier;
-  shiftId = id << 16u; 
+  shiftId = 0xFFFF0000 & ( identifier << 16u ); 
 }
 void cut_t::set_func( DTT func ){ tt = func; }
 void cut_t::set_mask( DTT mask ){ mk = mask; }
@@ -102,6 +102,7 @@ node_t cut_t::add_node( TT tt, gate_t gate, uint32_t idL, uint32_t idR )
   nodes.push_back( node );
   return node;
 }
+
 /*! \brief Add leaf to the cut after setting the identifier. */
 node_t cut_t::add_node( node_t node )
 {
@@ -127,24 +128,25 @@ void cut_t::print()
         uint32_t c = node.get_glb_id();
         uint32_t cL = node.get_glb_idL();
         uint32_t cR = node.get_glb_idR();
+  //printf("%d %d %d %d %d %d\n", x, xL, xR, c, cL, cR );
         switch ( node.gate )
         {
             case gate_t::PIS  : { printf("[ PI %d.%2d]", c, x); break; }
             case gate_t::CNTR : { printf("[00 %d]", x); break; }
             case gate_t::AI00 : { printf("[%d.%d=and( %d.%2d', %d.%2d' )]", c, x, cL, xL, cR, xR ); break; }
             case gate_t::AI01 : { printf("[%d.%d=and( %d.%2d', %d.%2d  )]", c, x, cL, xL, cR, xR ); break; }
-            case gate_t::CMPL : { printf("[%d.%d=not(    %d.%2d     )]", c, x, xL ); break; }
+            case gate_t::CMPL : { printf("[%d.%d=not(    %d.%2d     )]", c, x, cL, xL ); break; }
             case gate_t::AI10 : { printf("[%d.%d=and( %d.%2d , %d.%2d' )]", c, x, cL, xL, cR, xR ); break; }
-            case gate_t::CMPR : { printf("[%d.%d=not(    %d.%2d     )]", c, x, xR ); break; }
+            case gate_t::CMPR : { printf("[%d.%d=not(    %d.%2d     )]", c, x, cR, xR ); break; }
             case gate_t::EXOR : { printf("[%d.%d=xor( %d.%2d , %d.%2d  )]", c, x, cL, xL, cR, xR ); break; }
-            case gate_t::OI11 : { printf("[%d.%d=and( %d.%2d', %d.%2d' )]", c, x, cL, xL, cR, xR ); break; }
+            case gate_t::OI11 : { printf("[%d.%d= or( %d.%2d', %d.%2d' )]", c, x, cL, xL, cR, xR ); break; }
             case gate_t::AI11 : { printf("[%d.%d=and( %d.%2d , %d.%2d  )]", c, x, cL, xL, cR, xR ); break; }
             case gate_t::XNOR : { printf("[%d.%d=xor( %d.%2d', %d.%2d' )]", c, x, cL, xL, cR, xR ); break; }
-            case gate_t::PRJR : { printf("[%d.%d=buf(    %d.%2d     )]", c, x, xR ); break; }
-            case gate_t::OI10 : { printf("[%d.%d=and( %d.%2d', %d.%2d  )]", c, x, cL, xL, cR, xR ); break; }
-            case gate_t::PRJL : { printf("[%d.%d=buf(    %d.%2d     )]", c, x, xL ); break; }
-            case gate_t::OI01 : { printf("[%d.%d=and( %d.%2d , %d.%2d' )]", c, x, cL, xL, cR, xR ); break; }
-            case gate_t::OI00 : { printf("[%d.%d=and( %d.%2d , %d.%2d  )]", c, x, cL, xL, cR, xR ); break; }
+            case gate_t::PRJR : { printf("[%d.%d=buf(    %d.%2d     )]", c, x, cR, xR ); break; }
+            case gate_t::OI10 : { printf("[%d.%d= or( %d.%2d', %d.%2d  )]", c, x, cL, xL, cR, xR ); break; }
+            case gate_t::PRJL : { printf("[%d.%d=buf(    %d.%2d     )]", c, x, cL, xL ); break; }
+            case gate_t::OI01 : { printf("[%d.%d= or( %d.%2d , %d.%2d' )]", c, x, cL, xL, cR, xR ); break; }
+            case gate_t::OI00 : { printf("[%d.%d= or( %d.%2d , %d.%2d  )]", c, x, cL, xL, cR, xR ); break; }
             case gate_t::TAUT : { printf("[11 %d.%2d]", x); break; }
             case gate_t::POS  : { printf("[ PO %d.%2d]", x); break; }
             default:  break;

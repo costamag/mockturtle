@@ -100,42 +100,26 @@ Ntk cusco_rem<Ntk>::solve_random( cusco_rem_ps const& ps )
   for( int i{0}; i < ps.nIters; ++i )
   {
     net_t net( X, Y );
-    net.print();
     net.cuts[net.nCuts-1].set_func( func );
     net.cuts[net.nCuts-1].set_mask( mask );
-    int idBound = 2;
+    int idBound = 0;
     int bestRwd = -1;
     symmetry_t bestSym;
-    //while( net.nHunging > 0 )
+    while( net.nHunging > 0 )
     {
       std::vector<symmetry_t> candidates = net.symmetry_analysis( xs, idBound );
       for( int i{0}; i<candidates.size(); ++i )
       {
-        if( candidates[i].rwd > bestRwd )
+        if( candidates[i].rwd >= bestRwd )
         {
           bestSym = candidates[i];
           bestRwd = candidates[i].rwd;
         }
       }
-      analyzer.print_symmetries( {bestSym} );
-      //cut_t closed_c = net.check_closure( candidates );
-      //net.add_cut( closed_c );
-
-      if( net.nHunging == 0 )
-        break;
-
-      //tab_t table( candidates, net.outCut );
-      //table.greedy_set_covering( );
-
-      //std::uniform_int_distribution<> distrib(0, table.subsets.size()-1);
-      //std::vector<int> SelIds = table.subsets[distrib(gen)];
-      
-      //cut_t new_c;
-      //for( int i{0}; i < SelIds.size(); ++i )
-      //  new_c.add_node( candidates.nodes[SelIds[i]] );
-
-      //net.complete_cut( new_c );
-       
+      if( ( bestSym.idL == idBound ) || ( bestSym.idR == idBound  ) )
+        idBound+=2;
+      net.add_cut( bestSym );
+      net.check_sym_closure();
     }
     ntk = net.convert<Ntk>();
     if( ntk.num_gates() < nBest )

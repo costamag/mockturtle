@@ -15,6 +15,7 @@ TEST_CASE( "cusco remapping", "[CCG]" )
     using TTP = kitty::partial_truth_table;
     using TTD = kitty::dynamic_truth_table;
     std::vector<TTP> xs;
+    std::vector<TTP> fs;
     TTD fun_dyn( 3u );
     TTP fun_par( 8u );
     for( int i{0}; i < 3; ++i )
@@ -30,8 +31,20 @@ TEST_CASE( "cusco remapping", "[CCG]" )
     int nIters = 1;
     cusco_ps ps( type, nIters );
     /* solve */
-    cusco<xag_network> solver( xs, {fun_par} );
+    fs = { fun_par };
+    cusco<xag_network> solver( xs, fs );
     xag_network xag = solver.solve( ps );
+
+
+    partial_simulator sim( xs );
+    unordered_node_map<TTP, xag_network> node_to_value( xag );
+    simulate_nodes( xag, node_to_value, sim );
+
+    xag.foreach_po( [&]( const auto& x, auto index ) {
+      auto sim_res = xag.is_complemented( x ) ? ~node_to_value[x] : node_to_value[x];
+      CHECK( kitty::equal( sim_res, fs[index] ) );
+    } );
+
 }
 
 TEST_CASE( "symmetry analyzer", "[CCG]" )
