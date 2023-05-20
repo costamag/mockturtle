@@ -31,7 +31,8 @@
 */
 #pragma once
 
-#include "ccg_divisor.hpp"
+#include "ccg_node.hpp"
+#include <kitty/dynamic_truth_table.hpp>
 #include <stdio.h>
 #include <stack>
 
@@ -41,17 +42,34 @@ namespace mockturtle
 namespace ccgame
 {
 
+using DTT = kitty::dynamic_truth_table;
 class cut_t
 {
-
 public:
-  std::vector<divisor_t> divisors;
+  /*! \brief cut identifier*/
+  uint32_t id{0u};
+  uint32_t shiftId{0u};
+  /*! \brief number of nodes */
+  uint32_t nNodes{0u};
+  /*! \brief nodes stored in the cut */
+  std::vector<node_t> nodes;
+  /*! \brief cut functionality: !can differ from simulation pattern! */
+  DTT tt;
+  /*! \brief mask related to the cut functionality  */
+  DTT mk;
 
   cut_t();
   ~cut_t();
 
-  void add_divisor( TT, gate_t, uint32_t, uint32_t, uint32_t, uint32_t );
-  void add_divisor( divisor_t );
+  void set_id( uint32_t );
+  void set_func( DTT );
+  void set_mask( DTT );
+  uint32_t get_id();
+  uint32_t get_shifted_id();
+
+  node_t add_node( TT, gate_t, uint32_t, uint32_t );
+  node_t add_node( TT, gate_t );
+  node_t add_node( node_t );
   int  size();
   void print();
 };
@@ -61,49 +79,74 @@ cut_t::cut_t(){}
 cut_t::~cut_t(){}
 #pragma endregion
 
-#pragma region addition
-void cut_t::add_divisor( TT tt, gate_t gate, uint32_t inL, uint32_t inR, uint32_t id, uint32_t flags )
-{
-    divisor_t div( tt, gate, inL, inR, id, flags );
-    divisors.push_back( div );
+void cut_t::set_id( uint32_t identifier )
+{ 
+  id = identifier;
+  shiftId = id << 16u; 
 }
+void cut_t::set_func( DTT func ){ tt = func; }
+void cut_t::set_mask( DTT mask ){ mk = mask; }
+uint32_t cut_t::get_id(){ return id; }
+uint32_t cut_t::get_shifted_id(){ return shiftId; }
 
-void cut_t::add_divisor( divisor_t div )
+#pragma region addition
+
+/*! \brief Add leaf to the cut from complete specification for generic node. */
+node_t cut_t::add_node( TT tt, gate_t gate, uint32_t idL, uint32_t idR )
 {
-  divisors.push_back( div );
+  uint32_t nodeId = shiftId | nNodes;
+  node_t node( tt, gate, nodeId, idL, idR );
+  if( gate == PIS )
+    node.idPi = nNodes;
+  nNodes++;
+  nodes.push_back( node );
+  return node;
+}
+/*! \brief Add leaf to the cut after setting the identifier. */
+node_t cut_t::add_node( node_t node )
+{
+  node.id = shiftId | nNodes++;
+  nodes.push_back( node );
+  return node;
 }
 #pragma endregion addition
 
 #pragma region properties
-int cut_t::size(){   return divisors.size();    }
+int cut_t::size(){   return nodes.size();    }
 #pragma endregion properties
 
 #pragma region visualize
 void cut_t::print()
 {
-    for( int j{0}; j < divisors.size(); ++j )
+    for( int j{0}; j < nodes.size(); ++j )
     {
-        divisor_t div = divisors[j];
-        switch ( div.gate )
+        node_t node = nodes[j];
+        uint32_t x = node.get_loc_id();
+        uint32_t xL = node.get_loc_idL();
+        uint32_t xR = node.get_loc_idR();
+        uint32_t c = node.get_glb_id();
+        uint32_t cL = node.get_glb_idL();
+        uint32_t cR = node.get_glb_idR();
+        switch ( node.gate )
         {
-            case gate_t::PIS  : { printf("[ PI %2d]", div.id ); break; }
-            case gate_t::CNTR : { printf("[00 %d]", div.id ); break; }
-            case gate_t::AI00 : { printf("[%d=and( %2d', %2d' )]", div.id, div.inL, div.inR ); break; }
-            case gate_t::AI01 : { printf("[%d=and( %2d', %2d  )]", div.id, div.inL, div.inR ); break; }
-            case gate_t::CMPL : { printf("[%d=not(    %2d     )]", div.id, div.inL ); break; }
-            case gate_t::AI10 : { printf("[%d=and( %2d , %2d' )]", div.id, div.inL, div.inR ); break; }
-            case gate_t::CMPR : { printf("[%d=not(    %2d     )]", div.id, div.inR ); break; }
-            case gate_t::EXOR : { printf("[%d=xor( %2d , %2d  )]", div.id, div.inL, div.inR ); break; }
-            case gate_t::OI11 : { printf("[%d=and( %2d', %2d' )]", div.id, div.inL, div.inR ); break; }
-            case gate_t::AI11 : { printf("[%d=and( %2d , %2d  )]", div.id, div.inL, div.inR ); break; }
-            case gate_t::XNOR : { printf("[%d=xor( %2d', %2d' )]", div.id, div.inL, div.inR ); break; }
-            case gate_t::PRJR : { printf("[%d=buf(    %2d     )]", div.id, div.inR ); break; }
-            case gate_t::OI10 : { printf("[%d=and( %2d', %2d  )]", div.id, div.inL, div.inR ); break; }
-            case gate_t::PRJL : { printf("[%d=buf(    %2d     )]", div.id, div.inL ); break; }
-            case gate_t::OI01 : { printf("[%d=and( %2d , %2d' )]", div.id, div.inL, div.inR ); break; }
-            case gate_t::OI00 : { printf("[%d=and( %2d , %2d  )]", div.id, div.inL, div.inR ); break; }
-            case gate_t::TAUT : { printf("[11 %2d]", div.id ); break; }
-            case gate_t::POS  : { printf("[ PO %2d]", div.id ); break; }
+            case gate_t::PIS  : { printf("[ PI %d.%2d]", c, x); break; }
+            case gate_t::CNTR : { printf("[00 %d]", x); break; }
+            case gate_t::AI00 : { printf("[%d.%d=and( %d.%2d', %d.%2d' )]", c, x, cL, xL, cR, xR ); break; }
+            case gate_t::AI01 : { printf("[%d.%d=and( %d.%2d', %d.%2d  )]", c, x, cL, xL, cR, xR ); break; }
+            case gate_t::CMPL : { printf("[%d.%d=not(    %d.%2d     )]", c, x, xL ); break; }
+            case gate_t::AI10 : { printf("[%d.%d=and( %d.%2d , %d.%2d' )]", c, x, cL, xL, cR, xR ); break; }
+            case gate_t::CMPR : { printf("[%d.%d=not(    %d.%2d     )]", c, x, xR ); break; }
+            case gate_t::EXOR : { printf("[%d.%d=xor( %d.%2d , %d.%2d  )]", c, x, cL, xL, cR, xR ); break; }
+            case gate_t::OI11 : { printf("[%d.%d=and( %d.%2d', %d.%2d' )]", c, x, cL, xL, cR, xR ); break; }
+            case gate_t::AI11 : { printf("[%d.%d=and( %d.%2d , %d.%2d  )]", c, x, cL, xL, cR, xR ); break; }
+            case gate_t::XNOR : { printf("[%d.%d=xor( %d.%2d', %d.%2d' )]", c, x, cL, xL, cR, xR ); break; }
+            case gate_t::PRJR : { printf("[%d.%d=buf(    %d.%2d     )]", c, x, xR ); break; }
+            case gate_t::OI10 : { printf("[%d.%d=and( %d.%2d', %d.%2d  )]", c, x, cL, xL, cR, xR ); break; }
+            case gate_t::PRJL : { printf("[%d.%d=buf(    %d.%2d     )]", c, x, xL ); break; }
+            case gate_t::OI01 : { printf("[%d.%d=and( %d.%2d , %d.%2d' )]", c, x, cL, xL, cR, xR ); break; }
+            case gate_t::OI00 : { printf("[%d.%d=and( %d.%2d , %d.%2d  )]", c, x, cL, xL, cR, xR ); break; }
+            case gate_t::TAUT : { printf("[11 %d.%2d]", x); break; }
+            case gate_t::POS  : { printf("[ PO %d.%2d]", x); break; }
             default:  break;
         }
     }

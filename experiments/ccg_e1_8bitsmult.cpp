@@ -14,13 +14,14 @@
 #include <mockturtle/io/aiger_reader.hpp>
 #include <mockturtle/algorithms/cleanup.hpp>
 #include <lorina/truth.hpp>
-#include <mockturtle/algorithms/dcsynthesis/dc_solver.hpp>
+#include <mockturtle/algorithms/ccgame/solvers/cusco.hpp>
 #include <cstdint>
 #include <string>
 #include <bit>
 #include <bitset>
 
 using namespace mockturtle;
+using namespace ccgame;
 
 #define ANSI_COLOR_RED     "\x1b[31m"
 #define ANSI_COLOR_GREEN   "\x1b[32m"
@@ -80,9 +81,20 @@ int main()
       kitty::create_from_binary_string(fns[index], kitty::to_binary( klut.node_function( x ) ));
     } );
 
+/*
     dc_solver<xag_network> solver( xs, fns );
     xag_network xag;
     solver.solve_greedy_multioutput( &xag );
+*/
+
+
+    /* define the parameters */
+    solver_t type = solver_t::_COV_RND;
+    int nIters = 20;
+    cusco_ps ps( type, nIters );
+    /* solve */
+    cusco<xag_network> solver( xs, fns );
+    solver.solve( ps );
 
   return 0;
 }

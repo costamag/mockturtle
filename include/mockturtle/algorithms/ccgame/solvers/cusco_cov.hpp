@@ -81,22 +81,22 @@ Ntk cusco_cov<Ntk>::solve_random( cusco_cov_ps const& ps )
 {
   std::random_device rd;  // a seed source for the random number engine
   std::mt19937 gen(5); // mersenne_twister_engine seeded with rd()
-  Ntk ntk;
+  Ntk ntk_best;
   int nBest = 10000u;
   for( int i{0}; i < ps.nIters; ++i )
   {
+    Ntk ntk;
     net_t net( X, Y );
-//net.print(); // @
     while( net.nHunging > 0 )
     {
-      cut_t candidates = net.list_candidate_divs();
-//candidates.print(); // @
-      bool ClosedSome = net.check_closure( candidates );
+      cut_t candidates = net.enumerate_divs();
+      cut_t closed_c = net.check_closure( candidates );
+      net.add_cut( closed_c );
+
       if( net.nHunging == 0 )
         break;
 
-      tab_t table( candidates, net.output_c );
-//table.print();
+      tab_t table( candidates, net.outCut );
       table.greedy_set_covering( );
 
       std::uniform_int_distribution<> distrib(0, table.subsets.size()-1);
@@ -104,19 +104,23 @@ Ntk cusco_cov<Ntk>::solve_random( cusco_cov_ps const& ps )
       
       cut_t new_c;
       for( int i{0}; i < SelIds.size(); ++i )
-        new_c.add_divisor( candidates.divisors[SelIds[i]] );
+        new_c.add_node( candidates.nodes[SelIds[i]] );
 
-      if( ClosedSome )
-        net.complete_cut( new_c );
-      else
-        net.add_cut( new_c ); 
-//net.print(); // @
+      net.complete_cut( new_c );
+       
     }
-//net.print(); // @
-  ntk = net.convert<Ntk>();
-  printf("|gates| = %d\n", ntk.num_gates());
+    ntk = net.convert<Ntk>();
+    if( ntk.num_gates() < nBest )
+    {
+      nBest = ntk.num_gates();
+      ntk_best = ntk;
+    }
+    printf("|gates| = %d\n", ntk.num_gates());
   }
-  return ntk;
+  printf("END\n", ntk_best.num_gates());
+  printf("|gates*|= %d\n", ntk_best.num_gates());
+
+  return ntk_best;
 }
 
 

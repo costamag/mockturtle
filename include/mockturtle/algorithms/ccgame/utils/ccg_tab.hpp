@@ -74,14 +74,14 @@ public:
 tab_t::tab_t( cut_t sets_c, cut_t univ_c )
 {
   for( int i{0}; i < sets_c.size(); ++i )
-      sets.push_back( sets_c.divisors[i].graph() );
+      sets.push_back( sets_c.nodes[i].graph() );
 
   univ = sets[0] & ~sets[0];
 
   for( int i{0}; i < univ_c.size(); ++i )
   {
-    if( univ_c.divisors[i].gate == gate_t::POS )
-      univ |= univ_c.divisors[i].graph();
+    if( univ_c.nodes[i].gate == gate_t::POS )
+      univ |= univ_c.nodes[i].graph();
   }
 }
 

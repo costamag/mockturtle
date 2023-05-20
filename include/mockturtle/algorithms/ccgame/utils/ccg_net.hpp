@@ -33,6 +33,7 @@
 
 #include "ccg_cut.hpp"
 #include "ccg_tab.hpp"
+#include "ccg_analyzer.hpp"
 #include <stdio.h>
 #include <stack>
 
@@ -42,23 +43,30 @@ namespace mockturtle
 namespace ccgame
 {
 
+using DTT = kitty::dynamic_truth_table;
+
 class net_t
 {
+private:
+  analyzer_t analyzer;
 
 public:
   std::vector<cut_t> cuts;
-  cut_t output_c;
-  int nNodes{0};
+  cut_t outCut;
   int nHunging;
+  uint32_t nCuts{0u};
+  uint32_t nNodes{0u};
 
   net_t( std::vector<TT> const&, std::vector<TT> const& );
   ~net_t();
 
   /* manipulate */
-  cut_t list_candidate_divs();
+  cut_t enumerate_divs();
+  std::vector<symmetry_t> symmetry_analysis( std::vector<DTT>, int );
   void add_cut( cut_t );
   void complete_cut( cut_t );
-  bool check_closure( cut_t );
+  cut_t check_closure( cut_t );
+  cut_t get_last_cut();
 
   template<class Ntk> Ntk convert();
 
@@ -70,102 +78,126 @@ public:
 #pragma region constructors
 net_t::net_t( std::vector<TT> const& X, std::vector<TT> const& Y )
 {
+  uint32_t INFTY = 0xFFFFFFFF;
+
   /* inputs */
   cut_t cut;
-  for( int i{0u}; i < X.size(); ++i )
+  cut.set_id(0u);
+  
+  for( uint32_t i{0u}; i < X.size(); ++i )
   {
-    cut.add_divisor( X[i], gate_t::PIS, i, i, i, 0u );
+    cut.add_node( X[i], gate_t::PIS, INFTY, INFTY );
     nNodes++;
   }
   cuts.push_back(cut);
+  nCuts++;
+
+  outCut.set_id( 0xFFFF );
   /* output */
   for( int i{0u}; i < Y.size(); ++i )
-    output_c.add_divisor( Y[i], gate_t::POS, 0xFFFFFFFF, 0xFFFFFFFF, i, 0u );
+    outCut.add_node( Y[i], gate_t::POS, INFTY, INFTY );
   nHunging = Y.size();
 }
 
 net_t::~net_t(){}
 #pragma endregion
 
+#pragma region inquiring
+/*! \brief get the last cut */
+cut_t net_t::get_last_cut(){  return cuts[cuts.size()-1]; }
+/*! \brief list essential candidate nodes */
+cut_t net_t::enumerate_divs(){  return analyzer.enumerate_divs( get_last_cut() );}
+std::vector<symmetry_t> net_t::symmetry_analysis( std::vector<DTT> xs, int idBound )
+{   
+  cut_t cut = get_last_cut();
+  std::vector<int> ancestor_to_node;
+  std::vector<int> node_to_ancestor;
+  for( int iVar{0}; iVar < cut.tt.num_vars(); ++iVar )
+    ancestor_to_node.push_back(-1);
+  int idNext = 0;
+  bool notYet = true;
+  for( int iNd{0}; iNd < cut.size(); ++iNd )
+  {
+    if( cut.nodes[iNd].is_remapped() )
+    {
+      if( cut.nodes[iNd].remapped_pi() <= idBound )
+        node_to_ancestor.push_back(cut.nodes[iNd].remapped_pi());
+      if( cut.nodes[iNd].remapped_pi() > idBound && notYet )
+      {
+        idNext = cut.nodes[iNd].remapped_pi();
+        notYet = false;
+      }
+      ancestor_to_node[ cut.nodes[iNd].remapped_pi() ] = iNd;
+    }
+  }
+  std::vector<symmetry_t> sym1, sym2;
+  sym1 = analyzer.find_symmetries( xs, cut.tt, cut.mk, node_to_ancestor );
+  if( !notYet )
+  {
+    sym2 = analyzer.find_symmetries( xs, cut.tt, cut.mk, { idBound, idNext } );
+    for( auto x : sym2 )
+      sym1.push_back( x );
+  }
+  /* now in sym1 there should be all the symmetries */
+  analyzer.print_symmetries( sym1 );
+  return sym1;
+}
+#pragma endregion inquiring
+
 #pragma region manipulate
-/*! \brief combines the gates in the last cut to propose all possible divisors*/
-cut_t net_t::list_candidate_divs()
-{
-    cut_t divs;
-    cut_t cut = cuts[cuts.size()-1]; 
 
-    for( int i{0}; i < cut.divisors.size() ; ++i )
-    {
-        divisor_t d = cut.divisors[i];
-        divs.add_divisor( d.tt, PRJL, d.inL, d.inL, 0xFFFFFFFF, 0x0 );
-    }
-
-    divisor_t dL;
-    divisor_t dR;
-
-    for( int iR{0}; iR < cut.divisors.size()-1 ; ++iR )
-    {
-        for( int iL{iR+1}; iL < cut.divisors.size(); ++iL ) // iL > iR
-        {
-            dL = cut.divisors[iL];
-            dR = cut.divisors[iR];
-            divs.add_divisor(  dL.tt &  dR.tt, AI11, dL.id, dR.id, 0xFFFFFFFF, 0x0 );
-            divs.add_divisor(  dL.tt & ~dR.tt, AI10, dL.id, dR.id, 0xFFFFFFFF, 0x0 );
-            divs.add_divisor( ~dL.tt &  dR.tt, AI01, dL.id, dR.id, 0xFFFFFFFF, 0x0 );
-            divs.add_divisor( ~dL.tt & ~dR.tt, AI00, dL.id, dR.id, 0xFFFFFFFF, 0x0 );
-            divs.add_divisor(  dL.tt ^  dR.tt, EXOR, dL.id, dR.id, 0xFFFFFFFF, 0x0 );
-        }
-    }
-    return divs;
-} 
-
+/*! \brief Add a cut to the network after adjusting its identifier. */
 void net_t::add_cut( cut_t cut )
 {
-  cuts.push_back( cut );
-  for( int i{0}; i<cuts[ cuts.size() - 1 ].divisors.size(); ++i )
-    cuts[ cuts.size() - 1 ].divisors[i].id = nNodes++;
+  cut_t newCut;
+  newCut.set_id( nCuts++ );
+  for( uint32_t i{0}; i < cut.size(); ++i )
+    newCut.add_node( cut.nodes[i] );
+  nNodes += newCut.size();
+  cuts.push_back( newCut );
 }
 
+/*! \brief Add nodes to the last cut. */
 void net_t::complete_cut( cut_t cut )
 {
   cut_t * pCut = &cuts[cuts.size()-1];
-  for( int i{0}; cut.size(); ++i )
-  {
-    pCut->divisors.push_back( cut.divisors[i] );
-    pCut->divisors[pCut->size()-1].id = nNodes++;
-  }
+  for( int i{0}; i < cut.size(); ++i )
+    pCut->add_node( cut.nodes[i] );
+  nNodes += cut.size();
 }
 
-bool net_t::check_closure( cut_t candidates )
+/*! \brief Check if there is a node in the input cut synthesizing an output*/
+cut_t net_t::check_closure( cut_t candidates )
 {
-  cut_t new_c;
+  cut_t newCut;
+  newCut.set_id( nCuts );
   std::vector<int> res;
   int iDiv;
   bool found;
-  for( int iOut{0}; iOut < output_c.divisors.size(); ++iOut )
+  for( int iOut{0}; iOut < outCut.nodes.size(); ++iOut )
   {
-    divisor_t * pOut = &output_c.divisors[iOut];
-    divisor_t * pDiv;
+    node_t * pOut = &outCut.nodes[iOut];
+    node_t * pDiv;
     if( pOut->gate == gate_t::POS )
     {
       found = false;
-      for( int i{0}; i < new_c.divisors.size(); ++i )
+      for( int i{0}; i < newCut.nodes.size(); ++i )
       {
         if( found ) break;
-        pDiv = &new_c.divisors[i];
+        pDiv = &newCut.nodes[i];
         if( kitty::equal( pOut->tt, pDiv->tt ) )
         {
           pOut->gate = gate_t::PRJL;
-          pOut->inL  = pDiv->id;
-          pOut->inR  = pDiv->id;
+          pOut->idL  = pDiv->id;
+          pOut->idR  = pDiv->id;
           nHunging--;
           found = true;
         }
         else if( kitty::equal( ~pOut->tt, pDiv->tt ) )
         {
           pOut->gate = gate_t::CMPL;
-          pOut->inL  = pDiv->id;
-          pOut->inR  = pDiv->id;
+          pOut->idL  = pDiv->id;
+          pOut->idR  = pDiv->id;
           nHunging--;
           found = true;
         }
@@ -173,36 +205,32 @@ bool net_t::check_closure( cut_t candidates )
       for( int i{0}; i < candidates.size(); ++i )
       {
         if( found ) break;
-        pDiv = &candidates.divisors[i];
+        pDiv = &candidates.nodes[i];
         if( kitty::equal( pOut->tt, pDiv->tt ) )
         {
-          new_c.add_divisor( *pDiv );
+          node_t node = newCut.add_node( *pDiv );
           pOut->gate = gate_t::PRJL;
-          pOut->inL  = nNodes;
-          pOut->inR  = nNodes;
-          new_c.divisors[new_c.divisors.size()-1].id = nNodes++;
+          pOut->idL  = node.id;
+          pOut->idR  = node.id;
           nHunging--;
           found = true;
-          res.push_back( i );
         }
         else if( kitty::equal( ~pOut->tt, pDiv->tt ) )
         {
-          new_c.add_divisor( *pDiv );
+          node_t node = newCut.add_node( *pDiv );
           pOut->gate = gate_t::CMPL;
-          pOut->inL  = nNodes;
-          pOut->inR  = nNodes;
-          new_c.divisors[new_c.divisors.size()-1].id = nNodes++;
+          pOut->idL  = node.id;
+          pOut->idR  = node.id;
           nHunging--;
           found = true;
-          res.push_back( i );
         }
       }
     }
   }
-  if( res.size() > 0 )
-    cuts.push_back( new_c );
-  return( res.size() > 0 );
+  return newCut;
 }
+
+
 #pragma endregion manipulate
 
 #pragma region transform
@@ -210,84 +238,92 @@ template<class Ntk>
 Ntk net_t::convert()
 {
   Ntk ntk;
-  std::vector<signal<Ntk>> chain;
-  for( int iPi{0}; iPi < cuts[0].divisors.size(); ++iPi )
-    chain.push_back( ntk.create_pi() );
-  for( int iCut{0}; iCut < cuts.size(); ++iCut )
+  std::vector<std::vector<signal<Ntk>>> chain;
+  chain.emplace_back();
+  for( int iPi{0}; iPi < cuts[0].nodes.size(); ++iPi )
+    chain[0].push_back( ntk.create_pi() );
+
+  for( int iCut{1}; iCut < cuts.size(); ++iCut )
   {    
-    for( int iNode{0}; iNode < cuts[iCut].divisors.size(); ++iNode )
+    chain.emplace_back();
+
+    for( int iNode{0}; iNode < cuts[iCut].size(); ++iNode )
     {
-      divisor_t * pNode = &cuts[iCut].divisors[iNode];
-      signal<Ntk> xL = chain[pNode->inL];
-      signal<Ntk> xR = chain[pNode->inR];
+      node_t * pNode = &cuts[iCut].nodes[iNode];
+      assert( ( (iCut-1) == ( pNode->get_glb_idL() ) ) );
+      assert( ( (iCut-1) == ( pNode->get_glb_idR() ) ) );
+      signal<Ntk> xL = chain[pNode->get_glb_idL()][pNode->get_loc_idL()];
+      signal<Ntk> xR = chain[pNode->get_glb_idR()][pNode->get_loc_idR()];
 
       switch (pNode->gate)
       {
+      case gate_t::PIS :
+        chain[iCut].push_back( ntk.create_pi() );
+        break;
       case gate_t::AI00 :
-        chain.push_back( ntk.create_and( ntk.create_not(xL), ntk.create_not(xR)) );
+        chain[iCut].push_back( ntk.create_and( ntk.create_not(xL), ntk.create_not(xR)) );
         break;
       case gate_t::AI01 :
-        chain.push_back( ntk.create_and( ntk.create_not(xL), xR) );
+        chain[iCut].push_back( ntk.create_and( ntk.create_not(xL), xR) );
         break;
       case gate_t::AI10 :
-        chain.push_back( ntk.create_and( xL, ntk.create_not(xR)) );
+        chain[iCut].push_back( ntk.create_and( xL, ntk.create_not(xR)) );
         break;
       case gate_t::AI11 :
-        chain.push_back( ntk.create_and( xL, xR ) );
+        chain[iCut].push_back( ntk.create_and( xL, xR ) );
         break;
       case gate_t::CMPL :
-        chain.push_back( ntk.create_not(xL) );
+        chain[iCut].push_back( ntk.create_not(xL) );
         break;
       case gate_t::CMPR :
-        chain.push_back( ntk.create_not(xR) );
+        chain[iCut].push_back( ntk.create_not(xR) );
         break;
       case gate_t::EXOR :
-        chain.push_back( ntk.create_xor( xL, xR) );
+        chain[iCut].push_back( ntk.create_xor( xL, xR) );
         break;
       case gate_t::OI00 :
-        chain.push_back( ntk.create_nand( ntk.create_not(xL), ntk.create_not(xR)) );
+        chain[iCut].push_back( ntk.create_nand( ntk.create_not(xL), ntk.create_not(xR)) );
         break;
       case gate_t::OI01 :
-        chain.push_back( ntk.create_nand( ntk.create_not(xL), xR) );
+        chain[iCut].push_back( ntk.create_nand( ntk.create_not(xL), xR) );
         break;
       case gate_t::OI10 :
-        chain.push_back( ntk.create_nand( xL, ntk.create_not(xR)) );
+        chain[iCut].push_back( ntk.create_nand( xL, ntk.create_not(xR)) );
         break;
       case gate_t::OI11 :
-        chain.push_back( ntk.create_nand( xL, xR ) );
+        chain[iCut].push_back( ntk.create_nand( xL, xR ) );
         break;
       case gate_t::PRJL :
-        chain.push_back( ntk.create_buf(xL) );
+        chain[iCut].push_back( ntk.create_buf(xL) );
         break;
       case gate_t::PRJR :
-        chain.push_back( ntk.create_buf(xR) );
+        chain[iCut].push_back( ntk.create_buf(xR) );
         break;
       case gate_t::XNOR :
-        chain.push_back( ntk.create_not(ntk.create_xor( xL, xR ) ) );
+        chain[iCut].push_back( ntk.create_not(ntk.create_xor( xL, xR ) ) );
         break;
       default:
         break;
       }
     }
-    chain.push_back( ntk.create_pi() );
   }
 
-  for( int iOut{0}; iOut < output_c.divisors.size(); ++iOut )
+  for( int iOut{0}; iOut < outCut.nodes.size(); ++iOut )
   {
-    divisor_t out = output_c.divisors[iOut];
+    node_t out = outCut.nodes[iOut];
     switch ( out.gate )
     {
     case gate_t::CMPL :
-      ntk.create_po( ntk.create_not( chain[ out.inL ] ) );
+      ntk.create_po( ntk.create_not( chain[out.get_glb_idL()][out.get_loc_idL()] ) );
       break;
     case gate_t::CMPR :
-      ntk.create_po( ntk.create_not( chain[ out.inR ] ) );
+      ntk.create_po( ntk.create_not( chain[out.get_glb_idR()][out.get_loc_idR()] ) );
       break;
     case gate_t::PRJL :
-      ntk.create_po( chain[ out.inL ] );
+      ntk.create_po( chain[out.get_glb_idL()][out.get_loc_idL()] );
       break;
     case gate_t::PRJR :
-      ntk.create_po( chain[ out.inR ] );
+      ntk.create_po( chain[out.get_glb_idR()][out.get_loc_idR()] );
       break;
     default:
       break;
@@ -307,7 +343,7 @@ void net_t::print()
   }
   printf("\n" );
   printf("OUTPUTS:\n" );
-  output_c.print();
+  outCut.print();
 
 }
 #pragma endregion visualize

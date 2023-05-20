@@ -103,7 +103,6 @@ Ntk cusco<Ntk>::solve( cusco_ps const& ps )
     }
     case _COV_RND :
     {
-      assert( Y.size() == 1 );
       cusco_cov<Ntk> solver1( X, Y );
       cusco_cov_ps ps1( ps.nIters );
       ntk = solver1.solve_random( ps1 );
