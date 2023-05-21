@@ -416,6 +416,7 @@ action_t<TT> DecSolver<TT, Ntk>::select_uniformly( std::vector<action_t<TT>> * p
 template<class TT, class Ntk>
 Ntk DecSolver<TT, Ntk>::aut_sym_solve(int nIters)
 {
+  bool verbose{false};
 
   std::mt19937       generator(5);
 
@@ -517,14 +518,19 @@ Ntk DecSolver<TT, Ntk>::aut_sym_solve(int nIters)
       Y = net.getTargets();
       default_simulator<kitty::dynamic_truth_table> sim( (*net.getFuncP(Y[0])).num_vars() );
       const auto tt = simulate<kitty::dynamic_truth_table>( ntk, sim )[0];
+  if(verbose)
+  {
       printf("**********************************\n");
       printf("num gates =%d\n", ntk.num_gates());
+  }
       for( int iTrg{0}; iTrg<Y.size(); ++iTrg )
       {
         TT F = *net.getFuncP( Y[iTrg] );
         CEC = kitty::equal( tt, F );
         if( kitty::equal( tt, F ) )
-          printf( ANSI_COLOR_GREEN " CEC SUCCESFUL " ANSI_COLOR_RESET "\n" );
+        {
+            if(verbose) printf( ANSI_COLOR_GREEN " CEC SUCCESFUL " ANSI_COLOR_RESET "\n" );
+        }
         else
         {
           printf( ANSI_COLOR_RED " CEC FAILED " ANSI_COLOR_RESET "\n" );
@@ -539,8 +545,11 @@ Ntk DecSolver<TT, Ntk>::aut_sym_solve(int nIters)
       if( ntk.num_gates() > max_num_gates )
         max_num_gates = ntk.num_gates();
 
+if(verbose)
+{ 
       printf("%5.5f\n", duration );
       printf("**********************************\n");
+}
       if( (ntk.num_gates() < nBest) && CEC )
       {
         nBest = ntk.num_gates();
@@ -552,16 +561,19 @@ Ntk DecSolver<TT, Ntk>::aut_sym_solve(int nIters)
 
     if( !bBELOW )
     {
-      printf( ANSI_COLOR_RED " LARGER THAN BEST " ANSI_COLOR_RESET "\n" );
+      if( verbose ) printf( ANSI_COLOR_RED " LARGER THAN BEST " ANSI_COLOR_RESET "\n" );
     }
   }
   global_duration = ( std::clock() - global_start ) / (double) CLOCKS_PER_SEC;
 
+if(verbose)
+{ 
   printf("SUMMARY:\n");
   printf("%10s %10s %10s %10s %10s\n %10d %5.5f %d %5.5f %5.5f\n", 
           "min G", "E[G]", "max G", "E[t]", "T\n",
            nBest, avg_num_gates/nActualIters, max_num_gates, avg_time/nActualIters, global_duration );
   printf( "init %d, delta(max)=+%d, delta(min)=-%d\n", nBest, max_num_gates-nBest, initial_nNodes-nBest );
+}
   return ntkBest;
 }
 

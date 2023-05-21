@@ -1,6 +1,7 @@
 #include <kitty/constructors.hpp>
 #include <mockturtle/algorithms/decompose/DecSolver.hpp>
 #include <mockturtle/algorithms/ccgame/solvers/cusco.hpp>
+#include <mockturtle/algorithms/dcsynthesis/dc_solver.hpp>
 #include <mockturtle/algorithms/simulation.hpp>
 #include <mockturtle/io/write_aiger.hpp>
 #include <mockturtle/io/write_dot.hpp>
@@ -461,7 +462,9 @@ Ntk game_on( kitty::dynamic_truth_table * pF )
   printf(ANSI_COLOR_YELLOW " =   NEW VERSION   =" ANSI_COLOR_RESET "\n" );
   printf(ANSI_COLOR_YELLOW " ===================" ANSI_COLOR_RESET "\n" );
   printf(ANSI_COLOR_YELLOW " 12 CUSCO COV" ANSI_COLOR_RESET "\n" );
-  printf(ANSI_COLOR_YELLOW " 13 CUSCO SYM" ANSI_COLOR_RESET "\n" );
+  printf(ANSI_COLOR_YELLOW " 13 CUSCO SYM 1SHOT" ANSI_COLOR_RESET "\n" );
+  printf(ANSI_COLOR_YELLOW " 14 DCSOLVER " ANSI_COLOR_RESET "\n" );
+  printf(ANSI_COLOR_YELLOW " 15 CUSCO SYM RAND " ANSI_COLOR_RESET "\n" );
   printf(ANSI_COLOR_YELLOW " CHOOSE YOUR METHOD: " ANSI_COLOR_RESET "" );
   int MET;
   
@@ -548,41 +551,66 @@ Ntk game_on( kitty::dynamic_truth_table * pF )
   }
   else if( MET == 12 )
   {
-    std::vector<kitty::partial_truth_table> xs;
-    kitty::partial_truth_table Fpart(pow(2,pF->num_vars()));
-    kitty::create_from_binary_string( Fpart, kitty::to_binary(*pF) );
-    for( int i{0}; i<pF->num_vars(); ++i )
+    std::vector<kitty::dynamic_truth_table> xs;
+    for( uint32_t i{0}; i<pF->num_vars(); ++i )
     {
-      xs.emplace_back( pow(2,pF->num_vars()) );
+      xs.emplace_back( pF->num_vars() );
       kitty::create_nth_var( xs[i], i );
     }
 
     /* define the parameters */    
-    int nIters = 20;
+    int nIters = 100;
     cusco_ps ps( ccgame::solver_t::_COV_RND, nIters );
     /* solve */
-    cusco<Ntk> solver( xs, {Fpart} );
-    ntk = solver.solve( ps );
+    cusco<Ntk> solver( xs, {*pF} );
+    ntk = solver.solve( ps ).ntk;
 
     //dc_solver<Ntk> solver( xs, {Fpart});
     //solver.solve_greedy(&ntk);
   }
   else if( MET == 13 )
   {
-    std::vector<kitty::partial_truth_table> xs;
-    kitty::partial_truth_table Fpart(pow(2,pF->num_vars()));
-    kitty::create_from_binary_string( Fpart, kitty::to_binary(*pF) );
-    for( int i{0}; i<pF->num_vars(); ++i )
+    std::vector<kitty::dynamic_truth_table> xs;
+    for( uint32_t i{0}; i<pF->num_vars(); ++i )
     {
-      xs.emplace_back( pow(2,pF->num_vars()) );
+      xs.emplace_back( pF->num_vars() );
       kitty::create_nth_var( xs[i], i );
     }
     /* define the parameters */
     int nIters = 1;
     cusco_ps ps( ccgame::solver_t::_SYM_RND, nIters );
     /* solve */
-    cusco<Ntk> solver( xs, {Fpart} );
-    ntk = solver.solve( ps );
+    cusco<Ntk> solver( xs, {*pF} );
+    ntk = solver.solve( ps ).ntk;
+  }
+  else if( MET == 14 )
+  {
+    std::vector<kitty::partial_truth_table> xs;
+    for( uint32_t i{0}; i<pF->num_vars(); ++i )
+    {
+      xs.emplace_back( pow(2,pF->num_vars()) );
+      kitty::create_nth_var( xs[i], i );
+    }
+    kitty::partial_truth_table Fpart(pow(2,pF->num_vars()));
+    kitty::create_from_binary_string( Fpart, kitty::to_binary( *pF ) );
+    dc_solver<Ntk> solver( xs, {Fpart});
+    solver.solve_greedy(&ntk);
+  }
+  else if( MET == 15 )
+  {
+        //ntk = solver.aut_sym_solve( MET );
+    std::vector<kitty::dynamic_truth_table> xs;
+    for( int i{0}; i<pF->num_vars(); ++i )
+    {
+      xs.emplace_back( pF->num_vars() );
+      kitty::create_nth_var( xs[i], i );
+    }
+    /* define the parameters */
+    int nIters = 10;
+    cusco_ps ps( ccgame::solver_t::_SYM_RND, nIters );
+    /* solve */
+    cusco<Ntk> solver( xs, {*pF} );
+    ntk = solver.solve( ps ).ntk;
   }
   else
   {

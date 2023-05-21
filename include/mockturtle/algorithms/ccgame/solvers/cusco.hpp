@@ -46,23 +46,42 @@ namespace mockturtle
 namespace ccgame
 {
 
-using TT = kitty::partial_truth_table;
+using TT = kitty::dynamic_truth_table;
 
 /*! \brief methods implemented
  */
 enum solver_t
 {
+  _SYM_1SH,
   _SYM_RND,
-  _COV_RND
+  _COV_RND,
+  _COV_DCM
+};
+
+template<class Ntk>
+struct report_t
+{
+  int nIt0;
+  int nMin;
+  int nMax;
+  Ntk ntk;
 };
 
 struct cusco_ps
 {
   /* method */
+  /*! \brief solver type */
   solver_t type;
+  /*! \brief number of iterations */
   int nIters;
+  /*! \brief capacity [only for covering -1 to let unbounded] */
+  int nCap;
 
-  cusco_ps( solver_t type, int nIters ) : type( type ), nIters( nIters ) {}
+  cusco_ps( solver_t type, int nIters ) : type( type ), nIters( nIters ) 
+  {
+    nCap=-1;
+  }
+  cusco_ps( solver_t type, int nIters, int nCap ) : type( type ), nIters( nIters ), nCap(nCap) {}
 };
 
 template<class Ntk>
@@ -78,7 +97,7 @@ public:
   cusco( std::vector<TT> const&, std::vector<TT> const& );
   ~cusco();
   /* solve */
-  Ntk solve( cusco_ps const& );
+  report_t<Ntk> solve( cusco_ps const& );
 };
 
 /* creation and destruction */
@@ -88,36 +107,68 @@ template<class Ntk>
 cusco<Ntk>::~cusco(){}
 
 template<class Ntk>
-Ntk cusco<Ntk>::solve( cusco_ps const& ps )
+report_t<Ntk> cusco<Ntk>::solve( cusco_ps const& ps )
 {
   std::clock_t start;
   double duration;
   start = std::clock();
-  Ntk ntk;
+  report_t<Ntk> rp;
+
   switch ( ps.type )
   {
-    case _SYM_RND : 
+    case _SYM_1SH : 
     {
       assert( Y.size() == 1 );
       cusco_rem<Ntk> solver0( X, Y );
-      cusco_rem_ps ps0( ps.nIters );
-      ntk = solver0.solve_random( ps0 );
+      cusco_rem_ps ps0( 1 );
+      report_rem_t<Ntk> rp0 = solver0.solve_1shot( ps0 );
+      rp.nIt0 = rp0.nIt0;
+      rp.nMin = rp0.nIt0;
+      rp.nMax = rp0.nIt0;
+      rp.ntk  = rp0.ntk;
+      break;
+    }
+    case _SYM_RND : 
+    {
+      assert( Y.size() == 1 );
+      cusco_rem<Ntk> solver1( X, Y );
+      cusco_rem_ps ps1( ps.nIters );
+      report_rem_t<Ntk> rp1 = solver1.solve_random( ps1 );
+      rp.nIt0 = rp1.nIt0;
+      rp.nMin = rp1.nMin;
+      rp.nMax = rp1.nMax;
+      rp.ntk  = rp1.ntk;
       break;
     }
     case _COV_RND :
     {
-      cusco_cov<Ntk> solver1( X, Y );
-      cusco_cov_ps ps1( ps.nIters );
-      ntk = solver1.solve_random( ps1 );
+      cusco_cov<Ntk> solver2( X, Y );
+      cusco_cov_ps ps2( ps.nIters, ps.nCap );
+      report_cov_t<Ntk> rp2 = solver2.solve_random( ps2 );
+      rp.nIt0 = rp2.nIt0;
+      rp.nMin = rp2.nMin;
+      rp.nMax = rp2.nMax;
+      rp.ntk  = rp2.ntk;
+      break;
+    }
+    case _COV_DCM :
+    {
+      cusco_cov<Ntk> solver3( X, Y );
+      cusco_cov_ps ps3( ps.nIters, ps.nCap, true );
+      report_cov_t<Ntk> rp3 = solver3.solve_random( ps3 );
+      rp.nIt0 = rp3.nIt0;
+      rp.nMin = rp3.nMin;
+      rp.nMax = rp3.nMax;
+      rp.ntk  = rp3.ntk;
       break;
     }
   }
   duration = ( std::clock() - start ) / (double) CLOCKS_PER_SEC;
 
-  printf("SUMMARY:\n");
-  printf( "ngates = %d  time = %.2f\n", ntk.num_gates(), duration );
+  //printf("SUMMARY:\n");
+  //printf( "ngates = %d  time = %.2f\n", ntk.num_gates(), duration );
 
-  return ntk;
+  return rp;
 }
 
 

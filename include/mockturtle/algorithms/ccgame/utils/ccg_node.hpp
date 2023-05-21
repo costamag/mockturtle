@@ -32,6 +32,7 @@
 #pragma once
 
 #include <kitty/partial_truth_table.hpp>
+#include <kitty/dynamic_truth_table.hpp>
 #include <kitty/bit_operations.hpp>
 #include <kitty/operators.hpp>
 #include <stdio.h>
@@ -43,7 +44,7 @@ namespace mockturtle
 namespace ccgame
 {
 
-using TT = kitty::partial_truth_table;
+using TT = kitty::dynamic_truth_table;
 
 /*! \brief Gate type in the ccgame namespace. Convention Xl=1100, Xr=1010
  */
@@ -133,10 +134,11 @@ uint32_t node_t::remapped_pi(){ return idPi; }
 TT node_t::graph()
 {
     int nBits = tt.num_bits();
-    int nBit2 = nBits*nBits;
-    TT  graph( nBit2 );
-    TT  tt2( nBit2 );
-    TT  mk2( nBit2 );
+    //int nBit2 = nBits*nBits;
+    int nVars = tt.num_vars();
+    TT  graph( 2*nVars );
+    TT  tt2( 2*nVars );
+    TT  mk2( 2*nVars );
     for( int iBit{0}; iBit < nBits; ++iBit )
     {
         kitty::set_bit( mk2, iBit );

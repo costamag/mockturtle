@@ -43,7 +43,7 @@ namespace mockturtle
 namespace ccgame
 {
 
-using DTT = kitty::dynamic_truth_table;
+using TT = kitty::dynamic_truth_table;
 
 class net_t
 {
@@ -62,13 +62,15 @@ public:
 
   /* manipulate */
   cut_t enumerate_divs();
-  std::vector<symmetry_t> symmetry_analysis( std::vector<DTT>, int );
+  std::vector<symmetry_t> symmetry_analysis( std::vector<TT> *, int );
   void add_cut( cut_t );
-  void add_cut( symmetry_t );
-  void add_node_symL( cut_t *, symmetry_t );
-  void add_node_symR( cut_t *, symmetry_t );
+  void add_cut( symmetry_t * );
+  void add_node_symL( cut_t *, symmetry_t * );
+  void add_node_symR( cut_t *, symmetry_t * );
   void complete_cut( cut_t );
+  bool check_closure( cut_t *, node_t *, node_t, node_t );
   cut_t check_closure( cut_t );
+  cut_t check_closure( );
   bool check_sym_closure( );
   cut_t get_last_cut();
 
@@ -111,7 +113,7 @@ net_t::~net_t(){}
 cut_t net_t::get_last_cut(){  return cuts[cuts.size()-1]; }
 /*! \brief list essential candidate nodes */
 cut_t net_t::enumerate_divs(){  return analyzer.enumerate_divs( get_last_cut() );}
-std::vector<symmetry_t> net_t::symmetry_analysis( std::vector<DTT> xs, int idBound )
+std::vector<symmetry_t> net_t::symmetry_analysis( std::vector<TT> * pXs, int idBound )
 {   
   cut_t cut = get_last_cut();
   std::vector<int> ancestor_to_node;
@@ -135,10 +137,11 @@ std::vector<symmetry_t> net_t::symmetry_analysis( std::vector<DTT> xs, int idBou
     }
   }
   std::vector<symmetry_t> sym1, sym2;
-  sym1 = analyzer.find_symmetries( xs, cut.tt, cut.mk, node_to_ancestor );
+  sym1 = analyzer.find_symmetries( pXs, &cut.tt, &cut.mk, &node_to_ancestor );
   if( !notYet )
   {
-    sym2 = analyzer.find_symmetries( xs, cut.tt, cut.mk, { idBound, idNext } );
+    std::vector<int> vNext { idBound, idNext };
+    sym2 = analyzer.find_symmetries( pXs, &cut.tt, &cut.mk, &vNext );
     for( auto x : sym2 )
       sym1.push_back( x );
   }
@@ -160,7 +163,7 @@ void net_t::add_cut( cut_t cut )
   cuts.push_back( newCut );
 }
 
-void net_t::add_node_symL( cut_t * pCut, symmetry_t sym )
+void net_t::add_node_symL( cut_t * pCut, symmetry_t * pSym )
 {
   cut_t oldCut = get_last_cut();
   node_t xL, xR;
@@ -168,13 +171,13 @@ void net_t::add_node_symL( cut_t * pCut, symmetry_t sym )
   {
     if( oldCut.nodes[i].is_remapped() )
     {
-      if( oldCut.nodes[i].remapped_pi() == sym.idL )
+      if( oldCut.nodes[i].remapped_pi() == pSym->idL )
         xL = oldCut.nodes[i];
-      else if( oldCut.nodes[i].remapped_pi() == sym.idR )
+      else if( oldCut.nodes[i].remapped_pi() == pSym->idR )
         xR = oldCut.nodes[i];
     }
   }
-  switch ( sym.type )
+  switch ( pSym->type )
   {
     case 0x33: pCut->add_node( ~( ~xL.tt &  xR.tt ), OI01, xL.id, xR.id ); break;  //nand( l', r )
     case 0xCC: pCut->add_node(  (  xL.tt & ~xR.tt ), AI10, xL.id, xR.id ); break;  // and( l , r')
@@ -203,7 +206,7 @@ void net_t::add_node_symL( cut_t * pCut, symmetry_t sym )
   }
 }
 
-void net_t::add_node_symR( cut_t * pCut, symmetry_t sym )
+void net_t::add_node_symR( cut_t * pCut, symmetry_t * pSym )
 {
   cut_t oldCut = get_last_cut();
   node_t xL, xR;
@@ -211,13 +214,13 @@ void net_t::add_node_symR( cut_t * pCut, symmetry_t sym )
   {
     if( oldCut.nodes[i].is_remapped() )
     {
-      if( oldCut.nodes[i].remapped_pi() == sym.idL )
+      if( oldCut.nodes[i].remapped_pi() == pSym->idL )
         xL = oldCut.nodes[i];
-      else if( oldCut.nodes[i].remapped_pi() == sym.idR )
+      else if( oldCut.nodes[i].remapped_pi() == pSym->idR )
         xR = oldCut.nodes[i];
     }
   }
-  switch ( sym.type )
+  switch ( pSym->type )
   {
     case 0x33: pCut->add_node( ~(  xL.tt & ~xR.tt ), OI10, xL.id, xR.id ); break;// nand( l , r')
     case 0xCC: pCut->add_node(  ( ~xL.tt &  xR.tt ), AI01, xL.id, xR.id ); break;//  and( l', r )
@@ -247,7 +250,7 @@ void net_t::add_node_symR( cut_t * pCut, symmetry_t sym )
 }
 
 /*! \brief Add a cut to the network after adjusting its identifier. */
-void net_t::add_cut( symmetry_t sym )
+void net_t::add_cut( symmetry_t * pSym )
 {
   cut_t oldCut = cuts[nCuts-1];
   cut_t newCut;
@@ -258,14 +261,14 @@ void net_t::add_cut( symmetry_t sym )
     int nNodes0 = newCut.nNodes;
     bool isRem = oldCut.nodes[i].is_remapped();
     int idPi   = oldCut.nodes[i].remapped_pi();
-    if( isRem && ( idPi == sym.idL || idPi == sym.idR ) )
+    if( isRem && ( idPi == pSym->idL || idPi == pSym->idR ) )
     {
-      if( idPi == sym.idL ) 
+      if( idPi == pSym->idL ) 
       {
-        add_node_symL( &newCut, sym );
+        add_node_symL( &newCut, pSym );
       }
       else
-        add_node_symR( &newCut, sym );
+        add_node_symR( &newCut, pSym );
       if( newCut.nNodes > nNodes0 ) newCut.nodes[nNodes0].idPi = idPi;
     }
     else
@@ -275,8 +278,8 @@ void net_t::add_cut( symmetry_t sym )
     }
   }
   nNodes += newCut.size();
-  newCut.tt = sym.tt;
-  newCut.mk = sym.mk;
+  newCut.tt = pSym->tt;
+  newCut.mk = pSym->mk;
 
   cuts.push_back( newCut );
 }
@@ -347,6 +350,144 @@ cut_t net_t::check_closure( cut_t candidates )
           pOut->idR  = node.id;
           nHunging--;
           found = true;
+        }
+      }
+    }
+  }
+  return newCut;
+}
+
+bool net_t::check_closure( cut_t * pCut, node_t * pOut, node_t xL, node_t xR )
+{
+  if( kitty::equal( xL.tt & xR.tt, pOut->tt ) ) 
+  {
+    node_t node = pCut->add_node( xL.tt & xR.tt, AI11, xL.id, xR.id );
+    pOut->gate = gate_t::PRJL;
+    pOut->idL  = node.id;
+    pOut->idR  = node.id;
+    nHunging--;
+    return true;
+  }
+  else if( kitty::equal( xL.tt & xR.tt, ~pOut->tt ) ) 
+  {
+    node_t node = pCut->add_node( xL.tt & xR.tt, OI11, xL.id, xR.id );
+    pOut->gate = gate_t::PRJL;
+    pOut->idL  = node.id;
+    pOut->idR  = node.id;
+    nHunging--;
+    return true;
+  }
+  else if( kitty::equal( xL.tt & ~xR.tt, pOut->tt ) ) 
+  {
+    node_t node = pCut->add_node( xL.tt & ~xR.tt, AI10, xL.id, xR.id );
+    pOut->gate = gate_t::PRJL;
+    pOut->idL  = node.id;
+    pOut->idR  = node.id;
+    nHunging--;
+    return true;
+  }
+  else if( kitty::equal( xL.tt & ~xR.tt, ~pOut->tt ) ) 
+  {
+    node_t node = pCut->add_node( ~(xL.tt & ~xR.tt), OI10, xL.id, xR.id );
+    pOut->gate = gate_t::PRJL;
+    pOut->idL  = node.id;
+    pOut->idR  = node.id;
+    nHunging--;
+    return true;
+  }
+  else if( kitty::equal( ~xL.tt & xR.tt, pOut->tt ) ) 
+  {
+    node_t node = pCut->add_node( ~xL.tt & xR.tt, AI01, xL.id, xR.id );
+    pOut->gate = gate_t::PRJL;
+    pOut->idL  = node.id;
+    pOut->idR  = node.id;
+    nHunging--;
+    return true;
+  }
+  else if( kitty::equal( ~(~xL.tt & xR.tt), pOut->tt ) ) 
+  {
+    node_t node = pCut->add_node( ~(~xL.tt & xR.tt), OI01, xL.id, xR.id );
+    pOut->gate = gate_t::PRJL;
+    pOut->idL  = node.id;
+    pOut->idR  = node.id;
+    nHunging--;
+    return true;
+  }
+  else if( kitty::equal( ~xL.tt & ~xR.tt, pOut->tt ) ) 
+  {
+    node_t node = pCut->add_node( ~xL.tt & ~xR.tt, AI00, xL.id, xR.id );
+    pOut->gate = gate_t::PRJL;
+    pOut->idL  = node.id;
+    pOut->idR  = node.id;
+    nHunging--;
+    return true;
+  }
+  else if( kitty::equal( ~(~xL.tt & xR.tt), pOut->tt ) ) 
+  {
+    node_t node = pCut->add_node( ~(~xL.tt & ~xR.tt), OI00, xL.id, xR.id );
+    pOut->gate = gate_t::PRJL;
+    pOut->idL  = node.id;
+    pOut->idR  = node.id;
+    nHunging--;
+    return true;
+  }
+  else if( kitty::equal( xL.tt ^ xR.tt, pOut->tt ) ) 
+  {
+    node_t node = pCut->add_node( xL.tt ^ xR.tt, EXOR, xL.id, xR.id );
+    pOut->gate = gate_t::PRJL;
+    pOut->idL  = node.id;
+    pOut->idR  = node.id;
+    nHunging--;
+    return true;
+  }
+  else if( kitty::equal( ~( xL.tt ^ xR.tt), pOut->tt ) ) 
+  {
+    node_t node = pCut->add_node( ~( xL.tt ^  xR.tt), XNOR, xL.id, xR.id );
+    pOut->gate = gate_t::PRJL;
+    pOut->idL  = node.id;
+    pOut->idR  = node.id;
+    nHunging--;
+    return true;
+  }
+}
+
+/*! \brief Check if there is a node in the input cut synthesizing an output*/
+cut_t net_t::check_closure()
+{
+  cut_t newCut;
+  newCut.set_id( nCuts );
+  std::vector<int> res;
+  int iDiv;
+  bool found;
+  cut_t lastCut = get_last_cut();
+  for( int iOut{0}; iOut < outCut.nodes.size(); ++iOut )
+  {
+    node_t * pOut = &outCut.nodes[iOut];
+    node_t * pDiv;
+    found = false;
+    if( pOut->gate == gate_t::POS )
+    {    
+      for( int iNdLst{0}; iNdLst<lastCut.size(); ++iNdLst )
+      {
+        if( found ) break;
+        for( int iNdLst2{iNdLst+1}; iNdLst2<lastCut.size(); ++iNdLst2 )
+        {
+          if( found ) break;
+          node_t xL = lastCut.nodes[iNdLst]; 
+          node_t xR = lastCut.nodes[iNdLst2]; 
+          found = check_closure( &newCut, pOut, xL, xR );
+        }
+
+        for( int iCut{0}; iCut < cuts.size()-1; ++iCut )
+        {
+          if( found ) break;
+          for( int iNd{0}; iNd<cuts[iCut].size(); ++iCut )
+          {
+            if( found ) break;
+            node_t xL = lastCut.nodes[iNd]; 
+            node_t xR = lastCut.nodes[iNd]; 
+            found = check_closure( &newCut, pOut, xL, xR );
+          }
         }
       }
     }

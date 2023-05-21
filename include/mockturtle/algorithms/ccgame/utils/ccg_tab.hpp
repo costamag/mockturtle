@@ -31,6 +31,7 @@
 */
 #pragma once
 #include <kitty/partial_truth_table.hpp>
+#include <kitty/dynamic_truth_table.hpp>
 #include <kitty/bit_operations.hpp>
 #include <kitty/operators.hpp>
 #include <kitty/print.hpp>
@@ -44,6 +45,8 @@ namespace mockturtle
 namespace ccgame
 {
 
+using TT = kitty::dynamic_truth_table;
+
 struct problems_t
 {
     TT U;
@@ -53,12 +56,12 @@ struct problems_t
     problems_t( TT U, std::vector<int> avbs, std::vector<int> divs ): U(U), avbs(avbs), divs(divs){}
 };
 
-using TT = kitty::partial_truth_table;
-
 class tab_t
 {
 
 public:
+  cut_t inCut;
+  cut_t outCut;
   std::vector<TT> sets;
   TT univ;
   std::vector<std::vector<int>> subsets;
@@ -67,11 +70,13 @@ public:
   ~tab_t();
 
   void print();
-  void greedy_set_covering();
+  void greedy_set_covering( int );
+  void select_dc_maximizers();
+  std::vector<int> compute_subsets_cost();
 };
 
 #pragma region constructors
-tab_t::tab_t( cut_t sets_c, cut_t univ_c )
+tab_t::tab_t( cut_t sets_c, cut_t univ_c ): inCut( sets_c ), outCut( univ_c )
 {
   for( int i{0}; i < sets_c.size(); ++i )
       sets.push_back( sets_c.nodes[i].graph() );
@@ -90,7 +95,7 @@ tab_t::~tab_t(){}
 
 #pragma region set-covering
 /*! \brief approximate solution of the set covering problem */
-void tab_t::greedy_set_covering( )
+void tab_t::greedy_set_covering( int nCap )
 {
     subsets = {};
     std::random_device rd;  // a seed source for the random number engine
@@ -164,10 +169,10 @@ void tab_t::greedy_set_covering( )
         }
        n_left = min_cost;
        
-       if( problems_new.size() > 5 )
+       if( nCap > 0 && problems_new.size() > nCap )
        {
             std::shuffle(problems_new.begin(), problems_new.end(), gen);
-            for( int j{problems_new.size()-1}; j>=5; --j )
+            for( int j{problems_new.size()-1}; j>=nCap; --j )
                 problems_new.erase( problems_new.begin() + j );
        }
 
@@ -184,6 +189,61 @@ void tab_t::greedy_set_covering( )
 
     for( auto Pb : problems_new )
         subsets.push_back( Pb.divs );
+}
+
+std::vector<int> tab_t::compute_subsets_cost()
+{
+    std::vector<int> res;
+
+    for( int i{0}; i < subsets.size(); ++i )
+    {
+        TT ref = inCut.nodes[0].tt | ~inCut.nodes[0].tt;
+        int bit = 0;
+        int nDc = 0;
+        while( kitty::count_ones( ref ) > 0 )
+        {
+            TT ttmp = inCut.nodes[0].tt | ~inCut.nodes[0].tt;
+            if( kitty::get_bit( ref, bit ) == 1 )
+            {
+                for( int j{0}; j < subsets[i].size(); ++j )
+                {
+                    if( kitty::get_bit( inCut.nodes[subsets[i][j]].tt, bit ) == 1 )
+                        ttmp &=  inCut.nodes[subsets[i][j]].tt;
+                    else
+                        ttmp &= ~inCut.nodes[subsets[i][j]].tt;
+                }
+                nDc += (kitty::count_ones(ttmp)-1);
+                ref &= ~ttmp;
+            }
+            bit++;
+        }
+        res.push_back( nDc );
+    }
+    return res;
+}
+
+void tab_t::select_dc_maximizers()
+{
+    std::vector<int> costs = compute_subsets_cost();
+    int max_dc = 0;
+    for( int i{subsets.size()-1}; i>=0; --i )
+    {
+        if( costs[i] < max_dc )
+        {
+            subsets.erase( subsets.begin() + i );
+            costs.erase( costs.begin() + i );
+        }
+        else if( costs[i] > max_dc )
+            max_dc = costs[i];
+    }
+
+    for( int i{subsets.size()-1}; i>=0; --i )
+        if( costs[i] < max_dc )
+        {
+            subsets.erase( subsets.begin() + i );
+            costs.erase( costs.begin() + i );
+        }
+    
 }
 #pragma endregion set-covering
 

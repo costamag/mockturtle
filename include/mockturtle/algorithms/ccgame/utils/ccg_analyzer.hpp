@@ -46,10 +46,9 @@ namespace mockturtle
 namespace ccgame
 {
 
-using TT = kitty::partial_truth_table;
-using DTT = kitty::dynamic_truth_table;
+using TT = kitty::dynamic_truth_table;
 
-DTT cube_generator( uint32_t cube, DTT Xr, DTT Xl )
+TT cube_generator( uint32_t cube, TT Xr, TT Xl )
 {
   switch ( cube )
   {
@@ -60,7 +59,7 @@ DTT cube_generator( uint32_t cube, DTT Xr, DTT Xl )
   }
 }
 
-DTT cofactorG( DTT fn, uint32_t G, uint32_t idL, uint32_t idR )
+TT cofactorG( TT fn, uint32_t G, uint32_t idL, uint32_t idR )
 {
   switch ( G )
   {
@@ -78,64 +77,64 @@ struct symmetry_t
   uint8_t type;
   int idL;
   int idR;
-  DTT tt;
-  DTT mk;
+  TT tt;
+  TT mk;
   int rwd;
 
   symmetry_t(){}
   symmetry_t( uint8_t type, int idL, int idR ): type(type), idL(idL), idR(idR){}
 
-  void remapping_equations( std::vector<DTT> X, DTT func, DTT mask )
+  void remapping_equations( std::vector<TT> * pXs, TT * pTt, TT * pMk )
   {
     uint32_t idA = ((type & 0xC0) >> 6u ) & 3u;
     uint32_t idC = ((type & 0x30) >> 4u ) & 3u;
     uint32_t idB = ((type & 0x0C) >> 2u ) & 3u;
     uint32_t idD = type & 3u;
 
-    DTT A = cube_generator( idA, X[idR], X[idL] );
-    DTT B = cube_generator( idB, X[idR], X[idL] );
-    DTT C = cube_generator( idC, X[idR], X[idL] );
-    DTT D = cube_generator( idD, X[idR], X[idL] );
+    TT A = cube_generator( idA, (*pXs)[idR], (*pXs)[idL] );
+    TT B = cube_generator( idB, (*pXs)[idR], (*pXs)[idL] );
+    TT C = cube_generator( idC, (*pXs)[idR], (*pXs)[idL] );
+    TT D = cube_generator( idD, (*pXs)[idR], (*pXs)[idL] );
 
-    DTT ttA = cofactorG( func, idA, idL, idR );
-    DTT ttB = cofactorG( func, idB, idL, idR );
-    DTT ttC = cofactorG( func, idC, idL, idR );
-    DTT ttD = cofactorG( func, idD, idL, idR );
+    TT ttA = cofactorG( (*pTt), idA, idL, idR );
+    TT ttB = cofactorG( (*pTt), idB, idL, idR );
+    TT ttC = cofactorG( (*pTt), idC, idL, idR );
+    TT ttD = cofactorG( (*pTt), idD, idL, idR );
 
-    DTT mkA = cofactorG( mask, idA, idL, idR );
-    DTT mkB = cofactorG( mask, idB, idL, idR );
-    DTT mkC = cofactorG( mask, idC, idL, idR );
-    DTT mkD = cofactorG( mask, idD, idL, idR );
+    TT mkA = cofactorG( (*pMk), idA, idL, idR );
+    TT mkB = cofactorG( (*pMk), idB, idL, idR );
+    TT mkC = cofactorG( (*pMk), idC, idL, idR );
+    TT mkD = cofactorG( (*pMk), idD, idL, idR );
 
     if( idA == idB && idC == idD ) //simple remapping
     {
-      mk = ( mask & ~A ) | ( C & mkA );
+      mk = ( *pMk & ~A ) | ( C & mkA );
       rwd = kitty::count_zeros( mk );
-      DTT TA = A & func; /* remapping for A */
-      DTT TC = C & ( ( mkC & func ) | ( mkA & ttA ) ); /* remapping for C */
-      DTT TR = ( ~A & ~C & func );
+      TT TA = A & *pTt; /* remapping for A */
+      TT TC = C & ( ( mkC & *pTt ) | ( mkA & ttA ) ); /* remapping for C */
+      TT TR = ( ~A & ~C & *pTt );
       tt =  TA | TC | TR;
     }
     else if( idA == idB ) // compatible remapping
     {
-      mk = ( ~B & ~A & mask ) | ( C & ( mkA | mkB ) ) ;
+      mk = ( ~B & ~A & *pMk ) | ( C & ( mkA | mkB ) ) ;
       rwd = kitty::count_zeros( mk ); //@ltry
-      DTT TA = A & func;
-      DTT TB = B & func;
-      DTT TC = C & ( ( mkA & ttA ) | ( mkB & ttB ) | ( mkC & func ) );
-      DTT TR = ~A & ~B & ~C & func;
+      TT TA = A & *pTt;
+      TT TB = B & *pTt;
+      TT TC = C & ( ( mkA & ttA ) | ( mkB & ttB ) | ( mkC & *pTt ) );
+      TT TR = ~A & ~B & ~C & *pTt;
       tt = TA | TB | TC | TR;
     }
     else // multiform remapping
     {
-      mk = ( ~B & ~A & mask ) | ( ( C & mkA ) | ( D & mkB ) );
+      mk = ( ~B & ~A & *pMk ) | ( ( C & mkA ) | ( D & mkB ) );
       rwd = kitty::count_zeros( mk ); // @ltry
       
-      DTT preserved = (~A&~B&~C&~D)&func;
-      DTT modifiedA = A & func;
-      DTT modifiedB = B & func;
-      DTT modifiedC = C & ( ( mkA & ~mkC & ttA ) | ( mkC & func ) );
-      DTT modifiedD = D & ( ( mkB & ~mkD & ttB ) | ( mkD & func ) );
+      TT preserved = (~A&~B&~C&~D)&*pTt;
+      TT modifiedA = A & *pTt;
+      TT modifiedB = B & *pTt;
+      TT modifiedC = C & ( ( mkA & ~mkC & ttA ) | ( mkC & *pTt ) );
+      TT modifiedD = D & ( ( mkB & ~mkD & ttB ) | ( mkD & *pTt ) );
       tt = preserved | modifiedA | modifiedB | modifiedC | modifiedD;
     }
   }
@@ -152,7 +151,7 @@ public:
   ~analyzer_t();
   /* exhaustive analyzers */
   cut_t enumerate_divs( cut_t );
-  std::vector<symmetry_t> find_symmetries( std::vector<DTT>, DTT, DTT, std::vector<int> );
+  std::vector<symmetry_t> find_symmetries( std::vector<TT> *, TT *, TT *, std::vector<int> * );
   /* symmetry-based */
   void print_symmetries( std::vector<symmetry_t> );
 };
@@ -197,24 +196,24 @@ cut_t analyzer_t::enumerate_divs( cut_t cut )
 #pragma region symmetry analysis
 
 /*! \brief symmetry analysis of variable iR with all the ones on the right */
-std::vector<symmetry_t> analyzer_t::find_symmetries( std::vector<DTT> xs, DTT tt, DTT mk, std::vector<int> ids )
+std::vector<symmetry_t> analyzer_t::find_symmetries( std::vector<TT> * pXs, TT * pTt, TT * pMk, std::vector<int> * pIds )
 {
   std::vector<symmetry_t> res;
   int idL, idR;
-  for( int iR{0}; iR < ids.size(); ++iR )
+  for( int iR{0}; iR < pIds->size(); ++iR )
   {
-    idR = ids[iR];
+    idR = (*pIds)[iR];
     if( idR < 0 ) continue; 
-    DTT tt0  = kitty::cofactor0( tt, idR );
-    DTT tt1  = kitty::cofactor1( tt, idR );
-    DTT mk0  = kitty::cofactor0( mk, idR );
-    DTT mk1  = kitty::cofactor1( mk, idR );
+    TT tt0  = kitty::cofactor0( *pTt, idR );
+    TT tt1  = kitty::cofactor1( *pTt, idR );
+    TT mk0  = kitty::cofactor0( *pMk, idR );
+    TT mk1  = kitty::cofactor1( *pMk, idR );
     /* todo: add top-decomposition check */
 
     /* symmetry check */
-    for( int iL{iR+1}; iL < ids.size(); ++iL )
+    for( int iL{iR+1}; iL < pIds->size(); ++iL )
     {
-      idL = ids[iL];
+      idL = (*pIds)[iL];
       if( idL < 0 ) continue; 
 
       assert( idL > idR );
@@ -243,106 +242,106 @@ std::vector<symmetry_t> analyzer_t::find_symmetries( std::vector<DTT> xs, DTT tt
         if ( eq12 ) // F01 = F10 NES
         {
           symmetry_t s66 {0x66, idL, idR};
-          s66.remapping_equations( xs, tt, mk );
+          s66.remapping_equations( pXs, pTt, pMk );
           res.push_back( s66 );
           symmetry_t s99 {0x99, idL, idR};
-          s99.remapping_equations( xs, tt, mk );
+          s99.remapping_equations( pXs, pTt, pMk );
           res.push_back( s99 );
         }
         if ( eq03 ) // F00 = F11 ES
         { 
           symmetry_t s33 {0x33, idL, idR}; // 00 -> 11
-          s33.remapping_equations( xs, tt, mk );
+          s33.remapping_equations( pXs, pTt, pMk );
           res.push_back( s33 );
           symmetry_t sCC {0xCC, idL, idR}; // 11 -> 00
-          sCC.remapping_equations( xs, tt, mk );
+          sCC.remapping_equations( pXs, pTt, pMk );
           res.push_back( sCC );
         }
         if ( eq01 ) // F01=F00
         {
           symmetry_t s11 {0x11, idL, idR}; // 1:00->01
-          s11.remapping_equations( xs, tt, mk );
+          s11.remapping_equations( pXs, pTt, pMk );
           res.push_back( s11 );
           symmetry_t s44 {0x44, idL, idR}; // 4:01->00
-          s44.remapping_equations( xs, tt, mk );
+          s44.remapping_equations( pXs, pTt, pMk );
           res.push_back( s44 );
         }
         if ( eq02 ) // F00=F10
         {
           symmetry_t s22 {0x22, idL, idR}; // 2:00->10
-          s22.remapping_equations( xs, tt, mk );
+          s22.remapping_equations( pXs, pTt, pMk );
           res.push_back( s22 );
           symmetry_t s88 {0x88, idL, idR}; // 8:10->00
-          s88.remapping_equations( xs, tt, mk );
+          s88.remapping_equations( pXs, pTt, pMk );
           res.push_back( s88 );
         }
         if ( eq13 ) // F01=F11
         {
           symmetry_t s77 {0x77, idL, idR}; // 7:01->11
-          s77.remapping_equations( xs, tt, mk );
+          s77.remapping_equations( pXs, pTt, pMk );
           res.push_back( s77 );
           symmetry_t sDD {0xDD, idL, idR}; // D:11->01
-          sDD.remapping_equations( xs, tt, mk );
+          sDD.remapping_equations( pXs, pTt, pMk );
           res.push_back( sDD );
         }
         if ( eq23 ) // F11=F10
         {
           symmetry_t sBB {0xBB, idL, idR}; // B:10->11
-          sBB.remapping_equations( xs, tt, mk );
+          sBB.remapping_equations( pXs, pTt, pMk );
           res.push_back( sBB );
           symmetry_t sEE {0xEE, idL, idR}; // E:11->10
-          sEE.remapping_equations( xs, tt, mk );
+          sEE.remapping_equations( pXs, pTt, pMk );
           res.push_back( sEE );
         }
         if ( eq12 && eq03 ) // F01=F10 and F00=F11
         {
           symmetry_t s36 {0x36, idL, idR}; // 3:00->11 6:01->10
-          s36.remapping_equations( xs, tt, mk );
+          s36.remapping_equations( pXs, pTt, pMk );
           res.push_back( s36 );
           symmetry_t s6C {0x6C, idL, idR}; // 6:01->10 C:11->00
-          s6C.remapping_equations( xs, tt, mk );
+          s6C.remapping_equations( pXs, pTt, pMk );
           res.push_back( s6C );
           symmetry_t s9C {0x9C, idL, idR}; // 9:10->01 C:11->00
-          s9C.remapping_equations( xs, tt, mk );
+          s9C.remapping_equations( pXs, pTt, pMk );
           res.push_back( s9C );
           symmetry_t s39 {0x39, idL, idR}; // 3:00->11 9:10->01
-          s39.remapping_equations( xs, tt, mk );
+          s39.remapping_equations( pXs, pTt, pMk );
           res.push_back( s39 );
         }
         if( eq02 && eq01 && eq12 )
         {
           symmetry_t s19 {0x19, idL, idR}; // 1:00->01 9:10->01
-          s19.remapping_equations( xs, tt, mk );
+          s19.remapping_equations( pXs, pTt, pMk );
           res.push_back( s19 );
           symmetry_t s26 {0x26, idL, idR}; // 2:00->10 6:01->10
-          s26.remapping_equations( xs, tt, mk );
+          s26.remapping_equations( pXs, pTt, pMk );
           res.push_back( s26 );
         }
         if( eq13 && eq01 && eq03 )
         {
           symmetry_t s37 {0x37, idL, idR}; // 3:00->11 7:01->11
-          s37.remapping_equations( xs, tt, mk );
+          s37.remapping_equations( pXs, pTt, pMk );
           res.push_back( s37 );
           symmetry_t s4C {0x4C, idL, idR}; // 4:01->00 C:11->00
-          s4C.remapping_equations( xs, tt, mk );
+          s4C.remapping_equations( pXs, pTt, pMk );
           res.push_back( s4C );
         }
         if( eq02 && eq23 && eq03 )
         {
           symmetry_t s8C {0x8C, idL, idR}; // 8:10->00 C:11->00
-          s8C.remapping_equations( xs, tt, mk );
+          s8C.remapping_equations( pXs, pTt, pMk );
           res.push_back( s8C );
           symmetry_t s3B {0x3B, idL, idR}; // 3:00->11 B:10->11
-          s3B.remapping_equations( xs, tt, mk );
+          s3B.remapping_equations( pXs, pTt, pMk );
           res.push_back( s3B );
         }
         if( eq13 && eq23 && eq12 )
         {
           symmetry_t s6E {0x6E, idL, idR}; // 6:01->10 E:11->10
-          s6E.remapping_equations( xs, tt, mk );
+          s6E.remapping_equations( pXs, pTt, pMk );
           res.push_back( s6E );
           symmetry_t s9D {0x9D, idL, idR}; // 9:10->01 D:11->01
-          s9D.remapping_equations( xs, tt, mk );
+          s9D.remapping_equations( pXs, pTt, pMk );
           res.push_back( s9D );
         }
       }

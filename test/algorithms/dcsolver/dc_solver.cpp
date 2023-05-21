@@ -35,7 +35,7 @@ TEST_CASE( "dc solver initialization", "[DCS]" )
   printf("\n");
   
   std::vector<xag_network::signal> out_sigs;
-  xag.foreach_po( [&]( const auto& x, auto index ) {
+  xag.foreach_po( [&]( const auto& x ) {
       out_sigs.push_back(x);
 } );
 
@@ -68,7 +68,7 @@ TEST_CASE( "dc solver hard function", "[DCS]" )
 
   kitty::print_binary( hard );
   std::vector<xag_network::signal> out_sigs;
-  xag.foreach_po( [&]( const auto& x, auto index ) {
+  xag.foreach_po( [&]( const auto& x ) {
       out_sigs.push_back(x);
 } );
 

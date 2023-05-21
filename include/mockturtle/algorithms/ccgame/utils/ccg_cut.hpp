@@ -42,7 +42,7 @@ namespace mockturtle
 namespace ccgame
 {
 
-using DTT = kitty::dynamic_truth_table;
+using TT = kitty::dynamic_truth_table;
 class cut_t
 {
 public:
@@ -54,16 +54,16 @@ public:
   /*! \brief nodes stored in the cut */
   std::vector<node_t> nodes;
   /*! \brief cut functionality: !can differ from simulation pattern! */
-  DTT tt;
+  TT tt;
   /*! \brief mask related to the cut functionality  */
-  DTT mk;
+  TT mk;
 
   cut_t();
   ~cut_t();
 
   void set_id( uint32_t );
-  void set_func( DTT );
-  void set_mask( DTT );
+  void set_func( TT );
+  void set_mask( TT );
   uint32_t get_id();
   uint32_t get_shifted_id();
 
@@ -84,8 +84,8 @@ void cut_t::set_id( uint32_t identifier )
   id = identifier;
   shiftId = 0xFFFF0000 & ( identifier << 16u ); 
 }
-void cut_t::set_func( DTT func ){ tt = func; }
-void cut_t::set_mask( DTT mask ){ mk = mask; }
+void cut_t::set_func( TT func ){ tt = func; }
+void cut_t::set_mask( TT mask ){ mk = mask; }
 uint32_t cut_t::get_id(){ return id; }
 uint32_t cut_t::get_shifted_id(){ return shiftId; }
 

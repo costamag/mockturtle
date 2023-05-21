@@ -45,7 +45,17 @@ namespace mockturtle
 namespace ccgame
 {
 
-using TT = kitty::partial_truth_table;
+using TT = kitty::dynamic_truth_table;
+
+
+template<class Ntk>
+struct report_rem_t
+{
+  int nIt0;
+  int nMin;
+  int nMax;
+  Ntk ntk;
+};
 
 struct cusco_rem_ps
 {
@@ -67,7 +77,8 @@ public:
   cusco_rem( std::vector<TT> const&, std::vector<TT> const& );
   ~cusco_rem();
   /* solve */
-  Ntk solve_random( cusco_rem_ps const& );
+  report_rem_t<Ntk> solve_random( cusco_rem_ps const& );
+  report_rem_t<Ntk> solve_1shot( cusco_rem_ps const& );
 };
 
 /* creation and destruction */
@@ -113,19 +124,75 @@ int sym_cost( symmetry_t sym )
 }
 
 template<class Ntk>
-Ntk cusco_rem<Ntk>::solve_random( cusco_rem_ps const& ps )
+report_rem_t<Ntk> cusco_rem<Ntk>::solve_1shot( cusco_rem_ps const& ps )
 {
+  report_rem_t<Ntk> rep;
+  std::random_device rd;  // a seed source for the random number engine
+  std::mt19937 gen(5); // mersenne_twister_engine seeded with rd()
+  int nVars = ceil(log2(X[0].num_bits()));
+  TT func( nVars );
+  TT mask( nVars );
+  kitty::create_from_binary_string( func, kitty::to_binary( Y[0] ) );
+  kitty::create_from_binary_string( mask, kitty::to_binary( Y[0] | ~Y[0] ) );
+  std::vector<TT> xs;
+  for( int i{0}; i < nVars; ++i )
+  {
+    xs.emplace_back( nVars );
+    kitty::create_nth_var( xs[i], i );
+  }
+  analyzer_t analyzer;
+
+  net_t net( X, Y );
+  net.cuts[net.nCuts-1].set_func( func );
+  net.cuts[net.nCuts-1].set_mask( mask );
+  int idBound = 0;
+  int bestRwd = -1;
+  symmetry_t bestSym;
+  while( net.nHunging > 0 )
+  {
+    std::vector<symmetry_t> candidates = net.symmetry_analysis( &xs, idBound );
+    int bestCost = 1000;
+    for( int iCand{0}; iCand<candidates.size(); ++iCand )
+    {
+      int cost = sym_cost<Ntk>( candidates[iCand] );
+      if( candidates[iCand].rwd > bestRwd || ( candidates[iCand].rwd == bestRwd && cost < bestCost ) )
+      {
+        bestSym = candidates[iCand];
+        bestRwd = candidates[iCand].rwd;
+        bestCost = cost;
+      }
+    }
+    if( ( bestSym.idL == idBound ) || ( bestSym.idR == idBound  ) )
+      idBound += 2;
+    net.add_cut( &bestSym );
+    net.check_sym_closure();
+  }
+  rep.ntk  = net.convert<Ntk>();
+  rep.nIt0 = rep.ntk.num_gates();
+  rep.nMax = rep.nIt0;
+  rep.nMin = rep.nIt0;
+
+  return rep;
+}
+
+
+template<class Ntk>
+report_rem_t<Ntk> cusco_rem<Ntk>::solve_random( cusco_rem_ps const& ps )
+{
+  report_rem_t<Ntk> rep;
+  rep.nMax = 0;
+  rep.nMin = 0x00FFFFFF;
+
   std::random_device rd;  // a seed source for the random number engine
   std::mt19937 gen(5); // mersenne_twister_engine seeded with rd()
   Ntk ntk;
-  Ntk ntk_best;
   int nVars = ceil(log2(X[0].num_bits()));
-  DTT func( nVars );
-  DTT mask( nVars );
+  TT func( nVars );
+  TT mask( nVars );
   kitty::create_from_binary_string( func, kitty::to_binary( Y[0] ) );
   kitty::create_from_binary_string( mask, kitty::to_binary( Y[0] | ~Y[0] ) );
   int nBest = 10000u;
-  std::vector<DTT> xs;
+  std::vector<TT> xs;
   for( int i{0}; i < nVars; ++i )
   {
     xs.emplace_back( nVars );
@@ -133,45 +200,60 @@ Ntk cusco_rem<Ntk>::solve_random( cusco_rem_ps const& ps )
   }
       analyzer_t analyzer;
 
-  for( int i{0}; i < ps.nIters; ++i )
+  for( int iIt{0}; iIt < ps.nIters; ++iIt )
   {
+    bool notFound = false;
     net_t net( X, Y );
     net.cuts[net.nCuts-1].set_func( func );
     net.cuts[net.nCuts-1].set_mask( mask );
     int idBound = 0;
     int bestRwd = -1;
-    symmetry_t bestSym;
     while( net.nHunging > 0 )
     {
-      std::vector<symmetry_t> candidates = net.symmetry_analysis( xs, idBound );
+      std::vector<symmetry_t> candidates = net.symmetry_analysis( &xs, idBound );
       int bestCost = 1000;
+      std::vector<symmetry_t> bestCands;
+      if( candidates.size() == 0 )
+      {
+        notFound = true;
+        break;
+      }
       for( int i{0}; i<candidates.size(); ++i )
       {
         int cost = sym_cost<Ntk>( candidates[i] );
         if( candidates[i].rwd > bestRwd || ( candidates[i].rwd == bestRwd && cost < bestCost ) )
-        {
-          bestSym = candidates[i];
-          bestRwd = candidates[i].rwd;
-          bestCost = cost;
-        }
+          {
+            bestCands = { candidates[i] };
+            bestRwd = candidates[i].rwd;
+            bestCost = cost;
+          }
+          else if( iIt > 0 && ( candidates[i].rwd == bestRwd ) && ( cost == bestCost ) )
+          {
+            bestCands.push_back( candidates[i] );
+          }
       }
+      std::uniform_int_distribution<> distrib(0, bestCands.size()-1);
+      int iSym = distrib(gen);
+
+      symmetry_t bestSym = bestCands[iSym];
       if( ( bestSym.idL == idBound ) || ( bestSym.idR == idBound  ) )
         idBound+=2;
-      net.add_cut( bestSym );
+      net.add_cut( &bestSym );
       net.check_sym_closure();
     }
-    ntk = net.convert<Ntk>();
-    if( ntk.num_gates() < nBest )
+    if( !notFound )
     {
-      nBest = ntk.num_gates();
-      ntk_best = ntk;
+      ntk = net.convert<Ntk>();
+      if( iIt == 0 )  rep.nIt0 = ntk.num_gates();;
+      if( ntk.num_gates() < rep.nMin )
+      {
+        rep.ntk = ntk;
+        rep.nMin = ntk.num_gates();
+      }
+      if ( ntk.num_gates() > rep.nMax )  rep.nMax = ntk.num_gates();
     }
-    printf("|gates| = %d\n", ntk.num_gates());
   }
-  printf("END\n", ntk.num_gates());
-  printf("|gates*|= %d\n", ntk_best.num_gates());
-
-  return ntk_best;
+  return rep;
 }
 
 

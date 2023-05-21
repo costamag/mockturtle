@@ -2,7 +2,7 @@
 #include <kitty/print.hpp>
 #include <kitty/operations.hpp>
 #include <kitty/operators.hpp>
-#include <kitty/partial_truth_table.hpp>
+#include <kitty/dynamic_truth_table.hpp>
 #include <mockturtle/algorithms/simulation.hpp>
 #include <mockturtle/io/write_aiger.hpp>
 #include <mockturtle/io/write_dot.hpp>
@@ -68,16 +68,16 @@ int main()
     printf(ANSI_COLOR_RED " READ FAILED " ANSI_COLOR_RESET "\n" );
     return 1;
   }
-  std::vector<kitty::partial_truth_table> xs;
+  std::vector<kitty::dynamic_truth_table> xs;
   for( int i{0}; i<8; ++i )
   {
-    xs.emplace_back(256u);
+    xs.emplace_back(8u);
     kitty::create_nth_var( xs[i], i );
   }
 
-  std::vector<kitty::partial_truth_table> fns;
+  std::vector<kitty::dynamic_truth_table> fns;
   klut.foreach_po( [&]( const auto& x, auto index ) {
-      fns.emplace_back(256u);
+      fns.emplace_back(8u);
       kitty::create_from_binary_string(fns[index], kitty::to_binary( klut.node_function( x ) ));
     } );
 
