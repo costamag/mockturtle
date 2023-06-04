@@ -1,0 +1,5673 @@
+.model top
+.inputs pi2 pi3 pi4 pi5 pi6 pi7 pi8 pi9 pi10 pi11 pi12 pi13 pi14 pi15 pi16 pi17 pi18 pi19 pi20 pi21 pi22 pi23 pi24 pi25 pi26 pi27 pi28 pi29 pi30 pi31 pi32 pi33 pi34 pi35 pi36 pi37 pi38 pi39 pi40 pi41 pi42 pi43 pi44 pi45 pi46 pi47 pi48 pi49 pi50 pi51 pi52 pi53 pi54 pi55 pi56 pi57 pi58 pi59 pi60 pi61 pi62 pi63 pi64 pi65 pi66 pi67 pi68 pi69 pi70 pi71 pi72 pi73 pi74 pi75 pi76 pi77 pi78 pi79 pi80 pi81 pi82 pi83 pi84 pi85 pi86 pi87 pi88 pi89 pi90 pi91 pi92 pi93 pi94 pi95 pi96 pi97 pi98 pi99 pi100 pi101 pi102 pi103 pi104 pi105 pi106 pi107 pi108 pi109 pi110 pi111 pi112 pi113 pi114 pi115 pi116 pi117 pi118 pi119 pi120 pi121 pi122 pi123 pi124 pi125 pi126 pi127 pi128 pi129 
+.outputs po0 
+.names new_n0
+0
+.names new_n1
+1
+.names pi23 pi41 new_n140
+-1 1
+0- 1
+.names pi16 pi86 new_n210
+-1 1
+1- 1
+.names new_n140 new_n210 new_n1223
+-0 1
+0- 1
+.names pi49 pi53 new_n600
+-0 1
+1- 1
+.names new_n210 new_n600 new_n1434
+11 1
+.names new_n1223 new_n1434 new_n2198
+01 1
+.names pi66 pi126 new_n139
+00 1
+.names pi12 pi49 new_n720
+-1 1
+1- 1
+.names new_n139 new_n720 new_n1275
+10 1
+01 1
+.names new_n210 new_n600 new_n1441
+10 1
+.names new_n1275 new_n1441 new_n2658
+10 1
+01 1
+.names new_n2198 new_n2658 new_n3202
+11 1
+.names pi47 pi86 new_n270
+-1 1
+0- 1
+.names pi59 pi65 new_n669
+10 1
+.names new_n270 new_n669 new_n1324
+10 1
+.names pi41 pi58 new_n374
+10 1
+.names pi29 pi48 new_n509
+00 1
+.names new_n374 new_n509 new_n1963
+11 1
+.names new_n1324 new_n1963 new_n2335
+01 1
+.names pi75 pi118 new_n345
+01 1
+.names pi66 pi108 new_n428
+-1 1
+0- 1
+.names pi85 pi86 new_n1019
+00 1
+.names new_n428 new_n1019 new_n1393
+11 1
+.names pi95 pi129 new_n322
+-0 1
+0- 1
+.names new_n1393 new_n322 new_n5690
+01 1
+.names new_n345 new_n5690 new_n5691
+11 1
+.names new_n345 new_n5688
+0 1
+.names pi36 pi129 new_n1087
+-0 1
+0- 1
+.names pi25 pi81 new_n150
+-0 1
+0- 1
+.names pi41 pi127 new_n617
+-0 1
+0- 1
+.names new_n150 new_n617 new_n1354
+-0 1
+1- 1
+.names pi36 pi59 new_n578
+-1 1
+0- 1
+.names pi18 pi76 new_n866
+-1 1
+0- 1
+.names new_n578 new_n866 new_n1743
+11 1
+.names new_n1354 new_n1743 new_n2892
+-0 1
+0- 1
+.names pi66 pi126 new_n134
+01 1
+.names new_n134 pi65 new_n5684
+-1 1
+1- 1
+.names new_n2892 new_n5684 new_n5685
+11 1
+.names new_n1087 new_n5685 new_n5686
+11 1
+.names new_n1087 new_n5682
+0 1
+.names pi18 pi41 new_n294
+-0 1
+1- 1
+.names pi95 pi129 new_n320
+10 1
+01 1
+.names new_n294 new_n320 new_n2115
+00 1
+11 1
+.names new_n5682 new_n2115 new_n5683
+11 1
+.names new_n5686 new_n5683 new_n5687
+-1 1
+1- 1
+.names new_n5688 new_n5687 new_n5689
+11 1
+.names new_n5691 new_n5689 new_n5692
+-1 1
+1- 1
+.names new_n2335 new_n5692 new_n5693
+11 1
+.names new_n2335 new_n5680
+0 1
+.names pi25 pi81 new_n158
+00 1
+11 1
+.names pi41 pi49 new_n161
+11 1
+.names new_n158 new_n161 new_n1183
+10 1
+.names pi23 pi41 new_n147
+-0 1
+0- 1
+.names pi36 pi114 new_n688
+10 1
+01 1
+.names new_n147 new_n688 new_n2141
+-1 1
+1- 1
+.names new_n1183 new_n2141 new_n2294
+10 1
+.names pi60 pi96 new_n409
+10 1
+.names pi86 pi102 new_n260
+-1 1
+1- 1
+.names new_n260 new_n270 new_n1684
+11 1
+.names pi101 pi111 new_n366
+-1 1
+1- 1
+.names pi36 pi55 new_n391
+00 1
+11 1
+.names new_n366 new_n391 new_n1791
+-0 1
+1- 1
+.names new_n1684 new_n1791 new_n2557
+01 1
+.names pi103 pi114 new_n179
+10 1
+01 1
+.names pi18 pi76 new_n863
+10 1
+.names new_n179 new_n863 new_n1397
+01 1
+.names pi59 pi65 new_n660
+-1 1
+0- 1
+.names pi2 pi79 new_n779
+01 1
+.names new_n660 new_n779 new_n1554
+10 1
+.names new_n1397 new_n1554 new_n2588
+-1 1
+1- 1
+.names new_n2557 new_n2588 new_n3373
+10 1
+01 1
+.names pi2 new_n4608
+0 1
+.names new_n3373 new_n4608 new_n5676
+-1 1
+0- 1
+.names new_n409 new_n5676 new_n5677
+-1 1
+0- 1
+.names new_n2294 new_n5677 new_n5678
+11 1
+.names new_n2294 new_n5674
+0 1
+.names pi10 pi50 new_n460
+10 1
+01 1
+.names pi86 pi93 new_n840
+-1 1
+1- 1
+.names new_n460 new_n840 new_n1724
+11 1
+.names new_n1354 new_n1724 new_n2218
+-1 1
+1- 1
+.names pi41 pi60 new_n718
+01 1
+.names pi78 pi108 new_n1049
+11 1
+.names new_n718 new_n1049 new_n1234
+-0 1
+0- 1
+.names pi26 pi54 new_n732
+11 1
+.names pi10 pi92 new_n859
+11 1
+.names new_n732 new_n859 new_n1995
+10 1
+.names new_n1234 new_n1995 new_n2268
+-1 1
+1- 1
+.names new_n2218 new_n2268 new_n3302
+11 1
+.names pi66 pi126 new_n138
+00 1
+11 1
+.names pi16 pi104 new_n523
+00 1
+11 1
+.names new_n138 new_n523 new_n1484
+-1 1
+0- 1
+.names pi37 pi43 new_n259
+00 1
+11 1
+.names new_n259 new_n688 new_n1653
+11 1
+.names new_n1484 new_n1653 new_n2467
+-1 1
+0- 1
+.names pi66 pi126 new_n131
+10 1
+01 1
+.names pi70 pi78 new_n671
+10 1
+01 1
+.names new_n131 new_n671 new_n1375
+11 1
+.names pi40 pi49 new_n310
+-1 1
+0- 1
+.names pi75 pi127 new_n749
+10 1
+.names new_n310 new_n749 new_n1753
+-1 1
+0- 1
+.names new_n1375 new_n1753 new_n3100
+10 1
+.names new_n2467 new_n3100 new_n3601
+10 1
+.names pi30 pi86 new_n234
+-0 1
+1- 1
+.names new_n270 new_n669 new_n1329
+01 1
+.names pi41 pi94 new_n588
+01 1
+.names pi36 pi55 new_n394
+-1 1
+1- 1
+.names new_n394 new_n5664
+0 1
+.names new_n588 new_n5664 new_n5665
+-1 1
+1- 1
+.names new_n1329 new_n5665 new_n5666
+11 1
+.names new_n1329 new_n5662
+0 1
+.names pi36 pi55 new_n397
+-0 1
+0- 1
+.names pi47 pi75 new_n562
+00 1
+.names new_n397 new_n562 new_n1584
+-1 1
+0- 1
+.names pi41 pi85 new_n246
+10 1
+01 1
+.names pi41 pi60 new_n714
+10 1
+01 1
+.names new_n246 new_n714 new_n1945
+00 1
+11 1
+.names new_n1584 new_n1945 new_n2547
+00 1
+.names pi95 pi129 new_n329
+00 1
+11 1
+.names new_n310 new_n329 new_n1302
+-1 1
+0- 1
+.names new_n1302 new_n1554 new_n2444
+00 1
+11 1
+.names pi44 pi86 new_n1109
+10 1
+.names pi23 pi49 new_n417
+-0 1
+1- 1
+.names pi75 pi93 new_n912
+01 1
+.names new_n417 new_n912 new_n1902
+11 1
+.names pi16 pi63 new_n990
+-0 1
+1- 1
+.names new_n990 new_n5654
+0 1
+.names new_n1902 new_n5654 new_n5655
+-1 1
+1- 1
+.names new_n1109 new_n5655 new_n5656
+-1 1
+1- 1
+.names new_n2444 new_n5656 new_n5657
+11 1
+.names pi10 new_n5657 new_n5658
+11 1
+.names pi10 new_n4875
+0 1
+.names new_n246 new_n714 new_n1953
+10 1
+.names pi74 pi88 new_n900
+00 1
+11 1
+.names pi37 pi59 new_n1092
+10 1
+.names new_n900 new_n1092 new_n2054
+-1 1
+1- 1
+.names new_n1953 new_n2054 new_n3199
+10 1
+01 1
+.names new_n1397 new_n1554 new_n2590
+01 1
+.names pi60 pi96 new_n404
+-1 1
+1- 1
+.names new_n404 new_n5648
+0 1
+.names new_n2590 new_n5648 new_n5649
+-1 1
+0- 1
+.names new_n3199 new_n5649 new_n5650
+-1 1
+1- 1
+.names pi107 new_n5650 new_n5651
+11 1
+.names pi107 new_n5011
+0 1
+.names new_n1397 new_n1554 new_n2589
+10 1
+01 1
+.names new_n310 new_n749 new_n1749
+11 1
+.names new_n1749 pi3 new_n5645
+-1 1
+0- 1
+.names new_n2589 new_n5645 new_n5646
+11 1
+.names new_n5011 new_n5646 new_n5647
+11 1
+.names new_n5651 new_n5647 new_n5652
+-1 1
+1- 1
+.names new_n4875 new_n5652 new_n5653
+11 1
+.names new_n5658 new_n5653 new_n5659
+-1 1
+1- 1
+.names new_n2547 new_n5659 new_n5660
+11 1
+.names new_n2547 new_n5643
+0 1
+.names pi66 pi126 new_n137
+-1 1
+0- 1
+.names pi23 pi49 new_n412
+01 1
+.names new_n137 new_n412 new_n1518
+00 1
+.names pi10 pi96 new_n441
+-1 1
+1- 1
+.names new_n1518 new_n441 new_n5641
+11 1
+.names new_n1518 new_n5639
+0 1
+.names pi70 pi78 new_n677
+-1 1
+0- 1
+.names pi2 pi79 new_n770
+-0 1
+1- 1
+.names new_n138 new_n770 new_n1204
+-1 1
+0- 1
+.names new_n900 new_n1092 new_n2059
+-0 1
+0- 1
+.names new_n1204 new_n2059 new_n3012
+00 1
+11 1
+.names pi29 pi48 new_n508
+00 1
+11 1
+.names pi40 pi80 new_n780
+-0 1
+0- 1
+.names new_n508 new_n780 new_n1433
+-0 1
+1- 1
+.names new_n660 new_n779 new_n1562
+00 1
+11 1
+.names new_n1433 new_n1562 new_n2257
+11 1
+.names pi103 pi114 new_n170
+00 1
+11 1
+.names new_n170 new_n770 new_n1353
+-0 1
+0- 1
+.names pi75 pi104 new_n1146
+-0 1
+1- 1
+.names new_n397 new_n1146 new_n2147
+01 1
+.names new_n1353 new_n2147 new_n3042
+01 1
+.names new_n2257 new_n3042 new_n3632
+-1 1
+0- 1
+.names pi59 pi93 new_n625
+-1 1
+1- 1
+.names pi80 pi109 new_n956
+01 1
+.names pi50 pi79 new_n826
+-1 1
+0- 1
+.names pi23 pi41 new_n144
+-1 1
+1- 1
+.names pi41 pi100 new_n354
+11 1
+.names new_n170 new_n354 new_n1782
+01 1
+.names new_n1782 pi4 new_n5626
+11 1
+.names new_n144 new_n5626 new_n5627
+-1 1
+0- 1
+.names new_n826 new_n5627 new_n5628
+-1 1
+0- 1
+.names new_n956 new_n5628 new_n5629
+11 1
+.names new_n956 new_n5624
+0 1
+.names pi49 pi118 new_n477
+00 1
+.names pi14 pi97 new_n970
+10 1
+01 1
+.names pi49 pi85 new_n982
+11 1
+.names new_n970 new_n982 new_n1463
+00 1
+.names new_n366 new_n391 new_n1793
+10 1
+.names new_n1463 new_n1793 new_n2387
+-1 1
+1- 1
+.names new_n970 new_n982 new_n1455
+10 1
+01 1
+.names pi75 pi127 new_n747
+11 1
+.names new_n140 new_n747 new_n1464
+-1 1
+1- 1
+.names new_n1455 new_n1464 new_n2496
+-0 1
+0- 1
+.names new_n2387 new_n2496 new_n4188
+10 1
+.names pi3 new_n4418
+0 1
+.names new_n4188 new_n4418 new_n5621
+-1 1
+0- 1
+.names new_n477 new_n5621 new_n5622
+01 1
+.names pi70 new_n5622 new_n5623
+-1 1
+0- 1
+.names new_n5624 new_n5623 new_n5625
+11 1
+.names new_n5629 new_n5625 new_n5630
+-1 1
+1- 1
+.names new_n625 new_n5630 new_n5631
+11 1
+.names new_n625 new_n5619
+0 1
+.names pi75 pi118 new_n348
+-1 1
+1- 1
+.names pi50 pi79 new_n829
+11 1
+.names new_n348 new_n829 new_n1974
+-0 1
+0- 1
+.names pi4 pi80 new_n1037
+11 1
+.names pi41 pi44 new_n452
+10 1
+.names new_n452 new_n5615
+0 1
+.names new_n1037 new_n5615 new_n5616
+11 1
+.names new_n1037 new_n5613
+0 1
+.names pi66 pi108 new_n423
+-1 1
+1- 1
+.names new_n423 new_n5612
+0 1
+.names new_n5613 new_n5612 new_n5614
+11 1
+.names new_n5616 new_n5614 new_n5617
+-1 1
+1- 1
+.names new_n1974 new_n5617 new_n5618
+-1 1
+0- 1
+.names new_n5619 new_n5618 new_n5620
+11 1
+.names new_n5631 new_n5620 new_n5632
+-1 1
+1- 1
+.names new_n3632 new_n5632 new_n5633
+11 1
+.names new_n3632 new_n5610
+0 1
+.names pi37 pi43 new_n250
+10 1
+01 1
+.names pi75 pi127 new_n740
+-1 1
+0- 1
+.names new_n250 new_n740 new_n1694
+11 1
+.names pi41 pi122 new_n482
+00 1
+11 1
+.names new_n428 new_n482 new_n2081
+-0 1
+1- 1
+.names new_n1694 new_n2081 new_n2598
+-0 1
+1- 1
+.names new_n250 new_n740 new_n1702
+00 1
+.names new_n1702 pi2 new_n5608
+11 1
+.names new_n2598 new_n5608 new_n5609
+-1 1
+1- 1
+.names new_n5610 new_n5609 new_n5611
+11 1
+.names new_n5633 new_n5611 new_n5634
+-1 1
+1- 1
+.names new_n3012 new_n5634 new_n5635
+11 1
+.names new_n3012 new_n5606
+0 1
+.names pi75 pi104 new_n1145
+-1 1
+1- 1
+.names new_n250 new_n1145 new_n2013
+01 1
+.names pi25 pi81 new_n151
+10 1
+01 1
+.names pi15 pi90 new_n818
+00 1
+11 1
+.names new_n151 new_n818 new_n1252
+-1 1
+0- 1
+.names pi101 pi111 new_n369
+10 1
+01 1
+.names pi41 pi114 new_n514
+11 1
+.names new_n369 new_n514 new_n1826
+01 1
+.names new_n1252 new_n1826 new_n2340
+00 1
+.names pi24 new_n5602
+0 1
+.names new_n2340 new_n5602 new_n5603
+-1 1
+1- 1
+.names pi105 new_n5603 new_n5604
+-1 1
+0- 1
+.names new_n2013 new_n5604 new_n5605
+-1 1
+0- 1
+.names new_n5606 new_n5605 new_n5607
+11 1
+.names new_n5635 new_n5607 new_n5636
+-1 1
+1- 1
+.names new_n677 new_n5636 new_n5637
+11 1
+.names new_n677 new_n5600
+0 1
+.names new_n179 new_n863 new_n1403
+10 1
+.names pi37 pi59 new_n1097
+-1 1
+0- 1
+.names new_n900 new_n1097 new_n2053
+01 1
+.names new_n1403 new_n2053 new_n2675
+10 1
+.names pi86 pi94 new_n1110
+-1 1
+1- 1
+.names pi16 pi96 new_n798
+-0 1
+0- 1
+.names pi25 pi81 new_n159
+11 1
+.names pi40 pi80 new_n784
+-1 1
+0- 1
+.names new_n159 new_n784 new_n5595
+01 1
+.names new_n798 new_n5595 new_n5596
+11 1
+.names new_n798 new_n5593
+0 1
+.names pi10 pi92 new_n854
+-1 1
+0- 1
+.names new_n854 new_n5592
+0 1
+.names new_n5593 new_n5592 new_n5594
+11 1
+.names new_n5596 new_n5594 new_n5597
+-1 1
+1- 1
+.names new_n1110 new_n5597 new_n5598
+-1 1
+0- 1
+.names new_n2675 new_n5598 new_n5599
+01 1
+.names new_n5600 new_n5599 new_n5601
+11 1
+.names new_n5637 new_n5601 new_n5638
+-1 1
+1- 1
+.names new_n5639 new_n5638 new_n5640
+11 1
+.names new_n5641 new_n5640 new_n5642
+-1 1
+1- 1
+.names new_n5643 new_n5642 new_n5644
+11 1
+.names new_n5660 new_n5644 new_n5661
+-1 1
+1- 1
+.names new_n5662 new_n5661 new_n5663
+11 1
+.names new_n5666 new_n5663 new_n5667
+-1 1
+1- 1
+.names new_n234 new_n5667 new_n5668
+11 1
+.names new_n234 new_n5590
+0 1
+.names pi29 pi41 new_n548
+10 1
+.names pi10 pi50 new_n466
+-0 1
+1- 1
+.names pi59 pi93 new_n620
+-1 1
+0- 1
+.names new_n466 new_n620 new_n1623
+10 1
+.names pi41 pi49 new_n169
+00 1
+.names pi36 pi55 new_n399
+01 1
+.names new_n169 new_n399 new_n1674
+00 1
+.names new_n1623 new_n1674 new_n2687
+-0 1
+1- 1
+.names new_n2687 pi12 new_n5587
+-1 1
+1- 1
+.names new_n548 new_n5587 new_n5588
+11 1
+.names new_n548 new_n5585
+0 1
+.names pi22 pi80 new_n898
+-1 1
+1- 1
+.names pi21 pi75 new_n1003
+00 1
+.names new_n898 new_n1003 new_n1479
+00 1
+11 1
+.names new_n1433 new_n1479 new_n3086
+10 1
+01 1
+.names pi10 pi92 new_n852
+-1 1
+1- 1
+.names pi10 pi96 new_n449
+00 1
+11 1
+.names pi18 pi76 new_n868
+11 1
+.names new_n868 pi54 new_n5577
+11 1
+.names new_n868 new_n5009
+0 1
+.names pi22 pi80 new_n899
+11 1
+.names pi77 new_n5126
+0 1
+.names new_n899 new_n5126 new_n5575
+-1 1
+0- 1
+.names new_n5009 new_n5575 new_n5576
+11 1
+.names new_n5577 new_n5576 new_n5578
+-1 1
+1- 1
+.names new_n449 new_n5578 new_n5579
+11 1
+.names new_n449 new_n5573
+0 1
+.names new_n348 new_n829 new_n1982
+-1 1
+1- 1
+.names new_n1183 new_n1982 new_n2246
+00 1
+11 1
+.names pi37 pi43 new_n256
+-1 1
+0- 1
+.names pi4 pi80 new_n1030
+-0 1
+1- 1
+.names new_n256 new_n1030 new_n2175
+01 1
+.names new_n2081 new_n2175 new_n2847
+10 1
+.names new_n2246 new_n2847 new_n3679
+00 1
+11 1
+.names new_n1252 new_n1826 new_n2347
+10 1
+.names pi16 pi86 new_n211
+11 1
+.names pi40 pi49 new_n319
+10 1
+.names new_n211 new_n319 new_n1203
+01 1
+.names new_n150 new_n617 new_n1362
+10 1
+01 1
+.names new_n1203 new_n1362 new_n3151
+00 1
+11 1
+.names new_n2347 new_n3151 new_n3907
+10 1
+01 1
+.names pi7 pi84 new_n384
+01 1
+.names new_n131 new_n384 new_n1553
+00 1
+.names new_n1553 new_n2115 new_n2574
+00 1
+11 1
+.names new_n2574 pi2 new_n5570
+11 1
+.names new_n3907 new_n5570 new_n5571
+-1 1
+1- 1
+.names new_n3679 new_n5571 new_n5572
+01 1
+.names new_n5573 new_n5572 new_n5574
+11 1
+.names new_n5579 new_n5574 new_n5580
+-1 1
+1- 1
+.names new_n852 new_n5580 new_n5581
+11 1
+.names new_n852 new_n5568
+0 1
+.names new_n1302 pi5 new_n5567
+01 1
+.names new_n5568 new_n5567 new_n5569
+11 1
+.names new_n5581 new_n5569 new_n5582
+-1 1
+1- 1
+.names new_n3086 new_n5582 new_n5583
+11 1
+.names new_n3086 new_n5565
+0 1
+.names pi15 pi90 new_n815
+-1 1
+0- 1
+.names pi65 pi119 new_n301
+-0 1
+1- 1
+.names new_n179 new_n863 new_n1395
+-0 1
+0- 1
+.names new_n1395 new_n5560
+0 1
+.names new_n301 new_n5560 new_n5561
+11 1
+.names new_n301 new_n5558
+0 1
+.names pi40 pi117 new_n1133
+-0 1
+1- 1
+.names pi70 pi78 new_n673
+-1 1
+1- 1
+.names new_n1133 new_n673 new_n5557
+11 1
+.names new_n5558 new_n5557 new_n5559
+11 1
+.names new_n5561 new_n5559 new_n5562
+-1 1
+1- 1
+.names new_n815 new_n5562 new_n5563
+11 1
+.names new_n815 new_n5555
+0 1
+.names new_n5555 pi20 new_n5556
+11 1
+.names new_n5563 new_n5556 new_n5564
+-1 1
+1- 1
+.names new_n5565 new_n5564 new_n5566
+11 1
+.names new_n5583 new_n5566 new_n5584
+-1 1
+1- 1
+.names new_n5585 new_n5584 new_n5586
+11 1
+.names new_n5588 new_n5586 new_n5589
+-1 1
+1- 1
+.names new_n5590 new_n5589 new_n5591
+11 1
+.names new_n5668 new_n5591 new_n5669
+-1 1
+1- 1
+.names new_n3601 new_n5669 new_n5670
+11 1
+.names new_n3601 new_n4483
+0 1
+.names pi66 pi108 new_n421
+10 1
+.names pi41 pi127 new_n610
+-0 1
+1- 1
+.names new_n421 new_n610 new_n1912
+-0 1
+0- 1
+.names pi49 pi119 new_n697
+-0 1
+0- 1
+.names new_n138 new_n697 new_n1267
+-1 1
+0- 1
+.names new_n417 new_n912 new_n1901
+10 1
+01 1
+.names new_n2387 new_n2496 new_n4187
+-0 1
+1- 1
+.names pi25 pi81 new_n157
+-0 1
+1- 1
+.names pi79 pi121 new_n1059
+10 1
+.names new_n157 new_n1059 new_n1423
+11 1
+.names pi41 pi85 new_n247
+00 1
+.names pi7 pi84 new_n380
+10 1
+01 1
+.names new_n247 new_n380 new_n1606
+-1 1
+1- 1
+.names new_n1423 new_n1606 new_n3166
+10 1
+.names new_n270 new_n669 new_n1333
+-1 1
+0- 1
+.names pi78 pi79 new_n229
+11 1
+.names pi40 pi49 new_n312
+01 1
+.names new_n229 new_n312 new_n1813
+10 1
+.names new_n1333 new_n1813 new_n2325
+11 1
+.names pi54 pi58 new_n599
+01 1
+.names new_n599 pi3 new_n5542
+11 1
+.names new_n2325 new_n5542 new_n5543
+-1 1
+1- 1
+.names new_n3166 new_n5543 new_n5544
+11 1
+.names new_n3166 new_n5540
+0 1
+.names new_n348 new_n829 new_n1975
+00 1
+.names pi25 pi82 new_n927
+-0 1
+1- 1
+.names new_n147 new_n927 new_n2014
+-0 1
+0- 1
+.names new_n1975 new_n2014 new_n3007
+00 1
+.names new_n2246 new_n3007 new_n3437
+10 1
+.names new_n170 new_n770 new_n1344
+11 1
+.names new_n246 new_n714 new_n1952
+10 1
+01 1
+.names new_n1344 new_n1952 new_n2235
+00 1
+11 1
+.names pi14 pi86 new_n968
+00 1
+11 1
+.names pi54 pi58 new_n593
+-1 1
+1- 1
+.names new_n968 new_n593 new_n5534
+11 1
+.names pi84 new_n5534 new_n5535
+-1 1
+1- 1
+.names new_n2235 new_n5535 new_n5536
+11 1
+.names new_n2235 new_n5532
+0 1
+.names pi85 pi106 new_n656
+-1 1
+0- 1
+.names new_n428 new_n656 new_n1525
+10 1
+01 1
+.names pi44 new_n5328
+0 1
+.names new_n1525 new_n5328 new_n5530
+11 1
+.names new_n1525 new_n5528
+0 1
+.names pi80 pi109 new_n957
+10 1
+.names new_n957 new_n4418 new_n5525
+-1 1
+0- 1
+.names new_n1793 new_n5525 new_n5526
+01 1
+.names pi45 new_n5526 new_n5527
+11 1
+.names new_n5528 new_n5527 new_n5529
+11 1
+.names new_n5530 new_n5529 new_n5531
+-1 1
+1- 1
+.names new_n5532 new_n5531 new_n5533
+11 1
+.names new_n5536 new_n5533 new_n5537
+-1 1
+1- 1
+.names new_n3437 new_n5537 new_n5538
+11 1
+.names new_n3437 new_n5523
+0 1
+.names pi31 pi66 new_n551
+10 1
+01 1
+.names new_n551 new_n732 new_n2167
+-0 1
+1- 1
+.names new_n1204 new_n2059 new_n3014
+-1 1
+0- 1
+.names new_n131 new_n671 new_n1374
+-1 1
+1- 1
+.names pi86 pi102 new_n269
+00 1
+.names pi14 pi97 new_n976
+-1 1
+0- 1
+.names new_n269 new_n976 new_n1853
+11 1
+.names new_n1374 new_n1853 new_n3118
+10 1
+.names new_n3014 new_n3118 new_n4100
+10 1
+01 1
+.names pi19 new_n4624
+0 1
+.names pi73 new_n4624 new_n5515
+11 1
+.names pi73 new_n5513
+0 1
+.names new_n1463 new_n1793 new_n2380
+-1 1
+0- 1
+.names new_n2380 new_n2588 new_n3900
+10 1
+01 1
+.names new_n3900 pi7 new_n5512
+-1 1
+0- 1
+.names new_n5513 new_n5512 new_n5514
+11 1
+.names new_n5515 new_n5514 new_n5516
+-1 1
+1- 1
+.names new_n4100 new_n5516 new_n5517
+11 1
+.names new_n4100 new_n4416
+0 1
+.names new_n1584 new_n1945 new_n2545
+00 1
+11 1
+.names new_n2675 pi4 new_n5508
+-1 1
+0- 1
+.names new_n2545 new_n5508 new_n5509
+11 1
+.names new_n2545 new_n5506
+0 1
+.names new_n1223 new_n1434 new_n2199
+10 1
+01 1
+.names pi36 pi129 new_n1088
+10 1
+01 1
+.names new_n151 new_n1088 new_n1595
+10 1
+.names new_n366 new_n391 new_n1786
+01 1
+.names new_n1595 new_n1786 new_n3128
+-1 1
+1- 1
+.names new_n2199 new_n3128 new_n3920
+-0 1
+0- 1
+.names pi46 pi49 new_n208
+10 1
+01 1
+.names new_n208 new_n234 new_n5503
+11 1
+.names new_n208 new_n5501
+0 1
+.names new_n150 new_n5026
+0 1
+.names new_n1397 new_n5026 new_n5500
+-1 1
+1- 1
+.names new_n5501 new_n5500 new_n5502
+11 1
+.names new_n5503 new_n5502 new_n5504
+-1 1
+1- 1
+.names new_n3920 new_n5504 new_n5505
+-1 1
+0- 1
+.names new_n5506 new_n5505 new_n5507
+11 1
+.names new_n5509 new_n5507 new_n5510
+-1 1
+1- 1
+.names new_n4416 new_n5510 new_n5511
+11 1
+.names new_n5517 new_n5511 new_n5518
+-1 1
+1- 1
+.names new_n2167 new_n5518 new_n5519
+11 1
+.names new_n2167 new_n5498
+0 1
+.names new_n158 new_n161 new_n1174
+-1 1
+0- 1
+.names new_n1174 new_n1562 new_n2182
+-0 1
+0- 1
+.names new_n2182 new_n5497
+0 1
+.names new_n5498 new_n5497 new_n5499
+11 1
+.names new_n5519 new_n5499 new_n5520
+-1 1
+1- 1
+.names pi109 new_n5520 new_n5521
+11 1
+.names pi109 new_n5049
+0 1
+.names pi18 pi41 new_n292
+11 1
+.names pi60 pi96 new_n405
+00 1
+.names new_n292 new_n405 new_n1770
+-0 1
+0- 1
+.names pi79 pi121 new_n1053
+00 1
+.names new_n509 new_n1053 new_n2034
+-1 1
+0- 1
+.names new_n1770 new_n2034 new_n2526
+10 1
+01 1
+.names pi86 pi94 new_n1112
+10 1
+01 1
+.names new_n620 pi5 new_n5491
+01 1
+.names new_n1112 new_n5491 new_n5492
+11 1
+.names new_n1112 new_n5489
+0 1
+.names pi16 pi33 new_n1021
+-0 1
+1- 1
+.names pi21 pi75 new_n1008
+10 1
+01 1
+.names new_n320 new_n1008 new_n1984
+-1 1
+1- 1
+.names new_n1021 new_n1984 new_n5487
+11 1
+.names new_n1021 new_n5485
+0 1
+.names new_n5485 pi28 new_n5486
+11 1
+.names new_n5487 new_n5486 new_n5488
+-1 1
+1- 1
+.names new_n5489 new_n5488 new_n5490
+11 1
+.names new_n5492 new_n5490 new_n5493
+-1 1
+1- 1
+.names new_n2526 new_n5493 new_n5494
+11 1
+.names new_n2526 new_n5483
+0 1
+.names pi85 pi86 new_n1011
+-1 1
+0- 1
+.names pi40 pi117 new_n1137
+-1 1
+1- 1
+.names pi70 pi78 new_n674
+-0 1
+1- 1
+.names pi28 new_n4714
+0 1
+.names new_n674 new_n4714 new_n5479
+-1 1
+1- 1
+.names new_n1137 new_n5479 new_n5480
+-1 1
+1- 1
+.names new_n1011 new_n5480 new_n5481
+11 1
+.names new_n1011 new_n5477
+0 1
+.names new_n247 new_n380 new_n1613
+-0 1
+1- 1
+.names pi49 pi61 new_n759
+00 1
+.names new_n759 new_n1110 new_n2155
+10 1
+01 1
+.names new_n1613 new_n2155 new_n2635
+00 1
+.names pi41 pi67 new_n190
+-1 1
+1- 1
+.names new_n2635 new_n190 new_n5476
+01 1
+.names new_n5477 new_n5476 new_n5478
+11 1
+.names new_n5481 new_n5478 new_n5482
+-1 1
+1- 1
+.names new_n5483 new_n5482 new_n5484
+11 1
+.names new_n5494 new_n5484 new_n5495
+-1 1
+1- 1
+.names new_n5049 new_n5495 new_n5496
+11 1
+.names new_n5521 new_n5496 new_n5522
+-1 1
+1- 1
+.names new_n5523 new_n5522 new_n5524
+11 1
+.names new_n5538 new_n5524 new_n5539
+-1 1
+1- 1
+.names new_n5540 new_n5539 new_n5541
+11 1
+.names new_n5544 new_n5541 new_n5545
+-1 1
+1- 1
+.names new_n4187 new_n5545 new_n5546
+11 1
+.names new_n4187 new_n5474
+0 1
+.names new_n170 new_n354 new_n1783
+00 1
+.names pi58 pi95 new_n707
+11 1
+.names pi86 pi102 new_n263
+-0 1
+1- 1
+.names new_n707 new_n263 new_n5472
+01 1
+.names new_n1783 new_n5472 new_n5473
+-1 1
+0- 1
+.names new_n5474 new_n5473 new_n5475
+11 1
+.names new_n5546 new_n5475 new_n5547
+-1 1
+1- 1
+.names new_n1901 new_n5547 new_n5548
+11 1
+.names new_n1901 new_n5470
+0 1
+.names pi85 pi106 new_n659
+00 1
+11 1
+.names pi49 pi119 new_n692
+11 1
+.names new_n659 new_n692 new_n1566
+01 1
+.names pi16 pi33 new_n1027
+00 1
+11 1
+.names pi50 pi79 new_n827
+00 1
+11 1
+.names pi89 pi36 new_n5463
+01 1
+.names new_n827 new_n5463 new_n5464
+-1 1
+0- 1
+.names new_n1027 new_n5464 new_n5465
+-1 1
+1- 1
+.names pi64 new_n5465 new_n5466
+11 1
+.names pi64 new_n5461
+0 1
+.names pi59 pi93 new_n623
+01 1
+.names pi41 pi116 new_n648
+00 1
+.names new_n348 new_n648 new_n1922
+00 1
+11 1
+.names new_n1333 new_n1922 new_n3072
+10 1
+01 1
+.names new_n1613 new_n2155 new_n2634
+11 1
+.names new_n2634 new_n4608 new_n5457
+11 1
+.names new_n3072 new_n5457 new_n5458
+11 1
+.names new_n3072 new_n5455
+0 1
+.names pi41 pi116 new_n646
+-0 1
+0- 1
+.names new_n250 new_n646 new_n1641
+-1 1
+0- 1
+.names pi14 pi97 new_n979
+00 1
+11 1
+.names pi23 pi86 new_n1150
+-1 1
+0- 1
+.names new_n979 new_n1150 new_n1935
+01 1
+.names new_n1641 new_n1935 new_n2717
+10 1
+.names new_n2347 new_n2717 new_n3273
+10 1
+01 1
+.names pi20 new_n4391
+0 1
+.names new_n3273 new_n4391 new_n5454
+-1 1
+1- 1
+.names new_n5455 new_n5454 new_n5456
+11 1
+.names new_n5458 new_n5456 new_n5459
+-1 1
+1- 1
+.names new_n623 new_n5459 new_n5460
+01 1
+.names new_n5461 new_n5460 new_n5462
+11 1
+.names new_n5466 new_n5462 new_n5467
+-1 1
+1- 1
+.names new_n1566 new_n5467 new_n5468
+11 1
+.names new_n1566 new_n5452
+0 1
+.names new_n1252 new_n1826 new_n2338
+-1 1
+0- 1
+.names pi30 pi86 new_n232
+11 1
+.names new_n232 new_n466 new_n1166
+10 1
+.names pi23 pi41 new_n149
+10 1
+.names pi86 pi94 new_n1118
+01 1
+.names new_n149 new_n1118 new_n1868
+-0 1
+1- 1
+.names new_n1166 new_n1868 new_n2921
+11 1
+.names new_n2338 new_n2921 new_n3238
+11 1
+.names new_n1174 new_n1562 new_n2178
+-0 1
+1- 1
+.names pi66 pi126 new_n130
+-1 1
+1- 1
+.names pi41 pi85 new_n241
+11 1
+.names new_n130 new_n241 new_n1163
+00 1
+.names new_n397 new_n562 new_n1585
+00 1
+11 1
+.names new_n1163 new_n1585 new_n2432
+-1 1
+1- 1
+.names new_n2178 new_n2432 new_n3923
+-1 1
+1- 1
+.names new_n509 new_n1053 new_n2039
+-0 1
+1- 1
+.names pi16 pi104 new_n528
+-0 1
+0- 1
+.names pi22 pi80 new_n891
+00 1
+.names new_n528 new_n891 new_n1840
+01 1
+.names pi15 pi90 new_n810
+-1 1
+1- 1
+.names new_n1840 new_n810 new_n5444
+11 1
+.names new_n1840 new_n5442
+0 1
+.names pi59 pi65 new_n663
+01 1
+.names new_n131 new_n384 new_n1547
+-0 1
+1- 1
+.names new_n663 new_n1547 new_n5438
+11 1
+.names new_n663 new_n5436
+0 1
+.names new_n138 new_n697 new_n1273
+11 1
+.names new_n348 new_n648 new_n1914
+-0 1
+0- 1
+.names new_n1273 new_n1914 new_n2688
+01 1
+.names new_n260 new_n270 new_n1693
+-0 1
+0- 1
+.names new_n1623 new_n1693 new_n2394
+10 1
+.names new_n2338 new_n2394 new_n3830
+00 1
+.names pi26 pi54 new_n739
+10 1
+.names new_n739 new_n4608 new_n5431
+11 1
+.names new_n3830 new_n5431 new_n5432
+11 1
+.names new_n3830 new_n5429
+0 1
+.names pi41 pi44 new_n456
+00 1
+11 1
+.names pi57 pi75 new_n490
+-0 1
+0- 1
+.names new_n490 new_n5427
+0 1
+.names new_n456 new_n5427 new_n5428
+-1 1
+1- 1
+.names new_n5429 new_n5428 new_n5430
+11 1
+.names new_n5432 new_n5430 new_n5433
+-1 1
+1- 1
+.names new_n2688 new_n5433 new_n5434
+11 1
+.names new_n2688 new_n5425
+0 1
+.names new_n2347 new_n2717 new_n3274
+00 1
+.names new_n3274 new_n5424
+0 1
+.names new_n5425 new_n5424 new_n5426
+11 1
+.names new_n5434 new_n5426 new_n5435
+-1 1
+1- 1
+.names new_n5436 new_n5435 new_n5437
+11 1
+.names new_n5438 new_n5437 new_n5439
+-1 1
+1- 1
+.names pi113 new_n5439 new_n5440
+11 1
+.names pi113 new_n4756
+0 1
+.names new_n137 new_n412 new_n1522
+10 1
+01 1
+.names pi41 pi63 new_n337
+-1 1
+0- 1
+.names new_n337 new_n397 new_n1722
+00 1
+11 1
+.names pi49 pi59 new_n180
+-0 1
+1- 1
+.names pi72 pi100 new_n1063
+01 1
+.names new_n180 new_n1063 new_n1665
+-0 1
+1- 1
+.names new_n1665 new_n5416
+0 1
+.names new_n1722 new_n5416 new_n5417
+11 1
+.names new_n1722 new_n5414
+0 1
+.names pi100 new_n5413
+0 1
+.names new_n5414 new_n5413 new_n5415
+11 1
+.names new_n5417 new_n5415 new_n5418
+-1 1
+1- 1
+.names new_n1522 new_n5418 new_n5419
+11 1
+.names new_n1522 new_n5411
+0 1
+.names new_n2235 pi28 new_n5409
+-1 1
+0- 1
+.names new_n158 new_n5409 new_n5410
+-1 1
+1- 1
+.names new_n5411 new_n5410 new_n5412
+11 1
+.names new_n5419 new_n5412 new_n5420
+-1 1
+1- 1
+.names pi62 new_n5420 new_n5421
+11 1
+.names pi62 new_n5283
+0 1
+.names new_n256 new_n1030 new_n2177
+10 1
+01 1
+.names new_n232 new_n466 new_n1171
+-1 1
+0- 1
+.names new_n718 new_n1049 new_n1242
+-1 1
+1- 1
+.names new_n1171 new_n1242 new_n2766
+00 1
+11 1
+.names new_n263 new_n5404
+0 1
+.names new_n2766 new_n5404 new_n5405
+11 1
+.names new_n2766 new_n5402
+0 1
+.names pi61 new_n4608 new_n5401
+-1 1
+0- 1
+.names new_n5402 new_n5401 new_n5403
+11 1
+.names new_n5405 new_n5403 new_n5406
+-1 1
+1- 1
+.names new_n2177 new_n5406 new_n5407
+01 1
+.names new_n5283 new_n5407 new_n5408
+11 1
+.names new_n5421 new_n5408 new_n5422
+-1 1
+1- 1
+.names new_n4756 new_n5422 new_n5423
+11 1
+.names new_n5440 new_n5423 new_n5441
+-1 1
+1- 1
+.names new_n5442 new_n5441 new_n5443
+11 1
+.names new_n5444 new_n5443 new_n5445
+-1 1
+1- 1
+.names new_n2039 new_n5445 new_n5446
+11 1
+.names new_n2039 new_n5399
+0 1
+.names new_n1694 new_n2081 new_n2606
+10 1
+01 1
+.names new_n1403 new_n2053 new_n2668
+-0 1
+0- 1
+.names new_n2606 new_n2668 new_n4117
+11 1
+.names pi49 pi59 new_n183
+-1 1
+1- 1
+.names new_n4117 new_n183 new_n5395
+11 1
+.names new_n4117 new_n5393
+0 1
+.names pi41 pi45 new_n431
+-1 1
+1- 1
+.names new_n431 new_n5391
+0 1
+.names new_n1826 new_n5391 new_n5392
+-1 1
+1- 1
+.names new_n5393 new_n5392 new_n5394
+11 1
+.names new_n5395 new_n5394 new_n5396
+-1 1
+1- 1
+.names new_n1952 new_n5396 new_n5397
+11 1
+.names new_n1952 new_n5389
+0 1
+.names pi22 pi98 new_n836
+00 1
+.names new_n836 pi35 new_n5388
+11 1
+.names new_n5389 new_n5388 new_n5390
+11 1
+.names new_n5397 new_n5390 new_n5398
+-1 1
+1- 1
+.names new_n5399 new_n5398 new_n5400
+11 1
+.names new_n5446 new_n5400 new_n5447
+-1 1
+1- 1
+.names new_n3923 new_n5447 new_n5448
+11 1
+.names new_n3923 new_n5386
+0 1
+.names new_n246 new_n714 new_n1946
+00 1
+.names new_n5386 new_n1946 new_n5387
+11 1
+.names new_n5448 new_n5387 new_n5449
+-1 1
+1- 1
+.names new_n3238 new_n5449 new_n5450
+-1 1
+1- 1
+.names new_n1702 new_n5450 new_n5451
+-1 1
+1- 1
+.names new_n5452 new_n5451 new_n5453
+11 1
+.names new_n5468 new_n5453 new_n5469
+-1 1
+1- 1
+.names new_n5470 new_n5469 new_n5471
+11 1
+.names new_n5548 new_n5471 new_n5549
+-1 1
+1- 1
+.names new_n1267 new_n5549 new_n5550
+11 1
+.names new_n1267 new_n5384
+0 1
+.names pi41 pi63 new_n336
+00 1
+11 1
+.names new_n348 new_n648 new_n1915
+10 1
+01 1
+.names new_n336 new_n1915 new_n5381
+11 1
+.names pi80 new_n5381 new_n5382
+-1 1
+1- 1
+.names pi45 new_n5382 new_n5383
+01 1
+.names new_n5384 new_n5383 new_n5385
+11 1
+.names new_n5550 new_n5385 new_n5551
+-1 1
+1- 1
+.names new_n1912 new_n5551 new_n5552
+11 1
+.names new_n1912 new_n5379
+0 1
+.names new_n1953 new_n2054 new_n3201
+-1 1
+1- 1
+.names new_n1252 new_n1826 new_n2343
+-0 1
+0- 1
+.names new_n3014 new_n3118 new_n4098
+00 1
+.names pi75 pi118 new_n341
+00 1
+.names new_n4098 new_n341 new_n5373
+11 1
+.names new_n4098 new_n5371
+0 1
+.names new_n1344 new_n1952 new_n2237
+-1 1
+0- 1
+.names new_n898 new_n1003 new_n1477
+01 1
+.names new_n1477 new_n2141 new_n2829
+00 1
+11 1
+.names new_n2237 new_n2829 new_n3261
+10 1
+.names pi16 pi104 new_n524
+-1 1
+0- 1
+.names pi36 pi114 new_n686
+10 1
+.names new_n1433 new_n1562 new_n2255
+00 1
+11 1
+.names pi41 pi74 new_n630
+-0 1
+1- 1
+.names pi85 pi106 new_n650
+10 1
+01 1
+.names new_n650 new_n5361
+0 1
+.names new_n630 new_n5361 new_n5362
+-1 1
+0- 1
+.names new_n2255 new_n5362 new_n5363
+01 1
+.names pi89 new_n5363 new_n5364
+11 1
+.names pi89 new_n5359
+0 1
+.names pi85 pi86 new_n1013
+10 1
+01 1
+.names pi47 new_n5355
+0 1
+.names pi7 new_n5355 new_n5356
+11 1
+.names pi7 new_n4780
+0 1
+.names pi20 pi79 new_n280
+-0 1
+1- 1
+.names new_n280 new_n5353
+0 1
+.names new_n4780 new_n5353 new_n5354
+11 1
+.names new_n5356 new_n5354 new_n5357
+-1 1
+1- 1
+.names new_n1013 new_n5357 new_n5358
+-1 1
+1- 1
+.names new_n5359 new_n5358 new_n5360
+11 1
+.names new_n5364 new_n5360 new_n5365
+-1 1
+1- 1
+.names new_n686 new_n5365 new_n5366
+-1 1
+1- 1
+.names new_n524 new_n5366 new_n5367
+11 1
+.names new_n524 new_n5351
+0 1
+.names pi44 pi86 new_n1106
+10 1
+01 1
+.names new_n460 new_n840 new_n1732
+10 1
+01 1
+.names new_n1732 new_n4714 new_n5349
+-1 1
+1- 1
+.names new_n1106 new_n5349 new_n5350
+11 1
+.names new_n5351 new_n5350 new_n5352
+11 1
+.names new_n5367 new_n5352 new_n5368
+-1 1
+1- 1
+.names new_n3261 new_n5368 new_n5369
+11 1
+.names new_n3261 new_n5347
+0 1
+.names pi47 pi86 new_n279
+10 1
+.names pi39 pi79 new_n532
+10 1
+.names new_n279 new_n532 new_n1336
+01 1
+.names pi61 new_n4258
+0 1
+.names new_n1336 new_n4258 new_n5345
+11 1
+.names new_n1336 new_n5343
+0 1
+.names pi41 pi63 new_n335
+11 1
+.names pi60 pi96 new_n406
+01 1
+.names new_n158 new_n406 new_n1879
+01 1
+.names new_n1203 new_n1879 new_n2995
+-1 1
+1- 1
+.names new_n2218 new_n2995 new_n4131
+-1 1
+0- 1
+.names new_n1463 new_n1793 new_n2379
+00 1
+11 1
+.names new_n2379 new_n2829 new_n3777
+01 1
+.names pi120 new_n5339
+0 1
+.names new_n3777 new_n5339 new_n5340
+-1 1
+0- 1
+.names new_n4131 new_n5340 new_n5341
+01 1
+.names new_n335 new_n5341 new_n5342
+-1 1
+0- 1
+.names new_n5343 new_n5342 new_n5344
+11 1
+.names new_n5345 new_n5344 new_n5346
+-1 1
+1- 1
+.names new_n5347 new_n5346 new_n5348
+11 1
+.names new_n5369 new_n5348 new_n5370
+-1 1
+1- 1
+.names new_n5371 new_n5370 new_n5372
+11 1
+.names new_n5373 new_n5372 new_n5374
+-1 1
+1- 1
+.names new_n2343 new_n5374 new_n5375
+11 1
+.names new_n2343 new_n5337
+0 1
+.names new_n660 new_n779 new_n1563
+-1 1
+0- 1
+.names new_n1223 new_n1563 new_n2266
+-1 1
+1- 1
+.names new_n2266 new_n2467 new_n3229
+00 1
+11 1
+.names pi49 pi59 new_n188
+-1 1
+0- 1
+.names pi10 pi96 new_n442
+01 1
+.names new_n188 new_n442 new_n2072
+10 1
+01 1
+.names new_n2072 pi22 new_n5335
+-1 1
+1- 1
+.names new_n3229 new_n5335 new_n5336
+-1 1
+1- 1
+.names new_n5337 new_n5336 new_n5338
+11 1
+.names new_n5375 new_n5338 new_n5376
+-1 1
+1- 1
+.names new_n3201 new_n5376 new_n5377
+11 1
+.names new_n3201 new_n5333
+0 1
+.names new_n1553 new_n2115 new_n2577
+-0 1
+1- 1
+.names new_n140 new_n747 new_n1472
+-1 1
+0- 1
+.names new_n337 new_n397 new_n1723
+11 1
+.names new_n1472 new_n1723 new_n3018
+-0 1
+0- 1
+.names new_n2577 new_n3018 new_n3938
+11 1
+.names new_n2557 new_n2588 new_n3381
+-0 1
+1- 1
+.names pi101 pi111 new_n360
+00 1
+11 1
+.names pi41 pi114 new_n510
+-1 1
+1- 1
+.names new_n360 new_n510 new_n1661
+01 1
+.names new_n1661 new_n5328 new_n5329
+11 1
+.names new_n1661 new_n5326
+0 1
+.names pi39 new_n4543
+0 1
+.names new_n5326 new_n4543 new_n5327
+11 1
+.names new_n5329 new_n5327 new_n5330
+-1 1
+1- 1
+.names new_n3381 new_n5330 new_n5331
+-1 1
+0- 1
+.names new_n3938 new_n5331 new_n5332
+-1 1
+0- 1
+.names new_n5333 new_n5332 new_n5334
+11 1
+.names new_n5377 new_n5334 new_n5378
+-1 1
+1- 1
+.names new_n5379 new_n5378 new_n5380
+11 1
+.names new_n5552 new_n5380 new_n5553
+-1 1
+1- 1
+.names new_n4483 new_n5553 new_n5554
+11 1
+.names new_n5670 new_n5554 new_n5671
+-1 1
+1- 1
+.names new_n3302 new_n5671 new_n5672
+11 1
+.names new_n3302 new_n5324
+0 1
+.names new_n151 new_n818 new_n1245
+10 1
+.names pi30 pi86 new_n237
+-0 1
+0- 1
+.names pi75 pi118 new_n342
+-1 1
+0- 1
+.names new_n237 new_n342 new_n1797
+-0 1
+0- 1
+.names new_n1245 new_n1797 new_n3183
+-1 1
+0- 1
+.names new_n1374 new_n1853 new_n3121
+-0 1
+0- 1
+.names pi29 pi48 new_n502
+-0 1
+0- 1
+.names new_n180 new_n1063 new_n1673
+00 1
+.names new_n397 new_n1146 new_n2144
+-0 1
+0- 1
+.names new_n1673 new_n2144 new_n3196
+-0 1
+1- 1
+.names new_n2218 new_n3196 new_n3538
+00 1
+11 1
+.names pi22 pi98 new_n830
+-0 1
+0- 1
+.names pi65 pi119 new_n303
+11 1
+.names pi36 pi55 new_n398
+10 1
+01 1
+.names new_n303 new_n398 new_n1632
+10 1
+01 1
+.names pi39 pi79 new_n539
+11 1
+.names new_n898 new_n1003 new_n1476
+-1 1
+1- 1
+.names new_n539 new_n1476 new_n5313
+01 1
+.names new_n1632 new_n5313 new_n5314
+11 1
+.names new_n1632 new_n5311
+0 1
+.names new_n428 new_n1019 new_n1385
+00 1
+.names new_n1385 new_n1753 new_n2586
+-1 1
+0- 1
+.names new_n1694 new_n2081 new_n2607
+01 1
+.names new_n2586 new_n2607 new_n4067
+-1 1
+1- 1
+.names new_n348 new_n829 new_n1976
+-0 1
+1- 1
+.names new_n1976 new_n5309
+0 1
+.names new_n4067 new_n5309 new_n5310
+-1 1
+0- 1
+.names new_n5311 new_n5310 new_n5312
+11 1
+.names new_n5314 new_n5312 new_n5315
+-1 1
+1- 1
+.names new_n830 new_n5315 new_n5316
+11 1
+.names new_n3538 new_n5316 new_n5317
+11 1
+.names new_n3538 new_n5307
+0 1
+.names pi2 pi79 new_n776
+-1 1
+1- 1
+.names new_n158 new_n776 new_n1543
+11 1
+.names new_n246 new_n714 new_n1951
+-1 1
+1- 1
+.names new_n1543 new_n1951 new_n2963
+00 1
+11 1
+.names pi41 pi67 new_n199
+00 1
+.names pi38 pi79 new_n878
+00 1
+11 1
+.names new_n199 new_n878 new_n2102
+-1 1
+1- 1
+.names new_n2102 pi11 new_n5303
+11 1
+.names new_n2963 new_n5303 new_n5304
+-1 1
+1- 1
+.names new_n456 new_n5304 new_n5305
+11 1
+.names new_n456 new_n5301
+0 1
+.names pi31 pi66 new_n552
+01 1
+.names pi58 pi95 new_n706
+-1 1
+0- 1
+.names new_n706 pi5 new_n5298
+-1 1
+1- 1
+.names new_n552 new_n5298 new_n5299
+11 1
+.names new_n552 new_n5296
+0 1
+.names pi78 pi108 new_n1045
+01 1
+.names pi41 pi49 new_n160
+-1 1
+1- 1
+.names pi20 pi79 new_n287
+-1 1
+1- 1
+.names new_n160 new_n287 new_n1285
+10 1
+.names new_n1045 new_n1285 new_n5295
+-1 1
+1- 1
+.names new_n5296 new_n5295 new_n5297
+11 1
+.names new_n5299 new_n5297 new_n5300
+-1 1
+1- 1
+.names new_n5301 new_n5300 new_n5302
+11 1
+.names new_n5305 new_n5302 new_n5306
+-1 1
+1- 1
+.names new_n5307 new_n5306 new_n5308
+11 1
+.names new_n5317 new_n5308 new_n5318
+-1 1
+1- 1
+.names new_n502 new_n5318 new_n5319
+11 1
+.names new_n502 new_n5293
+0 1
+.names pi75 pi93 new_n917
+-0 1
+1- 1
+.names pi38 pi79 new_n874
+00 1
+.names pi98 pi56 new_n5289
+11 1
+.names pi98 new_n4984
+0 1
+.names pi74 pi88 new_n902
+-0 1
+1- 1
+.names new_n4984 new_n902 new_n5288
+11 1
+.names new_n5289 new_n5288 new_n5290
+-1 1
+1- 1
+.names new_n874 new_n5290 new_n5291
+01 1
+.names new_n917 new_n5291 new_n5292
+-1 1
+0- 1
+.names new_n5293 new_n5292 new_n5294
+11 1
+.names new_n5319 new_n5294 new_n5320
+-1 1
+1- 1
+.names new_n3121 new_n5320 new_n5321
+11 1
+.names new_n3121 new_n5286
+0 1
+.names new_n348 new_n829 new_n1979
+10 1
+.names new_n1019 new_n5283 new_n5284
+11 1
+.names new_n1979 new_n5284 new_n5285
+01 1
+.names new_n5286 new_n5285 new_n5287
+11 1
+.names new_n5321 new_n5287 new_n5322
+-1 1
+1- 1
+.names new_n3183 new_n5322 new_n5323
+-1 1
+0- 1
+.names new_n5324 new_n5323 new_n5325
+11 1
+.names new_n5672 new_n5325 new_n5673
+-1 1
+1- 1
+.names new_n5674 new_n5673 new_n5675
+11 1
+.names new_n5678 new_n5675 new_n5679
+-1 1
+1- 1
+.names new_n5680 new_n5679 new_n5681
+11 1
+.names new_n5693 new_n5681 new_n5694
+-1 1
+1- 1
+.names new_n3202 new_n5694 new_n5695
+11 1
+.names new_n3202 new_n5281
+0 1
+.names new_n2237 new_n2829 new_n3252
+-1 1
+0- 1
+.names new_n1354 new_n1743 new_n2888
+10 1
+.names new_n130 new_n241 new_n1154
+-1 1
+1- 1
+.names new_n551 new_n900 new_n1973
+00 1
+.names new_n1154 new_n1973 new_n2937
+-1 1
+0- 1
+.names new_n2888 new_n2937 new_n4150
+-1 1
+0- 1
+.names new_n170 new_n354 new_n1775
+-0 1
+1- 1
+.names new_n269 new_n976 new_n1849
+-1 1
+1- 1
+.names pi41 pi74 new_n632
+11 1
+.names new_n130 new_n632 new_n1364
+-1 1
+1- 1
+.names pi23 pi41 new_n142
+11 1
+.names pi25 pi82 new_n928
+00 1
+11 1
+.names new_n142 new_n928 new_n2126
+00 1
+11 1
+.names new_n1171 new_n2126 new_n2512
+10 1
+01 1
+.names new_n1245 new_n1797 new_n3187
+00 1
+.names pi75 pi127 new_n746
+-1 1
+1- 1
+.names new_n548 new_n746 new_n1926
+01 1
+.names pi74 new_n5260
+0 1
+.names pi78 new_n5260 new_n5261
+-1 1
+1- 1
+.names new_n1926 new_n5261 new_n5262
+11 1
+.names new_n3187 new_n5262 new_n5263
+11 1
+.names new_n3187 new_n5258
+0 1
+.names pi86 pi94 new_n1114
+11 1
+.names pi41 pi44 new_n458
+00 1
+.names new_n458 pi2 new_n5255
+11 1
+.names new_n1114 new_n5255 new_n5256
+11 1
+.names new_n1114 new_n5253
+0 1
+.names new_n1623 new_n1693 new_n2389
+00 1
+11 1
+.names new_n2389 new_n2598 new_n3477
+01 1
+.names new_n157 new_n4780 new_n5251
+-1 1
+1- 1
+.names new_n3477 new_n5251 new_n5252
+01 1
+.names new_n5253 new_n5252 new_n5254
+11 1
+.names new_n5256 new_n5254 new_n5257
+-1 1
+1- 1
+.names new_n5258 new_n5257 new_n5259
+11 1
+.names new_n5263 new_n5259 new_n5264
+-1 1
+1- 1
+.names new_n2512 new_n5264 new_n5265
+11 1
+.names new_n2512 new_n5249
+0 1
+.names pi4 pi80 new_n1036
+00 1
+.names new_n1036 pi37 new_n5246
+-1 1
+1- 1
+.names new_n1995 new_n5246 new_n5247
+11 1
+.names new_n1995 new_n5244
+0 1
+.names new_n1223 new_n1434 new_n2207
+-0 1
+1- 1
+.names new_n160 new_n287 new_n1293
+01 1
+.names new_n1293 new_n2054 new_n3144
+10 1
+.names new_n2207 new_n3144 new_n3629
+10 1
+01 1
+.names new_n3629 pi7 new_n5243
+01 1
+.names new_n5244 new_n5243 new_n5245
+11 1
+.names new_n5247 new_n5245 new_n5248
+-1 1
+1- 1
+.names new_n5249 new_n5248 new_n5250
+11 1
+.names new_n5265 new_n5250 new_n5266
+-1 1
+1- 1
+.names new_n1364 new_n5266 new_n5267
+11 1
+.names new_n1364 new_n5241
+0 1
+.names new_n210 new_n600 new_n1440
+01 1
+.names pi37 pi59 new_n1095
+00 1
+.names new_n140 new_n1095 new_n1862
+01 1
+.names new_n1953 new_n2054 new_n3198
+01 1
+.names new_n2467 new_n3198 new_n3287
+00 1
+11 1
+.names new_n3287 new_n4608 new_n5237
+-1 1
+1- 1
+.names new_n1862 new_n5237 new_n5238
+01 1
+.names new_n4188 new_n5238 new_n5239
+01 1
+.names new_n1440 new_n5239 new_n5240
+01 1
+.names new_n5241 new_n5240 new_n5242
+11 1
+.names new_n5267 new_n5242 new_n5268
+-1 1
+1- 1
+.names new_n868 new_n5268 new_n5269
+11 1
+.names new_n428 new_n482 new_n2076
+01 1
+.names new_n759 new_n1110 new_n2163
+-0 1
+1- 1
+.names new_n354 new_n5229
+0 1
+.names new_n976 new_n5229 new_n5230
+11 1
+.names new_n2163 new_n5230 new_n5231
+11 1
+.names new_n2163 new_n4462
+0 1
+.names new_n4462 new_n4714 new_n5228
+11 1
+.names new_n5231 new_n5228 new_n5232
+-1 1
+1- 1
+.names new_n1036 new_n5232 new_n5233
+-1 1
+1- 1
+.names new_n2076 new_n5233 new_n5234
+11 1
+.names new_n2076 new_n5226
+0 1
+.names new_n159 new_n720 new_n1495
+-1 1
+0- 1
+.names new_n169 new_n399 new_n1683
+-1 1
+1- 1
+.names new_n1495 new_n1683 new_n2915
+11 1
+.names new_n2178 new_n2915 new_n3495
+-0 1
+1- 1
+.names new_n1183 new_n1982 new_n2247
+11 1
+.names new_n140 new_n747 new_n1465
+10 1
+.names new_n147 new_n688 new_n2136
+00 1
+.names new_n1465 new_n2136 new_n3089
+10 1
+01 1
+.names new_n2247 new_n3089 new_n3428
+00 1
+11 1
+.names pi95 pi129 new_n326
+-1 1
+0- 1
+.names new_n2218 new_n3196 new_n3541
+-1 1
+0- 1
+.names pi49 pi118 new_n478
+-1 1
+0- 1
+.names pi29 pi48 new_n501
+10 1
+01 1
+.names new_n478 new_n501 new_n1314
+-1 1
+0- 1
+.names new_n130 new_n632 new_n1373
+00 1
+.names new_n1314 new_n1373 new_n2197
+-1 1
+0- 1
+.names new_n1641 new_n1935 new_n2716
+10 1
+01 1
+.names new_n2197 new_n2716 new_n3974
+-1 1
+0- 1
+.names new_n188 new_n442 new_n2066
+11 1
+.names new_n578 new_n866 new_n1737
+00 1
+.names new_n1737 new_n2102 new_n2976
+10 1
+01 1
+.names new_n303 new_n398 new_n1633
+01 1
+.names pi21 pi75 new_n1004
+-1 1
+0- 1
+.names new_n1633 new_n1004 new_n5209
+01 1
+.names new_n2976 new_n5209 new_n5210
+11 1
+.names pi69 new_n5210 new_n5211
+11 1
+.names pi69 new_n5207
+0 1
+.names pi5 new_n4374
+0 1
+.names pi28 new_n4374 new_n5204
+11 1
+.names new_n2255 new_n5204 new_n5205
+11 1
+.names new_n2255 new_n5202
+0 1
+.names new_n466 new_n620 new_n1618
+11 1
+.names new_n1463 new_n1618 new_n2560
+01 1
+.names new_n2560 pi3 new_n5201
+-1 1
+0- 1
+.names new_n5202 new_n5201 new_n5203
+11 1
+.names new_n5205 new_n5203 new_n5206
+-1 1
+1- 1
+.names new_n5207 new_n5206 new_n5208
+11 1
+.names new_n5211 new_n5208 new_n5212
+-1 1
+1- 1
+.names new_n2066 new_n5212 new_n5213
+-1 1
+1- 1
+.names new_n294 new_n5213 new_n5214
+11 1
+.names new_n294 new_n4842
+0 1
+.names pi49 pi53 new_n601
+00 1
+11 1
+.names new_n601 new_n5198
+0 1
+.names pi71 new_n5198 new_n5199
+11 1
+.names new_n4842 new_n5199 new_n5200
+11 1
+.names new_n5214 new_n5200 new_n5215
+-1 1
+1- 1
+.names new_n3974 new_n5215 new_n5216
+11 1
+.names new_n3974 new_n5196
+0 1
+.names pi37 pi43 new_n254
+01 1
+.names new_n254 new_n260 new_n2027
+-1 1
+0- 1
+.names new_n2027 new_n5195
+0 1
+.names new_n5196 new_n5195 new_n5197
+11 1
+.names new_n5216 new_n5197 new_n5217
+-1 1
+1- 1
+.names new_n3541 new_n5217 new_n5218
+11 1
+.names new_n3541 new_n4965
+0 1
+.names new_n1374 new_n1853 new_n3127
+-1 1
+0- 1
+.names new_n2268 new_n3127 new_n3353
+10 1
+01 1
+.names new_n3353 pi101 new_n5192
+11 1
+.names pi19 new_n5192 new_n5193
+01 1
+.names new_n4965 new_n5193 new_n5194
+11 1
+.names new_n5218 new_n5194 new_n5219
+-1 1
+1- 1
+.names new_n326 new_n5219 new_n5220
+11 1
+.names new_n326 new_n4785
+0 1
+.names new_n149 new_n528 new_n1193
+11 1
+.names new_n210 new_n600 new_n1442
+10 1
+01 1
+.names new_n1193 new_n1442 new_n2208
+00 1
+.names new_n1584 new_n1945 new_n2544
+01 1
+.names new_n2208 new_n2544 new_n4208
+00 1
+11 1
+.names new_n466 new_n620 new_n1616
+-1 1
+1- 1
+.names new_n4208 new_n1616 new_n5188
+11 1
+.names new_n4208 new_n5186
+0 1
+.names new_n131 new_n671 new_n1379
+10 1
+.names new_n170 new_n5184
+0 1
+.names new_n1379 new_n5184 new_n5185
+-1 1
+1- 1
+.names new_n5186 new_n5185 new_n5187
+11 1
+.names new_n5188 new_n5187 new_n5189
+-1 1
+1- 1
+.names new_n3128 new_n5189 new_n5190
+-1 1
+1- 1
+.names new_n4785 new_n5190 new_n5191
+11 1
+.names new_n5220 new_n5191 new_n5221
+-1 1
+1- 1
+.names new_n3428 new_n5221 new_n5222
+11 1
+.names new_n3428 new_n5182
+0 1
+.names new_n188 new_n442 new_n2068
+-0 1
+1- 1
+.names new_n1543 new_n2068 new_n2978
+-0 1
+0- 1
+.names pi78 pi108 new_n1047
+-1 1
+1- 1
+.names new_n397 new_n562 new_n1591
+-0 1
+0- 1
+.names pi36 pi59 new_n570
+-0 1
+1- 1
+.names new_n1591 new_n570 new_n5175
+-1 1
+1- 1
+.names new_n1047 new_n5175 new_n5176
+11 1
+.names new_n1047 new_n5173
+0 1
+.names pi26 new_n5171
+0 1
+.names new_n4131 new_n5171 new_n5172
+01 1
+.names new_n5173 new_n5172 new_n5174
+11 1
+.names new_n5176 new_n5174 new_n5177
+-1 1
+1- 1
+.names new_n2978 new_n5177 new_n5178
+11 1
+.names new_n2978 new_n5169
+0 1
+.names new_n247 new_n380 new_n1612
+00 1
+11 1
+.names new_n139 new_n720 new_n1274
+01 1
+.names new_n1274 new_n1623 new_n2348
+10 1
+.names new_n1463 new_n1793 new_n2382
+-0 1
+0- 1
+.names pi36 new_n5164
+0 1
+.names new_n784 new_n5164 new_n5165
+01 1
+.names new_n2382 new_n5165 new_n5166
+-1 1
+0- 1
+.names new_n2348 new_n5166 new_n5167
+-1 1
+1- 1
+.names new_n1612 new_n5167 new_n5168
+11 1
+.names new_n5169 new_n5168 new_n5170
+11 1
+.names new_n5178 new_n5170 new_n5179
+-1 1
+1- 1
+.names new_n3353 new_n5179 new_n5180
+11 1
+.names new_n3353 new_n5162
+0 1
+.names pi18 pi41 new_n297
+-0 1
+0- 1
+.names new_n1166 new_n1868 new_n2923
+00 1
+.names pi7 pi84 new_n383
+10 1
+.names new_n383 new_n5156
+0 1
+.names new_n2923 new_n5156 new_n5157
+11 1
+.names new_n2923 new_n5154
+0 1
+.names pi102 pi111 new_n940
+10 1
+01 1
+.names new_n659 new_n940 new_n1815
+01 1
+.names pi41 pi116 new_n640
+-0 1
+1- 1
+.names pi18 pi76 new_n869
+00 1
+11 1
+.names pi78 pi79 new_n220
+-0 1
+0- 1
+.names new_n869 new_n220 new_n5150
+11 1
+.names new_n869 new_n4690
+0 1
+.names new_n4690 new_n131 new_n5149
+11 1
+.names new_n5150 new_n5149 new_n5151
+-1 1
+1- 1
+.names new_n640 new_n5151 new_n5152
+11 1
+.names new_n1815 new_n5152 new_n5153
+-1 1
+1- 1
+.names new_n5154 new_n5153 new_n5155
+11 1
+.names new_n5157 new_n5155 new_n5158
+-1 1
+1- 1
+.names new_n514 new_n5158 new_n5159
+01 1
+.names new_n1375 new_n5159 new_n5160
+01 1
+.names new_n297 new_n5160 new_n5161
+-1 1
+0- 1
+.names new_n5162 new_n5161 new_n5163
+11 1
+.names new_n5180 new_n5163 new_n5181
+-1 1
+1- 1
+.names new_n5182 new_n5181 new_n5183
+11 1
+.names new_n5222 new_n5183 new_n5223
+-1 1
+1- 1
+.names new_n3495 new_n5223 new_n5224
+11 1
+.names new_n3495 new_n5147
+0 1
+.names pi10 pi50 new_n464
+-1 1
+0- 1
+.names new_n464 new_n5146
+0 1
+.names new_n5147 new_n5146 new_n5148
+11 1
+.names new_n5224 new_n5148 new_n5225
+-1 1
+1- 1
+.names new_n5226 new_n5225 new_n5227
+11 1
+.names new_n5234 new_n5227 new_n5235
+-1 1
+1- 1
+.names new_n5009 new_n5235 new_n5236
+11 1
+.names new_n5269 new_n5236 new_n5270
+-1 1
+1- 1
+.names new_n1849 new_n5270 new_n5271
+11 1
+.names new_n1849 new_n5144
+0 1
+.names pi10 pi96 new_n447
+-0 1
+1- 1
+.names new_n366 pi18 new_n5134
+01 1
+.names pi127 new_n5134 new_n5135
+11 1
+.names pi127 new_n5132
+0 1
+.names pi52 pi79 new_n5130
+11 1
+.names pi52 new_n4889
+0 1
+.names new_n241 new_n5128
+0 1
+.names new_n4889 new_n5128 new_n5129
+11 1
+.names new_n5130 new_n5129 new_n5131
+-1 1
+1- 1
+.names new_n5132 new_n5131 new_n5133
+11 1
+.names new_n5135 new_n5133 new_n5136
+-1 1
+1- 1
+.names pi77 new_n5136 new_n5137
+11 1
+.names pi18 pi41 new_n296
+00 1
+.names pi38 new_n5124
+0 1
+.names new_n296 new_n5124 new_n5125
+-1 1
+0- 1
+.names new_n5126 new_n5125 new_n5127
+11 1
+.names new_n5137 new_n5127 new_n5138
+-1 1
+1- 1
+.names new_n1665 new_n5138 new_n5139
+11 1
+.names new_n447 new_n5139 new_n5140
+11 1
+.names new_n447 new_n5122
+0 1
+.names pi44 pi86 new_n1107
+-0 1
+1- 1
+.names new_n1107 new_n4608 new_n5121
+-1 1
+1- 1
+.names new_n5122 new_n5121 new_n5123
+11 1
+.names new_n5140 new_n5123 new_n5141
+-1 1
+1- 1
+.names new_n927 new_n5141 new_n5142
+11 1
+.names new_n927 new_n5119
+0 1
+.names new_n868 new_n4608 new_n5118
+-1 1
+0- 1
+.names new_n5119 new_n5118 new_n5120
+11 1
+.names new_n5142 new_n5120 new_n5143
+-1 1
+1- 1
+.names new_n5144 new_n5143 new_n5145
+11 1
+.names new_n5271 new_n5145 new_n5272
+-1 1
+1- 1
+.names new_n1775 new_n5272 new_n5273
+11 1
+.names new_n1775 new_n5116
+0 1
+.names pi15 pi90 new_n816
+-0 1
+1- 1
+.names new_n131 new_n671 new_n1382
+-0 1
+0- 1
+.names new_n247 new_n380 new_n1604
+01 1
+.names new_n1382 new_n1604 new_n2477
+10 1
+.names new_n1203 new_n1362 new_n3157
+-1 1
+1- 1
+.names new_n2477 new_n3157 new_n3848
+10 1
+01 1
+.names new_n3848 pi21 new_n5111
+-1 1
+1- 1
+.names pi20 new_n5111 new_n5112
+01 1
+.names pi33 new_n5112 new_n5113
+11 1
+.names new_n816 new_n5113 new_n5114
+11 1
+.names new_n816 new_n5109
+0 1
+.names new_n374 new_n509 new_n1961
+-1 1
+0- 1
+.names new_n1724 new_n1961 new_n2798
+-0 1
+1- 1
+.names new_n2798 pi13 new_n5108
+-1 1
+1- 1
+.names new_n5109 new_n5108 new_n5110
+11 1
+.names new_n5114 new_n5110 new_n5115
+-1 1
+1- 1
+.names new_n5116 new_n5115 new_n5117
+11 1
+.names new_n5273 new_n5117 new_n5274
+-1 1
+1- 1
+.names new_n4150 new_n5274 new_n5275
+11 1
+.names new_n4150 new_n5106
+0 1
+.names new_n1584 new_n1945 new_n2546
+-0 1
+0- 1
+.names pi29 pi41 new_n546
+10 1
+01 1
+.names new_n1472 new_n2175 new_n2648
+-1 1
+0- 1
+.names new_n428 new_n656 new_n1527
+-1 1
+1- 1
+.names new_n1463 new_n1527 new_n3048
+-0 1
+0- 1
+.names new_n2648 new_n3048 new_n3994
+-1 1
+0- 1
+.names new_n1302 new_n1554 new_n2445
+00 1
+.names new_n428 new_n1019 new_n1389
+10 1
+.names pi80 pi109 new_n958
+-1 1
+1- 1
+.names new_n958 new_n4418 new_n5097
+-1 1
+1- 1
+.names new_n1389 new_n5097 new_n5098
+11 1
+.names new_n1389 new_n5095
+0 1
+.names new_n1171 new_n2126 new_n2514
+-0 1
+1- 1
+.names pi57 pi75 new_n491
+10 1
+01 1
+.names new_n139 new_n491 new_n1256
+-0 1
+0- 1
+.names new_n1256 new_n1477 new_n2943
+-0 1
+0- 1
+.names new_n2514 new_n2943 new_n3881
+11 1
+.names new_n2266 new_n2467 new_n3223
+00 1
+.names new_n3881 new_n3223 new_n5094
+-1 1
+0- 1
+.names new_n5095 new_n5094 new_n5096
+11 1
+.names new_n5098 new_n5096 new_n5099
+-1 1
+1- 1
+.names new_n2445 new_n5099 new_n5100
+01 1
+.names new_n3994 new_n5100 new_n5101
+11 1
+.names new_n546 new_n5101 new_n5102
+11 1
+.names new_n546 new_n5092
+0 1
+.names pi41 pi45 new_n439
+01 1
+.names pi41 pi85 new_n240
+-0 1
+1- 1
+.names new_n439 new_n240 new_n5089
+01 1
+.names new_n3128 new_n5089 new_n5090
+11 1
+.names new_n3128 new_n5087
+0 1
+.names new_n179 new_n863 new_n1396
+00 1
+11 1
+.names new_n1333 new_n1396 new_n2480
+10 1
+01 1
+.names new_n2208 new_n2480 new_n3340
+00 1
+.names pi22 pi80 new_n892
+-1 1
+0- 1
+.names new_n892 new_n5084
+0 1
+.names new_n3340 new_n5084 new_n5085
+11 1
+.names new_n3340 new_n5082
+0 1
+.names new_n979 new_n1150 new_n1941
+00 1
+.names pi10 pi92 new_n855
+10 1
+.names new_n369 new_n514 new_n1829
+00 1
+11 1
+.names new_n1829 pi25 new_n5079
+-1 1
+0- 1
+.names new_n855 new_n5079 new_n5080
+01 1
+.names new_n1941 new_n5080 new_n5081
+-1 1
+1- 1
+.names new_n5082 new_n5081 new_n5083
+11 1
+.names new_n5085 new_n5083 new_n5086
+-1 1
+1- 1
+.names new_n5087 new_n5086 new_n5088
+11 1
+.names new_n5090 new_n5088 new_n5091
+-1 1
+1- 1
+.names new_n5092 new_n5091 new_n5093
+11 1
+.names new_n5102 new_n5093 new_n5103
+-1 1
+1- 1
+.names new_n2546 new_n5103 new_n5104
+11 1
+.names new_n2546 new_n5077
+0 1
+.names new_n320 new_n1008 new_n1988
+-0 1
+0- 1
+.names new_n1403 new_n2053 new_n2669
+00 1
+.names pi12 pi49 new_n727
+-0 1
+0- 1
+.names pi2 pi86 new_n887
+-0 1
+0- 1
+.names new_n727 new_n887 new_n2093
+11 1
+.names new_n898 new_n1003 new_n1475
+-0 1
+0- 1
+.names pi40 pi117 new_n1135
+11 1
+.names new_n1135 new_n4756 new_n5071
+-1 1
+1- 1
+.names new_n1475 new_n5071 new_n5072
+-1 1
+0- 1
+.names new_n2093 new_n5072 new_n5073
+-1 1
+1- 1
+.names new_n2669 new_n5073 new_n5074
+11 1
+.names new_n2669 new_n5069
+0 1
+.names new_n199 new_n878 new_n2098
+-0 1
+1- 1
+.names pi72 new_n4737
+0 1
+.names new_n968 new_n4737 new_n5067
+-1 1
+1- 1
+.names new_n2098 new_n5067 new_n5068
+11 1
+.names new_n5069 new_n5068 new_n5070
+11 1
+.names new_n5074 new_n5070 new_n5075
+-1 1
+1- 1
+.names new_n1988 new_n5075 new_n5076
+-1 1
+0- 1
+.names new_n5077 new_n5076 new_n5078
+11 1
+.names new_n5104 new_n5078 new_n5105
+-1 1
+1- 1
+.names new_n5106 new_n5105 new_n5107
+11 1
+.names new_n5275 new_n5107 new_n5276
+-1 1
+1- 1
+.names new_n1613 new_n5276 new_n5277
+11 1
+.names new_n1613 new_n5065
+0 1
+.names new_n2348 new_n2387 new_n3251
+01 1
+.names new_n310 new_n749 new_n1752
+01 1
+.names new_n1684 new_n1791 new_n2555
+-0 1
+0- 1
+.names new_n2237 new_n2555 new_n3767
+10 1
+.names new_n3767 pi48 new_n5060
+11 1
+.names new_n1752 new_n5060 new_n5061
+11 1
+.names new_n1752 new_n5058
+0 1
+.names new_n137 new_n412 new_n1523
+10 1
+.names new_n900 new_n1097 new_n2045
+00 1
+11 1
+.names new_n1523 new_n2045 new_n3028
+-1 1
+0- 1
+.names new_n1433 new_n1479 new_n3085
+-1 1
+1- 1
+.names new_n3028 new_n3085 new_n3791
+01 1
+.names new_n142 new_n928 new_n2133
+01 1
+.names new_n2389 new_n2598 new_n3472
+-1 1
+1- 1
+.names new_n369 new_n514 new_n1833
+10 1
+.names new_n660 new_n779 new_n1560
+11 1
+.names new_n1273 new_n1560 new_n2875
+10 1
+.names new_n2875 new_n5049 new_n5050
+11 1
+.names new_n1109 new_n5050 new_n5051
+-1 1
+1- 1
+.names new_n1833 new_n5051 new_n5052
+-1 1
+1- 1
+.names new_n3472 new_n5052 new_n5053
+11 1
+.names new_n3472 new_n5047
+0 1
+.names pi10 pi127 new_n1122
+-0 1
+1- 1
+.names new_n1122 new_n5046
+0 1
+.names new_n5047 new_n5046 new_n5048
+11 1
+.names new_n5053 new_n5048 new_n5054
+-1 1
+1- 1
+.names new_n2133 new_n5054 new_n5055
+01 1
+.names new_n3791 new_n5055 new_n5056
+11 1
+.names new_n3791 new_n5044
+0 1
+.names new_n1724 new_n1961 new_n2805
+-0 1
+0- 1
+.names new_n1641 new_n1935 new_n2713
+-1 1
+1- 1
+.names new_n1543 new_n1951 new_n2965
+10 1
+.names new_n2207 new_n2965 new_n3350
+10 1
+.names pi38 pi79 new_n879
+11 1
+.names new_n2208 new_n2544 new_n4211
+00 1
+.names pi17 new_n4922
+0 1
+.names new_n4211 new_n4922 new_n5035
+11 1
+.names new_n879 new_n5035 new_n5036
+11 1
+.names new_n879 new_n5033
+0 1
+.names new_n320 new_n1008 new_n1987
+10 1
+01 1
+.names new_n138 new_n770 new_n1208
+-1 1
+1- 1
+.names new_n1987 new_n1208 new_n5031
+11 1
+.names new_n1987 new_n5029
+0 1
+.names new_n2340 new_n2688 new_n3651
+00 1
+.names new_n3651 new_n5026 new_n5027
+11 1
+.names new_n3651 new_n5024
+0 1
+.names new_n1673 new_n2144 new_n3191
+-1 1
+1- 1
+.names pi13 new_n5022
+0 1
+.names new_n3191 new_n5022 new_n5023
+-1 1
+1- 1
+.names new_n5024 new_n5023 new_n5025
+11 1
+.names new_n5027 new_n5025 new_n5028
+-1 1
+1- 1
+.names new_n5029 new_n5028 new_n5030
+11 1
+.names new_n5031 new_n5030 new_n5032
+-1 1
+1- 1
+.names new_n5033 new_n5032 new_n5034
+11 1
+.names new_n5036 new_n5034 new_n5037
+-1 1
+1- 1
+.names new_n3350 new_n5037 new_n5038
+11 1
+.names new_n3350 new_n5020
+0 1
+.names new_n142 new_n928 new_n2131
+10 1
+01 1
+.names pi65 pi119 new_n309
+10 1
+01 1
+.names pi75 pi127 new_n742
+-0 1
+0- 1
+.names new_n309 new_n742 new_n5018
+01 1
+.names new_n2131 new_n5018 new_n5019
+01 1
+.names new_n5020 new_n5019 new_n5021
+11 1
+.names new_n5038 new_n5021 new_n5039
+-1 1
+1- 1
+.names new_n2713 new_n5039 new_n5040
+11 1
+.names new_n2713 new_n5016
+0 1
+.names new_n958 new_n4391 new_n5015
+-1 1
+1- 1
+.names new_n5016 new_n5015 new_n5017
+11 1
+.names new_n5040 new_n5017 new_n5041
+-1 1
+1- 1
+.names new_n2805 new_n5041 new_n5042
+11 1
+.names new_n2805 new_n4506
+0 1
+.names new_n868 new_n5011 new_n5012
+11 1
+.names new_n732 new_n859 new_n2003
+01 1
+.names pi4 new_n4547
+0 1
+.names new_n2003 new_n4547 new_n5008
+-1 1
+0- 1
+.names new_n5009 new_n5008 new_n5010
+11 1
+.names new_n5012 new_n5010 new_n5013
+-1 1
+1- 1
+.names new_n4506 new_n5013 new_n5014
+11 1
+.names new_n5042 new_n5014 new_n5043
+-1 1
+1- 1
+.names new_n5044 new_n5043 new_n5045
+11 1
+.names new_n5056 new_n5045 new_n5057
+-1 1
+1- 1
+.names new_n5058 new_n5057 new_n5059
+11 1
+.names new_n5061 new_n5059 new_n5062
+-1 1
+1- 1
+.names new_n3251 new_n5062 new_n5063
+11 1
+.names new_n3251 new_n5006
+0 1
+.names pi102 pi111 new_n944
+-0 1
+1- 1
+.names new_n180 new_n1063 new_n1672
+01 1
+.names pi102 new_n4999
+0 1
+.names new_n1672 new_n4999 new_n5000
+11 1
+.names new_n1672 new_n4997
+0 1
+.names new_n428 new_n482 new_n2077
+-1 1
+1- 1
+.names pi49 pi85 new_n986
+00 1
+11 1
+.names new_n159 new_n720 new_n1494
+01 1
+.names new_n1344 new_n1494 new_n2425
+-0 1
+0- 1
+.names new_n149 new_n928 new_n1312
+11 1
+.names new_n1463 new_n1793 new_n2378
+00 1
+.names new_n139 new_n491 new_n1255
+-1 1
+0- 1
+.names new_n210 new_n600 new_n1443
+-0 1
+0- 1
+.names new_n1255 new_n1443 new_n2777
+-1 1
+0- 1
+.names new_n2378 new_n2777 new_n3299
+10 1
+01 1
+.names new_n478 new_n501 new_n1322
+10 1
+01 1
+.names new_n210 new_n600 new_n1435
+00 1
+11 1
+.names new_n1322 new_n1435 new_n2624
+10 1
+01 1
+.names new_n2624 new_n4984 new_n4985
+01 1
+.names new_n3299 new_n4985 new_n4986
+11 1
+.names new_n3299 new_n4982
+0 1
+.names new_n211 new_n4981
+0 1
+.names new_n4982 new_n4981 new_n4983
+11 1
+.names new_n4986 new_n4983 new_n4987
+-1 1
+1- 1
+.names new_n1312 new_n4987 new_n4988
+01 1
+.names new_n2425 new_n4988 new_n4989
+11 1
+.names new_n2425 new_n4979
+0 1
+.names pi20 pi79 new_n284
+-1 1
+0- 1
+.names new_n284 new_n4978
+0 1
+.names new_n4979 new_n4978 new_n4980
+11 1
+.names new_n4989 new_n4980 new_n4990
+-1 1
+1- 1
+.names new_n826 new_n4990 new_n4991
+11 1
+.names new_n826 new_n4976
+0 1
+.names pi85 pi106 new_n651
+-1 1
+1- 1
+.names new_n4976 new_n651 new_n4977
+11 1
+.names new_n4991 new_n4977 new_n4992
+-1 1
+1- 1
+.names new_n986 new_n4992 new_n4993
+11 1
+.names new_n986 new_n4873
+0 1
+.names pi4 pi80 new_n1035
+00 1
+11 1
+.names pi123 pi60 new_n4971
+11 1
+.names pi123 new_n4342
+0 1
+.names pi49 pi59 new_n184
+-0 1
+0- 1
+.names new_n184 new_n4226
+0 1
+.names new_n4342 new_n4226 new_n4970
+11 1
+.names new_n4971 new_n4970 new_n4972
+-1 1
+1- 1
+.names new_n1035 new_n4972 new_n4973
+-1 1
+1- 1
+.names pi31 new_n4973 new_n4974
+-1 1
+1- 1
+.names new_n4873 new_n4974 new_n4975
+11 1
+.names new_n4993 new_n4975 new_n4994
+-1 1
+1- 1
+.names new_n2077 new_n4994 new_n4995
+11 1
+.names new_n2077 new_n4968
+0 1
+.names pi75 pi118 new_n346
+10 1
+01 1
+.names pi10 pi50 new_n469
+00 1
+11 1
+.names new_n309 new_n469 new_n1577
+-1 1
+0- 1
+.names new_n346 new_n1577 new_n4967
+11 1
+.names new_n4968 new_n4967 new_n4969
+11 1
+.names new_n4995 new_n4969 new_n4996
+-1 1
+1- 1
+.names new_n4997 new_n4996 new_n4998
+11 1
+.names new_n5000 new_n4998 new_n5001
+-1 1
+1- 1
+.names new_n3541 new_n5001 new_n5002
+11 1
+.names new_n1333 new_n1396 new_n2486
+-0 1
+1- 1
+.names new_n2486 new_n2798 new_n3729
+10 1
+01 1
+.names new_n1097 pi74 new_n4958
+-1 1
+0- 1
+.names new_n335 new_n4958 new_n4959
+11 1
+.names new_n335 new_n4956
+0 1
+.names new_n157 new_n1059 new_n1417
+-0 1
+1- 1
+.names new_n4956 new_n1417 new_n4957
+11 1
+.names new_n4959 new_n4957 new_n4960
+-1 1
+1- 1
+.names new_n2199 new_n4960 new_n4961
+11 1
+.names new_n2199 new_n4954
+0 1
+.names new_n179 new_n4374 new_n4953
+11 1
+.names new_n4954 new_n4953 new_n4955
+11 1
+.names new_n4961 new_n4955 new_n4962
+-1 1
+1- 1
+.names new_n3729 new_n4962 new_n4963
+11 1
+.names new_n3729 new_n4951
+0 1
+.names new_n2888 new_n2937 new_n4151
+01 1
+.names new_n4151 pi8 new_n4950
+-1 1
+0- 1
+.names new_n4951 new_n4950 new_n4952
+11 1
+.names new_n4963 new_n4952 new_n4964
+-1 1
+1- 1
+.names new_n4965 new_n4964 new_n4966
+11 1
+.names new_n5002 new_n4966 new_n5003
+-1 1
+1- 1
+.names new_n944 new_n5003 new_n5004
+11 1
+.names new_n944 new_n4948
+0 1
+.names pi70 pi78 new_n678
+00 1
+11 1
+.names new_n678 pi3 new_n4945
+11 1
+.names new_n678 new_n4943
+0 1
+.names pi31 pi66 new_n554
+10 1
+.names new_n554 new_n4942
+0 1
+.names new_n4943 new_n4942 new_n4944
+11 1
+.names new_n4945 new_n4944 new_n4946
+-1 1
+1- 1
+.names new_n482 new_n4946 new_n4947
+-1 1
+1- 1
+.names new_n4948 new_n4947 new_n4949
+11 1
+.names new_n5004 new_n4949 new_n5005
+-1 1
+1- 1
+.names new_n5006 new_n5005 new_n5007
+11 1
+.names new_n5063 new_n5007 new_n5064
+-1 1
+1- 1
+.names new_n5065 new_n5064 new_n5066
+11 1
+.names new_n5277 new_n5066 new_n5278
+-1 1
+1- 1
+.names new_n3252 new_n5278 new_n5279
+11 1
+.names new_n3252 new_n4940
+0 1
+.names new_n1433 new_n1479 new_n3087
+10 1
+.names new_n2246 new_n3007 new_n3441
+11 1
+.names new_n1737 new_n2102 new_n2968
+-0 1
+1- 1
+.names new_n2208 new_n2968 new_n3317
+-1 1
+0- 1
+.names new_n149 new_n928 new_n1313
+-1 1
+1- 1
+.names new_n1314 new_n1373 new_n2196
+01 1
+.names new_n1302 new_n1554 new_n2438
+-1 1
+0- 1
+.names new_n2196 new_n2438 new_n3371
+-0 1
+1- 1
+.names new_n1463 new_n1618 new_n2567
+11 1
+.names new_n2648 new_n3048 new_n3993
+00 1
+11 1
+.names pi41 pi44 new_n459
+01 1
+.names new_n459 new_n4737 new_n4924
+11 1
+.names new_n3993 new_n4924 new_n4925
+11 1
+.names pi17 new_n4925 new_n4926
+11 1
+.names new_n1455 new_n1464 new_n2491
+00 1
+11 1
+.names new_n2491 new_n4374 new_n4919
+-1 1
+1- 1
+.names new_n2658 new_n4919 new_n4920
+11 1
+.names new_n2658 new_n4917
+0 1
+.names pi85 pi106 new_n653
+10 1
+.names new_n4917 new_n653 new_n4918
+11 1
+.names new_n4920 new_n4918 new_n4921
+-1 1
+1- 1
+.names new_n4922 new_n4921 new_n4923
+11 1
+.names new_n4926 new_n4923 new_n4927
+-1 1
+1- 1
+.names new_n2635 new_n4927 new_n4928
+01 1
+.names new_n2567 new_n4928 new_n4929
+01 1
+.names new_n3371 new_n4929 new_n4930
+11 1
+.names new_n3371 new_n4915
+0 1
+.names pi41 pi94 new_n586
+00 1
+11 1
+.names pi86 pi93 new_n848
+01 1
+.names new_n292 pi7 new_n4909
+11 1
+.names new_n3900 new_n4909 new_n4910
+11 1
+.names new_n3900 new_n4907
+0 1
+.names pi66 pi108 new_n429
+00 1
+11 1
+.names new_n1273 new_n1560 new_n2874
+10 1
+01 1
+.names new_n2874 pi7 new_n4904
+11 1
+.names new_n429 new_n4904 new_n4905
+11 1
+.names new_n429 new_n4902
+0 1
+.names pi74 pi88 new_n901
+-1 1
+0- 1
+.names new_n901 pi19 new_n4901
+-1 1
+1- 1
+.names new_n4902 new_n4901 new_n4903
+11 1
+.names new_n4905 new_n4903 new_n4906
+-1 1
+1- 1
+.names new_n4907 new_n4906 new_n4908
+11 1
+.names new_n4910 new_n4908 new_n4911
+-1 1
+1- 1
+.names new_n848 new_n4911 new_n4912
+01 1
+.names new_n586 new_n4912 new_n4913
+11 1
+.names new_n586 new_n4899
+0 1
+.names pi41 pi122 new_n481
+-1 1
+1- 1
+.names new_n481 new_n4896
+0 1
+.names new_n2003 new_n4896 new_n4897
+11 1
+.names new_n2003 new_n4894
+0 1
+.names new_n2197 new_n4889 new_n4890
+01 1
+.names new_n4187 new_n4890 new_n4891
+-1 1
+0- 1
+.names pi84 new_n4891 new_n4892
+11 1
+.names pi84 new_n4887
+0 1
+.names new_n1484 new_n1653 new_n2465
+11 1
+.names new_n2465 pi50 new_n4886
+-1 1
+0- 1
+.names new_n4887 new_n4886 new_n4888
+11 1
+.names new_n4892 new_n4888 new_n4893
+-1 1
+1- 1
+.names new_n4894 new_n4893 new_n4895
+11 1
+.names new_n4897 new_n4895 new_n4898
+-1 1
+1- 1
+.names new_n4899 new_n4898 new_n4900
+11 1
+.names new_n4913 new_n4900 new_n4914
+-1 1
+1- 1
+.names new_n4915 new_n4914 new_n4916
+11 1
+.names new_n4930 new_n4916 new_n4931
+-1 1
+1- 1
+.names new_n1313 new_n4931 new_n4932
+11 1
+.names new_n1313 new_n4884
+0 1
+.names new_n210 new_n600 new_n1438
+-1 1
+1- 1
+.names new_n1438 new_n4608 new_n4883
+01 1
+.names new_n4884 new_n4883 new_n4885
+11 1
+.names new_n4932 new_n4885 new_n4933
+-1 1
+1- 1
+.names new_n3317 new_n4933 new_n4934
+11 1
+.names new_n3317 new_n4881
+0 1
+.names new_n759 new_n1110 new_n2156
+-0 1
+0- 1
+.names new_n1373 new_n2156 new_n2747
+-0 1
+1- 1
+.names new_n2147 new_n4875 new_n4876
+11 1
+.names new_n986 new_n4876 new_n4877
+11 1
+.names pi14 new_n4870
+0 1
+.names pi106 new_n4870 new_n4871
+11 1
+.names pi106 new_n4868
+0 1
+.names pi41 pi67 new_n192
+10 1
+.names new_n192 new_n4723
+0 1
+.names new_n4868 new_n4723 new_n4869
+11 1
+.names new_n4871 new_n4869 new_n4872
+-1 1
+1- 1
+.names new_n4873 new_n4872 new_n4874
+11 1
+.names new_n4877 new_n4874 new_n4878
+-1 1
+1- 1
+.names new_n2747 new_n4878 new_n4879
+11 1
+.names new_n2747 new_n4866
+0 1
+.names new_n151 new_n818 new_n1247
+10 1
+01 1
+.names new_n2013 pi21 new_n4864
+01 1
+.names new_n1247 new_n4864 new_n4865
+-1 1
+0- 1
+.names new_n4866 new_n4865 new_n4867
+11 1
+.names new_n4879 new_n4867 new_n4880
+-1 1
+1- 1
+.names new_n4881 new_n4880 new_n4882
+11 1
+.names new_n4934 new_n4882 new_n4935
+-1 1
+1- 1
+.names new_n3441 new_n4935 new_n4936
+11 1
+.names new_n3441 new_n4862
+0 1
+.names new_n1333 new_n1813 new_n2319
+00 1
+11 1
+.names new_n1203 new_n1362 new_n3155
+10 1
+.names new_n2319 new_n3155 new_n3741
+00 1
+11 1
+.names pi103 pi114 new_n174
+11 1
+.names new_n320 new_n1008 new_n1985
+10 1
+.names new_n174 new_n1985 new_n4854
+11 1
+.names new_n174 new_n4236
+0 1
+.names pi40 pi80 new_n788
+00 1
+11 1
+.names new_n551 new_n900 new_n1970
+01 1
+.names pi41 pi114 new_n511
+-0 1
+1- 1
+.names pi59 new_n4847
+0 1
+.names new_n511 new_n4847 new_n4848
+-1 1
+1- 1
+.names new_n1970 new_n4848 new_n4849
+11 1
+.names new_n1970 new_n4845
+0 1
+.names pi49 pi85 new_n989
+00 1
+.names new_n989 new_n4842 new_n4843
+11 1
+.names new_n989 new_n4840
+0 1
+.names new_n2246 new_n3007 new_n3440
+-1 1
+1- 1
+.names pi77 pi125 new_n4836
+01 1
+.names new_n599 new_n4836 new_n4837
+-1 1
+1- 1
+.names new_n3440 new_n4837 new_n4838
+11 1
+.names new_n3440 new_n4834
+0 1
+.names pi49 pi119 new_n694
+-1 1
+0- 1
+.names new_n4834 new_n694 new_n4835
+11 1
+.names new_n4838 new_n4835 new_n4839
+-1 1
+1- 1
+.names new_n4840 new_n4839 new_n4841
+11 1
+.names new_n4843 new_n4841 new_n4844
+-1 1
+1- 1
+.names new_n4845 new_n4844 new_n4846
+11 1
+.names new_n4849 new_n4846 new_n4850
+-1 1
+1- 1
+.names new_n788 new_n4850 new_n4851
+11 1
+.names new_n788 new_n4832
+0 1
+.names new_n659 new_n940 new_n1821
+10 1
+01 1
+.names pi37 new_n4266
+0 1
+.names new_n1821 new_n4266 new_n4830
+01 1
+.names pi3 new_n4830 new_n4831
+11 1
+.names new_n4832 new_n4831 new_n4833
+11 1
+.names new_n4851 new_n4833 new_n4852
+-1 1
+1- 1
+.names new_n4236 new_n4852 new_n4853
+11 1
+.names new_n4854 new_n4853 new_n4855
+-1 1
+1- 1
+.names new_n1732 new_n4855 new_n4856
+11 1
+.names new_n1732 new_n4828
+0 1
+.names new_n1293 new_n2054 new_n3146
+00 1
+11 1
+.names new_n169 new_n399 new_n1681
+10 1
+01 1
+.names new_n1681 new_n4391 new_n4823
+11 1
+.names pi67 new_n4823 new_n4824
+11 1
+.names pi67 new_n4821
+0 1
+.names pi29 pi48 new_n507
+11 1
+.names new_n348 new_n829 new_n1980
+00 1
+11 1
+.names new_n1183 new_n1980 new_n2825
+10 1
+01 1
+.names new_n2825 pi11 new_n4819
+01 1
+.names new_n507 new_n4819 new_n4820
+-1 1
+1- 1
+.names new_n4821 new_n4820 new_n4822
+11 1
+.names new_n4824 new_n4822 new_n4825
+-1 1
+1- 1
+.names new_n3146 new_n4825 new_n4826
+11 1
+.names new_n3146 new_n4817
+0 1
+.names new_n374 new_n509 new_n1954
+-0 1
+0- 1
+.names pi18 new_n1954 new_n4815
+11 1
+.names pi18 new_n4813
+0 1
+.names new_n1543 new_n1951 new_n2967
+11 1
+.names pi102 pi111 new_n943
+10 1
+.names new_n2967 new_n943 new_n4811
+-1 1
+1- 1
+.names new_n1522 new_n4811 new_n4812
+-1 1
+0- 1
+.names new_n4813 new_n4812 new_n4814
+11 1
+.names new_n4815 new_n4814 new_n4816
+-1 1
+1- 1
+.names new_n4817 new_n4816 new_n4818
+11 1
+.names new_n4826 new_n4818 new_n4827
+-1 1
+1- 1
+.names new_n4828 new_n4827 new_n4829
+11 1
+.names new_n4856 new_n4829 new_n4857
+-1 1
+1- 1
+.names new_n4211 new_n4857 new_n4858
+11 1
+.names new_n4211 new_n4809
+0 1
+.names new_n1523 new_n2045 new_n3030
+00 1
+.names pi29 new_n4804
+0 1
+.names new_n491 new_n4804 new_n4805
+01 1
+.names new_n3030 new_n4805 new_n4806
+11 1
+.names new_n1749 new_n4806 new_n4807
+11 1
+.names new_n1749 new_n4802
+0 1
+.names new_n149 new_n528 new_n1191
+-1 1
+1- 1
+.names pi102 pi111 new_n949
+00 1
+11 1
+.names new_n151 new_n818 new_n1244
+-0 1
+1- 1
+.names new_n1244 pi12 new_n4795
+01 1
+.names new_n949 new_n4795 new_n4796
+11 1
+.names new_n949 new_n4793
+0 1
+.names new_n1472 new_n2175 new_n2649
+01 1
+.names new_n360 new_n510 new_n1663
+00 1
+.names new_n1183 new_n1663 new_n2413
+01 1
+.names new_n1472 new_n1723 new_n3023
+10 1
+01 1
+.names new_n237 new_n342 new_n1803
+-0 1
+1- 1
+.names pi103 pi114 new_n173
+00 1
+.names new_n173 new_n4787
+0 1
+.names new_n1803 new_n4787 new_n4788
+11 1
+.names new_n3023 new_n4788 new_n4789
+01 1
+.names pi128 new_n4789 new_n4790
+01 1
+.names new_n2413 new_n4790 new_n4791
+-1 1
+1- 1
+.names new_n2649 new_n4791 new_n4792
+-1 1
+1- 1
+.names new_n4793 new_n4792 new_n4794
+11 1
+.names new_n4796 new_n4794 new_n4797
+-1 1
+1- 1
+.names new_n326 new_n4797 new_n4798
+11 1
+.names pi16 pi86 new_n216
+01 1
+.names new_n2382 new_n4780 new_n4781
+-1 1
+1- 1
+.names new_n1247 new_n4781 new_n4782
+11 1
+.names new_n380 new_n4782 new_n4783
+11 1
+.names new_n216 new_n4783 new_n4784
+-1 1
+1- 1
+.names new_n4785 new_n4784 new_n4786
+11 1
+.names new_n4798 new_n4786 new_n4799
+-1 1
+1- 1
+.names new_n1191 new_n4799 new_n4800
+11 1
+.names new_n1191 new_n4778
+0 1
+.names new_n138 new_n770 new_n1213
+10 1
+.names new_n246 new_n714 new_n1944
+-1 1
+0- 1
+.names new_n1213 new_n1944 new_n2796
+00 1
+11 1
+.names new_n2716 new_n2796 new_n4217
+10 1
+01 1
+.names pi54 pi58 new_n594
+-1 1
+0- 1
+.names new_n4217 new_n594 new_n4776
+11 1
+.names new_n2045 new_n4776 new_n4777
+-1 1
+0- 1
+.names new_n4778 new_n4777 new_n4779
+11 1
+.names new_n4800 new_n4779 new_n4801
+-1 1
+1- 1
+.names new_n4802 new_n4801 new_n4803
+11 1
+.names new_n4807 new_n4803 new_n4808
+-1 1
+1- 1
+.names new_n4809 new_n4808 new_n4810
+11 1
+.names new_n4858 new_n4810 new_n4859
+-1 1
+1- 1
+.names new_n3741 new_n4859 new_n4860
+11 1
+.names new_n3741 new_n4774
+0 1
+.names new_n1584 new_n1945 new_n2538
+-1 1
+1- 1
+.names new_n397 new_n1146 new_n2149
+-1 1
+0- 1
+.names new_n151 new_n1088 new_n1600
+-0 1
+0- 1
+.names new_n2577 new_n3018 new_n3937
+00 1
+11 1
+.names new_n1354 new_n1724 new_n2222
+00 1
+11 1
+.names new_n2222 new_n2247 new_n3759
+-1 1
+0- 1
+.names pi85 pi106 new_n655
+01 1
+.names new_n3196 new_n4342 new_n4760
+11 1
+.names new_n3196 new_n4758
+0 1
+.names pi41 pi49 new_n162
+-0 1
+1- 1
+.names new_n4758 new_n162 new_n4759
+11 1
+.names new_n4760 new_n4759 new_n4761
+-1 1
+1- 1
+.names new_n655 new_n4761 new_n4762
+-1 1
+1- 1
+.names new_n3759 new_n4762 new_n4763
+-1 1
+0- 1
+.names new_n3937 new_n4763 new_n4764
+-1 1
+0- 1
+.names pi113 new_n4764 new_n4765
+11 1
+.names pi33 pi78 new_n1076
+11 1
+.names new_n131 new_n671 new_n1380
+10 1
+01 1
+.names new_n1543 new_n1951 new_n2964
+-0 1
+1- 1
+.names pi33 pi78 new_n1075
+10 1
+.names new_n1075 new_n4608 new_n4751
+01 1
+.names new_n2964 new_n4751 new_n4752
+-1 1
+1- 1
+.names new_n1380 new_n4752 new_n4753
+11 1
+.names new_n1380 new_n4749
+0 1
+.names new_n4749 new_n1053 new_n4750
+11 1
+.names new_n4753 new_n4750 new_n4754
+-1 1
+1- 1
+.names new_n1076 new_n4754 new_n4755
+-1 1
+1- 1
+.names new_n4756 new_n4755 new_n4757
+11 1
+.names new_n4765 new_n4757 new_n4766
+-1 1
+1- 1
+.names new_n1600 new_n4766 new_n4767
+11 1
+.names new_n1600 new_n4747
+0 1
+.names pi49 pi119 new_n693
+00 1
+11 1
+.names new_n1203 new_n1362 new_n3149
+-0 1
+0- 1
+.names new_n3149 new_n4742
+0 1
+.names new_n397 new_n4742 new_n4743
+11 1
+.names new_n397 new_n4740
+0 1
+.names pi41 pi67 new_n194
+11 1
+.names new_n194 new_n4739
+0 1
+.names new_n4740 new_n4739 new_n4741
+11 1
+.names new_n4743 new_n4741 new_n4744
+-1 1
+1- 1
+.names new_n693 new_n4744 new_n4745
+11 1
+.names new_n1803 new_n4745 new_n4746
+-1 1
+0- 1
+.names new_n4747 new_n4746 new_n4748
+11 1
+.names new_n4767 new_n4748 new_n4768
+-1 1
+1- 1
+.names new_n2149 new_n4768 new_n4769
+-1 1
+0- 1
+.names pi72 new_n4769 new_n4770
+11 1
+.names pi37 pi43 new_n252
+-0 1
+0- 1
+.names new_n131 new_n384 new_n1552
+00 1
+11 1
+.names new_n1953 new_n2054 new_n3200
+-1 1
+0- 1
+.names new_n254 new_n260 new_n2029
+11 1
+.names pi41 pi85 new_n243
+00 1
+11 1
+.names new_n2029 new_n243 new_n4729
+11 1
+.names new_n3200 new_n4729 new_n4730
+-1 1
+0- 1
+.names new_n3287 new_n4730 new_n4731
+11 1
+.names new_n3287 new_n4727
+0 1
+.names new_n1797 new_n4723 new_n4724
+11 1
+.names new_n1797 new_n4721
+0 1
+.names new_n4721 new_n174 new_n4722
+11 1
+.names new_n4724 new_n4722 new_n4725
+-1 1
+1- 1
+.names new_n1815 new_n4725 new_n4726
+-1 1
+1- 1
+.names new_n4727 new_n4726 new_n4728
+11 1
+.names new_n4731 new_n4728 new_n4732
+-1 1
+1- 1
+.names new_n1552 new_n4732 new_n4733
+11 1
+.names new_n1552 new_n4719
+0 1
+.names pi21 pi75 new_n1009
+01 1
+.names new_n1174 new_n1562 new_n2184
+10 1
+01 1
+.names new_n2184 new_n4714 new_n4715
+-1 1
+0- 1
+.names pi9 new_n4715 new_n4716
+01 1
+.names new_n1009 new_n4716 new_n4717
+-1 1
+1- 1
+.names pi88 new_n4717 new_n4718
+-1 1
+0- 1
+.names new_n4719 new_n4718 new_n4720
+11 1
+.names new_n4733 new_n4720 new_n4734
+-1 1
+1- 1
+.names new_n252 new_n4734 new_n4735
+11 1
+.names new_n252 new_n4712
+0 1
+.names new_n188 new_n442 new_n2070
+00 1
+.names pi6 new_n4709
+0 1
+.names new_n2070 new_n4709 new_n4710
+11 1
+.names new_n2070 new_n4707
+0 1
+.names new_n1373 new_n2156 new_n2739
+-1 1
+0- 1
+.names new_n2739 new_n4706
+0 1
+.names new_n4707 new_n4706 new_n4708
+11 1
+.names new_n4710 new_n4708 new_n4711
+-1 1
+1- 1
+.names new_n4712 new_n4711 new_n4713
+11 1
+.names new_n4735 new_n4713 new_n4736
+-1 1
+1- 1
+.names new_n4737 new_n4736 new_n4738
+11 1
+.names new_n4770 new_n4738 new_n4771
+-1 1
+1- 1
+.names new_n2538 new_n4771 new_n4772
+11 1
+.names new_n2538 new_n4704
+0 1
+.names new_n1382 new_n1604 new_n2476
+10 1
+01 1
+.names new_n1183 new_n1980 new_n2823
+01 1
+.names new_n1183 new_n1663 new_n2408
+00 1
+.names new_n2408 new_n2658 new_n3482
+-1 1
+1- 1
+.names new_n3482 new_n4699
+0 1
+.names new_n2823 new_n4699 new_n4700
+11 1
+.names new_n2823 new_n4697
+0 1
+.names pi29 pi48 new_n503
+01 1
+.names new_n1995 new_n503 new_n4692
+-1 1
+1- 1
+.names new_n1075 new_n4692 new_n4693
+-1 1
+1- 1
+.names pi83 new_n4693 new_n4694
+11 1
+.names new_n869 new_n4694 new_n4695
+11 1
+.names new_n466 new_n620 new_n1619
+-0 1
+0- 1
+.names new_n1255 new_n4624 new_n4687
+-1 1
+1- 1
+.names new_n1619 new_n4687 new_n4688
+11 1
+.names new_n1619 new_n4685
+0 1
+.names new_n279 new_n532 new_n1339
+-1 1
+1- 1
+.names pi67 pi13 new_n4681
+-1 1
+1- 1
+.names new_n3937 new_n4681 new_n4682
+11 1
+.names new_n459 new_n4682 new_n4683
+-1 1
+1- 1
+.names new_n1339 new_n4683 new_n4684
+01 1
+.names new_n4685 new_n4684 new_n4686
+11 1
+.names new_n4688 new_n4686 new_n4689
+-1 1
+1- 1
+.names new_n4690 new_n4689 new_n4691
+11 1
+.names new_n4695 new_n4691 new_n4696
+-1 1
+1- 1
+.names new_n4697 new_n4696 new_n4698
+11 1
+.names new_n4700 new_n4698 new_n4701
+-1 1
+1- 1
+.names new_n2476 new_n4701 new_n4702
+11 1
+.names new_n2476 new_n4679
+0 1
+.names new_n1275 new_n1441 new_n2659
+10 1
+.names new_n1975 new_n2014 new_n3006
+00 1
+11 1
+.names new_n2659 new_n3006 new_n3659
+10 1
+01 1
+.names new_n759 new_n1110 new_n2154
+01 1
+.names new_n260 new_n270 new_n1691
+10 1
+01 1
+.names pi58 pi51 new_n4674
+11 1
+.names new_n1691 new_n4674 new_n4675
+-1 1
+1- 1
+.names new_n2154 new_n4675 new_n4676
+11 1
+.names new_n3659 new_n4676 new_n4677
+11 1
+.names new_n3659 new_n4672
+0 1
+.names new_n232 new_n466 new_n1173
+01 1
+.names new_n2590 new_n4668
+0 1
+.names new_n409 new_n4668 new_n4669
+-1 1
+0- 1
+.names new_n1173 new_n4669 new_n4670
+11 1
+.names new_n1173 new_n4666
+0 1
+.names new_n2184 pi19 new_n4665
+11 1
+.names new_n4666 new_n4665 new_n4667
+11 1
+.names new_n4670 new_n4667 new_n4671
+-1 1
+1- 1
+.names new_n4672 new_n4671 new_n4673
+11 1
+.names new_n4677 new_n4673 new_n4678
+-1 1
+1- 1
+.names new_n4679 new_n4678 new_n4680
+11 1
+.names new_n4702 new_n4680 new_n4703
+-1 1
+1- 1
+.names new_n4704 new_n4703 new_n4705
+11 1
+.names new_n4772 new_n4705 new_n4773
+-1 1
+1- 1
+.names new_n4774 new_n4773 new_n4775
+11 1
+.names new_n4860 new_n4775 new_n4861
+-1 1
+1- 1
+.names new_n4862 new_n4861 new_n4863
+11 1
+.names new_n4936 new_n4863 new_n4937
+-1 1
+1- 1
+.names new_n3087 new_n4937 new_n4938
+11 1
+.names new_n3087 new_n4663
+0 1
+.names new_n2268 new_n3127 new_n3355
+-1 1
+1- 1
+.names new_n1245 new_n1797 new_n3186
+-0 1
+0- 1
+.names new_n1354 new_n1724 new_n2226
+-0 1
+0- 1
+.names new_n1613 new_n2155 new_n2629
+01 1
+.names new_n2226 new_n2629 new_n4158
+-0 1
+1- 1
+.names new_n548 new_n746 new_n1929
+10 1
+.names new_n309 new_n469 new_n1583
+11 1
+.names pi41 pi49 new_n168
+-0 1
+0- 1
+.names new_n168 new_n863 new_n1755
+00 1
+11 1
+.names new_n1583 new_n1755 new_n2867
+-0 1
+1- 1
+.names pi16 pi96 new_n797
+01 1
+.names pi72 pi100 new_n1061
+-0 1
+0- 1
+.names pi79 pi121 new_n1058
+10 1
+01 1
+.names pi78 pi79 new_n224
+10 1
+.names new_n491 new_n224 new_n4646
+-1 1
+1- 1
+.names new_n1058 new_n4646 new_n4647
+-1 1
+1- 1
+.names new_n1061 new_n4647 new_n4648
+11 1
+.names new_n1061 new_n4644
+0 1
+.names new_n4644 pi18 new_n4645
+11 1
+.names new_n4648 new_n4645 new_n4649
+-1 1
+1- 1
+.names new_n797 new_n4649 new_n4650
+-1 1
+1- 1
+.names new_n2867 new_n4650 new_n4651
+11 1
+.names new_n2867 new_n4642
+0 1
+.names new_n4642 pi21 new_n4643
+11 1
+.names new_n4651 new_n4643 new_n4652
+-1 1
+1- 1
+.names new_n1929 new_n4652 new_n4653
+11 1
+.names new_n1929 new_n4640
+0 1
+.names new_n1333 new_n1922 new_n3076
+10 1
+.names new_n2196 new_n3076 new_n4223
+-1 1
+0- 1
+.names new_n2606 new_n2668 new_n4120
+10 1
+.names new_n469 new_n770 new_n1707
+-1 1
+1- 1
+.names new_n1154 new_n1973 new_n2935
+00 1
+.names new_n2389 new_n2598 new_n3475
+00 1
+11 1
+.names new_n3475 new_n234 new_n4631
+11 1
+.names new_n2935 new_n4631 new_n4632
+11 1
+.names new_n2935 new_n4629
+0 1
+.names new_n329 new_n4624 new_n4625
+01 1
+.names new_n1613 new_n4625 new_n4626
+01 1
+.names new_n957 new_n4626 new_n4627
+-1 1
+1- 1
+.names new_n2825 new_n4627 new_n4628
+11 1
+.names new_n4629 new_n4628 new_n4630
+11 1
+.names new_n4632 new_n4630 new_n4633
+-1 1
+1- 1
+.names new_n1707 new_n4633 new_n4634
+11 1
+.names new_n1707 new_n4622
+0 1
+.names new_n4622 pi108 new_n4623
+11 1
+.names new_n4634 new_n4623 new_n4635
+-1 1
+1- 1
+.names new_n4120 new_n4635 new_n4636
+11 1
+.names new_n4120 new_n4620
+0 1
+.names new_n1344 new_n1494 new_n2423
+-1 1
+0- 1
+.names pi47 pi86 new_n275
+-0 1
+1- 1
+.names new_n151 new_n818 new_n1248
+-0 1
+0- 1
+.names new_n732 new_n859 new_n2000
+00 1
+11 1
+.names new_n551 new_n732 new_n2168
+10 1
+.names new_n269 new_n976 new_n1850
+-0 1
+1- 1
+.names new_n1850 new_n4608 new_n4609
+01 1
+.names new_n2168 new_n4609 new_n4610
+-1 1
+1- 1
+.names new_n346 new_n4610 new_n4611
+01 1
+.names new_n2000 new_n4611 new_n4612
+11 1
+.names new_n2000 new_n4606
+0 1
+.names new_n718 new_n1049 new_n1243
+11 1
+.names new_n478 new_n501 new_n1315
+00 1
+11 1
+.names new_n1243 new_n1315 new_n2286
+00 1
+11 1
+.names new_n2286 pi44 new_n4605
+-1 1
+0- 1
+.names new_n4606 new_n4605 new_n4607
+11 1
+.names new_n4612 new_n4607 new_n4613
+-1 1
+1- 1
+.names new_n1248 new_n4613 new_n4614
+11 1
+.names new_n1248 new_n4603
+0 1
+.names new_n868 pi4 new_n4602
+11 1
+.names new_n4603 new_n4602 new_n4604
+11 1
+.names new_n4614 new_n4604 new_n4615
+-1 1
+1- 1
+.names new_n275 new_n4615 new_n4616
+11 1
+.names new_n2423 new_n4616 new_n4617
+-1 1
+0- 1
+.names new_n412 new_n4617 new_n4618
+11 1
+.names new_n412 new_n4600
+0 1
+.names new_n528 new_n891 new_n1835
+00 1
+11 1
+.names new_n1423 new_n1835 new_n2957
+10 1
+.names new_n902 new_n4593
+0 1
+.names new_n2957 new_n4593 new_n4594
+11 1
+.names new_n2957 new_n4591
+0 1
+.names pi25 pi82 new_n925
+10 1
+.names new_n2319 new_n3155 new_n3738
+11 1
+.names new_n360 new_n510 new_n1654
+-1 1
+1- 1
+.names new_n3738 new_n1654 new_n4588
+01 1
+.names new_n925 new_n4588 new_n4589
+11 1
+.names new_n925 new_n4586
+0 1
+.names new_n469 new_n770 new_n1711
+00 1
+11 1
+.names new_n1344 new_n1952 new_n2229
+-0 1
+1- 1
+.names new_n384 new_n2229 new_n4582
+11 1
+.names new_n384 new_n4580
+0 1
+.names new_n1623 new_n1693 new_n2395
+01 1
+.names new_n3848 pi7 new_n4578
+01 1
+.names new_n2395 new_n4578 new_n4579
+11 1
+.names new_n4580 new_n4579 new_n4581
+11 1
+.names new_n4582 new_n4581 new_n4583
+-1 1
+1- 1
+.names new_n1711 new_n4583 new_n4584
+11 1
+.names new_n1711 new_n4576
+0 1
+.names new_n1166 new_n1868 new_n2919
+00 1
+11 1
+.names new_n1273 new_n1914 new_n2696
+00 1
+11 1
+.names new_n2696 pi18 new_n4572
+11 1
+.names new_n2696 new_n4570
+0 1
+.names new_n4570 pi21 new_n4571
+11 1
+.names new_n4572 new_n4571 new_n4573
+-1 1
+1- 1
+.names new_n2919 new_n4573 new_n4574
+-1 1
+1- 1
+.names new_n405 new_n4574 new_n4575
+-1 1
+1- 1
+.names new_n4576 new_n4575 new_n4577
+11 1
+.names new_n4584 new_n4577 new_n4585
+-1 1
+1- 1
+.names new_n4586 new_n4585 new_n4587
+11 1
+.names new_n4589 new_n4587 new_n4590
+-1 1
+1- 1
+.names new_n4591 new_n4590 new_n4592
+11 1
+.names new_n4594 new_n4592 new_n4595
+-1 1
+1- 1
+.names new_n3191 new_n4595 new_n4596
+11 1
+.names new_n3191 new_n4568
+0 1
+.names new_n149 new_n210 new_n1233
+-0 1
+1- 1
+.names new_n188 new_n442 new_n2073
+10 1
+.names new_n1233 new_n2073 new_n2456
+-1 1
+1- 1
+.names new_n1171 new_n1242 new_n2764
+10 1
+.names pi44 pi86 new_n1104
+-0 1
+0- 1
+.names new_n1223 new_n1563 new_n2259
+00 1
+.names new_n1553 new_n2115 new_n2576
+10 1
+.names new_n2259 new_n2576 new_n3711
+-1 1
+0- 1
+.names pi41 pi85 new_n244
+-1 1
+0- 1
+.names new_n2964 new_n244 new_n4559
+11 1
+.names new_n2964 new_n4557
+0 1
+.names pi84 pi21 new_n4556
+11 1
+.names new_n4557 new_n4556 new_n4558
+11 1
+.names new_n4559 new_n4558 new_n4560
+-1 1
+1- 1
+.names pi9 new_n4560 new_n4561
+11 1
+.names pi9 new_n4441
+0 1
+.names pi10 pi127 new_n1125
+11 1
+.names new_n1125 pi8 new_n4554
+11 1
+.names new_n4441 new_n4554 new_n4555
+11 1
+.names new_n4561 new_n4555 new_n4562
+-1 1
+1- 1
+.names new_n3711 new_n4562 new_n4563
+-1 1
+0- 1
+.names new_n1104 new_n4563 new_n4564
+11 1
+.names new_n2764 new_n4564 new_n4565
+11 1
+.names new_n2764 new_n4552
+0 1
+.names new_n170 new_n770 new_n1350
+10 1
+01 1
+.names pi13 pi86 new_n808
+00 1
+11 1
+.names new_n808 new_n4547 new_n4548
+-1 1
+1- 1
+.names new_n1350 new_n4548 new_n4549
+11 1
+.names new_n1350 new_n4545
+0 1
+.names new_n4545 pi15 new_n4546
+11 1
+.names new_n4549 new_n4546 new_n4550
+-1 1
+1- 1
+.names new_n2874 new_n4550 new_n4551
+-1 1
+0- 1
+.names new_n4552 new_n4551 new_n4553
+11 1
+.names new_n4565 new_n4553 new_n4566
+-1 1
+1- 1
+.names new_n2456 new_n4566 new_n4567
+-1 1
+0- 1
+.names new_n4568 new_n4567 new_n4569
+11 1
+.names new_n4596 new_n4569 new_n4597
+-1 1
+1- 1
+.names pi39 new_n4597 new_n4598
+11 1
+.names pi65 pi119 new_n305
+00 1
+.names pi72 pi100 new_n1060
+10 1
+01 1
+.names new_n1060 new_n384 new_n4536
+11 1
+.names new_n1060 new_n4534
+0 1
+.names new_n4534 pi44 new_n4535
+11 1
+.names new_n4536 new_n4535 new_n4537
+-1 1
+1- 1
+.names pi43 new_n4537 new_n4538
+11 1
+.names new_n305 new_n4538 new_n4539
+11 1
+.names new_n305 new_n4532
+0 1
+.names new_n180 new_n1063 new_n1670
+-1 1
+0- 1
+.names new_n1324 new_n1963 new_n2337
+-1 1
+0- 1
+.names new_n2337 new_n3007 new_n3795
+00 1
+11 1
+.names pi49 pi53 new_n602
+-1 1
+1- 1
+.names pi63 new_n602 new_n4525
+11 1
+.names pi63 new_n4523
+0 1
+.names pi62 pi6 new_n4522
+11 1
+.names new_n4523 new_n4522 new_n4524
+11 1
+.names new_n4525 new_n4524 new_n4526
+-1 1
+1- 1
+.names new_n630 new_n4526 new_n4527
+11 1
+.names new_n3795 new_n4527 new_n4528
+11 1
+.names new_n3795 new_n4520
+0 1
+.names new_n1009 pi119 new_n4519
+-1 1
+0- 1
+.names new_n4520 new_n4519 new_n4521
+11 1
+.names new_n4528 new_n4521 new_n4529
+-1 1
+1- 1
+.names new_n1670 new_n4529 new_n4530
+11 1
+.names new_n1670 new_n4517
+0 1
+.names new_n250 new_n646 new_n1637
+11 1
+.names pi29 pi41 new_n547
+-0 1
+0- 1
+.names new_n170 new_n547 new_n1407
+-1 1
+1- 1
+.names pi14 pi97 new_n978
+11 1
+.names new_n978 pi8 new_n4512
+-1 1
+0- 1
+.names new_n1242 new_n4512 new_n4513
+11 1
+.names new_n1242 new_n4510
+0 1
+.names new_n310 new_n329 new_n1296
+-1 1
+1- 1
+.names new_n149 new_n1118 new_n1867
+-0 1
+0- 1
+.names new_n1867 new_n4508
+0 1
+.names new_n1296 new_n4508 new_n4509
+-1 1
+0- 1
+.names new_n4510 new_n4509 new_n4511
+11 1
+.names new_n4513 new_n4511 new_n4514
+-1 1
+1- 1
+.names new_n1407 new_n4514 new_n4515
+11 1
+.names new_n1637 new_n4515 new_n4516
+01 1
+.names new_n4517 new_n4516 new_n4518
+11 1
+.names new_n4530 new_n4518 new_n4531
+-1 1
+1- 1
+.names new_n4532 new_n4531 new_n4533
+11 1
+.names new_n4539 new_n4533 new_n4540
+-1 1
+1- 1
+.names new_n2805 new_n4540 new_n4541
+11 1
+.names new_n1543 new_n1951 new_n2966
+-1 1
+1- 1
+.names new_n1975 new_n2014 new_n3004
+11 1
+.names pi18 pi76 new_n864
+-0 1
+1- 1
+.names new_n864 new_n4501
+0 1
+.names new_n3004 new_n4501 new_n4502
+-1 1
+1- 1
+.names pi105 new_n4502 new_n4503
+01 1
+.names new_n2966 new_n4503 new_n4504
+11 1
+.names new_n2966 new_n4499
+0 1
+.names new_n4499 pi34 new_n4500
+11 1
+.names new_n4504 new_n4500 new_n4505
+-1 1
+1- 1
+.names new_n4506 new_n4505 new_n4507
+11 1
+.names new_n4541 new_n4507 new_n4542
+-1 1
+1- 1
+.names new_n4543 new_n4542 new_n4544
+11 1
+.names new_n4598 new_n4544 new_n4599
+-1 1
+1- 1
+.names new_n4600 new_n4599 new_n4601
+11 1
+.names new_n4618 new_n4601 new_n4619
+-1 1
+1- 1
+.names new_n4620 new_n4619 new_n4621
+11 1
+.names new_n4636 new_n4621 new_n4637
+-1 1
+1- 1
+.names new_n4223 new_n4637 new_n4638
+11 1
+.names new_n4223 new_n4497
+0 1
+.names new_n732 new_n859 new_n1999
+00 1
+.names new_n1255 new_n1443 new_n2775
+11 1
+.names new_n623 new_n4494
+0 1
+.names new_n2775 new_n4494 new_n4495
+01 1
+.names new_n1999 new_n4495 new_n4496
+01 1
+.names new_n4497 new_n4496 new_n4498
+11 1
+.names new_n4638 new_n4498 new_n4639
+-1 1
+1- 1
+.names new_n4640 new_n4639 new_n4641
+11 1
+.names new_n4653 new_n4641 new_n4654
+-1 1
+1- 1
+.names new_n4158 new_n4654 new_n4655
+11 1
+.names new_n4158 new_n4492
+0 1
+.names pi58 pi95 new_n704
+01 1
+.names new_n310 new_n329 new_n1299
+00 1
+11 1
+.names new_n3191 pi16 new_n4488
+01 1
+.names new_n1299 new_n4488 new_n4489
+11 1
+.names new_n1299 new_n4486
+0 1
+.names pi78 pi108 new_n1042
+00 1
+.names new_n1042 pi2 new_n4485
+-1 1
+0- 1
+.names new_n4486 new_n4485 new_n4487
+11 1
+.names new_n4489 new_n4487 new_n4490
+-1 1
+1- 1
+.names new_n704 new_n4490 new_n4491
+-1 1
+1- 1
+.names new_n4492 new_n4491 new_n4493
+11 1
+.names new_n4655 new_n4493 new_n4656
+-1 1
+1- 1
+.names new_n3601 new_n4656 new_n4657
+11 1
+.names pi72 pi100 new_n1068
+11 1
+.names pi41 pi58 new_n373
+10 1
+01 1
+.names new_n528 new_n891 new_n1838
+11 1
+.names pi41 pi49 new_n163
+-1 1
+0- 1
+.names new_n163 new_n4472
+0 1
+.names new_n1838 new_n4472 new_n4473
+-1 1
+1- 1
+.names new_n373 new_n4473 new_n4474
+11 1
+.names pi48 new_n4474 new_n4475
+11 1
+.names pi48 new_n4470
+0 1
+.names new_n149 new_n528 new_n1184
+-0 1
+0- 1
+.names new_n528 new_n891 new_n1834
+-1 1
+0- 1
+.names new_n1184 new_n1834 new_n2308
+-1 1
+1- 1
+.names new_n1333 new_n1813 new_n2321
+-1 1
+0- 1
+.names new_n2308 new_n2321 new_n4025
+00 1
+11 1
+.names pi101 pi111 new_n365
+-0 1
+0- 1
+.names new_n365 pi30 new_n4466
+01 1
+.names new_n4025 new_n4466 new_n4467
+11 1
+.names new_n4025 new_n4255
+0 1
+.names pi96 pi28 new_n4464
+-1 1
+1- 1
+.names new_n4255 new_n4464 new_n4465
+11 1
+.names new_n4467 new_n4465 new_n4468
+-1 1
+1- 1
+.names new_n1042 new_n4468 new_n4469
+-1 1
+1- 1
+.names new_n4470 new_n4469 new_n4471
+11 1
+.names new_n4475 new_n4471 new_n4476
+-1 1
+1- 1
+.names new_n2163 new_n4476 new_n4477
+11 1
+.names pi66 pi11 new_n4456
+11 1
+.names pi66 new_n4454
+0 1
+.names new_n4454 pi5 new_n4455
+11 1
+.names new_n4456 new_n4455 new_n4457
+-1 1
+1- 1
+.names new_n978 new_n4457 new_n4458
+11 1
+.names new_n978 new_n4452
+0 1
+.names new_n3028 new_n3085 new_n3783
+10 1
+.names new_n3783 new_n4418 new_n4450
+11 1
+.names new_n3783 new_n4448
+0 1
+.names pi86 pi102 new_n267
+-1 1
+0- 1
+.names new_n161 new_n267 new_n1887
+-1 1
+0- 1
+.names new_n4448 new_n1887 new_n4449
+11 1
+.names new_n4450 new_n4449 new_n4451
+-1 1
+1- 1
+.names new_n4452 new_n4451 new_n4453
+11 1
+.names new_n4458 new_n4453 new_n4459
+-1 1
+1- 1
+.names new_n4217 new_n4459 new_n4460
+11 1
+.names new_n4217 new_n4446
+0 1
+.names new_n1223 new_n1563 new_n2261
+00 1
+11 1
+.names new_n1184 new_n1834 new_n2317
+00 1
+.names new_n2261 new_n2317 new_n4015
+10 1
+01 1
+.names pi35 new_n4441 new_n4442
+-1 1
+1- 1
+.names new_n826 new_n4442 new_n4443
+11 1
+.names new_n4015 new_n4443 new_n4444
+11 1
+.names new_n4015 new_n4439
+0 1
+.names new_n254 new_n260 new_n2025
+10 1
+01 1
+.names pi42 pi6 new_n4437
+-1 1
+0- 1
+.names new_n2025 new_n4437 new_n4438
+01 1
+.names new_n4439 new_n4438 new_n4440
+11 1
+.names new_n4444 new_n4440 new_n4445
+-1 1
+1- 1
+.names new_n4446 new_n4445 new_n4447
+11 1
+.names new_n4460 new_n4447 new_n4461
+-1 1
+1- 1
+.names new_n4462 new_n4461 new_n4463
+11 1
+.names new_n4477 new_n4463 new_n4478
+-1 1
+1- 1
+.names new_n1068 new_n4478 new_n4479
+11 1
+.names new_n1068 new_n4435
+0 1
+.names new_n1472 new_n2175 new_n2656
+-0 1
+1- 1
+.names new_n2246 new_n2656 new_n3866
+-1 1
+0- 1
+.names new_n1088 new_n1527 new_n4427
+11 1
+.names new_n1088 new_n4425
+0 1
+.names pi23 pi49 new_n415
+11 1
+.names pi38 pi79 new_n877
+01 1
+.names pi33 new_n4344
+0 1
+.names new_n877 new_n4344 new_n4422
+11 1
+.names new_n415 new_n4422 new_n4423
+11 1
+.names new_n415 new_n4420
+0 1
+.names pi14 pi97 new_n974
+01 1
+.names new_n974 new_n4418 new_n4419
+-1 1
+0- 1
+.names new_n4420 new_n4419 new_n4421
+11 1
+.names new_n4423 new_n4421 new_n4424
+-1 1
+1- 1
+.names new_n4425 new_n4424 new_n4426
+11 1
+.names new_n4427 new_n4426 new_n4428
+-1 1
+1- 1
+.names new_n4100 new_n4428 new_n4429
+11 1
+.names new_n246 new_n714 new_n1947
+-0 1
+1- 1
+.names pi22 pi80 new_n895
+10 1
+01 1
+.names new_n3475 pi23 new_n4410
+-1 1
+1- 1
+.names new_n895 new_n4410 new_n4411
+11 1
+.names new_n895 new_n4408
+0 1
+.names new_n130 new_n4405
+0 1
+.names new_n655 new_n4405 new_n4406
+-1 1
+1- 1
+.names new_n509 new_n4406 new_n4407
+-1 1
+1- 1
+.names new_n4408 new_n4407 new_n4409
+11 1
+.names new_n4411 new_n4409 new_n4412
+-1 1
+1- 1
+.names new_n3437 new_n4412 new_n4413
+01 1
+.names new_n1947 new_n4413 new_n4414
+11 1
+.names new_n1947 new_n4403
+0 1
+.names new_n3477 pi11 new_n4402
+-1 1
+0- 1
+.names new_n4403 new_n4402 new_n4404
+11 1
+.names new_n4414 new_n4404 new_n4415
+-1 1
+1- 1
+.names new_n4416 new_n4415 new_n4417
+11 1
+.names new_n4429 new_n4417 new_n4430
+-1 1
+1- 1
+.names new_n458 new_n4430 new_n4431
+11 1
+.names new_n458 new_n4400
+0 1
+.names pi41 pi116 new_n647
+-1 1
+0- 1
+.names pi49 pi118 new_n471
+10 1
+.names new_n160 new_n287 new_n1290
+11 1
+.names pi39 new_n4391 new_n4392
+-1 1
+1- 1
+.names new_n1290 new_n4392 new_n4393
+-1 1
+0- 1
+.names new_n1244 new_n4393 new_n4394
+11 1
+.names new_n1244 new_n4389
+0 1
+.names new_n269 new_n976 new_n1852
+00 1
+11 1
+.names new_n1852 pi53 new_n4388
+11 1
+.names new_n4389 new_n4388 new_n4390
+11 1
+.names new_n4394 new_n4390 new_n4395
+-1 1
+1- 1
+.names new_n471 new_n4395 new_n4396
+01 1
+.names new_n647 new_n4396 new_n4397
+-1 1
+0- 1
+.names new_n2066 new_n4397 new_n4398
+11 1
+.names new_n2066 new_n4386
+0 1
+.names pi37 pi43 new_n257
+11 1
+.names pi78 pi79 new_n226
+01 1
+.names new_n1974 pi11 new_n4378
+-1 1
+1- 1
+.names new_n226 new_n4378 new_n4379
+11 1
+.names new_n226 new_n4376
+0 1
+.names new_n508 new_n780 new_n1431
+10 1
+.names new_n1431 new_n4374 new_n4375
+11 1
+.names new_n4376 new_n4375 new_n4377
+11 1
+.names new_n4379 new_n4377 new_n4380
+-1 1
+1- 1
+.names new_n257 new_n4380 new_n4381
+-1 1
+1- 1
+.names new_n599 new_n4381 new_n4382
+01 1
+.names new_n2547 new_n4382 new_n4383
+01 1
+.names new_n2995 new_n4383 new_n4384
+11 1
+.names new_n2995 new_n4372
+0 1
+.names new_n478 new_n501 new_n1316
+11 1
+.names new_n1274 new_n1316 new_n2880
+10 1
+.names new_n2308 new_n2880 new_n4052
+-1 1
+1- 1
+.names pi26 pi54 new_n735
+01 1
+.names pi49 pi119 new_n695
+10 1
+.names pi20 pi80 new_n4365
+-1 1
+0- 1
+.names new_n695 new_n4365 new_n4366
+11 1
+.names new_n695 new_n4363
+0 1
+.names pi47 pi86 new_n274
+01 1
+.names new_n274 pi9 new_n4362
+-1 1
+0- 1
+.names new_n4363 new_n4362 new_n4364
+11 1
+.names new_n4366 new_n4364 new_n4367
+-1 1
+1- 1
+.names new_n735 new_n4367 new_n4368
+11 1
+.names new_n735 new_n4360
+0 1
+.names pi29 pi48 new_n506
+-0 1
+1- 1
+.names new_n369 new_n514 new_n1832
+11 1
+.names pi10 pi127 new_n1120
+-1 1
+0- 1
+.names new_n925 pi5 new_n4351
+-1 1
+0- 1
+.names new_n1120 new_n4351 new_n4352
+11 1
+.names new_n1120 new_n4349
+0 1
+.names pi112 new_n4348
+0 1
+.names new_n4349 new_n4348 new_n4350
+11 1
+.names new_n4352 new_n4350 new_n4353
+-1 1
+1- 1
+.names new_n1832 new_n4353 new_n4354
+01 1
+.names new_n956 new_n4354 new_n4355
+-1 1
+1- 1
+.names new_n506 new_n4355 new_n4356
+11 1
+.names new_n506 new_n4346
+0 1
+.names new_n1375 new_n1753 new_n3107
+01 1
+.names new_n3107 new_n4344 new_n4345
+-1 1
+0- 1
+.names new_n4346 new_n4345 new_n4347
+11 1
+.names new_n4356 new_n4347 new_n4357
+-1 1
+1- 1
+.names pi123 new_n4357 new_n4358
+11 1
+.names pi33 pi78 new_n1079
+01 1
+.names new_n1274 new_n1623 new_n2350
+-1 1
+1- 1
+.names new_n1333 new_n1396 new_n2483
+00 1
+.names pi77 pi101 new_n4335
+01 1
+.names pi98 new_n4335 new_n4336
+-1 1
+1- 1
+.names new_n2483 new_n4336 new_n4337
+01 1
+.names new_n663 new_n4337 new_n4338
+-1 1
+1- 1
+.names new_n2350 new_n4338 new_n4339
+11 1
+.names new_n2350 new_n4333
+0 1
+.names pi10 pi92 new_n851
+10 1
+01 1
+.names new_n851 new_n4331
+0 1
+.names new_n1947 new_n4331 new_n4332
+01 1
+.names new_n4333 new_n4332 new_n4334
+11 1
+.names new_n4339 new_n4334 new_n4340
+-1 1
+1- 1
+.names new_n1079 new_n4340 new_n4341
+01 1
+.names new_n4342 new_n4341 new_n4343
+11 1
+.names new_n4358 new_n4343 new_n4359
+-1 1
+1- 1
+.names new_n4360 new_n4359 new_n4361
+11 1
+.names new_n4368 new_n4361 new_n4369
+-1 1
+1- 1
+.names new_n4052 new_n4369 new_n4370
+11 1
+.names new_n4052 new_n4329
+0 1
+.names new_n1245 new_n1797 new_n3181
+10 1
+01 1
+.names pi12 new_n4327
+0 1
+.names new_n3181 new_n4327 new_n4328
+01 1
+.names new_n4329 new_n4328 new_n4330
+11 1
+.names new_n4370 new_n4330 new_n4371
+-1 1
+1- 1
+.names new_n4372 new_n4371 new_n4373
+11 1
+.names new_n4384 new_n4373 new_n4385
+-1 1
+1- 1
+.names new_n4386 new_n4385 new_n4387
+11 1
+.names new_n4398 new_n4387 new_n4399
+-1 1
+1- 1
+.names new_n4400 new_n4399 new_n4401
+11 1
+.names new_n4431 new_n4401 new_n4432
+-1 1
+1- 1
+.names new_n3866 new_n4432 new_n4433
+11 1
+.names new_n3866 new_n4325
+0 1
+.names new_n439 pi6 new_n4324
+-1 1
+0- 1
+.names new_n4325 new_n4324 new_n4326
+11 1
+.names new_n4433 new_n4326 new_n4434
+-1 1
+1- 1
+.names new_n4435 new_n4434 new_n4436
+11 1
+.names new_n4479 new_n4436 new_n4480
+-1 1
+1- 1
+.names new_n602 new_n4480 new_n4481
+11 1
+.names new_n602 new_n4322
+0 1
+.names new_n1333 new_n1396 new_n2485
+00 1
+11 1
+.names new_n1523 new_n2045 new_n3036
+10 1
+01 1
+.names new_n259 new_n688 new_n1652
+-1 1
+1- 1
+.names new_n144 new_n4315
+0 1
+.names new_n1652 new_n4315 new_n4316
+-1 1
+0- 1
+.names new_n2634 new_n4316 new_n4317
+11 1
+.names new_n3036 new_n4317 new_n4318
+11 1
+.names new_n3036 new_n4313
+0 1
+.names pi58 new_n4307
+0 1
+.names new_n1036 new_n4307 new_n4308
+11 1
+.names new_n1036 new_n4305
+0 1
+.names pi2 pi79 new_n773
+00 1
+.names new_n4305 new_n773 new_n4306
+11 1
+.names new_n4308 new_n4306 new_n4309
+-1 1
+1- 1
+.names new_n1293 new_n4309 new_n4310
+11 1
+.names new_n1293 new_n4303
+0 1
+.names new_n292 new_n405 new_n1769
+10 1
+.names new_n1472 new_n2175 new_n2650
+-0 1
+0- 1
+.names new_n1769 new_n2650 new_n4302
+01 1
+.names new_n4303 new_n4302 new_n4304
+11 1
+.names new_n4310 new_n4304 new_n4311
+-1 1
+1- 1
+.names new_n1336 new_n4311 new_n4312
+01 1
+.names new_n4313 new_n4312 new_n4314
+11 1
+.names new_n4318 new_n4314 new_n4319
+-1 1
+1- 1
+.names new_n2485 new_n4319 new_n4320
+11 1
+.names new_n2485 new_n4300
+0 1
+.names pi41 pi127 new_n611
+-1 1
+1- 1
+.names new_n659 new_n940 new_n1814
+-1 1
+0- 1
+.names new_n160 new_n460 new_n1505
+11 1
+.names new_n1049 new_n1505 new_n4293
+-1 1
+1- 1
+.names new_n2547 new_n4293 new_n4294
+01 1
+.names pi111 new_n4294 new_n4295
+11 1
+.names pi111 new_n4291
+0 1
+.names pi59 pi65 new_n668
+10 1
+01 1
+.names new_n270 new_n669 new_n1331
+00 1
+.names new_n1331 pi7 new_n4288
+-1 1
+0- 1
+.names new_n1475 new_n4288 new_n4289
+11 1
+.names new_n668 new_n4289 new_n4290
+-1 1
+0- 1
+.names new_n4291 new_n4290 new_n4292
+11 1
+.names new_n4295 new_n4292 new_n4296
+-1 1
+1- 1
+.names new_n1814 new_n4296 new_n4297
+-1 1
+0- 1
+.names new_n611 new_n4297 new_n4298
+11 1
+.names new_n611 new_n4286
+0 1
+.names new_n1163 new_n1585 new_n2434
+00 1
+11 1
+.names new_n970 new_n982 new_n1462
+00 1
+11 1
+.names new_n1462 new_n1523 new_n2377
+11 1
+.names new_n2317 new_n2377 new_n3270
+10 1
+01 1
+.names new_n3270 pi35 new_n4283
+-1 1
+1- 1
+.names new_n2434 new_n4283 new_n4284
+11 1
+.names new_n2434 new_n4281
+0 1
+.names new_n1184 new_n1834 new_n2309
+11 1
+.names new_n2196 new_n2309 new_n3403
+-1 1
+0- 1
+.names new_n3403 new_n4280
+0 1
+.names new_n4281 new_n4280 new_n4282
+11 1
+.names new_n4284 new_n4282 new_n4285
+-1 1
+1- 1
+.names new_n4286 new_n4285 new_n4287
+11 1
+.names new_n4298 new_n4287 new_n4299
+-1 1
+1- 1
+.names new_n4300 new_n4299 new_n4301
+11 1
+.names new_n4320 new_n4301 new_n4321
+-1 1
+1- 1
+.names new_n4322 new_n4321 new_n4323
+11 1
+.names new_n4481 new_n4323 new_n4482
+-1 1
+1- 1
+.names new_n4483 new_n4482 new_n4484
+11 1
+.names new_n4657 new_n4484 new_n4658
+-1 1
+1- 1
+.names new_n3186 new_n4658 new_n4659
+11 1
+.names new_n3186 new_n4278
+0 1
+.names new_n2606 new_n2668 new_n4112
+01 1
+.names new_n4112 new_n274 new_n4271
+-1 1
+1- 1
+.names new_n3157 new_n4271 new_n4272
+11 1
+.names new_n3157 new_n4269
+0 1
+.names new_n1255 new_n1443 new_n2774
+01 1
+.names new_n1076 new_n4266 new_n4267
+-1 1
+0- 1
+.names new_n2774 new_n4267 new_n4268
+01 1
+.names new_n4269 new_n4268 new_n4270
+11 1
+.names new_n4272 new_n4270 new_n4273
+-1 1
+1- 1
+.names new_n2131 new_n4273 new_n4274
+11 1
+.names new_n2131 new_n4264
+0 1
+.names new_n2496 new_n3028 new_n4090
+-0 1
+1- 1
+.names pi103 pi114 new_n171
+-1 1
+0- 1
+.names pi61 new_n171 new_n4260
+11 1
+.names pi99 new_n4257
+0 1
+.names new_n4258 new_n4257 new_n4259
+11 1
+.names new_n4260 new_n4259 new_n4261
+-1 1
+1- 1
+.names new_n4090 new_n4261 new_n4262
+-1 1
+0- 1
+.names pi87 new_n4262 new_n4263
+-1 1
+0- 1
+.names new_n4264 new_n4263 new_n4265
+11 1
+.names new_n4274 new_n4265 new_n4275
+-1 1
+1- 1
+.names new_n4025 new_n4275 new_n4276
+11 1
+.names new_n267 pi10 new_n4249
+01 1
+.names pi101 new_n4249 new_n4250
+11 1
+.names pi101 new_n4247
+0 1
+.names pi75 pi118 new_n340
+-0 1
+0- 1
+.names new_n4247 new_n340 new_n4248
+11 1
+.names new_n4250 new_n4248 new_n4251
+-1 1
+1- 1
+.names pi112 new_n4251 new_n4252
+11 1
+.names new_n2073 new_n4252 new_n4253
+11 1
+.names new_n2073 new_n4227
+0 1
+.names new_n1523 new_n2045 new_n3033
+11 1
+.names new_n134 new_n4243
+0 1
+.names new_n3033 new_n4243 new_n4244
+01 1
+.names new_n1036 new_n4244 new_n4245
+-1 1
+1- 1
+.names new_n4227 new_n4245 new_n4246
+11 1
+.names new_n4253 new_n4246 new_n4254
+-1 1
+1- 1
+.names new_n4255 new_n4254 new_n4256
+11 1
+.names new_n4276 new_n4256 new_n4277
+-1 1
+1- 1
+.names new_n4278 new_n4277 new_n4279
+11 1
+.names new_n4659 new_n4279 new_n4660
+-1 1
+1- 1
+.names new_n3355 new_n4660 new_n4661
+11 1
+.names new_n3355 new_n4241
+0 1
+.names new_n303 new_n398 new_n1626
+10 1
+.names new_n1626 new_n4236 new_n4237
+11 1
+.names new_n1626 new_n4234
+0 1
+.names new_n348 new_n648 new_n1919
+01 1
+.names new_n2387 new_n2496 new_n4191
+11 1
+.names pi75 pi104 new_n1148
+11 1
+.names pi16 new_n4229
+0 1
+.names new_n1148 new_n4229 new_n4230
+11 1
+.names new_n4191 new_n4230 new_n4231
+-1 1
+0- 1
+.names pi43 new_n4231 new_n4232
+01 1
+.names new_n1919 new_n4232 new_n4233
+-1 1
+1- 1
+.names new_n4234 new_n4233 new_n4235
+11 1
+.names new_n4237 new_n4235 new_n4238
+-1 1
+1- 1
+.names new_n2073 new_n4238 new_n4239
+11 1
+.names new_n4227 new_n4226 new_n4228
+11 1
+.names new_n4239 new_n4228 new_n4240
+-1 1
+1- 1
+.names new_n4241 new_n4240 new_n4242
+11 1
+.names new_n4661 new_n4242 new_n4662
+-1 1
+1- 1
+.names new_n4663 new_n4662 new_n4664
+11 1
+.names new_n4938 new_n4664 new_n4939
+-1 1
+1- 1
+.names new_n4940 new_n4939 new_n4941
+11 1
+.names new_n5279 new_n4941 new_n5280
+-1 1
+1- 1
+.names new_n5281 new_n5280 new_n5282
+11 1
+.names new_n5695 new_n5282 new_n5696
+-1 1
+1- 1
+.names new_n5696 po0
+1 1
+.end

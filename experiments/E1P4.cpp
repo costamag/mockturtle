@@ -90,7 +90,7 @@ std::vector<uint32_t> database_lookup( TT const& target, RewritingFn const& rewr
   creation_ps.max_nodes_total  = 6000;
 
   create_nodes( oklut_sim, supports, creation_m, creation_ps );
-  hdc::detail::arecovery_method arecovery_m = hdc::detail::arecovery_method::ixtsdec;
+  hdc::detail::arecovery_method arecovery_m = hdc::detail::arecovery_method::DK_XTSD;
   hdc::detail::arecovery_params arecovery_ps;
   arecovery_ps.output=0;
   osignals.push_back( M.accuracy_recovery(arecovery_m, arecovery_ps) );

@@ -48,7 +48,7 @@ namespace detail
 {
 enum class selcreation_method
 {
-  muesli,
+  MUESLI,
   sim_muesli
 };
 
@@ -113,7 +113,7 @@ signal<Ntk> selcreate_nodes( simulation_view<Ntk>& ntk, detail::selcreation_meth
 { 
   signal<Ntk> osignal;
   switch(selcreation_m) {
-    case detail::selcreation_method::muesli:
+    case detail::selcreation_method::MUESLI:
       osignal = detail::muesli( ntk, selcreation_ps );
       break;
     case detail::selcreation_method::sim_muesli:

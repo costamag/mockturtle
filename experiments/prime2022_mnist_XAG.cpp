@@ -161,9 +161,9 @@ XYdataset dataset_loader( std::string file_name )
   return DS;
 }
 
-std::string DEC_ALGO{"ixtsdec"};
+std::string DEC_ALGO{"VOTER5"};
 using experiment_t = experiments::experiment<std::string, uint32_t, uint32_t, float, float, float, float>;
-experiment_t exp_res( "/iwls2020/"+DEC_ALGO, "benchmark", "#gates", "depth", "train", "test", "valid", "runtime" );
+experiment_t exp_res( "/iwls2020/INTEGRATION/EX5/"+DEC_ALGO, "benchmark", "#gates", "depth", "train", "test", "valid", "runtime" );
 
 
 #pragma region mutex
@@ -209,9 +209,9 @@ Ntk abc_opto( Ntk const& ntk, std::string str_code, std::string abc_script = "re
 }
 
 template<class Ntk>
-aig_network abc_preprocess( Ntk const& ntk, std::string str_code, std::string abc_script = "share; resyn2rs" )
+xag_network abc_preprocess( Ntk const& ntk, std::string str_code, std::string abc_script = "share; resyn2rs" )
 {
-  aig_network res;
+  xag_network res;
   write_blif( ntk, "/tmp/pre" + str_code + ".blif" );
 
   std::string command = "abc -q \"r /tmp/pre" + str_code + ".blif; " + abc_script + "; write_aiger /tmp/pre" + str_code + ".aig\"";
@@ -293,7 +293,7 @@ void thread_run( iwls2020_parameters const& iwls2020_ps)
     
     auto start = std::chrono::high_resolution_clock::now();
     
-    if( iwls2020_ps.dec_algo == "sdec" )
+    /*if( iwls2020_ps.dec_algo == "sdec" )
     {
       auto Y = std::vector{Dl.Y};
       xag = flow_hdp<xag_network>( Dl.X, Y, 0 );
@@ -402,6 +402,66 @@ void thread_run( iwls2020_parameters const& iwls2020_ps)
     {
       auto Y = std::vector{Dl.Y};
       xag = flow_hdp<xag_network>( Dl.X, Y, 300 );
+    }*/
+    if( iwls2020_ps.dec_algo == "SD" )
+    {
+      auto Y = std::vector{Dl.Y};
+      xag = flow_hdp<xag_network>( Dl.X, Y, 0 );
+    }
+    else if( iwls2020_ps.dec_algo == "DK_SD" )
+    {
+      auto Y = std::vector{Dl.Y};
+      xag = flow_hdp<xag_network>( Dl.X, Y, 1 );
+    }
+    else if( iwls2020_ps.dec_algo == "DK_TSD" )
+    {
+      auto Y = std::vector{Dl.Y};
+      xag = flow_hdp<xag_network>( Dl.X, Y, 2 );
+    }
+    else if( iwls2020_ps.dec_algo == "DK_XTSD" )
+    {
+      auto Y = std::vector{Dl.Y};
+      xag = flow_hdp<xag_network>( Dl.X, Y, 3 );
+    }
+    else if( iwls2020_ps.dec_algo == "MUESLI" )
+    {
+      auto Y = std::vector{Dl.Y};
+      xag = flow_hdp<xag_network>( Dl.X, Y, 9 );
+    }
+    else if( iwls2020_ps.dec_algo == "AR_MUESLI" )
+    {
+      auto Y = std::vector{Dl.Y};
+      xag = flow_hdp<xag_network>( Dl.X, Y, 10 );
+    }
+    else if( iwls2020_ps.dec_algo == "VOTER3" )
+    {
+      auto Y = std::vector{Dl.Y};
+      xag = flow_hdp<xag_network>( Dl.X, Y, 11 );
+    }
+    else if( iwls2020_ps.dec_algo == "AR3_MUESLI" )
+    {
+      auto Y = std::vector{Dl.Y};
+      xag = flow_hdp<xag_network>( Dl.X, Y, 12 );
+    }
+    else if( iwls2020_ps.dec_algo == "VOTER5" )
+    {
+      auto Y = std::vector{Dl.Y};
+      xag = flow_hdp<xag_network>( Dl.X, Y, 13 );
+    }
+    else if( iwls2020_ps.dec_algo == "AR5_MUESLI" )
+    {
+      auto Y = std::vector{Dl.Y};
+      xag = flow_hdp<xag_network>( Dl.X, Y, 14 );
+    }
+    else if( iwls2020_ps.dec_algo == "chj+ar" )
+    {
+      auto Y = std::vector{Dl.Y};
+      xag = flow_hdp<xag_network>( Dl.X, Y, 500 );
+    }
+    else if( iwls2020_ps.dec_algo == "chjF" )
+    {
+      auto Y = std::vector{Dl.Y};
+      xag = flow_hdp<xag_network>( Dl.X, Y, 501 );
     }
     else
     {

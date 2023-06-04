@@ -52,7 +52,7 @@ enum class sim_top_decomposition_fast
 
 #pragma region is_xor_decomposable_fast
 template<typename Ntk, typename TT>
-bool is_xor_decomposable_fast( std::vector<sim_pattern<Ntk>>& X, std::vector<uint32_t> & support, TT & onset, TT const& amask1, TT const& amask0 )
+bool is_xor_decomposable_fast( std::vector<sim_pattern<Ntk>> X, std::vector<uint32_t> support, TT onset, TT const & amask1, TT const& amask0, bool is_dc = false )
 {
   uint32_t count_neg=0;
   
@@ -127,17 +127,21 @@ bool is_xor_decomposable_fast( std::vector<sim_pattern<Ntk>>& X, std::vector<uin
         already.insert(minterm);
     }
   }
-      
+  
+  if( is_dc )
+  {
+    if( count_neg > 0 )//( support.size() < 300u ) || count_neg > 0 ) 
+      return true;
+    else
+      return false;
+  }
+  
   uint32_t n = support.size()+1;
   std::pair<double,double> R = M1M2k(N0,N1,n);
-  //int Min = std::max(1,(int)floor(R.first-R.second));
-  //int Max = std::max(1,(int)ceil(R.first+R.second));
-
   bool is_satisfied = ( ( CumSum( count_neg+(int)ceil(R.second), N0, N1, n ) >= 1-0.001 ) && ( count_neg >1 ) ); // CHANGE !!!
-
+  is_satisfied = is_satisfied | is_dc;
   if( is_satisfied )
     return true;
-
   return false;
   }  
 #pragma endregion is_xor_decomposable_fast
@@ -219,8 +223,11 @@ bool is_dc_xor_decomposable_fast( std::vector<sim_pattern<Ntk>>& X, std::vector<
         already.insert(minterm);
     }
   }
-  
-  return true;
+
+    if( ( support.size() < 500u ) || count_neg > 0 ) 
+      return true;
+    else
+      return false;
 
   }  
 #pragma endregion is_xor_decomposable_fast
@@ -228,7 +235,7 @@ bool is_dc_xor_decomposable_fast( std::vector<sim_pattern<Ntk>>& X, std::vector<
 #pragma region is_top_decomposable_fast
 
   template<typename Ntk, typename TT>
-  sim_top_decomposition_fast is_top_decomposable_fast( std::vector<sim_pattern<Ntk>> X, std::vector<uint32_t> & support, TT & onset, TT & amask1, TT & amask0, bool try_xor = false )
+  sim_top_decomposition_fast is_top_decomposable_fast( std::vector<sim_pattern<Ntk>> X, std::vector<uint32_t> support, TT onset, TT amask1, TT amask0, bool try_xor = false, bool is_dc = false )
   {
 
     if( (kitty::count_ones( onset & amask0 ) == 0) ) // F0 = 0
@@ -239,7 +246,7 @@ bool is_dc_xor_decomposable_fast( std::vector<sim_pattern<Ntk>>& X, std::vector<
       return sim_top_decomposition_fast::lt_ ;
     else if( ( onset &amask0 ) == amask0 ) // F0 = 1
       return sim_top_decomposition_fast::le_ ;
-    else if( try_xor && is_xor_decomposable_fast( X, support, onset, amask1, amask0 ) )
+    else if( try_xor && is_xor_decomposable_fast( X, support, onset, amask1, amask0, is_dc ) )
       return sim_top_decomposition_fast::xor_ ;
     else
       return sim_top_decomposition_fast::none ;

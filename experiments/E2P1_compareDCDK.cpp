@@ -157,7 +157,7 @@ double erase_and_print( std::vector<kitty::partial_truth_table> pats, kitty::par
         simulation_view oklut_sim{ oklut };
         std::vector<kitty::partial_truth_table> tgt = {ytt};
         model M( oklut_sim, Xtt, tgt );
-        hdc::detail::arecovery_method arecovery_m = hdc::detail::arecovery_method::ixtsdecS;
+        hdc::detail::arecovery_method arecovery_m = hdc::detail::arecovery_method::DK_XTSDS;
         hdc::detail::arecovery_params arecovery_ps;
         arecovery_ps.verbose = false;
         arecovery_ps.output=0;

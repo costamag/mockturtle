@@ -69,6 +69,9 @@ struct sim_decomposition_fastS_params
   bool use_correlation{false};
   bool branch_on_all{true};
   bool try_xor{false};
+  bool is_relaxed{false};
+  bool is_dc{false};
+  int nImpurity{0};
 };
 
 namespace detail
@@ -178,9 +181,9 @@ namespace detail
         bool is_success = false;
         TT on_xi;
         TT off_xi;
-        double Llim = 1.00;//support.size() < 256 ? 0.95 : 1.00;
-        double Rlim = 1.00;//support.size() < 256 ? 1.05 : 1.00;
-        double RTIO = 0.00;//support.size() < 256 ? 0.01 : 0.0;
+        double Llim = ps.is_relaxed ? (support.size() < 256 ? 0.95 : 1.00) : 1.00;//;
+        double Rlim = ps.is_relaxed ? (support.size() < 256 ? 1.05 : 1.00) : 1.00;//1.00;//support.size() < 256 ? 1.05 : 1.00;
+        double RTIO = ps.is_relaxed ? (support.size() < 256 ? 0.01 : 0.00) : 0.00;//0.00;//support.size() < 256 ? 0.01 : 0.0;
 
         chj_result chj_new_node;
         /*{
@@ -215,8 +218,8 @@ namespace detail
           }
         }
 
-        uint32_t fanin_size;
-        uint32_t min_fanin_size = std::numeric_limits<uint32_t>::max();
+        //uint32_t fanin_size;
+        //uint32_t min_fanin_size = std::numeric_limits<uint32_t>::max();
         std::vector<TT*> support_pat_pointers;
         support_pat_pointers.push_back( &X[0].pat );
         support_pat_pointers.push_back( &X[0].pat );
@@ -289,7 +292,7 @@ namespace detail
                     chj_new_node.tt = candidates.tt_v[k];
                     chj_new_node.dtt = candidates.dtt_v[k];
                     chj_new_node.pat = candidates.pat_v[k];
-                    min_fanin_size = fanin_size;
+                    //min_fanin_size = fanin_size;
                     ntk.available_nodes.insert(cand);
                     is_success = true;
                   }
@@ -310,11 +313,7 @@ namespace detail
           children.push_back( X[support[new_node_support_indeces[1]]].sig );
           signal<Ntk> fc = ntk.create_node( children, chj_new_node.dtt );
           support.push_back( X.size() );
-          //std::cout << support.size() << std::endl;
           X.push_back( ntk.sim_patterns[ ntk.get_node_pattern( fc ) ] );
-          std::cout << children[0] << " " << children[1] << " " << chj_new_node.tt << std::endl;  
-          //support.erase( support.begin() + std::max<uint32_t>( new_node_support_indeces[0],new_node_support_indeces[1] ) );
-          //support.erase( support.begin() + std::min<uint32_t>( new_node_support_indeces[0],new_node_support_indeces[1] ) );
         }
         return is_success;
       }
@@ -445,16 +444,7 @@ namespace detail
     
       signal<Ntk> idsd_step( std::vector<uint32_t> support, TT amask, TT xmask, bool branch_on_last = false )
       {
-        uint32_t BFcnt=0;
-        std::cout << "b1 " << std::endl; 
 
-        //for( auto x : support )
-        //  std:: cout << x << " "; 
-        std::cout << support.size() << std::endl;
-        std::cout << "d" << BFcnt++ << std::endl;
-
-        //std::cout << support.size() << std::endl;
-        //std::cout << num_nobranch << std::endl;
         uint32_t n_ones = kitty::count_ones(amask);
 
         if( n_ones == 0 )
@@ -471,11 +461,11 @@ namespace detail
         on_f = amask&( xmask^Y.pat );
         off_f = amask&(~(xmask^Y.pat ));
 
-        if( kitty::count_ones( on_f ) == 0 ) // contraddiction
+        if( kitty::count_ones( on_f ) <= ps.nImpurity ) // contraddiction
         {
           return ntk.get_constant( false );
         }
-        else if( kitty::count_ones( on_f ) == n_ones ) // tautology
+        else if( kitty::count_ones( on_f ) >= n_ones-ps.nImpurity ) // tautology
         {
           return ntk.get_constant( true );
         }
@@ -488,6 +478,8 @@ namespace detail
         
 
         std::vector<uint32_t> to_be_deleted;
+        std::vector<uint32_t> to_be_deleted_idx;
+        std::vector<uint32_t> new_support;
         TT on_x(n_bits);
         TT off_x(n_bits);
         TT on_xi(n_bits); 
@@ -498,7 +490,7 @@ namespace detail
         {
           if( branch_on_last )
           {
-            bidx = support.size()-1;
+            bidx = uint32_t(support.size()-1);
             on_x = amask & X[support[bidx]].pat;
             off_x = amask & ~X[support[bidx]].pat;
             bsig = X[support[bidx]].sig;
@@ -535,7 +527,10 @@ namespace detail
               } 
 
               if( ( on_xi == amask ) || ( off_xi == amask) ) 
-                to_be_deleted.push_back(i);
+              {
+                to_be_deleted_idx.push_back( i );
+                to_be_deleted.push_back( support[i] );
+              }
               else
               { 
                 Inew = information( on_xi, off_xi, on_f, off_f );
@@ -571,7 +566,10 @@ namespace detail
             } 
 
             if( ( on_xi == amask ) || ( off_xi == amask) ) 
-              to_be_deleted.push_back(i);
+            {
+              to_be_deleted_idx.push_back( i );
+              to_be_deleted.push_back(support[i]);
+            }
           }
           bidx = 0;
         }
@@ -579,21 +577,25 @@ namespace detail
 
         if( to_be_deleted.size() > 0 )
         {
-          std::cout << "H" << BFcnt++ << std::endl;
-          std::reverse(to_be_deleted.begin(), to_be_deleted.end());
+          for( auto x : support )
+            if( std::find(to_be_deleted.begin(), to_be_deleted.end(), x ) == to_be_deleted.end() )
+              new_support.push_back(x);
+          //std::cout << "H" << BFcnt++ << std::endl;
+          
+          /*std::reverse(to_be_deleted.begin(), to_be_deleted.end());*/
           uint32_t count = 0;
           for( uint32_t i = 0; i < to_be_deleted.size() ; ++i )
           {
-            std::cout << support.size() << " " << to_be_deleted[i] << std::endl;
-            assert( support.size() > to_be_deleted[i] );
-            std::cout << "delete " << to_be_deleted[i] << " from " << support.size() << std::endl;
-            support.erase( support.begin()+to_be_deleted[i] ) ;
-            if( to_be_deleted[i] < bidx )
+            //assert( support.size() > to_be_deleted[i] );
+            //support.erase( support.begin()+to_be_deleted[i] ) ;
+            if( to_be_deleted_idx[i] < bidx )
               count++;
           }
           bidx = uint32_t(bidx-count);
+          //bidx -= count;
 
-          std::cout << "bidx " << bidx << std::endl;
+          //std::cout << "bidx " << bidx << std::endl;
+          support=new_support;
         }
 
         if( support.size() == 0 )
@@ -621,7 +623,7 @@ namespace detail
         std::vector<uint32_t> reduced_support = support;
 
         reduced_support.erase( reduced_support.begin() + bidx );
-        std::cout << "A4" << std::endl;
+        //std::cout << "A4" << std::endl;
 
         std::vector<uint32_t> pis_support;
         if( ps.try_xor )
@@ -637,7 +639,7 @@ namespace detail
         
         if( ps.is_informed && ps.try_top_decomposition )
         {
-          sim_top_decomposition_fast res = is_top_decomposable_fast( X, pis_support, on_f, amask1, amask0, ps.try_xor );
+          sim_top_decomposition_fast res = is_top_decomposable_fast( X, pis_support, on_f, amask1, amask0, ps.try_xor, ps.is_dc );
         
           if ( res != sim_top_decomposition_fast::none )
           {
@@ -711,25 +713,25 @@ namespace detail
         {
           clear_fanin_size( bsig );
         }
-        std::cout << "A10-1" << std::endl;
-        std::cout << kitty::count_ones( amask0 ) << std::endl;
-        std::cout << kitty::count_ones( ~amask0 ) << std::endl;
-        std::cout << reduced_support.size() << std::endl;
+      //std::cout << "A10-1" << std::endl;
+        //std::cout << kitty::count_ones( amask0 ) << std::endl;
+  //      std::cout << kitty::count_ones( ~amask0 ) << std::endl;
+        //std::cout << reduced_support.size() << std::endl;
         //for( auto x : reduced_support )
         //  std::cout << x << " ";
         //std::cout << std::endl;
         
-        klut_network::signal F0 = idsd_step( reduced_support, amask0, xmask0 );
-        std::cout << "A10+1" << std::endl;
+        klut_network::signal F0 = idsd_step( reduced_support, amask0, xmask0 );//reduced_support, amask0, xmask0 );
+        //std::cout << "A10+1" << std::endl;
 
         klut_network::signal f0 = ntk.create_and( ntk.create_not( bsig ), F0 );
-        std::cout << "A11" << std::endl;
+    //    std::cout << "A11" << std::endl;
 
-        signal<klut_network> F1 = idsd_step( reduced_support, amask1, xmask1 );
-        std::cout << "A12" << std::endl;
+        signal<klut_network> F1 = idsd_step( reduced_support, amask1, xmask1 );//( reduced_support, amask1, xmask1 );
+    //    std::cout << "A12" << std::endl;
 
         signal<klut_network> f1 = ntk.create_and( bsig, F1 );
-        std::cout << "A13" << std::endl;
+    //    std::cout << "A13" << std::endl;
 
 
         signal<klut_network> Fnew = ntk.create_or( f1, f0 );
@@ -737,7 +739,7 @@ namespace detail
         if( ps.verbose )
           std::cout << Fnew << "= ite(" << bsig << "," << F1 << "," << F0 << ")" << std::endl;
 
-        std::cout << "b0" << std::endl;
+      //  std::cout << "b0" << std::endl;
 
 
         return Fnew;
@@ -756,9 +758,9 @@ namespace detail
 
         TT xmask( Y.pat.num_bits() );
         TT amask = ~xmask;
-        std::cout << "a1" << std::endl;
+    //    std::cout << "a1" << std::endl;
         return idsd_step( support, amask, xmask );
-        std::cout << "a0" << std::endl;
+    //    std::cout << "a0" << std::endl;
 
       }
     

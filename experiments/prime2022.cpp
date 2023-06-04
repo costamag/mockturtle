@@ -196,10 +196,10 @@ XYdataset dataset_loader( std::string file_name )
   return DS;
 }
 
-std::string DEC_ALGO{"xarmuesli"};
-using experiment_t = experiments::experiment<std::string, std::string, uint32_t, uint32_t, float, float, float, float>;
-experiment_t exp_res( "/iwls2020/results/", DEC_ALGO, "benchmark", "#gates", "depth", "train", "test", "valid", "runtime" );
-experiment_t exp_res2( "/iwls2020/results/"+DEC_ALGO, DEC_ALGO, "benchmark", "#gates", "depth", "train", "test", "valid", "runtime" );
+std::string DEC_ALGO{"AR5_MUESLI"};
+using experiment_t = experiments::experiment<std::string, uint32_t, uint32_t, float, float, float, float>;
+experiment_t exp_res( "/iwls2020/INTEGRATION/EX3/"+DEC_ALGO, "benchmark", "#gates", "depth", "train", "test", "valid", "runtime" );
+//experiment_t exp_res2( "/iwls2020/INTEGRATION/E4/"+DEC_ALGO, DEC_ALGO, "benchmark", "#gates", "depth", "train", "test", "valid", "runtime" );
 
 
 #pragma region mutex
@@ -320,7 +320,7 @@ void thread_run( iwls2020_parameters const& iwls2020_ps, std::string const& run_
   std::string train_path = "../experiments/iwls2020/benchmarks/train/";
   std::string test_path = "../experiments/iwls2020/benchmarks/test/";
   std::string valid_path = "../experiments/iwls2020/benchmarks/validation/";
-  std::string output_path = "../experiments/iwls2020/results/";
+  std::string output_path = "../experiments/iwls2020/INTEGRATION/EX3/"+iwls2020_ps.dec_algo+"/";
 
   uint32_t id = exp_id++;
 
@@ -371,42 +371,82 @@ void thread_run( iwls2020_parameters const& iwls2020_ps, std::string const& run_
 
     auto start = std::chrono::high_resolution_clock::now();
     
-    if( iwls2020_ps.dec_algo == "sdec" )
+    if( iwls2020_ps.dec_algo == "SD" )
     {
       auto Y = std::vector{Dl.Y};
       aig_and_klut = flow_hdp<aig_network>( Dl.X, Y, 0 );
     }
-    else if( iwls2020_ps.dec_algo == "isdec" )
+    else if( iwls2020_ps.dec_algo == "DK_SD" )
     {
       auto Y = std::vector{Dl.Y};
       aig_and_klut = flow_hdp<aig_network>( Dl.X, Y, 1 );
     }
-    else if( iwls2020_ps.dec_algo == "itsdec" )
+    else if( iwls2020_ps.dec_algo == "DK_TSD" )
     {
       auto Y = std::vector{Dl.Y};
       aig_and_klut = flow_hdp<aig_network>( Dl.X, Y, 2 );
     }
-    else if( iwls2020_ps.dec_algo == "ixtsdec" )
+    else if( iwls2020_ps.dec_algo == "DK_XTSD" )
     {
       auto Y = std::vector{Dl.Y};
       aig_and_klut = flow_hdp<aig_network>( Dl.X, Y, 3 );
     }
-    else if( iwls2020_ps.dec_algo == "dcsdec" )
+    else if( iwls2020_ps.dec_algo == "MUESLI" )
     {
       auto Y = std::vector{Dl.Y};
-      aig_and_klut = flow_hdp<aig_network>( Dl.X, Y, 4 );
+      aig_and_klut = flow_hdp<aig_network>( Dl.X, Y, 9 );
     }
-    else if( iwls2020_ps.dec_algo == "dcxsdec" )
+    else if( iwls2020_ps.dec_algo == "AR_MUESLI" )
     {
       auto Y = std::vector{Dl.Y};
-      aig_and_klut = flow_hdp<aig_network>( Dl.X, Y, 5 );
+      aig_and_klut = flow_hdp<aig_network>( Dl.X, Y, 10 );
     }
-    else if( iwls2020_ps.dec_algo == "muesli" )
+    else if( iwls2020_ps.dec_algo == "VOTER3" )
     {
       auto Y = std::vector{Dl.Y};
-      aig_and_klut = flow_hdp<aig_network>( Dl.X, Y, 6 );
+      aig_and_klut = flow_hdp<aig_network>( Dl.X, Y, 11 );
     }
-    else if( iwls2020_ps.dec_algo == "armuesli" )
+    else if( iwls2020_ps.dec_algo == "AR3_MUESLI" )
+    {
+      auto Y = std::vector{Dl.Y};
+      aig_and_klut = flow_hdp<aig_network>( Dl.X, Y, 12 );
+    }
+    else if( iwls2020_ps.dec_algo == "VOTER5" )
+    {
+      auto Y = std::vector{Dl.Y};
+      aig_and_klut = flow_hdp<aig_network>( Dl.X, Y, 13 );
+    }
+    else if( iwls2020_ps.dec_algo == "AR5_MUESLI" )
+    {
+      auto Y = std::vector{Dl.Y};
+      aig_and_klut = flow_hdp<aig_network>( Dl.X, Y, 14 );
+    }
+    else if( iwls2020_ps.dec_algo == "ifgenS1024x1" ) 
+    {
+      auto Y = std::vector{Dl.Y};
+      aig_and_klut = flow_hdp<aig_network>( Dl.X, Y, 15 );
+    }
+    else if( iwls2020_ps.dec_algo == "ifgenS2048x1" ) 
+    {
+      auto Y = std::vector{Dl.Y};
+      aig_and_klut = flow_hdp<aig_network>( Dl.X, Y, 16 );
+    }    
+    else if( iwls2020_ps.dec_algo == "ifgenS4096x1" ) 
+    {
+      auto Y = std::vector{Dl.Y};
+      aig_and_klut = flow_hdp<aig_network>( Dl.X, Y, 17 );
+    }
+    else if( iwls2020_ps.dec_algo == "ifgenS1024x2" ) 
+    {
+      auto Y = std::vector{Dl.Y};
+      aig_and_klut = flow_hdp<aig_network>( Dl.X, Y, 18 );
+    }    
+    else if( iwls2020_ps.dec_algo == "ifgenS1024x4" ) 
+    {
+      auto Y = std::vector{Dl.Y};
+      aig_and_klut = flow_hdp<aig_network>( Dl.X, Y, 19 );
+    }
+    /*else if( iwls2020_ps.dec_algo == "armuesli" )
     {
       auto Y = std::vector{Dl.Y};
       aig_and_klut = flow_hdp<aig_network>( Dl.X, Y, 7 );
@@ -600,7 +640,7 @@ void thread_run( iwls2020_parameters const& iwls2020_ps, std::string const& run_
     {
       auto Y = std::vector{Dl.Y};
       aig_and_klut = flow_hdp<aig_network>( Dl.X, Y, 42000 );
-    }
+    }*/
     else
     {
       fmt::print( "[w] method named {} is not defined\n", iwls2020_ps.dec_algo );
@@ -621,19 +661,22 @@ void thread_run( iwls2020_parameters const& iwls2020_ps, std::string const& run_
   //   fmt::print( "[i] obtained new result on {}: \n.g {}\n.d {} \n.l {} \n.t {} \n.v {}\n.c {}\n", 
   //              benchmark, aig.num_gates(), d.depth(), la, ta, va, to_seconds(res._cnt.time_dec) );
 
-    exp_mutex.lock();
+    //exp_mutex.lock();
 
     fmt::print( "[i] obtained new result on {}: \n.a {}\n.g {}\n.d {} \n.l {} \n.w {} \n.t {} \n.v {}\n.c {}", 
             benchmark, iwls2020_ps.dec_algo, aig.num_gates(), d.depth(), la, Dl.conflicts_count, ta, va,to_seconds(time_dec)  );
 
 
    // if ( va > current_best || ( (va >= current_best) && (aig.num_gates() < current_best_gates) ) )
-    {
+    //{
       //fmt::print( "[i] obtained better result on {}: {} > {} or {} < {}\n", benchmark, va, current_best, aig.num_gates(), current_best_gates );
-      depth_view d{aig};
-      exp_res( iwls2020_ps.dec_algo, benchmark, aig.num_gates(), d.depth(), la, ta, va, to_seconds(time_dec) );
+      //depth_view d{aig};
+      exp_mutex.lock();
+      exp_res( benchmark, aig.num_gates(), d.depth(), la, ta, va, to_seconds(time_dec) );
+      exp_mutex.unlock();
       write_aiger( aig, output_path + "AIG/" + benchmark + ".aig" );
       write_blif( klut, output_path +"BLIF/"+ benchmark + ".blif" );
+
       //current_best = va;
       std::ofstream myfile;
       myfile.open ( (output_path +"RES/"+ benchmark + ".txt") ); 
@@ -647,18 +690,18 @@ void thread_run( iwls2020_parameters const& iwls2020_ps, std::string const& run_
       myfile << ".c " << to_seconds(time_dec) << std::endl;
 
       myfile.close();
-    }
+    //}
     //else
     //{
     //  fmt::print( "[i] obtained worse result on {}: {} <= {}\n", benchmark, va, current_best );
     //}
     std::cout << std::endl;
 
-    exp_res2( iwls2020_ps.dec_algo, benchmark, aig.num_gates(), d.depth(), la, ta, va, to_seconds(time_dec) );
-    write_aiger( aig, output_path + iwls2020_ps.dec_algo + "/AIG/" + benchmark + ".aig" );
-    write_blif( klut, output_path + iwls2020_ps.dec_algo + "/BLIF/"+ benchmark + ".blif" );
+    /*exp_res2( iwls2020_ps.dec_algo, benchmark, aig.num_gates(), d.depth(), la, ta, va, to_seconds(time_dec) );
+    write_aiger( aig, output_path + "AIG/" + benchmark + ".aig" );
+    write_blif( klut, output_path + "BLIF/"+ benchmark + ".blif" );
     std::ofstream myfile;
-    myfile.open ( (output_path + iwls2020_ps.dec_algo + "/RES/"+ benchmark + ".txt") ); 
+    myfile.open ( (output_path+ "RES/"+ benchmark + ".txt") ); 
     myfile << ".a " << iwls2020_ps.dec_algo << std::endl;
     myfile << ".b " << fmt::format( "{:02}", id ) <<std::endl;
     myfile << ".l " << la <<std::endl;
@@ -666,10 +709,10 @@ void thread_run( iwls2020_parameters const& iwls2020_ps, std::string const& run_
     myfile << ".v " << va <<std::endl;
     myfile << ".g " << aig.num_gates() << std::endl;
     myfile << ".d " << d.depth() << std::endl;
-    myfile << ".c " << to_seconds(time_dec) << std::endl;
+    myfile << ".c " << to_seconds(time_dec) << std::endl;*/
 
-    myfile.close();
-    exp_mutex.unlock();
+    //myfile.close();
+    //exp_mutex.unlock();
 
     id = exp_id++;
   }
@@ -708,11 +751,11 @@ int main( int argc, char* argv[] )
     threads[i].join();
   }
 
-  //ùexp_res.table( );
-  exp_res.update( "best" );
-  exp_res2.update( "best" );
-  //exp_res.save("best");
   //exp_res.table( );
+  //exp_res.update( );
+  //exp_res2.update( "best" );
+  exp_res.save();
+  exp_res.table();
 
   return 0;
 }

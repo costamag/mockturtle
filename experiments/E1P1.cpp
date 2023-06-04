@@ -75,7 +75,7 @@ std::vector<uint32_t> database_lookup( TT const& target, RewritingFn const& rewr
 
   model M( oklut_sim, pats, Y );
   std::vector<klut_network::signal> osignals;
-  hdc::detail::selcreation_method selcreation_m = hdc::detail::selcreation_method::muesli;
+  hdc::detail::selcreation_method selcreation_m = hdc::detail::selcreation_method::MUESLI;
   hdc::detail::selcreation_params selcreation_ps;
   selcreation_ps.re_initialize = false;
   selcreation_ps.verbose = true;
@@ -85,7 +85,7 @@ std::vector<uint32_t> database_lookup( TT const& target, RewritingFn const& rewr
   
   result.push_back(M.ntk_.num_gates());
 
-  hdc::detail::arecovery_method arecovery_m = hdc::detail::arecovery_method::ixtsdec;
+  hdc::detail::arecovery_method arecovery_m = hdc::detail::arecovery_method::DK_XTSD;
   hdc::detail::arecovery_params arecovery_ps;
   arecovery_ps.verbose = true;
   

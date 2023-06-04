@@ -123,7 +123,7 @@ splitted_line split_string_by_space( std::string line )
   return v_line;
 }
 
-XYdataset dataset_loader( std::string file_name )
+XYdataset dataset_loader( std::string file_name, uint32_T ndata )
 {
   std::set<std::string> onset;
   std::set<std::string> offset;
@@ -198,9 +198,9 @@ XYdataset dataset_loader( std::string file_name )
   return DS;
 }
 
-std::string DEC_ALGO{"sdec"};
+std::string DEC_ALGO{"SD"};
 using experiment_t = experiments::experiment<std::string, uint32_t, uint32_t, float, float, float, float>;
-experiment_t exp_res( "/iwls2020/"+DEC_ALGO, "benchmark", "#gates", "depth", "train", "test", "valid", "runtime" );
+experiment_t exp_res( "/iwls2020/INTEGRATION/EX2/"+DEC_ALGO, "benchmark", "#gates", "depth", "train", "test", "valid", "runtime" );
 
 
 #pragma region mutex
@@ -238,7 +238,7 @@ void thread_run( iwls2020_parameters const& iwls2020_ps, std::string const& run_
   std::string train_path = "../experiments/iwls2020/benchmarks/train/";
   std::string test_path = "../experiments/iwls2020/benchmarks/test/";
   std::string valid_path = "../experiments/iwls2020/benchmarks/validation/";
-  std::string output_path = "../experiments/iwls2020/results/"+iwls2020_ps.dec_algo+"/";
+  std::string output_path = "../experiments/iwls2020/INTEGRATION/EX2/"+iwls2020_ps.dec_algo+"/";
 
   uint32_t id = exp_id++;
 
@@ -261,9 +261,10 @@ void thread_run( iwls2020_parameters const& iwls2020_ps, std::string const& run_
     std::string path_valid = valid_path+benchmark+".valid.txt";
       
 
-    auto Dl = dataset_loader( path_train );
-    auto Dt = dataset_loader( path_test );
-    auto Dv = dataset_loader( path_valid );
+    auto Dl = dataset_loader( path_train, 1000 );
+    auto Dt = dataset_loader( path_test, 10000 );
+    auto Dv = dataset_loader( path_valid, 10000 );
+
 
   std::vector<kitty::partial_truth_table> X;
   kitty::partial_truth_table Y;
@@ -282,43 +283,63 @@ void thread_run( iwls2020_parameters const& iwls2020_ps, std::string const& run_
       Dl.Y.add_bit( kitty::get_bit(Dv.Y,j) );
     }
   }
-    bool postprocess{false};
+    //bool postprocess{false};
 
     xag_network xag;
     
     auto start = std::chrono::high_resolution_clock::now();
     
-    if( iwls2020_ps.dec_algo == "sdec" )
+    if( iwls2020_ps.dec_algo == "SD" )
     {
       auto Y = std::vector{Dl.Y};
       xag = flow_hdp<xag_network>( Dl.X, Y, 0 );
     }
-    else if( iwls2020_ps.dec_algo == "isdec" )
+    else if( iwls2020_ps.dec_algo == "DK_SD" )
     {
       auto Y = std::vector{Dl.Y};
       xag = flow_hdp<xag_network>( Dl.X, Y, 1 );
     }
-    else if( iwls2020_ps.dec_algo == "itsdec" )
+    else if( iwls2020_ps.dec_algo == "DK_TSD" )
     {
       auto Y = std::vector{Dl.Y};
       xag = flow_hdp<xag_network>( Dl.X, Y, 2 );
     }
-    else if( iwls2020_ps.dec_algo == "ixtsdec" )
+    else if( iwls2020_ps.dec_algo == "DK_XTSD" )
     {
       auto Y = std::vector{Dl.Y};
       xag = flow_hdp<xag_network>( Dl.X, Y, 3 );
     }
-    else if( iwls2020_ps.dec_algo == "dcsdec" )
+    else if( iwls2020_ps.dec_algo == "DK_DSD" )
     {
       auto Y = std::vector{Dl.Y};
       xag = flow_hdp<xag_network>( Dl.X, Y, 4 );
-    }
-    else if( iwls2020_ps.dec_algo == "dcxsdec" )
+    } 
+    else if( iwls2020_ps.dec_algo == "DK_RDSD" )
     {
       auto Y = std::vector{Dl.Y};
       xag = flow_hdp<xag_network>( Dl.X, Y, 5 );
+    } 
+    else if( iwls2020_ps.dec_algo == "DC_IXTSD" )
+    {
+      auto Y = std::vector{Dl.Y};
+      xag = flow_hdp<xag_network>( Dl.X, Y, 6 );
     }
-    else if( iwls2020_ps.dec_algo == "muesli" )
+    else if( iwls2020_ps.dec_algo == "DC_IXTSD0" )
+    {
+      auto Y = std::vector{Dl.Y};
+      xag = flow_hdp<xag_network>( Dl.X, Y, 6 );
+    }
+    else if( iwls2020_ps.dec_algo == "DC_TSD" )
+    {
+      auto Y = std::vector{Dl.Y};
+      xag = flow_hdp<xag_network>( Dl.X, Y, 7 );
+    }
+    else if( iwls2020_ps.dec_algo == "DC_XTSD" )
+    {
+      auto Y = std::vector{Dl.Y};
+      xag = flow_hdp<xag_network>( Dl.X, Y, 8 );
+    }
+    /*else if( iwls2020_ps.dec_algo == "muesli" )
     {
       auto Y = std::vector{Dl.Y};
       xag = flow_hdp<xag_network>( Dl.X, Y, 6 );
@@ -397,7 +418,7 @@ void thread_run( iwls2020_parameters const& iwls2020_ps, std::string const& run_
     {
       auto Y = std::vector{Dl.Y};
       xag = flow_hdp<xag_network>( Dl.X, Y, 600 );
-    }
+    }*/
     else
     {
       fmt::print( "[w] method named {} is not defined\n", iwls2020_ps.dec_algo );

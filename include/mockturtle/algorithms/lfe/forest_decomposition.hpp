@@ -550,7 +550,7 @@ namespace detail
         TT xmask( Y.pat.num_bits() );
         TT amask = ~xmask;
 
-        signal<Ntk> fout;
+        signal<Ntk> fout=0;
 
         if( ps.num_trees == 3 )
         {
@@ -568,8 +568,24 @@ namespace detail
             kitty::clear_bit( amask3, i );
           
           signal<Ntk> f1 = idsd_step( support, amask1, xmask );
-          signal<Ntk> f2 = idsd_step( support, amask2, xmask );
-          signal<Ntk> f3 = idsd_step( support, amask3, xmask );
+          
+          X = ntk.sim_patterns;
+          X.erase( X.begin() );
+          X.erase( X.begin() );
+          std::vector<uint32_t> support1;
+          for( uint32_t i = 0; i < X.size(); ++i )
+            support1.push_back( i );
+          signal<Ntk> f2 = idsd_step( support1, amask2, xmask );
+          
+          X = ntk.sim_patterns;
+          X.erase( X.begin() );
+          X.erase( X.begin() );
+          std::vector<uint32_t> support2;
+          for( uint32_t i = 0; i < X.size(); ++i )
+            support2.push_back( i );
+          
+          signal<Ntk> f3 = idsd_step( support2, amask3, xmask );
+
           fout = ntk.create_maj( f1, f2, f3 );
         }
         else if( ps.num_trees == 5 )
@@ -602,11 +618,101 @@ namespace detail
 
           std::vector<signal<Ntk>> children;
 
-          children.push_back( idsd_step( support, amask1, xmask ) );
+
+        /*  children.push_back( idsd_step( support, amask1, xmask ) );
           children.push_back( idsd_step( support, amask2, xmask ) );
           children.push_back( idsd_step( support, amask3, xmask ) );
           children.push_back( idsd_step( support, amask4, xmask ) );
-          children.push_back( idsd_step( support, amask5, xmask ) );
+          children.push_back( idsd_step( support, amask5, xmask ) );*/
+
+          /*X = ntk.sim_patterns;
+          X.erase( X.begin() );
+          X.erase( X.begin() );
+          std::vector<uint32_t> support1;
+          for( uint32_t i = 0; i < X.size(); ++i )
+            support1.push_back( i );
+          children.push_back( idsd_step( support1, amask2, xmask ) );
+
+          X = ntk.sim_patterns;
+          X.erase( X.begin() );
+          X.erase( X.begin() );
+          std::vector<uint32_t> support2;
+          for( uint32_t i = 0; i < X.size(); ++i )
+            support2.push_back( i );
+          children.push_back( idsd_step( support2, amask3, xmask ) );
+
+          X = ntk.sim_patterns;
+          X.erase( X.begin() );
+          X.erase( X.begin() );
+          std::vector<uint32_t> support3;
+          for( uint32_t i = 0; i < X.size(); ++i )
+            support3.push_back( i );
+          children.push_back( idsd_step( support3, amask4, xmask ) );
+
+          X = ntk.sim_patterns;
+          X.erase( X.begin() );
+          X.erase( X.begin() );
+          std::vector<uint32_t> support4;
+          for( uint32_t i = 0; i < X.size(); ++i )
+            support4.push_back( i );
+          children.push_back( idsd_step( support4, amask5, xmask ) );
+
+
+
+          for( uint32_t i = edge3; i < X[0].pat.num_bits(); ++i )
+            kitty::clear_bit( amask1, i );
+
+          for( uint32_t i = edge2; i < edge4; ++i )
+            kitty::clear_bit( amask2, i );
+
+          for( uint32_t i = edge1; i < edge3 ; ++i )
+            kitty::clear_bit( amask3, i );
+
+          for( uint32_t i = 0; i < edge2; ++i )
+            kitty::clear_bit( amask4, i );
+
+          for( uint32_t i = 0; i < edge1 ; ++i )
+            kitty::clear_bit( amask5, i );
+          for( uint32_t i = edge4; i < X[0].pat.num_bits() ; ++i )
+            kitty::clear_bit( amask5, i );*/
+
+          //std::vector<signal<Ntk>> children;
+
+
+          children.push_back( idsd_step( support, amask1, xmask ) );
+          X = ntk.sim_patterns;
+          X.erase( X.begin() );
+          X.erase( X.begin() );
+          std::vector<uint32_t> support1;
+          for( uint32_t i = 0; i < X.size(); ++i )
+            support1.push_back( i );
+          children.push_back( idsd_step( support1, amask4, xmask ) );
+
+          X = ntk.sim_patterns;
+          X.erase( X.begin() );
+          X.erase( X.begin() );
+          std::vector<uint32_t> support2;
+          for( uint32_t i = 0; i < X.size(); ++i )
+            support2.push_back( i );
+          children.push_back( idsd_step( support2, amask2, xmask ) );
+
+          X = ntk.sim_patterns;
+          X.erase( X.begin() );
+          X.erase( X.begin() );
+          std::vector<uint32_t> support3;
+          for( uint32_t i = 0; i < X.size(); ++i )
+            support3.push_back( i );
+          children.push_back( idsd_step( support3, amask3, xmask ) );
+
+          X = ntk.sim_patterns;
+          X.erase( X.begin() );
+          X.erase( X.begin() );
+          std::vector<uint32_t> support4;
+          for( uint32_t i = 0; i < X.size(); ++i )
+            support4.push_back( i );
+          children.push_back( idsd_step( support4, amask5, xmask ) );
+
+
 
           kitty::dynamic_truth_table maj5(5u);
           std::string stt = "11111110111010001110100010000000";

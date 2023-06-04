@@ -77,7 +77,7 @@ std::vector<uint32_t> database_lookup( TT const& target, RewritingFn const& rewr
   
   result.push_back(0);
 
-  hdc::detail::arecovery_method arecovery_m = hdc::detail::arecovery_method::ixtsdec;
+  hdc::detail::arecovery_method arecovery_m = hdc::detail::arecovery_method::DK_XTSD;
   hdc::detail::arecovery_params arecovery_ps;
   arecovery_ps.verbose = true;
   

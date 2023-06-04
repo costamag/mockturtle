@@ -49,7 +49,7 @@ namespace mockturtle
   TB pivot = attribute[high];    // pivot
   int first_small = ( low - 1 );  // Index of smaller element
 
-  for ( int j = low; j < high; j++ )
+  for ( uint32_t j = low; j < high; j++ )
     {
       if ( attribute[j] >= pivot )
       {

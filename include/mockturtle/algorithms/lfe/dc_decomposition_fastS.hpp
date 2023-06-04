@@ -146,7 +146,7 @@ namespace detail
         return fc;
       }
     
-      signal<Ntk> idsd_step( std::vector<uint32_t> support, TT amask, TT xmask, bool branch_on_last = false )
+      signal<Ntk> idsd_step( std::vector<uint32_t> support, TT amask, TT xmask )
       {
         uint32_t n_ones = kitty::count_ones(amask);
 
