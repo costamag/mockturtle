@@ -54,8 +54,11 @@ enum solver_t
 {
   _SYM_1SH,
   _SYM_RND,
+  _SYM_ENT,
   _COV_RND,
-  _COV_DCM
+  _COV_DCM,
+  _COV_MCTS,
+  _COV_GEN
 };
 
 template<class Ntk>
@@ -65,6 +68,7 @@ struct report_t
   int nMin;
   int nMax;
   Ntk ntk;
+  double time;
 };
 
 struct cusco_ps
@@ -140,6 +144,18 @@ report_t<Ntk> cusco<Ntk>::solve( cusco_ps const& ps )
       rp.ntk  = rp1.ntk;
       break;
     }
+    case _SYM_ENT: 
+    {
+      assert( Y.size() == 1 );
+      cusco_rem<Ntk> solver1( X, Y );
+      cusco_rem_ps ps1( ps.nIters );
+      report_rem_t<Ntk> rp1 = solver1.solve_entropic( ps1 );
+      rp.nIt0 = rp1.nIt0;
+      rp.nMin = rp1.nMin;
+      rp.nMax = rp1.nMax;
+      rp.ntk  = rp1.ntk;
+      break;
+    }
     case _COV_RND :
     {
       cusco_cov<Ntk> solver2( X, Y );
@@ -162,9 +178,32 @@ report_t<Ntk> cusco<Ntk>::solve( cusco_ps const& ps )
       rp.ntk  = rp3.ntk;
       break;
     }
+    case _COV_MCTS :
+    {
+      cusco_cov<Ntk> solver4( X, Y );
+      cusco_cov_ps ps4( ps.nIters, ps.nCap, false );
+      report_cov_t<Ntk> rp4 = solver4.solve_mcts( ps4 );
+      rp.nIt0 = rp4.nIt0;
+      rp.nMin = rp4.nMin;
+      rp.nMax = rp4.nMax;
+      rp.ntk  = rp4.ntk;
+      printf("%d %d %d %d\n", rp.nIt0, rp.nMin, rp.nMax, rp.ntk );
+      break;
+    }
+    case _COV_GEN :
+    {
+      cusco_cov<Ntk> solver5( X, Y );
+      cusco_cov_ps ps5( ps.nIters, ps.nCap, false );
+      report_cov_t<Ntk> rp5 = solver5.solve_genetic( ps5 );
+      rp.nIt0 = rp5.nIt0;
+      rp.nMin = rp5.nMin;
+      rp.nMax = rp5.nMax;
+      rp.ntk  = rp5.ntk;
+      break;
+    }
   }
   duration = ( std::clock() - start ) / (double) CLOCKS_PER_SEC;
-
+  rp.time = duration;
   //printf("SUMMARY:\n");
   //printf( "ngates = %d  time = %.2f\n", ntk.num_gates(), duration );
 

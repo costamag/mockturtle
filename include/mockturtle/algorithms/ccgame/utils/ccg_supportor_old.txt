@@ -1,0 +1,507 @@
+/* mockturtle: C++ logic network library
+ * Copyright (C) 2018-2022  EPFL
+ *
+ * Permission is hereby granted, free of charge, to any person
+ * obtaining a copy of this software and associated documentation
+ * files (the "Software"), to deal in the Software without
+ * restriction, including without limitation the rights to use,
+ * copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following
+ * conditions:
+ *
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+ * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+ * HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
+ */
+
+/*!
+  \file ccg_supporter.hpp
+  \brief data structure for generating new supports given a set of divisors
+
+  \author Andrea Costamagna
+*/
+#pragma once
+
+#include "ccg_rng.hpp"
+
+#include <stdio.h>
+#include <stack>
+#include <set>
+#include <math.h>
+
+namespace mockturtle
+{
+
+namespace ccgame
+{
+
+#pragma region GENETIC
+
+enum mutation_t
+{
+    RND_DEL // random deletion
+};
+
+/*! \brief chromosome data structure: 
+ * contains binary string representing the chromosome
+ */
+struct chromosome_t
+{
+    /*! \brief binary representation of the chromosome */
+    std::vector<uint32_t> sequence {0u};
+    /*! \brief last meaningful bit in the last word */
+    uint32_t endBit;
+    /*! \brief number of meaningful bits */
+    uint32_t nBits;
+
+    chromosome_t(){};
+    /*! \brief constructor: give the genes ids and the number of genes */
+    chromosome_t( std::vector<int> genes, int nGenes )
+    {
+        int nSeq = nGenes/32u;
+        endBit = nGenes%32u;
+        for( int i{0}; i<genes.size(); ++i )
+            sequence[i/32u] |= ( 1u << i%32u );
+
+        nBits = 32u*(sequence.size()-1)+endBit;
+    }
+
+    int get_word( int iBit ){ return iBit/32u; }
+    int get_bit( int iBit ){ return sequence[ get_word(iBit) ] >> iBit%32 & 1u; }
+    void flip_bit( int iBit ){ sequence[ get_word(iBit) ] = sequence[ get_word(iBit) ] ^ ( 1u << iBit%32 ); }
+
+    /*! \brief print the binary representation of the some */
+    void print()
+    { 
+        for( int iBit{0u}; iBit< nBits ; ++iBit )
+            printf("%d", get_bit( iBit ) );
+        printf("\n");
+    }
+};
+#pragma endregion GENETIC
+
+/*! \brief supportor_nd i the data structure for a node of the support manager
+*   It contains:
+*   - pTT       : a pointer to the truth table of the divisor.
+*   - idNd      : the node idenntifier in the tree.
+*   - idDv      : the divisor identifier.
+*   - nDvs      : the total number of divisors.
+*   - children  : the NODE identifiers of the childrens or -1 if not present .
+*   CONVENTIONS :
+*   If the node is associated to divisor d[idDv], idDv can be
+*   - -1                : for the root node.
+*   - {0,..., nDvs-1}   : for a divisor node.
+*   The number of children to the node for divisor d[idDv] is nDivs-idDv-1.
+*   To access the node identifier from the divisor idDivChild idNd <-- children[idDivChild-idDv-1]
+*   
+*/
+template<class TT>
+struct supportor_nd_t
+{
+    /*! \brief identifier of the node */
+    int idNd;
+    /*! \brief divisor identifier */
+    int idDv;
+    /*! \brief number of divisors */
+    int nDvs;
+    /*! \brief NODE identifier of the parent */
+    int idNdPar;
+    /*! \brief vector of NODE identifiers of the children -1 = not present */
+    std::vector<int> children;
+    /*! \brief pointer to the simulation pattern */
+    TT * pTT{nullptr};
+    /*! \brief true if the node is a legal cut leaf */
+    bool isLCLeaf{false};
+
+    /*! \brief constructor: takes the node id, the divisor id, and the total number of divisors */
+    supportor_nd_t( int idNode, int idNodeParent, int idDivisor, int nDivisors ) : idNd(idNode), idNdPar(idNodeParent), idDv(idDivisor), nDvs(nDivisors)
+    {
+        // +1 to remove the considered id
+        for( int i{idDv+1}; i < nDvs; ++i )
+            children.push_back(-1);
+    }
+
+    /*! \brief get child node id from its divisor id */
+    int getChildNdId( int idDvChild )
+    {
+        assert( idDvChild > idDv );
+        return children[ idDvChild - idDv -1 ];
+    }
+
+    /*! \brief get child divisor id from its index in the children vector */
+    int getChildDvId( int index )
+    {
+        assert( index < children.size() );
+        return index + idDv + 1;
+    }
+
+    /*! \brief set node id */
+    void setChildNdId( int idDvChild, int idNdChild )
+    {
+        assert( children[ idDvChild - idDv -1 ] == -1 );
+        children[ idDvChild - idDv -1 ] = idNdChild;
+    }
+
+    /*! \brief erase the children */
+    void make_leaf(){   children = {}; isLCLeaf=true;  }
+
+    /*! \brief a leaf node has no children */
+    bool is_leaf(){   return isLCLeaf;    }
+
+    /*! \brief print the information in the node supporter */
+    void print()
+    {
+        assert( ( is_leaf() || ( children.size() == nDvs - idDv - 1 ) ) );
+        for( int i{0}; i<children.size(); ++i )
+            printf( "[dv %3d: nd %3d]", getChildDvId(i), children[i] );
+        printf("\n");
+    }
+};
+
+
+struct legal_cut_t
+{
+    int idNd;
+    int cost;
+    chromosome_t chromosome;
+
+    legal_cut_t(){}
+    legal_cut_t( int idNode, int Cost, chromosome_t Chromosome ) : idNd(idNode), cost(Cost), chromosome(Chromosome)
+    {
+    }
+};
+
+
+/*! \brief Data structure for the continuous generation of new valid support sets from a set of divisors 
+ *  -   H       : truth tables of the divisors.
+ *  -   F       : truth tables of the target functionalities.
+ *  -   nodes   : vector of supportor_nd_t<TT>.  
+ * 
+ * INITIALIZATION :
+ *  -   create the root node.
+ *  -   store the identity remapping to avoid its re-usage
+ * How do we store a product:
+ *  -   A path in the tree
+*/
+template<class TT>
+class supportor_t
+{
+  public:
+    /* # first identity remapped entries */
+    int nPrev;
+    /* divisors simulation patterns */
+    std::vector<TT> H;
+    /* costs of the divisors */
+    std::vector<int> costs;
+    /* targets simulation patterns */
+    std::vector<TT> F;
+    /* bool to determine the object to cover */
+    bool isExpl;
+    /* information graphs divisors */
+    std::vector<TT> G_H;
+    /* information graphs targets */
+    std::vector<TT> G_F;
+    /* supporter nodes */
+    std::vector<supportor_nd_t<TT>> nodes;
+    /* <nodes,cost> identifying a legal cut */
+    std::vector<legal_cut_t> legalCuts;
+    /* chromosome at time t */
+    chromosome_t Xt;
+
+    /* CONSTRUCT/DESTRUCT */
+    supportor_t();
+    supportor_t( int, std::vector<TT> const&, std::vector<int> const&, std::vector<TT> const&, bool );
+    ~supportor_t();
+
+    /* GROW */
+    /*! \brief to be called at initialization*/
+    void add_root_node();
+    int add_node( int, int );
+    /*! \brief add a path given a chromosome: returns -1 or the id of the leaf node */
+    int add_legal_cut( chromosome_t );
+    /*! \brief add a leaf node to the set of the legal cuts */
+    int add_legal_leaf( int, int, chromosome_t );
+    /*! \brief return the reference to the leaf node if a new cut is found, -1 otherwise*/
+    chromosome_t find_new( mutation_t );
+
+    /* GET */
+    supportor_nd_t<TT> * get_root_nodeP();
+    int get_root_nd_id();
+    std::vector<int> get_cut(int);
+
+    /* SET */
+    void set_cost( int, int );
+
+    /* EXPLICIT */
+    chromosome_t apply_mutation( chromosome_t, mutation_t );
+    chromosome_t find_new_expl( mutation_t );
+    /* IMPLICIT */
+    chromosome_t find_new_impl( mutation_t );
+
+  public:
+    /* VISUALIZE */
+    void print();
+};
+
+#pragma region CONSTRUCT/DESTRUCT
+
+template<class TT>
+supportor_t<TT>::supportor_t(){};
+
+/*! \brief { H : self } { F : information graph as 2^(2n)-bits truth table } */
+TT create_graph( TT tt )
+{
+    int nBits = tt.num_bits();
+    //int nBit2 = nBits*nBits;
+    int nVars = tt.num_vars();
+    TT  graph( 2*nVars );
+    TT  tt2( 2*nVars );
+    TT  mk2( 2*nVars );
+    for( int iBit{0}; iBit < nBits; ++iBit )
+    {
+        kitty::set_bit( mk2, iBit );
+        if( kitty::get_bit( tt, iBit ) == 1 )
+            kitty::set_bit( tt2, iBit );
+        else
+            kitty::clear_bit( tt2, iBit );
+    }
+
+    for( int iBit{nBits-1}; iBit >= 0; --iBit )
+    {
+        if( kitty::get_bit( tt, iBit ) == 0 )
+            graph |= ( tt2 << nBits*iBit );
+        else
+            graph |= ( ( tt2 ^ mk2 ) << nBits*iBit );
+    }
+    return graph;
+}
+
+template<class TT>
+supportor_t<TT>::supportor_t( int nPrevious, std::vector<TT> const& H, std::vector<int> const& Costs, std::vector<TT> const& F, bool useInformationGraphs ): 
+    nPrev( nPrevious ), 
+    costs(Costs),
+    H(H), 
+    F(F),
+    isExpl( useInformationGraphs ) //initializing the network creates the first layer
+{
+    /* create the root node */
+    add_root_node();   
+    
+    /* construct the object to cover */
+    if( isExpl )
+    {
+        for( auto x : H )
+            G_H.push_back( create_graph(x) );
+        for( auto y : F )
+            G_F.push_back( create_graph(y) );
+    }
+
+    /* store the identity remapping */
+    std::vector<int> genes;
+    for( int i{0}; i<nPrev; ++i ) genes.push_back( i );
+    chromosome_t chromosome( genes, H.size() );
+    Xt = chromosome;
+    add_legal_cut( chromosome );
+};
+
+template<class TT>
+supportor_t<TT>::~supportor_t(){};
+
+#pragma endregion CONSTRUCT/DESTRUCT
+
+#pragma region GROW
+template<class TT>
+void supportor_t<TT>::add_root_node()
+{
+    supportor_nd_t<TT> root( nodes.size(), -1, -1, H.size());
+    nodes.push_back(root);
+}
+
+template<class TT>
+int supportor_t<TT>::add_node( int idDvChild, int idNdPar )
+{
+    if( nodes[idNdPar].getChildNdId( idDvChild ) == -1 )
+    {
+        supportor_nd_t<TT> nd( nodes.size(), idNdPar, idDvChild, H.size());
+        nd.pTT = &H[idDvChild];
+        nodes.push_back(nd);
+        nodes[idNdPar].setChildNdId( idDvChild, nd.idNd );
+        nodes[idNdPar].getChildNdId( idDvChild );
+        return nd.idNd;
+    }
+    return -1;
+}
+
+
+template<class TT>
+int supportor_t<TT>::add_legal_cut( chromosome_t chromosome )
+{
+    int idNdPar   = get_root_nd_id();
+    int idNdChild;
+    for( int iBit{0}; iBit<chromosome.nBits; ++iBit )
+    {
+        if( chromosome.get_bit( iBit ) == 1 )
+        {
+          idNdChild = nodes[idNdPar].getChildNdId( iBit ); // iBit=idDiv
+          if( idNdChild == -1 ) 
+            idNdChild = add_node( iBit, idNdPar );
+          idNdPar = idNdChild;
+        }
+    }
+    nodes[idNdChild].make_leaf();
+    
+    return add_legal_leaf( idNdChild, -1, chromosome );
+}
+
+template<class TT>
+int supportor_t<TT>::add_legal_leaf( int idNd, int cost, chromosome_t chromosome )
+{
+    legal_cut_t leaf( idNd, cost, chromosome );
+    if( legalCuts.size() == 0 || leaf.cost < legalCuts[legalCuts.size()-1].cost )
+    {
+        legalCuts.push_back( leaf );
+        return legalCuts.size()-1;
+    }
+    else
+    {
+        for( int i{legalCuts.size()-1}; i>=0; --i )
+        {
+            if( leaf.cost > legalCuts[i].cost )
+            {
+                legalCuts.insert( legalCuts.begin() + i, leaf );
+                return i;
+            }
+        }
+    }
+}
+
+template<class TT>
+chromosome_t supportor_t<TT>::find_new( mutation_t mutation )
+{
+    if( isExpl )
+        return find_new_expl( mutation );
+    else    
+        return find_new_impl( mutation );
+}
+#pragma endregion GROW
+
+#pragma region GET
+
+template<class TT> supportor_nd_t<TT> * supportor_t<TT>::get_root_nodeP(){ return &nodes[0]; }
+template<class TT> int  supportor_t<TT>::get_root_nd_id(){ return nodes[0].idNd; }
+
+template<class TT> std::vector<int> supportor_t<TT>::get_cut( int idLegalCuts )
+{
+    std::vector<int> idsCut;
+    int idNd = legalCuts[idLegalCuts].idNd;
+    
+    while( idNd != 0 )
+    {
+        idsCut.insert( idsCut.begin(), nodes[idNd].idNd );
+        idNd = nodes[idNd].idNdPar;
+    }
+    return idsCut;
+}
+#pragma endregion GET
+
+#pragma region SET
+
+template<class TT>
+void supportor_t<TT>::set_cost( int idLegCut, int cost )
+{
+    legalCuts[idLegCut].cost = cost;
+    legal_cut_t updated = legalCuts[idLegCut];
+    legalCuts.erase( legalCuts.begin() + idLegCut );
+    bool inserted{false};
+    for( int i{legalCuts.size()-1}; i>=0; --i )
+    {
+        if( updated.cost > legalCuts[i].cost )
+        {
+            legalCuts.insert( legalCuts.begin() + i, updated );
+            inserted=true;
+            break;
+        }
+    }
+    if( !inserted )
+        legalCuts.push_back(updated);
+} 
+
+#pragma endregion SET
+
+template<class TT>
+chromosome_t supportor_t<TT>::apply_mutation( chromosome_t X, mutation_t mutation )
+{
+    chromosome_t res = X;
+    std::vector<int> active_genes;
+    switch (mutation)
+    {
+        case RND_DEL:
+        {
+            for( int i{0}; i < res.nBits; ++i )
+                if( res.get_bit(i) == 1 )
+                    active_genes.push_back( i );
+            std::uniform_int_distribution<> distrib(0, active_genes.size()-1);
+            int del = distrib(ccg_gen);
+            printf("flip %d\n", del);
+            res.flip_bit(del);
+            break;
+        }
+        default:
+            assert(0);
+            break;
+    }   
+    return res;
+}
+
+#pragma region EXPLICIT
+template<class TT> 
+chromosome_t supportor_t<TT>::find_new_expl( mutation_t mutation )
+{
+    printf("find new EXPL\n");
+    chromosome_t Xt1 = apply_mutation( Xt, mutation );
+    Xt1.print();
+    return Xt1;
+}
+#pragma enregion EXPLICIT
+
+#pragma region IMPLICIT
+template<class TT> 
+chromosome_t supportor_t<TT>::find_new_impl( mutation_t mutation )
+{
+    printf("find new IMPL\n");
+
+    return Xt;
+}
+#pragma enregion IMPLICIT
+
+
+#pragma region VISUALIZE
+
+template<class TT>
+void supportor_t<TT>::print()
+{
+    for( int i{0}; i<nodes.size(); ++i )
+    {
+        if( nodes[i].is_leaf() )
+            printf("LEAF: ND %3d : DV %3d : #DVs %3d\n", nodes[i].idNd, nodes[i].idDv, nodes[i].nDvs );
+        else
+            printf("NORM: ND %3d : DV %3d : #DVs %3d\n", nodes[i].idNd, nodes[i].idDv, nodes[i].nDvs );
+
+        nodes[i].print();
+    }
+}
+
+#pragma endregion VISUALIZE
+
+} // namespace ccgame
+
+} // namespace mockturtle

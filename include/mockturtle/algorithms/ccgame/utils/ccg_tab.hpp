@@ -36,8 +36,11 @@
 #include <kitty/operators.hpp>
 #include <kitty/print.hpp>
 #include <stdio.h>
+
 #include <stack>
 #include "ccg_cut.hpp"
+#include "ccg_rng.hpp"
+
 
 namespace mockturtle
 {
@@ -66,11 +69,15 @@ public:
   TT univ;
   std::vector<std::vector<int>> subsets;
 
+  tab_t();
   tab_t( cut_t, cut_t );
   ~tab_t();
 
+  void init_tab( cut_t, cut_t );
+  void init_small_tab( cut_t, cut_t );
   void print();
   void greedy_set_covering( int );
+  void implicit_greedy_set_covering( );
   void select_dc_maximizers();
   std::vector<int> compute_subsets_cost();
 };
@@ -89,8 +96,41 @@ tab_t::tab_t( cut_t sets_c, cut_t univ_c ): inCut( sets_c ), outCut( univ_c )
       univ |= univ_c.nodes[i].graph();
   }
 }
-
+tab_t::tab_t(){}
 tab_t::~tab_t(){}
+
+void tab_t::init_tab( cut_t sets_c, cut_t univ_c )
+{
+  inCut = sets_c;
+  outCut = univ_c;
+  for( int i{0}; i < sets_c.size(); ++i )
+      sets.push_back( sets_c.nodes[i].graph() );
+
+  univ = sets[0] & ~sets[0];
+
+  for( int i{0}; i < univ_c.size(); ++i )
+  {
+    if( univ_c.nodes[i].gate == gate_t::POS )
+      univ |= univ_c.nodes[i].graph();
+  }
+}
+
+void tab_t::init_small_tab( cut_t sets_c, cut_t univ_c )
+{
+  inCut = sets_c;
+  outCut = univ_c;
+  for( int i{0}; i < sets_c.size(); ++i )
+      sets.push_back( sets_c.nodes[i].tt );
+
+  univ = sets[0] & ~sets[0];
+
+  for( int i{0}; i < univ_c.size(); ++i )
+  {
+    if( univ_c.nodes[i].gate == gate_t::POS )
+      univ |= univ_c.nodes[i].tt;
+  }
+}
+
 #pragma endregion
 
 #pragma region set-covering
@@ -189,6 +229,90 @@ void tab_t::greedy_set_covering( int nCap )
 
     for( auto Pb : problems_new )
         subsets.push_back( Pb.divs );
+}
+
+/*! \brief approximate solution of the set covering problem */
+void tab_t::implicit_greedy_set_covering()
+{
+    std::uniform_int_distribution<> distrib(0, sets.size()-1);
+    subsets = {};
+
+    std::random_device rd;  // a seed source for the random number engine
+    std::mt19937 gen(5); // mersenne_twister_engine seeded with rd()
+
+    bool notFound = true;
+    std::vector<int> subset;
+
+    while( notFound )
+    {
+        std::vector<TT> Fn = {univ};
+        std::vector<TT> Mk = {~univ.construct() | univ.construct()};
+        std::vector<int> to_use;
+        for( int i{0}; i<sets.size(); ++i )
+            to_use.push_back(i);
+        int rnum = distrib(ccg_gen);
+        subset = {};
+        int isFirst=1;
+        while( Fn.size() > 0 )
+        {
+            if( to_use.size() == 0 )
+                break;
+            int bestRef=-1;
+            /* choose the next divisor */
+            if( isFirst == 0 )
+            {
+                int bestCorr = 0;
+                int corr;
+
+                for( int iRef{0}; iRef < to_use.size(); ++iRef )
+                {
+                    corr = 0;
+                    for( int iFn{0}; iFn < Fn.size(); ++iFn )
+                        corr += std::max( kitty::count_ones( Mk[iFn]&(Fn[iFn]^sets[to_use[iRef]]) ), kitty::count_ones( Mk[iFn]&(~Fn[iFn]^sets[to_use[iRef]])));
+                    if( corr > bestCorr )
+                    {
+                        bestCorr = corr;
+                        bestRef = iRef;
+                    }
+                }
+            }
+            else
+            {
+                bestRef = rnum;
+                isFirst = 0;
+            }
+            if( bestRef < 0 )
+                break;
+
+            /* update the remainders */
+            std::vector<int> to_eliminateL;
+            std::vector<int> to_eliminateR;
+            int nFuncs = Fn.size();
+            for( int iFn{0}; iFn < nFuncs; ++iFn )
+            {
+                Fn.push_back(Fn[iFn]);
+                Mk.push_back(Mk[iFn]&sets[to_use[bestRef]]);
+                Mk[iFn] &= ~sets[to_use[bestRef]];
+                if( kitty::count_ones(Mk[iFn]) == 0 || kitty::count_ones(Mk[iFn]&Fn[iFn]) == 0 || kitty::equal(Mk[iFn]&Fn[iFn], Mk[iFn]) )
+                    to_eliminateL.push_back( iFn );
+                if( kitty::count_ones(Mk[nFuncs+iFn]) == 0 || kitty::count_ones(Mk[nFuncs+iFn]&Fn[nFuncs+iFn]) == 0 || kitty::equal(Mk[nFuncs+iFn]&Fn[nFuncs+iFn], Mk[nFuncs+iFn]) )
+                    to_eliminateR.push_back( nFuncs+iFn );
+            }
+            if( bestRef < 0  )
+                break;
+            subset.push_back( to_use[bestRef] );
+            to_use.erase( to_use.begin() + bestRef );
+            for( int iRem{to_eliminateR.size()-1}; iRem >= 0; --iRem )
+                Fn.erase( Fn.begin() + to_eliminateR[iRem] );
+            for( int iRem{to_eliminateL.size()-1}; iRem >= 0; --iRem )
+                Fn.erase( Fn.begin() + to_eliminateL[iRem] );
+
+            if( Fn.size() == 0 )
+                notFound = false;
+        }
+    }
+    subsets = { subset };
+    printf("subsets.size() %d  | subset.size() %d\n", subsets.size(), subsets[0].size());
 }
 
 std::vector<int> tab_t::compute_subsets_cost()

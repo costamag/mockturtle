@@ -80,13 +80,14 @@ int main()
                                         "S4_1_2_4", "S4_1_2_3", "S4_1_2_3_4", 
                                         "S5_4", "S5_4_5", "S5_3", "S5_3_5", "S5_3_4", "S5_3_4_5", "S5_2_5", "S5_2_4", "S5_2_4_5",
                                       "S5_2_3_5", "S5_2_3", "S5_2_3_4", "S5_1_5", "S5_1_4", "S5_1_3_4", "S5_1_2_5" };
-  std::vector<std::string> sMet = {"REM1", "REM100", "COV100"};
-  printf("%10s | %6s | %6s | %6s | %6s | %6s | %6s | %6s | %6s | %6s | %6s |\n", "f", "C(f)", "sym1", "sym1*", "T[s]", "symN", "symN*", "T[s]", "cov", "cov*", "T[s]" );
+  std::vector<std::string> sMet = {"UNINF", "REM1", "REM100", "COV100"};
+  printf("%20s| %7s %8s %7s | %7s %8s %7s | %7s %8s %7s | %7s %8s %7s |\n", "", "", "UNINF", "", "", "REM-1", "", "", "REM-100", "", "", "CONV-100", "" );
+  printf("%10s | %6s | %6s | %6s | %6s | %6s | %6s | %6s | %6s | %6s | %6s | %6s | %6s | %6s |\n", "f", "C(f)", "XAIG", "XAIG*", "T[s]", "XAIG", "XAIG*", "T[s]", "XAIG", "XAIG*", "T[s]", "XAIG", "XAIG*", "T[s]" );
   for( uint32_t i{0}; i < 31; ++i )
   {
     std::string info = fmt::format("{:10s} | {:6d} | ", sF[i].c_str(), CC[i] );
 
-    for( int iMet{0}; iMet < 3; ++iMet )
+    for( int iMet{0}; iMet < 4; ++iMet )
     {
       kitty::dynamic_truth_table F;
       F = knuth_game( i );
@@ -117,7 +118,9 @@ int main()
       dot_file  = "EXPS/EXP3/" + sMet[iMet] + "/dot/"  + sNames[i] + "rs.dot";
       blif_file = "EXPS/EXP3/" + sMet[iMet] + "/blif/" + sNames[i] + "rs.blif";
       aig_file  = "EXPS/EXP3/" + sMet[iMet] + "/aig/"  + sNames[i] + "rs.aig";
-
+      write_dot( xag_resub, dot_file );
+      write_dot( xag_resub, blif_file );
+      write_aiger( xag_resub, aig_file );
     }
     printf("%s\n", info.c_str() );
   }
@@ -362,6 +365,22 @@ report_t<Ntk> game_on( kitty::dynamic_truth_table * pF, int MET )
   
   if( MET == 0 )
   {
+    //ntk = solver.aut_sym_solve( MET );
+    std::vector<kitty::dynamic_truth_table> xs;
+    for( int i{0}; i<pF->num_vars(); ++i )
+    {
+      xs.emplace_back( pF->num_vars() );
+      kitty::create_nth_var( xs[i], i );
+    }
+    /* define the parameters */
+    int nIters = 100;
+    cusco_ps ps( ccgame::solver_t::_SYM_ENT, nIters );
+    /* solve */
+    cusco<Ntk> solver( xs, {*pF} );
+    rep = solver.solve( ps );
+  }
+  else if( MET == 1 )
+  {
     std::vector<kitty::dynamic_truth_table> xs;
     for( int i{0}; i<pF->num_vars(); ++i )
     {
@@ -375,7 +394,7 @@ report_t<Ntk> game_on( kitty::dynamic_truth_table * pF, int MET )
     cusco<Ntk> solver( xs, {*pF} );
     rep = solver.solve( ps );
   }
-  else if( MET == 1 )
+  else if( MET == 2 )
   {
     //ntk = solver.aut_sym_solve( MET );
     std::vector<kitty::dynamic_truth_table> xs;
@@ -391,7 +410,7 @@ report_t<Ntk> game_on( kitty::dynamic_truth_table * pF, int MET )
     cusco<Ntk> solver( xs, {*pF} );
     rep = solver.solve( ps );
   }
-  else if( MET == 2 )
+  else if( MET == 3 )
   {
     std::vector<kitty::dynamic_truth_table> xs;
     for( int i{0}; i<pF->num_vars(); ++i )
@@ -401,8 +420,8 @@ report_t<Ntk> game_on( kitty::dynamic_truth_table * pF, int MET )
     }
 
     /* define the parameters */    
-    int nIters = 100;
-    cusco_ps ps( ccgame::solver_t::_COV_RND, nIters, -1 );
+    int nIters = 200;
+    cusco_ps ps( ccgame::solver_t::_COV_MCTS, nIters, -1 );
     /* solve */
     cusco<Ntk> solver( xs, {*pF} );
     rep = solver.solve( ps );

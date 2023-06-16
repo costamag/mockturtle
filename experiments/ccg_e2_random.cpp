@@ -71,7 +71,7 @@ int main()
     for( uint32_t nVars{2}; nVars < 16; ++nVars )
     {
       std::string info = fmt::format("{:2} ||", nVars );
-      for( uint32_t iThr{1}; iThr < ( floor( nVars/2 ) + 1 ); ++iThr )
+      for( uint32_t iThr{1}; iThr < ( floor( nVars/2 ) + 2 ); ++iThr )
       {
         kitty::dynamic_truth_table F;
         F = propose_game( nVars, iThr, iFn );

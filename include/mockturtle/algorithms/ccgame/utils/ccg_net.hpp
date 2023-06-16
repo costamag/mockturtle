@@ -57,12 +57,14 @@ public:
   uint32_t nCuts{0u};
   uint32_t nNodes{0u};
 
+  net_t();
   net_t( std::vector<TT> const&, std::vector<TT> const& );
   ~net_t();
 
   /* manipulate */
   cut_t enumerate_divs();
   std::vector<symmetry_t> symmetry_analysis( std::vector<TT> *, int );
+  std::vector<symmetry_t> symmetry_analysis( std::vector<TT> * );
   void add_cut( cut_t );
   void add_cut( symmetry_t * );
   void add_node_symL( cut_t *, symmetry_t * );
@@ -82,6 +84,8 @@ public:
 };
 
 #pragma region constructors
+net_t::net_t(){};
+
 net_t::net_t( std::vector<TT> const& X, std::vector<TT> const& Y )
 {
   uint32_t INFTY = 0xFFFFFFFF;
@@ -147,6 +151,27 @@ std::vector<symmetry_t> net_t::symmetry_analysis( std::vector<TT> * pXs, int idB
   }
   /* now in sym1 there should be all the symmetries */
   return sym1;
+}
+
+std::vector<symmetry_t> net_t::symmetry_analysis( std::vector<TT> * pXs )
+{   
+  cut_t cut = get_last_cut();
+  std::vector<int> ancestor_to_node;
+  std::vector<int> node_to_ancestor;
+  for( int iVar{0}; iVar < cut.tt.num_vars(); ++iVar )
+    ancestor_to_node.push_back(-1);
+  for( int iNd{0}; iNd < cut.size(); ++iNd )
+  {
+    if( cut.nodes[iNd].is_remapped() )
+    {
+        node_to_ancestor.push_back(cut.nodes[iNd].remapped_pi());
+        ancestor_to_node[ cut.nodes[iNd].remapped_pi() ] = iNd;
+    }
+  }
+  std::vector<symmetry_t> sym;
+  sym = analyzer.find_symmetries( pXs, &cut.tt, &cut.mk, &node_to_ancestor );
+  /* now in sym1 there should be all the symmetries */
+  return sym;
 }
 #pragma endregion inquiring
 

@@ -1,0 +1,40 @@
+The paper presents a novel method for the synthesis of symmetric Boolean functions - with close-to-optimum results in terms of number of binary operators. The method is inspired by the state-of-the-art method from [5]. The problem is solved as a game, at each iteration a move is added based on an estimate of the reward. An extension with decomposition is also considered. 
+The paper presents an interesting idea and approach. The idea of treating the problem as a game seems valid and good results were obtained. I believe it could be an interesting paper for the IWLS audience. 
+On the other hand, I sometimes found the paper a bit hard to follow due to some inconsistencies in the text, typos, and missing details. 
+
+Here more detailed comments (major and minor): 
+
+Abstract: 
+- I believe the impact and quality of results of the proposed method could be better claimed in the abstract. Also, "72 gates representation": Is this in terms of AIGs? or XAGs? How good is such result? Could any other method find similar results? 
+
+[ ANDREA ] I added AIG representation and compared this with the state-of-the art.
+
+Introduction: 
+- I believe it would help to add a bit more motivation on why symmetric functions could be of any practical interest. 
+[ ] ADD EXPERIMENTAL SECTION
+
+Background: 
+- [X] Xor And Inverter Graph (AIG). Typo, this should be XAG. Reference could help here.  
+- [X] Binarized Neural Networks misses italic. 
+- [X] I think "disposing of" means get rid of and not that something is at your disposal. Sentence should be corrected. 
+- [X] Fig. 1: letters are missing but cited in the text (a) - (f). 
+- [ ] The connection between finding close-to-optimum representations for thresholds functions and testing BNNs without GPUs is not clear. 
+- [X] Section II-D: should also "gamble functions" be mentioned here? 
+
+Section III: 
+- Caption of Fig 4 is not clear. I believe this could be better explained. 
+
+Experiments: 
+- A 1): Fig 5 should be better explained (caption is also not clear). n = number of input? Numbers in each rectangle = minr? Why is first column "blue/gray"? 
+- A 1): "The reason is that we want to perform an experimental verification of the quality of the results". The sentence is not clear. I guess this is because you want to run "deepsyn" and be able to compare on AIGs? 
+- A 1): CCG-SYM: typo. SYM-DEC: typo. I think both should be SYM-CCG. 
+- A 2): Fig 6 has wrong caption. 
+- A 2): discussion about theoretical combinational complexities (shown in fig 6) and references would be helpful. Is the theoretical C in terms of AND/OR operators only or does it consider all binary instead? 
+- A 3) andd -> and 
+- A 3): why moving from AIGs to XAGs for this class of functions? Is it because the theoretical C is not known in terms of AND/OR operators? why are levels also reported here (see Table 3)? 
+- B): Table IV is not mentioned in the paper. 
+- B): what is "Zoe"? 
+- B): Table IV: is "r" = min r? 
+
+References: 
+- Missing capital letters for acronyms. e.g., Abc should be ABC.

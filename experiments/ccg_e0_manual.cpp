@@ -260,7 +260,6 @@ kitty::dynamic_truth_table propose_game( std::string * pInfo )
     printf(ANSI_COLOR_YELLOW " 3 PARITY    " ANSI_COLOR_RESET "\n" );
     printf(ANSI_COLOR_YELLOW " CHOOSE THE FUNCTION TYPE: " ANSI_COLOR_RESET "" );
     std::cin >> INPUT;
-    //INPUT = 2; printf("2\n");
 
     switch (INPUT)
     {
@@ -573,3 +572,4 @@ Ntk game_on( kitty::dynamic_truth_table * pF )
   return ntk;
 
 }
+

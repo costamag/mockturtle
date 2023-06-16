@@ -78,6 +78,7 @@ public:
   ~cusco_rem();
   /* solve */
   report_rem_t<Ntk> solve_random( cusco_rem_ps const& );
+  report_rem_t<Ntk> solve_entropic( cusco_rem_ps const& );
   report_rem_t<Ntk> solve_1shot( cusco_rem_ps const& );
 };
 
@@ -145,13 +146,15 @@ report_rem_t<Ntk> cusco_rem<Ntk>::solve_1shot( cusco_rem_ps const& ps )
   net_t net( X, Y );
   net.cuts[net.nCuts-1].set_func( func );
   net.cuts[net.nCuts-1].set_mask( mask );
-  int idBound = 0;
+  int idBound = 1;
   int bestRwd = -1;
   symmetry_t bestSym;
   while( net.nHunging > 0 )
   {
+    //std::vector<symmetry_t> candidates = net.symmetry_analysis( &xs );
     std::vector<symmetry_t> candidates = net.symmetry_analysis( &xs, idBound );
     int bestCost = 1000;
+    if( candidates.size() == 0 ) break;
     for( int iCand{0}; iCand<candidates.size(); ++iCand )
     {
       int cost = sym_cost<Ntk>( candidates[iCand] );
@@ -167,11 +170,18 @@ report_rem_t<Ntk> cusco_rem<Ntk>::solve_1shot( cusco_rem_ps const& ps )
     net.add_cut( &bestSym );
     net.check_sym_closure();
   }
-  rep.ntk  = net.convert<Ntk>();
-  rep.nIt0 = rep.ntk.num_gates();
-  rep.nMax = rep.nIt0;
-  rep.nMin = rep.nIt0;
-
+  if( net.nHunging > 0 )
+  {
+    rep.nMax = -1;
+    rep.nMin = -1;
+  }
+  else
+  {
+    rep.ntk  = net.convert<Ntk>();
+    rep.nIt0 = rep.ntk.num_gates();
+    rep.nMax = rep.nIt0;
+    rep.nMin = rep.nIt0;
+  }
   return rep;
 }
 
@@ -206,7 +216,7 @@ report_rem_t<Ntk> cusco_rem<Ntk>::solve_random( cusco_rem_ps const& ps )
     net_t net( X, Y );
     net.cuts[net.nCuts-1].set_func( func );
     net.cuts[net.nCuts-1].set_mask( mask );
-    int idBound = 0;
+    int idBound = 1;
     int bestRwd = -1;
     while( net.nHunging > 0 )
     {
@@ -236,9 +246,13 @@ report_rem_t<Ntk> cusco_rem<Ntk>::solve_random( cusco_rem_ps const& ps )
       int iSym = distrib(gen);
 
       symmetry_t bestSym = bestCands[iSym];
-      if( ( bestSym.idL == idBound ) || ( bestSym.idR == idBound  ) )
-        idBound+=2;
       net.add_cut( &bestSym );
+      cut_t lastCut = net.get_last_cut();
+
+      if( ( bestSym.idL >= idBound ) || ( bestSym.idR >= idBound  ) )
+      {
+        idBound += 2;
+      }
       net.check_sym_closure();
     }
     if( !notFound )
@@ -256,6 +270,75 @@ report_rem_t<Ntk> cusco_rem<Ntk>::solve_random( cusco_rem_ps const& ps )
   return rep;
 }
 
+template<class Ntk>
+report_rem_t<Ntk> cusco_rem<Ntk>::solve_entropic( cusco_rem_ps const& ps )
+{
+  report_rem_t<Ntk> rep;
+  rep.nMax = 0;
+  rep.nMin = 0x00FFFFFF;
+
+  std::random_device rd;  // a seed source for the random number engine
+  std::mt19937 gen(5); // mersenne_twister_engine seeded with rd()
+  Ntk ntk;
+  int nVars = ceil(log2(X[0].num_bits()));
+  TT func( nVars );
+  TT mask( nVars );
+  kitty::create_from_binary_string( func, kitty::to_binary( Y[0] ) );
+  kitty::create_from_binary_string( mask, kitty::to_binary( Y[0] | ~Y[0] ) );
+  int nBest = 10000u;
+  std::vector<TT> xs;
+  for( int i{0}; i < nVars; ++i )
+  {
+    xs.emplace_back( nVars );
+    kitty::create_nth_var( xs[i], i );
+  }
+      analyzer_t analyzer;
+
+  for( int iIt{0}; iIt < ps.nIters; ++iIt )
+  {
+    bool notFound = false;
+    net_t net( X, Y );
+    net.cuts[net.nCuts-1].set_func( func );
+    net.cuts[net.nCuts-1].set_mask( mask );
+    int oldRwd = 0;
+    while( net.nHunging > 0 )
+    {      
+      std::vector<symmetry_t> candidates = net.symmetry_analysis( &xs );
+      int bestCost = 1000;
+      std::vector<symmetry_t> bestCands;
+      if( candidates.size() == 0 )
+      {
+        notFound = true;
+        break;
+      }
+      for( int i{0}; i<candidates.size(); ++i )
+      {
+        if( candidates[i].rwd >= oldRwd )
+          bestCands.push_back( candidates[i] );
+      }
+      std::uniform_int_distribution<> distrib(0, bestCands.size()-1);
+      int iSym = distrib(gen);
+      symmetry_t bestSym = bestCands[iSym];
+      oldRwd = bestSym.rwd;
+      net.add_cut( &bestSym );
+      cut_t lastCut = net.get_last_cut();
+
+      net.check_sym_closure();
+    }
+    if( !notFound )
+    {
+      ntk = net.convert<Ntk>();
+      if( iIt == 0 )  rep.nIt0 = ntk.num_gates();;
+      if( ntk.num_gates() < rep.nMin )
+      {
+        rep.ntk = ntk;
+        rep.nMin = ntk.num_gates();
+      }
+      if ( ntk.num_gates() > rep.nMax )  rep.nMax = ntk.num_gates();
+    }
+  }
+  return rep;
+}
 
 } // namespace ccgame
 
