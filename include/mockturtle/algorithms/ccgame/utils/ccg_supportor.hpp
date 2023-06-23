@@ -32,6 +32,7 @@
 #pragma once
 
 #include "ccg_rng.hpp"
+#include "mct_utils.hpp"
 
 #include <kitty/print.hpp>
 #include <stdio.h>
@@ -45,140 +46,32 @@ namespace mockturtle
 namespace ccgame
 {
 
-using DTT = kitty::dynamic_truth_table;
-
-#pragma region INFORMATION GRAPH
-/*! \brief converts a truth table to a graph representation */
-DTT create_information_graph( DTT tt )
-{
-    int nBits = tt.num_bits();
-    int nVars = tt.num_vars();
-    TT  graph( 2*nVars );
-    TT  tt2( 2*nVars );
-    TT  mk2( 2*nVars );
-    for( int iBit{0}; iBit < nBits; ++iBit )
-    {
-        kitty::set_bit( mk2, iBit );
-        if( kitty::get_bit( tt, iBit ) == 1 )
-            kitty::set_bit( tt2, iBit );
-        else
-            kitty::clear_bit( tt2, iBit );
-    }
-
-    for( int iBit{nBits-1}; iBit >= 0; --iBit )
-    {
-        if( kitty::get_bit( tt, iBit ) == 0 )
-            graph |= ( tt2 << nBits*iBit );
-        else
-            graph |= ( ( tt2 ^ mk2 ) << nBits*iBit );
-    }
-    return graph;
-}
-#pragma endregion INFORMATION GRAPH
-
-#pragma region DIVISOR
-struct divisor_t
-{
-    int     id;
-    DTT     tt;
-    DTT     graph;
-    double   area;
-    double   delay;
-
-    divisor_t(){}
-
-    divisor_t( int id, DTT tt, double area, double delay ):
-        id(id), tt(tt), area(area), delay(delay)
-    {
-        graph = create_information_graph( tt );
-    }
-
-    ~divisor_t(){}
-
-    void print()
-    {
-        printf("[div] id:%3d area:%3.2f delay:%3.2f\n", id, area, delay ); 
-        kitty::print_binary(tt);    printf("\n");   kitty::print_binary(graph); printf("\n");
-    }
-};
-#pragma endregion DIVISOR
-
-enum method_t
-{
-    BASE
-};
-
-#pragma region TARGET
-struct target_t
-{
-    int id;
-    DTT tt;
-    DTT graph;
-    
-    target_t( int id, DTT tt ) : id(id), tt(tt) 
-    {
-        graph = create_information_graph( tt );
-    };
-    target_t(){};
-    ~target_t(){};
-
-    void print()
-    {
-        printf("[trg] id:%3d \n", id ); 
-        kitty::print_binary(tt);    printf("\n");   kitty::print_binary(graph); printf("\n");
-    }
-};
-#pragma endregion TARGET
-
 class support_generator_t
 {
     public:
         std::vector<divisor_t> divisors;
         std::vector<target_t> targets;
-        method_t method;
+        std::vector<int> TargetsDoneHere;
+        gen_method_t method;
         int nIdentity;
         std::set<std::vector<int>> history;
 
         /* CONSTRUCT */
-        support_generator_t( std::vector<divisor_t>, std::vector<target_t>, method_t, int );
+        support_generator_t( std::vector<divisor_t> *, std::vector<target_t> *, gen_method_t );
+        support_generator_t( std::vector<divisor_t>, std::vector<target_t>, gen_method_t, int ); // will be removed
         support_generator_t(){};
         ~support_generator_t(){};
 
         /* GROW */
+        std::vector<int> find_new( std::vector<int>, int );
         std::vector<int> find_new( int );
         void store_new( std::vector<int> );
-        
-        /* VISUALIZE */
-        void print_costs_graph();
+        void print();
+        void mark_closing_divisors();
+        void next_layer( std::vector<divisor_t> *, std::vector<target_t> * );
 };
 
-std::vector<double> compute_costs( method_t method, std::vector<divisor_t> * pDivs, std::vector<DTT> * pTrgs, std::vector<int> idDivs )
-{
-    std::vector<double> costs;
-
-    switch ( method )
-    {
-        case method_t::BASE:
-        {
-            for( int i{0}; i < idDivs.size(); ++i )
-            {
-                DTT Gi = (*pDivs)[idDivs[i]].graph;
-                costs.push_back(0);
-                for( int j{0}; j<pTrgs->size(); ++j )
-                {
-                    DTT Gf = (*pTrgs)[j];
-                    costs[i] += (double)kitty::count_ones( Gf & ~Gi )/( (double)(kitty::count_ones( Gf )*pTrgs->size() ) );
-                }
-            }
-            break;
-        }    
-        default:
-            break;
-    }
-    return costs;
-}
-
-support_generator_t::support_generator_t( std::vector<divisor_t> divisors, std::vector<target_t> targets, method_t method, int nIdentity ):
+support_generator_t::support_generator_t( std::vector<divisor_t> divisors, std::vector<target_t> targets, gen_method_t method, int nIdentity ):
 divisors(divisors), targets(targets), method(method), nIdentity(nIdentity)
 {
     std::vector<int> identity;
@@ -191,116 +84,118 @@ divisors(divisors), targets(targets), method(method), nIdentity(nIdentity)
         targets_tt.push_back( f.graph );
 };
 
-std::vector<double> compute_cdf( std::vector<double> H, double B )
+
+void support_generator_t::next_layer( std::vector<divisor_t> * pDivs0, std::vector<target_t> * pTrgs0 )
 {
-    std::vector<double> P;
-    std::vector<double> CDF;
-    double Z=0;
-    for( int i{0}; i<H.size(); ++i )
+    targets = *pTrgs0;
+
+    std::vector<int> fanins;
+    for( int i{0}; i < pDivs0->size(); ++i )
     {
-        P.push_back( exp( -B*H[i] ) );
-        Z += P[i];
+        fanins = { (*pDivs0)[i].id, (*pDivs0)[i].id };
+        divisors.emplace_back( divisors.size(), (*pDivs0)[i].tt, 0, (*pDivs0)[i].delay, gate_t::PRJL, fanins );
     }
-    CDF.push_back(P[0]/Z);
-    for( int i{1}; i<H.size(); ++i ) CDF.push_back(CDF[i-1]+P[i]/Z);
-    return CDF;
-}
 
-int choose_divisor_from_cdf( std::vector<double> CDF )
-{
-    std::uniform_real_distribution<> distrib(0, 1);
-    double rnd = distrib(ccg_gen);
-    int res;
-    for( int i{0}; i<CDF.size(); ++i )
-        if( rnd <= CDF[i] )
-        {
-            res = i;
-            break;
-        }
-    return res;
-}
-
-std::vector<DTT> cover_the_targets( std::vector<DTT> * pGfs, DTT Gx )
-{
-    std::vector<DTT> res = *pGfs;
-    for( int i{0}; i<pGfs->size(); ++i )
-        res[i]=res[i] & ~Gx;
-    return res;
-}
-
-std::vector<int> erase_non_essential( std::vector<divisor_t> * pDivs, std::vector<target_t> * pTrgs, std::vector<int> support )
-{
-    DTT Gx = (*pDivs)[0].graph.construct();
-    DTT Gf = Gx.construct();
-
-    for( int i{0}; i<pTrgs->size(); ++i )
-        Gf |= (*pTrgs)[i].graph;
-
-    bool isRed{false};
-    while( !isRed )
+    for( int iR{0}; iR < pDivs0->size(); ++iR )
     {
-        std::vector<DTT> Gs;
-        for( int i{0}; i<support.size(); ++i )
-            Gs.push_back( (*pDivs)[support[i]].graph & Gf );
-        DTT G1, G2; 
-        if( support.size() > 2 )
+        for( int iL{iR+1}; iL < pDivs0->size(); ++iL )
         {
-            for( int n{support.size()-1}; n >= 2; --n )
+            fanins = { (*pDivs0)[iR].id, (*pDivs0)[iL].id };
+            DTT ttL = (*pDivs0)[iL].tt;
+            DTT ttR = (*pDivs0)[iR].tt;
+            DTT tt;
+            double maxDelay = std::max( (*pDivs0)[iL].delay, (*pDivs0)[iR].delay );
+            tt = ~ttL & ~ttR;
+            if( kitty::count_ones(tt)>0 && kitty::count_zeros(tt)>0 )
+                divisors.emplace_back( divisors.size(), tt, 1, maxDelay+1, gate_t::AI00, fanins );
+            for( int iTrg{0}; iTrg < targets.size(); ++iTrg )
             {
-                G1 = Gs[n] | Gs[n-1];
-                G2 = Gs[n-2] | ( Gs[n] & Gs[n-1] );
-                Gs[n-1] = G1;
-                Gs[n-2] = G2;
+                if( targets[iTrg].isDone ) continue;
+                if( kitty::equal( targets[iTrg].tt, divisors.back().tt ) || kitty::equal( targets[iTrg].tt, ~divisors.back().tt ) )
+                {    divisors.back().isPo = true; divisors.back().id2 = iTrg; targets[iTrg].div = divisors.back().id;}
             }
-        }
-        G1 = Gs[0] ^ Gs[1];
 
-        std::vector<int> candidate_to_erase;
-
-        isRed = true;
-        for( int i{support.size()-1}; i >= 0; --i )
-        {
-            if( kitty::count_ones( G1 & (*pDivs)[support[i]].graph ) == 0 )
+            tt = ~ttL &  ttR;
+            if( kitty::count_ones(tt)>0 && kitty::count_zeros(tt)>0 )
+                divisors.emplace_back( divisors.size(), tt, 1, maxDelay+1, gate_t::AI01, fanins );
+            for( int iTrg{0}; iTrg < targets.size(); ++iTrg )
             {
-                isRed = false;
-                candidate_to_erase.push_back(i);
+                if( targets[iTrg].isDone ) continue;
+                if( kitty::equal( targets[iTrg].tt, divisors.back().tt ) || kitty::equal( targets[iTrg].tt, ~divisors.back().tt ) )
+                {    divisors.back().isPo = true; divisors.back().id2 = iTrg; targets[iTrg].div = divisors.back().id; }
             }
-        }
-        if( !isRed )
-        {
-            std::uniform_int_distribution<> distrib(0, candidate_to_erase.size()-1);
-            int to_erase = distrib(ccg_gen);
-            support.erase( support.begin() + candidate_to_erase[to_erase] );
+
+            tt = ttL & ~ttR;
+            if( kitty::count_ones(tt)>0 && kitty::count_zeros(tt)>0 )
+                divisors.emplace_back( divisors.size(), tt, 1, maxDelay+1, gate_t::AI10, fanins );
+            for( int iTrg{0}; iTrg < targets.size(); ++iTrg )
+            {
+                if( targets[iTrg].isDone ) continue;
+                if( kitty::equal( targets[iTrg].tt, divisors.back().tt ) || kitty::equal( targets[iTrg].tt, ~divisors.back().tt ) )
+                {    divisors.back().isPo = true; divisors.back().id2 = iTrg; targets[iTrg].div = divisors.back().id; }
+            }
+
+            tt =  ttL &  ttR;
+            if( kitty::count_ones(tt)>0 && kitty::count_zeros(tt)>0 )
+                divisors.emplace_back( divisors.size(), tt, 1, maxDelay+1, gate_t::AI11, fanins );
+            for( int iTrg{0}; iTrg < targets.size(); ++iTrg )
+            {
+                if( targets[iTrg].isDone ) continue;
+                if( kitty::equal( targets[iTrg].tt, divisors.back().tt ) || kitty::equal( targets[iTrg].tt, ~divisors.back().tt ) )
+                {    divisors.back().isPo = true; divisors.back().id2 = iTrg; targets[iTrg].div = divisors.back().id; }
+            }
         }
     }  
-    return support;
-    
+
 }
+
+support_generator_t::support_generator_t( std::vector<divisor_t> * pDivs0, std::vector<target_t> * pTrgs0, gen_method_t method ): method(method)
+{
+    /* store trivial solution */
+    std::vector<int> identity;
+    for( int i{0}; i < pDivs0->size(); ++i ) identity.push_back( i );
+    history.insert( identity );
+    /*  */
+    next_layer( pDivs0, pTrgs0 );
+};
 
 std::vector<int> support_generator_t::find_new( int nIters )
 {
+    bool isEnd = true;
+    for( int i{0}; i<targets.size(); ++i )
+        isEnd &= targets[i].isDone;
+    std::vector<int> support0;
+    for( int i{0}; i<divisors.size();++i )
+    {
+        if( divisors[i].isPo )
+        {
+            support0.push_back(i);
+        }
+    }
     std::vector<int> support;
 
     for( int it{0}; it<nIters; ++it )
     {
-        support = {};
+        support = support0;
         std::vector<DTT> target_graphs;
         for( int i{0}; i<targets.size(); ++i )
+        {
+            printf("%d\n", targets[i].div);
+            //if( targets[i].div < 0 )
             target_graphs.push_back( targets[i].graph );
-
+        }
         std::vector<int> divisors_id;    
         for( int i{0}; i<divisors.size(); ++i )
             divisors_id.push_back( i );
 
         int iNdPar{0};
         int iNd;
-
         while( target_graphs.size() > 0 )
         {
             std::vector<double> costs = compute_costs( method, &divisors, &target_graphs, divisors_id );
-            std::vector<double> CDF = compute_cdf( costs, 0.00001 );
+            std::vector<double> CDF = compute_cdf( costs, 0.01 );
             int iNew = choose_divisor_from_cdf( CDF );
-
+            printf("%d\n", iNew);
             // update the targets
             target_graphs = cover_the_targets( &target_graphs, divisors[divisors_id[iNew]].graph );
             
@@ -314,14 +209,36 @@ std::vector<int> support_generator_t::find_new( int nIters )
             }
         }
         std::sort( support.begin(), support.end() );
-        if(support.size() > 0) support = erase_non_essential( &divisors, &targets, support );
+        //if(support.size() > 0) support = erase_non_essential( &divisors, &targets, support );
         if( history.find( support ) == history.end() )
             return support;
         else
             support = {};
+
     }
     return support;
     
+}
+
+void support_generator_t::mark_closing_divisors()
+{
+    for( auto trg : targets )
+    {
+        if( trg.isDone )
+        int idDiv=-1;
+        for( int iDiv{0}; iDiv < divisors.size(); ++iDiv )
+        {
+            if( divisors[iDiv].isPo != 0 ) continue;
+            if( kitty::equal(divisors[iDiv].tt, trg.tt) )
+            {
+                divisors[iDiv].isPo = 1;
+            }
+            else if( kitty::equal(divisors[iDiv].tt,~trg.tt) )
+                divisors[iDiv].isPo =-1;
+            else
+                divisors[iDiv].isPo = 0;
+        }
+    }
 }
 
 void support_generator_t::store_new( std::vector<int> support )
@@ -330,6 +247,16 @@ void support_generator_t::store_new( std::vector<int> support )
     history.insert( support );
 }
 
+void support_generator_t::print()
+{
+    printf("DIVISORS\n");
+    for( auto div : divisors )
+        div.print();
+    printf("TARGETS\n");
+    for( auto trg : targets )
+        trg.print();
+    
+}
 
 } // namespace ccgame
 

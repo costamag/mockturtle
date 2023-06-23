@@ -31,10 +31,7 @@
 */
 #pragma once
 
-#include "ccg_net.hpp"
-#include "ccg_mcnodes.hpp"
 #include "ccg_rng.hpp"
-#include "ccg_supportor.hpp"
 #include <stdio.h>
 #include <stack>
 #include <iostream>
@@ -47,87 +44,143 @@ namespace ccgame
 
 using DTT = kitty::dynamic_truth_table;
 
-template<class NODE, class METHOD>
+template<class NODE, template<class> class METHOD>
 class mct_tree_t
 {
     public:
         std::vector<NODE> nodes;
-        METHOD method;
+        METHOD<NODE> method;
 
         /* CONSTRUCT/DESCTRUCT */
-        mct_tree_t( NODE, METHOD );
+        mct_tree_t( NODE, METHOD<NODE> );
         mct_tree_t(){};
         ~mct_tree_t(){};
 
         /* GROW */
-        NODE * select();
-        NODE * expand( NODE * );
-        NODE * simulate( NODE * );
-        void backpropagate( NODE * );
+        int add_node( int, NODE );
+        int select();
+        int expand( int );
+        int simulate( int );
+        void backpropagate( int );
 
-        NODE * solve();
+        int solve();
+        void path_print( int );
 
+        double evaluate( int );
 };
 
-template<class NODE, class METHOD>
-mct_tree_t<NODE, METHOD>::mct_tree_t( NODE root, METHOD method )
+template<class NODE, template<class> class METHOD>
+mct_tree_t<NODE, METHOD>::mct_tree_t( NODE root, METHOD<NODE> method ) : method(method)
 {
     nodes.push_back( root );
-} 
+}
 
-template<class NODE, class METHOD>
-NODE * mct_tree_t<NODE, METHOD>::select()
+template<class NODE, template<class> class METHOD>
+int mct_tree_t<NODE, METHOD>::select()
 {
     return method.select( &nodes );
 }
 
-template<class NODE, class METHOD>
-NODE * mct_tree_t<NODE, METHOD>::expand( NODE * pNdA )
+template<class NODE, template<class> class METHOD>
+int mct_tree_t<NODE, METHOD>::add_node( int id, NODE child )
 {
-    NODE NdB = method.expand( pNdA );
-    nodes.push_back( NdB );
-    return nodes.back();
+    if( child.is_null() )   return -1;
+
+    child.id = nodes.size();
+    nodes.push_back( child );
+    nodes[id].add_child( child.id );
+    nodes[child.id].idPar = id;
+    return child.id;
 }
 
-template<class NODE, class METHOD>
-NODE * mct_tree_t<class NODE, class METHOD>::simulate( NODE * pNdA )
+template<class NODE, template<class> class METHOD>
+int mct_tree_t<NODE, METHOD>::expand( int id )
 {
-    NODE NdB = method.simulate( &nodes, pNdA );
-    nodes.push_back( NdB );
-    return nodes.back();
+    NODE nd = method.expand( &nodes[id] );
+    return add_node( id, nd );
 }
 
-template<class NODE, class METHOD>
-void mct_tree_t<NODE, METHOD>::backpropagate( NODE * pNd )
+template<class NODE, template<class> class METHOD>
+int mct_tree_t<NODE, METHOD>::simulate( int id )
 {
-    method.backpropagate( &nodes, pNd );
-}
-
-template<class NODE, class METHOD>
-NODE * mct_tree_t<NODE, METHOD>::solve()
-{
-    NODE * pNdBest{nullptr};
-    // your solution
-    for( int it{0}; it<method.nIters; ++it )
+    NODE nd;
+    while( !nodes[id].is_leaf() )
     {
-        NODE * pNdSel = select();
-        NODE * pNdExp = expand( pNdSel );
-        NODE * pNdEnd ;
-
-        if( pNdExp->isLeaf )
-            pNdEnd = pNdExp;
-        else
-            pNdEnd = simulate( pNdExp );
-
-        backpropagate( pNdEnd );
-
-        if( method.isBest( pNdEnd ) )
-            pNdBest = pNdEnd;
+        nd = method.simulate( &nodes[id] );
+        id = add_node( id, nd );
     }
-    assert( pNdBest != nullptr )
-    return pNdBest;
+    return id;
 }
 
-} // namespace ccgame
+template<class NODE, template<class> class METHOD>
+void mct_tree_t<NODE, METHOD>::backpropagate( int id )
+{
+    method.backpropagate( &nodes, &nodes[id] );
+}
+
+template<class NODE, template<class> class METHOD>
+int mct_tree_t<NODE, METHOD>::solve()
+{
+    int idBest = -1;
+    double bestCost = 100000;
+    for( int it{0}; it<method.ps.nIters; ++it )
+    {
+        int idSel = select();
+        if( nodes[idSel].is_leaf() ) { idBest = 0; break;}
+        if( nodes[idSel].is_null() ) continue;
+
+        int idExp = expand( idSel );
+        printf("%d\n", idExp);
+        if( nodes[idExp].is_leaf() ) { idBest = idExp; break;}
+        if( nodes[idExp].is_null() ) continue;
+        
+        int idEnd;
+        if( nodes[idExp].is_leaf() )
+            idEnd = idExp;
+        else
+        {
+            for( int itSim{0}; itSim<method.ps.nSims; ++itSim )
+            {
+                idEnd = simulate( idExp );
+                //backpropagate( idEnd );
+                double cost = evaluate( idEnd );
+                if( cost < bestCost )
+                {
+                    idBest = idEnd;
+                    bestCost = cost;
+                }
+            }
+        }
+    }
+    return idBest;
+}
+
+template<class NODE, template<class> class METHOD>
+double mct_tree_t<NODE, METHOD>::evaluate( int id )
+{
+    for( auto trg : nodes[id].supportor.targets )
+        if( !trg.isDone )   return -1;
+    std::vector<NODE*> path;
+    do
+    {
+        path.insert( path.begin(), &nodes[id] );
+        id = nodes[id].idPar;
+    } while ( id >= 0 );
+    
+    return method.evaluate( path );
+}
+
+template<class NODE, template<class> class METHOD>
+void mct_tree_t<NODE, METHOD>::path_print( int id )
+{
+    if( id == -1 ) return;
+    path_print( nodes[id].idPar );
+    printf("=============================\n");
+    printf("NODE %d\n", id);
+    nodes[id].print();
+
+} 
+
+}// namespace ccgame
 
 } // namespace mockturtle

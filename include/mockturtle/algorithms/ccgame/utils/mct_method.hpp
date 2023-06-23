@@ -31,10 +31,7 @@
 */
 #pragma once
 
-#include "ccg_net.hpp"
-#include "ccg_mcnodes.hpp"
 #include "ccg_rng.hpp"
-#include "ccg_supportor.hpp"
 #include <stdio.h>
 #include <stack>
 #include <iostream>
@@ -47,64 +44,89 @@ namespace ccgame
 
 using DTT = kitty::dynamic_truth_table;
 
-template<class NODE, class METHOD>
-class mct_tree_t
+#pragma region parameters
+enum node_selection_t
 {
-    public:
-        std::vector<NODE> nodes;
-        METHOD method;
-
-        /* CONSTRUCT/DESCTRUCT */
-        mct_tree_t( NODE, METHOD );
-        mct_tree_t(){};
-        ~mct_tree_t(){};
-
-        /* GROW */
-        int select();
-        int expand( int );
-        int simulate( int );
-        void backpropagate( int );
-
+    RAND
 };
 
-template<class NODE, class METHOD>
-mct_tree_t<NODE, METHOD>::mct_tree_t( NODE root, METHOD method )
+struct mct_method_ps
 {
-    nodes.push_back( root );
-} 
+    node_selection_t ndSelMet;
+    int nIters;
+    int nSims;
 
-template<class NODE, class METHOD>
-int mct_tree_t<NODE, METHOD>::select()
+    mct_method_ps( node_selection_t ndSelMet, int nIters, int nSims ) : 
+        ndSelMet(ndSelMet), nIters(nIters), nSims(nSims){};
+};
+#pragma endregion parameters
+
+template<class NODE>
+class mct_method_t
 {
-    int nd;
-    // your selection
-    return nd;
+    public:
+        mct_method_ps ps;
+
+        /* CONSTRUCT/DESCTRUCT */
+        mct_method_t( mct_method_ps ps ) : ps(ps) {};
+        mct_method_t(){};
+        ~mct_method_t(){};
+
+        int select( std::vector<NODE> * );
+        NODE expand( NODE * );
+        NODE simulate( NODE * );
+        void backpropagate( std::vector<NODE> *, NODE * );
+
+        double evaluate( std::vector<NODE *> );
+};
+
+#pragma region SELECT
+template<class NODE>
+int select_random( std::vector<NODE> * vNdPtrs )
+{
+    std::uniform_int_distribution<> distrib(0, vNdPtrs->size()-1);
+    return distrib(ccg_gen);
 }
 
-template<class NODE, class METHOD>
-int mct_tree_t<NODE, METHOD>::expand( int fromNd )
+template<class NODE>
+int mct_method_t<NODE>::select( std::vector<NODE> * vNdPtrs )
 {
-    int toNd;
-
-    // your algorithm
-
-    return toNd;
+    return select_random( vNdPtrs );
 }
+#pragma endregion SELECT
 
-template<class NODE, class METHOD>
-int mct_tree_t<class NODE, class METHOD>::simulate( int fromNd )
+#pragma region EXPAND
+template<class NODE>
+NODE mct_method_t<NODE>::expand( NODE * pNd )
 {
-    int toNd;
-
-    // your algorithm
-
-    return toNd;
+    return pNd->find_new();
 }
+#pragma endregion EXPAND
 
-template<class NODE, class METHOD>
-void mct_tree_t<NODE, METHOD>::backpropagate( int endNd )
+#pragma region SIMULATE
+template<class NODE>
+NODE mct_method_t<NODE>::simulate( NODE * pNd )
 {
-    // your algorithm
+    return pNd->find_new();
+}
+#pragma endregion simulate
+
+#pragma region BACKPROP
+template<class NODE>
+void mct_method_t<NODE>::backpropagate( std::vector<NODE> * vNdPtrs, NODE * pNd )
+{
+    NODE nd = *pNd; 
+    while( !nd.isRoot )
+    {
+        nd = (*vNdPtrs)[nd.idPar];
+    }
+}
+#pragma endregion BACKPROP
+
+template<class NODE>
+double mct_method_t<NODE>::evaluate( std::vector<NODE *> pNds )
+{
+    return pNds.back()->evaluate( pNds );
 }
 
 } // namespace ccgame

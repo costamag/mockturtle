@@ -115,7 +115,7 @@ mcnode_cut_t::mcnode_cut_t( std::vector<DTT> const& X, std::vector<DTT> const& Y
   }
 
     /* support genenrator initialization */
-    support_generator_t suppor( divisors, targets, method_t::BASE, 2 );
+    support_generator_t suppor( divisors, targets, gen_method_t::BASE, 2 );
 
 };
 

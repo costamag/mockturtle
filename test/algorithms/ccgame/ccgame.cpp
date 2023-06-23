@@ -4,6 +4,9 @@
 #include <mockturtle/algorithms/ccgame/utils/ccg_analyzer.hpp>
 #include <mockturtle/algorithms/ccgame/utils/ccg_supportor.hpp>
 #include <mockturtle/algorithms/ccgame/utils/ccg_cut.hpp>
+#include <mockturtle/algorithms/ccgame/utils/mct_node.hpp>
+#include <mockturtle/algorithms/ccgame/utils/mct_method.hpp>
+#include <mockturtle/algorithms/ccgame/utils/mct_tree.hpp>
 #include <kitty/partial_truth_table.hpp>
 #include <kitty/constructors.hpp>
 #include <mockturtle/algorithms/simulation.hpp>
@@ -118,21 +121,16 @@ TEST_CASE( "support generator initialization", "[CCG]" )
         xs.emplace_back( 2u );
         kitty::create_nth_var( xs[i], i );
     }
-    xs.push_back( ~xs[0] & ~xs[1] );
-    xs.push_back(  xs[0] & ~xs[1] );
-    xs.push_back( ~xs[0] &  xs[1] );
-    xs.push_back(  xs[0] &  xs[1] );
 
     std::vector<divisor_t> divisors;
     for( uint32_t i{0}; i < xs.size(); ++i )
     {
         int div_id = i;
         DTT div_tt = xs[i];
-        double div_area = (double)(i>1);
-        double div_delay = (double)(i>1);
+        double div_area = 0;
+        double div_delay = 0;
         divisor_t div( div_id, div_tt, div_area, div_delay );
         divisors.push_back(div);
-        //divisors[i].print();
     }
 
     /* initialize the targets */
@@ -151,14 +149,14 @@ TEST_CASE( "support generator initialization", "[CCG]" )
     }
 
     /* support genenrator initialization */
-    support_generator_t suppor( divisors, targets, method_t::BASE, 2 );
+    support_generator_t suppor( &divisors, &targets, gen_method_t::BASE );
    
     /* CHECKS */
     std::vector<double> area {0, 0, 1, 1, 1, 1}; 
     std::vector<double> delay {0, 0, 1, 1, 1, 1}; 
     std::vector<TT> xxs;
     std::vector<TT> ffs;
-    for( auto x : xs )
+    for( int i{0}; i<6; ++i )
         xxs.emplace_back( 4u );
     for( auto f : fs )
         ffs.emplace_back( 4u ); 
@@ -171,7 +169,7 @@ TEST_CASE( "support generator initialization", "[CCG]" )
     kitty::create_from_binary_string( ffs[0], "0110100110010110" );
     kitty::create_from_binary_string( ffs[1], "0110100110010110" );
 
-    for( uint32_t i{0}; i<xs.size(); ++i )
+    for( uint32_t i{0}; i<suppor.divisors.size(); ++i )
     {
         divisor_t div = suppor.divisors[i];
         //div.print();
@@ -179,7 +177,6 @@ TEST_CASE( "support generator initialization", "[CCG]" )
         CHECK( div.delay == delay[i] );
         CHECK( div.id == (int)i );
         CHECK( kitty::equal( div.graph, xxs[i] ) );
-        CHECK( kitty::equal( div.tt, xs[i] ) );
     }
 
     for( uint32_t i{0u}; i<fs.size(); ++i )
@@ -206,6 +203,271 @@ TEST_CASE( "support generator initialization", "[CCG]" )
     }
 }
 
+TEST_CASE( "node of the mcts", "[CCG]" )
+{
+    using DTT = kitty::dynamic_truth_table;
+    std::vector<double> ts;
+    std::vector<DTT> xs;
+    std::vector<DTT> fs;
+
+    /* initialize the divisors */
+    for( int i{0}; i < 2; ++i )
+    {
+        ts.push_back(0.0);
+        xs.emplace_back( 2u );
+        kitty::create_nth_var( xs[i], i );
+    }
+
+    /* initialize the targets */
+    for( int i{0}; i<2; ++i )
+        fs.emplace_back( 2u );
+    fs[0] = xs[0]^xs[1];
+    fs[1] = ~xs[0]^xs[1];
+
+    mct_node_t<xag_network> root( xs, ts, fs );
+    root.print();
+
+    mct_method_ps ps( node_selection_t::RAND, 10, 1 );
+    mct_method_t<mct_node_t<xag_network> > meth( ps );
+
+    mct_tree_t<mct_node_t<xag_network> , mct_method_t> mct( root, meth );
+    for( int it{0}; it<10; ++it )
+        CHECK( 0 == mct.select() );
+    
+    /* expansion */
+    printf("new node\n");
+    int id = mct.expand( 0 );
+    mct_node_t<xag_network>  * pNd = &mct.nodes[id];
+    pNd->print();
+    printf("new node\n");
+    mct.simulate( pNd->id );
+}
+
+
+TEST_CASE( "node of the mcts: network synthesized at the root", "[CCG]" )
+{
+    using DTT = kitty::dynamic_truth_table;
+    std::vector<double> ts;
+    std::vector<DTT> xs;
+    std::vector<DTT> fs;
+
+    /* initialize the divisors */
+    for( int i{0}; i < 2; ++i )
+    {
+        xs.emplace_back( 2u );
+        ts.push_back(0.5);
+        kitty::create_nth_var( xs[i], i );
+    }
+
+    /* initialize the targets */
+    for( int i{0}; i<2; ++i )
+        fs.emplace_back( 2u );
+    fs[0] = xs[1];
+    fs[1] = xs[0];
+
+    mct_node_t<xag_network> root( xs, ts, fs );
+    root.print();
+    CHECK( kitty::equal( root.targets[0].tt, root.divisors[1].tt ) );
+    CHECK( kitty::equal( root.targets[1].tt, root.divisors[0].tt ) );
+
+    CHECK( root.is_leaf() == true );
+    
+    mct_method_ps ps( node_selection_t::RAND, 10, 1 );
+    mct_method_t<mct_node_t<xag_network> > meth( ps );
+
+    mct_tree_t<mct_node_t<xag_network> , mct_method_t> mct( root, meth );
+    for( int it{0}; it<10; ++it )
+        CHECK( 0 == mct.select() );
+    CHECK( mct.nodes[0].TargetsDoneHere.size()==2 );
+    CHECK( mct.nodes[0].TargetsDoneHere[0]==0 );
+    CHECK( mct.nodes[0].TargetsDoneHere[1]==1 );
+    CHECK( mct.nodes[0].TargetsDoneHere.size()==2 );
+    CHECK( mct.evaluate(0) == 0 );
+    CHECK( mct.nodes[0].is_leaf() );
+    
+    CHECK( kitty::equal(mct.nodes[0].supportor.divisors[0].tt, xs[0]) );
+    CHECK( kitty::equal(mct.nodes[0].supportor.divisors[1].tt, xs[1]) );
+    CHECK( kitty::equal(mct.nodes[0].supportor.divisors[2].tt, ~xs[1]&~xs[0]) );
+    CHECK( kitty::equal(mct.nodes[0].supportor.divisors[3].tt, ~xs[1]& xs[0]) );
+    CHECK( kitty::equal(mct.nodes[0].supportor.divisors[4].tt,  xs[1]&~xs[0]) );
+    CHECK( kitty::equal(mct.nodes[0].supportor.divisors[5].tt,  xs[1]& xs[0]) );
+
+    int iSol = mct.solve();
+    CHECK( iSol == 0 );
+}
+
+TEST_CASE( "node of the mcts: network synthesized after one expansion", "[CCG]" )
+{
+    using DTT = kitty::dynamic_truth_table;
+    std::vector<double> ts;
+    std::vector<DTT> xs;
+    std::vector<DTT> fs;
+
+    /* initialize the divisors */
+    for( int i{0}; i < 2; ++i )
+    {
+        xs.emplace_back( 2u );
+        ts.push_back(0.5);
+        kitty::create_nth_var( xs[i], i );
+    }
+
+    /* initialize the targets */
+    for( int i{0}; i<2; ++i )
+        fs.emplace_back( 2u );
+    fs[0] = xs[1]&xs[0];
+    fs[1] = xs[0]|xs[1];
+
+    mct_node_t<xag_network> root( xs, ts, fs );
+    root.print();
+
+    CHECK( root.is_leaf() == false );
+    
+    mct_method_ps ps( node_selection_t::RAND, 10, 1 );
+    mct_method_t<mct_node_t<xag_network> > meth( ps );
+
+    mct_tree_t<mct_node_t<xag_network> , mct_method_t> mct( root, meth );
+    
+    CHECK( kitty::equal(mct.nodes[0].supportor.divisors[0].tt, xs[0]) );
+    CHECK( kitty::equal(mct.nodes[0].supportor.divisors[1].tt, xs[1]) );
+    CHECK( kitty::equal(mct.nodes[0].supportor.divisors[2].tt, ~xs[1]&~xs[0]) );
+    CHECK( kitty::equal(mct.nodes[0].supportor.divisors[3].tt, ~xs[1]& xs[0]) );
+    CHECK( kitty::equal(mct.nodes[0].supportor.divisors[4].tt,  xs[1]&~xs[0]) );
+    CHECK( kitty::equal(mct.nodes[0].supportor.divisors[5].tt,  xs[1]& xs[0]) );
+    CHECK( mct.nodes[0].supportor.divisors[2].isPo );
+    CHECK( mct.nodes[0].supportor.divisors[5].isPo );
+
+    int iSol = mct.solve();
+    CHECK( iSol == 1 );
+    CHECK( mct.nodes[1].TargetsDoneHere.size()==2 );
+    CHECK( mct.nodes[1].TargetsDoneHere[0]==0 );
+    CHECK( mct.nodes[1].TargetsDoneHere[1]==1 );
+    CHECK( mct.nodes[1].TargetsDoneHere.size()==2 );
+    CHECK( mct.nodes[1].is_leaf() );
+    CHECK( mct.evaluate(0) == -1 );
+    CHECK( mct.evaluate(1) == 2 );
+}
+
+TEST_CASE( "node of the mcts: network synthesized in the first two steps", "[CCG]" )
+{
+    using DTT = kitty::dynamic_truth_table;
+    std::vector<double> ts;
+    std::vector<DTT> xs;
+    std::vector<DTT> fs;
+
+    /* initialize the divisors */
+    for( int i{0}; i < 2; ++i )
+    {
+        xs.emplace_back( 2u );
+        ts.push_back(0.5);
+        kitty::create_nth_var( xs[i], i );
+    }
+
+    /* initialize the targets */
+    for( int i{0}; i<2; ++i )
+        fs.emplace_back( 2u );
+    fs[0] = xs[1];
+    fs[1] = xs[0]|xs[1];
+
+    mct_node_t<xag_network> root( xs, ts, fs );
+    root.print();
+
+    CHECK( root.is_leaf() == false );
+    
+    mct_method_ps ps( node_selection_t::RAND, 10, 1 );
+    mct_method_t<mct_node_t<xag_network> > meth( ps );
+
+    mct_tree_t<mct_node_t<xag_network> , mct_method_t> mct( root, meth );
+    
+    int iSol = mct.solve();
+    CHECK( iSol == 1 );
+    CHECK( mct.nodes[0].TargetsDoneHere.size()==1 );
+    CHECK( mct.nodes[0].divisors[1].isPo );
+    CHECK( mct.nodes[0].supportor.divisors[2].isPo );
+    CHECK( mct.nodes[1].TargetsDoneHere.size()==1 );
+    CHECK( mct.nodes[1].is_leaf() );
+    CHECK( mct.evaluate(0) == -1 );
+    CHECK( mct.evaluate(1) == 1 );
+}
+
+TEST_CASE( "node of the mcts: network synthesized in the second level", "[CCG]" )
+{
+    using DTT = kitty::dynamic_truth_table;
+    std::vector<double> ts;
+    std::vector<DTT> xs;
+    std::vector<DTT> fs;
+
+    /* initialize the divisors */
+    for( int i{0}; i < 2; ++i )
+    {
+        xs.emplace_back( 2u );
+        ts.push_back(0.5);
+        kitty::create_nth_var( xs[i], i );
+    }
+
+    /* initialize the targets */
+    for( int i{0}; i<2; ++i )
+        fs.emplace_back( 2u );
+    fs[0] = xs[1]^xs[0];
+    fs[1] = ~xs[1]^xs[0];
+
+    mct_node_t<xag_network> root( xs, ts, fs );
+    root.print();
+
+    mct_method_ps ps( node_selection_t::RAND, 10, 1 );
+    mct_method_t<mct_node_t<xag_network> > meth( ps );
+
+    mct_tree_t<mct_node_t<xag_network> , mct_method_t> mct( root, meth );
+    
+    //int iSol = mct.solve();
+    int iSel = mct.select();
+    CHECK( iSel == 0 );
+    int iExp = mct.expand( iSel );
+    CHECK( iExp == 1 );
+    int iSim = mct.simulate( iSel );
+    mct.path_print( iSim );
+
+    CHECK( mct.evaluate(iSim) == 3 );
+
+    int iSol = mct.solve();
+    CHECK( mct.evaluate(iSol) == 3 );
+    mct.path_print( iSol );
+
+
+}
+
+TEST_CASE( "node of the mcts: 3 inputs", "[CCG]" )
+{
+    using DTT = kitty::dynamic_truth_table;
+    std::vector<double> ts;
+    std::vector<DTT> xs;
+    std::vector<DTT> fs;
+
+    /* initialize the divisors */
+    for( int i{0}; i < 3; ++i )
+    {
+        ts.push_back(0.0);
+        xs.emplace_back( 3u );
+        kitty::create_nth_var( xs[i], i );
+    }
+
+    /* initialize the targets */
+    for( int i{0}; i<2; ++i )
+        fs.emplace_back( 3u );
+    fs[0] = xs[0]^xs[1]&xs[2];
+    fs[1] = ~xs[0]^(xs[1]|xs[2]);
+
+    mct_node_t<xag_network>  root( xs, ts, fs );
+    for( int i{0}; i<xs.size(); ++i )
+        CHECK( kitty::equal(root.divisors[i].tt, xs[i]) );
+
+    mct_method_ps ps( node_selection_t::RAND, 10, 1 );
+    mct_method_t<mct_node_t<xag_network> > meth( ps );
+    mct_tree_t<mct_node_t<xag_network> , mct_method_t> mct( root, meth );
+    int id = mct.select();
+    id = mct.expand(id);
+    id = mct.simulate( id );
+    mct.path_print(id);
+}
 
 TEST_CASE( "cusco remapping", "[CCG]" )
 {

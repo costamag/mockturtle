@@ -122,10 +122,10 @@ void cut_t::print()
     for( int j{0}; j < nodes.size(); ++j )
     {
         node_t node = nodes[j];
-        uint32_t x = node.get_loc_id();
+        uint32_t x  = node.get_loc_id();
         uint32_t xL = node.get_loc_idL();
         uint32_t xR = node.get_loc_idR();
-        uint32_t c = node.get_glb_id();
+        uint32_t c  = node.get_glb_id();
         uint32_t cL = node.get_glb_idL();
         uint32_t cR = node.get_glb_idR();
   //printf("%d %d %d %d %d %d\n", x, xL, xR, c, cL, cR );
