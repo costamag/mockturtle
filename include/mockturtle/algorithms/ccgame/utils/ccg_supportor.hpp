@@ -165,6 +165,9 @@ std::vector<int> support_generator_t::find_new( int nIters )
     for( int i{0}; i<targets.size(); ++i )
         isEnd &= targets[i].isDone;
     std::vector<int> support0;
+
+    if( isEnd )
+        return support0;
     for( int i{0}; i<divisors.size();++i )
     {
         if( divisors[i].isPo )
@@ -173,32 +176,32 @@ std::vector<int> support_generator_t::find_new( int nIters )
         }
     }
     std::vector<int> support;
+    double BETA_0 = 1000;
+    double BETA_Z = 0;
+    double BETA;
 
     for( int it{0}; it<nIters; ++it )
     {
+        BETA = nIters <= 1 ? BETA_0 : BETA_0 + it*(BETA_Z-BETA_0)/(nIters-1);
         support = support0;
         std::vector<DTT> target_graphs;
         for( int i{0}; i<targets.size(); ++i )
         {
-            printf("%d\n", targets[i].div);
             //if( targets[i].div < 0 )
             target_graphs.push_back( targets[i].graph );
         }
         std::vector<int> divisors_id;    
         for( int i{0}; i<divisors.size(); ++i )
             divisors_id.push_back( i );
-
         int iNdPar{0};
         int iNd;
         while( target_graphs.size() > 0 )
         {
             std::vector<double> costs = compute_costs( method, &divisors, &target_graphs, divisors_id );
-            std::vector<double> CDF = compute_cdf( costs, 0.01 );
+            std::vector<double> CDF = compute_cdf( costs, BETA );
             int iNew = choose_divisor_from_cdf( CDF );
-            printf("%d\n", iNew);
             // update the targets
             target_graphs = cover_the_targets( &target_graphs, divisors[divisors_id[iNew]].graph );
-            
             support.push_back( divisors_id[iNew] );
             divisors_id.erase( divisors_id.begin() + iNew );
 
@@ -209,12 +212,11 @@ std::vector<int> support_generator_t::find_new( int nIters )
             }
         }
         std::sort( support.begin(), support.end() );
-        //if(support.size() > 0) support = erase_non_essential( &divisors, &targets, support );
+        if(support.size() > 1) support = erase_non_essential( &divisors, &targets, support );
         if( history.find( support ) == history.end() )
             return support;
         else
             support = {};
-
     }
     return support;
     

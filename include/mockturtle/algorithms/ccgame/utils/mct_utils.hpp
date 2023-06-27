@@ -49,7 +49,9 @@ namespace mockturtle
 namespace ccgame
 {
 
+using PTT = kitty::partial_truth_table;
 using DTT = kitty::dynamic_truth_table;
+
 
 #pragma region INFORMATION GRAPH
 /*! \brief converts a truth table to a graph representation */
@@ -57,9 +59,9 @@ DTT create_information_graph( DTT tt )
 {
     int nBits = tt.num_bits();
     int nVars = tt.num_vars();
-    TT  graph( 2*nVars );
-    TT  tt2( 2*nVars );
-    TT  mk2( 2*nVars );
+    DTT  graph( 2*nVars );
+    DTT  tt2( 2*nVars );
+    DTT  mk2( 2*nVars );
     for( int iBit{0}; iBit < nBits; ++iBit )
     {
         kitty::set_bit( mk2, iBit );
@@ -233,13 +235,16 @@ int choose_divisor_from_cdf( std::vector<double> CDF )
 {
     std::uniform_real_distribution<> distrib(0, 1);
     double rnd = distrib(ccg_gen);
-    int res;
+    int res=0;
+
     for( int i{0}; i<CDF.size(); ++i )
+    {
         if( rnd <= CDF[i] )
         {
             res = i;
             break;
         }
+    }
     return res;
 }
 
@@ -266,7 +271,7 @@ std::vector<int> erase_non_essential( std::vector<divisor_t> * pDivs, std::vecto
         for( int i{0}; i<support.size(); ++i )
             Gs.push_back( (*pDivs)[support[i]].graph & Gf );
         DTT G1, G2; 
-        if( support.size() > 2 )
+        if( support.size() > 1 )
         {
             for( int n{support.size()-1}; n >= 2; --n )
             {
@@ -275,26 +280,28 @@ std::vector<int> erase_non_essential( std::vector<divisor_t> * pDivs, std::vecto
                 Gs[n-1] = G1;
                 Gs[n-2] = G2;
             }
-        }
-        G1 = Gs[0] ^ Gs[1];
+            G1 = Gs[0] ^ Gs[1];
 
-        std::vector<int> candidate_to_erase;
+            std::vector<int> candidate_to_erase;
 
-        isRed = true;
-        for( int i{support.size()-1}; i >= 0; --i )
-        {
-            if( kitty::count_ones( G1 & (*pDivs)[support[i]].graph ) == 0 )
+            isRed = true;
+            for( int i{support.size()-1}; i >= 0; --i )
             {
-                isRed = false;
-                candidate_to_erase.push_back(i);
+                if( kitty::count_ones( G1 & (*pDivs)[support[i]].graph ) == 0 )
+                {
+                    isRed = false;
+                    candidate_to_erase.push_back(i);
+                }
+            }
+            if( !isRed )
+            {
+                std::uniform_int_distribution<> distrib(0, candidate_to_erase.size()-1);
+                int to_erase = distrib(ccg_gen);
+                support.erase( support.begin() + candidate_to_erase[to_erase] );
             }
         }
-        if( !isRed )
-        {
-            std::uniform_int_distribution<> distrib(0, candidate_to_erase.size()-1);
-            int to_erase = distrib(ccg_gen);
-            support.erase( support.begin() + candidate_to_erase[to_erase] );
-        }
+        else
+            isRed = true;
     }  
     return support;   
 }
