@@ -69,7 +69,7 @@ class mct_tree_t
         int select();
         int expand( int );
         int simulate( int );
-        void backpropagate( int );
+        void backpropagate( int, double );
 
         int solve();
         void path_print( int );
@@ -122,9 +122,9 @@ int mct_tree_t<NODE, METHOD>::simulate( int id )
 }
 
 template<class NODE, template<class> class METHOD>
-void mct_tree_t<NODE, METHOD>::backpropagate( int id )
+void mct_tree_t<NODE, METHOD>::backpropagate( int id, double cost )
 {
-    method.backpropagate( &nodes, &nodes[id] );
+    method.backpropagate( &nodes, id, cost );
 }
 
 template<class NODE, template<class> class METHOD>
@@ -144,8 +144,8 @@ int mct_tree_t<NODE, METHOD>::solve()
         if( !FoundLeaf )
         {
             idExp = expand( idSel );
+            if( idExp < 0 || nodes[idExp].is_null() ) { continue; }
             if( nodes[idExp].is_leaf() ) { FoundLeaf = true; idEnd = idExp; }
-            if( nodes[idExp].is_null() ) { continue; }
         }
         if( FoundLeaf )
         {
@@ -163,8 +163,8 @@ int mct_tree_t<NODE, METHOD>::solve()
             {
                 idEnd = simulate( idExp );
                 if( idEnd < 0 ) { continue; }
-                //backpropagate( idEnd );
                 double cost = evaluate( idEnd );
+                backpropagate( idEnd, cost );
                 if(ps.verbose)  printf("cost %f\n", cost);
                 if( cost >= 0 && cost < bestCost )
                 {
@@ -200,7 +200,6 @@ void mct_tree_t<NODE, METHOD>::path_print( int id )
     printf("=============================\n");
     printf("NODE %d\n", id);
     nodes[id].print();
-
 } 
 
 }// namespace mcts

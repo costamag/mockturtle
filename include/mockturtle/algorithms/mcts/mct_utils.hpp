@@ -217,7 +217,21 @@ std::vector<double> compute_costs( node_ps ps, std::vector<divisor_t> * pDivs, s
 
     switch ( ps.sel_type )
     {
-        case node_selection_t::RAND:
+        case supp_selection_t::SUP_RAND:
+        {
+            for( int i{0}; i < idDivs.size(); ++i )
+            {
+                DTT Gi = (*pDivs)[idDivs[i]].graph;
+                costs.push_back(0);
+                for( int j{0}; j<pTrgs->size(); ++j )
+                {
+                    DTT Gf = (*pTrgs)[j];
+                    costs[i] += (double)kitty::count_ones( Gf & ~Gi )/( (double)(kitty::count_ones( Gf )*pTrgs->size() ) );
+                }
+            }
+            break;
+        }  
+        case supp_selection_t::SUP_ENER:
         {
             for( int i{0}; i < idDivs.size(); ++i )
             {
@@ -232,7 +246,10 @@ std::vector<double> compute_costs( node_ps ps, std::vector<divisor_t> * pDivs, s
             break;
         }    
         default:
+        {
+            assert(0);
             break;
+        }
     }
     return costs;
 }

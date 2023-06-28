@@ -50,15 +50,13 @@ namespace mcts
 using DTT = kitty::dynamic_truth_table;
 
 template<class NTK>
-class nd_size_t
+class nd_cdtn_t
 {
     public:
         support_generator_t supportor;
         std::vector<divisor_t> divisors;
         std::vector<target_t>  targets;
         std::vector<int> TargetsDoneHere;
-        std::vector<double> costs;
-        double bestCost = 100000000;
         int id{0};
         int idPar{-1};
         std::vector<int> vKids;
@@ -70,33 +68,31 @@ class nd_size_t
 
         /* CONSTRUCT/DESCTRUCT */
         /*! \brief generic node constructor */
-        nd_size_t( std::vector<divisor_t>, std::vector<target_t>, node_ps );
+        nd_cdtn_t( std::vector<divisor_t>, std::vector<target_t>, node_ps );
         /*! \brief root node constructor*/
-        nd_size_t( std::vector<DTT>, std::vector<double>, std::vector<DTT>, node_ps );
+        nd_cdtn_t( std::vector<DTT>, std::vector<double>, std::vector<DTT>, node_ps );
         /* default */
-        nd_size_t(){ isNull = true; };
-        ~nd_size_t(){};
+        nd_cdtn_t(){ isNull = true; };
+        ~nd_cdtn_t(){};
         /* PROPERTIES */
         void print();
         bool is_root();
         bool is_leaf();
         bool is_null();
         /* GROW */
-        nd_size_t find_new();
-        nd_size_t null_node();
+        nd_cdtn_t find_new();
+        nd_cdtn_t null_node();
         void add_child( int );
         /* SYNTHESIZE */
-        double evaluate( std::vector<nd_size_t<NTK> *> );
+        double evaluate( std::vector<nd_cdtn_t<NTK> *> );
         bool check_closure();
-        void add_cost( double cost );
 };
 
 
 
 template<class NTK>
-nd_size_t<NTK>::nd_size_t( std::vector<divisor_t> X, std::vector<target_t> Y, node_ps eps )
+nd_cdtn_t<NTK>::nd_cdtn_t( std::vector<divisor_t> X, std::vector<target_t> Y, node_ps ps ) : ps(ps)
 {
-    ps=eps;
     isNull = false;
     isRoot = false;
     for( int iTrg{0}; iTrg<Y.size(); ++iTrg )  
@@ -111,9 +107,8 @@ nd_size_t<NTK>::nd_size_t( std::vector<divisor_t> X, std::vector<target_t> Y, no
 }
 
 template<class NTK>
-nd_size_t<NTK>::nd_size_t( std::vector<DTT> X, std::vector<double> T, std::vector<DTT> Y, node_ps eps )
+nd_cdtn_t<NTK>::nd_cdtn_t( std::vector<DTT> X, std::vector<double> T, std::vector<DTT> Y, node_ps ps ):ps(ps)
 {
-    ps = eps;
     assert( X.size() == T.size() );
     isNull = false;
     isRoot = true;
@@ -128,7 +123,7 @@ nd_size_t<NTK>::nd_size_t( std::vector<DTT> X, std::vector<double> T, std::vecto
 }
 
 template<class NTK>
-bool nd_size_t<NTK>::check_closure()
+bool nd_cdtn_t<NTK>::check_closure()
 {
     bool isClosed{true};
     for( int iTrg{0}; iTrg<targets.size(); ++iTrg )
@@ -162,58 +157,43 @@ bool nd_size_t<NTK>::check_closure()
 }
 
 #pragma region PROPERTIES
-template<class NTK> bool nd_size_t<NTK>::is_null(){ return isNull; }
-template<class NTK> bool nd_size_t<NTK>::is_root(){ return isRoot; }
-template<class NTK> bool nd_size_t<NTK>::is_leaf(){ return isLeaf; }
+template<class NTK> bool nd_cdtn_t<NTK>::is_null(){ return isNull; }
+template<class NTK> bool nd_cdtn_t<NTK>::is_root(){ return isRoot; }
+template<class NTK> bool nd_cdtn_t<NTK>::is_leaf(){ return isLeaf; }
 #pragma endregion PROPERTIES
 
 #pragma region GROW
 template<class NTK>
-nd_size_t<NTK> nd_size_t<NTK>::find_new()
+nd_cdtn_t<NTK> nd_cdtn_t<NTK>::find_new()
 {
-    std::vector<int> supp;
-    
-    switch (ps.sel_type)
-    {
-    case supp_selection_t::SUP_ENER:
-        supp = supportor.find_new<supp_selection_t::SUP_ENER>( ps.nIters );
-        break;
-    default:
-        break;
-    }
-
-        
+    std::vector<int> supp = supportor.find_new( 1 );
     if( supp.size() == 0 )  {return null_node();}
     std::vector<divisor_t> divs;
     for( auto s : supp )    divs.push_back( supportor.divisors[s] );
 
-    nd_size_t node( divs, supportor.targets, ps );
+    nd_cdtn_t node( divs, supportor.targets, ps );
     return node;
 }
 
 template<class NTK>
-void nd_size_t<NTK>::add_child( int idChild )
+void nd_cdtn_t<NTK>::add_child( int idChild )
 {
     vKids.push_back( idChild );
 }
 #pragma endregion GROW
 
 template<class NTK>
-void nd_size_t<NTK>::print()
+void nd_cdtn_t<NTK>::print()
 {
     printf("=============================\n");
     for( int i{0}; i<divisors.size(); ++i )
         divisors[i].print();
-    printf( "costs: ");
-    for( int i{0}; i<costs.size(); ++i )
-        printf( "%f ", costs[i] );
-    printf("\n");
 }
 
 template<class NTK>
-nd_size_t<NTK> nd_size_t<NTK>::null_node( )
+nd_cdtn_t<NTK> nd_cdtn_t<NTK>::null_node( )
 {
-    nd_size_t<NTK> node0;
+    nd_cdtn_t<NTK> node0;
     node0.isLeaf=false;
     node0.isRoot=false;
     node0.isNull=true;
@@ -221,14 +201,14 @@ nd_size_t<NTK> nd_size_t<NTK>::null_node( )
 }
 
 template<class NTK>
-double nd_size_t<NTK>::evaluate( std::vector<nd_size_t<NTK>*> vPtrs )
+double nd_cdtn_t<NTK>::evaluate( std::vector<nd_cdtn_t<NTK>*> vPtrs )
 {
     NTK net;
     std::vector<signal<NTK>> sigs_old;
     std::vector<signal<NTK>> sigs_new;
     std::vector<signal<NTK>> outSigs;
     /* deal with pis */
-    nd_size_t<NTK> * pNd = vPtrs[0];
+    nd_cdtn_t<NTK> * pNd = vPtrs[0];
     assert( pNd->idPar == -1 );
     for( int iPi{0}; iPi<pNd->divisors.size(); ++iPi )
         sigs_old.push_back( net.create_pi() );
@@ -264,9 +244,6 @@ double nd_size_t<NTK>::evaluate( std::vector<nd_size_t<NTK>*> vPtrs )
                 break;
             case gate_t::AI11:
                 sigs_new.push_back( net.create_and( sigs_old[vPtrs[iLev]->divisors[iDiv].fanins[1]], sigs_old[vPtrs[iLev]->divisors[iDiv].fanins[0]] ));
-                break;
-            case gate_t::EXOR:
-                sigs_new.push_back( net.create_xor( sigs_old[vPtrs[iLev]->divisors[iDiv].fanins[1]], sigs_old[vPtrs[iLev]->divisors[iDiv].fanins[0]] ));
                 break;
             case gate_t::PRJL:
                 sigs_new.push_back( sigs_old[vPtrs[iLev]->divisors[iDiv].fanins[1]]);
@@ -308,14 +285,6 @@ double nd_size_t<NTK>::evaluate( std::vector<nd_size_t<NTK>*> vPtrs )
     ntk = cleanup_dangling(net);
 
     return ntk.num_gates();
-}
-
-template<class NTK>
-void nd_size_t<NTK>::add_cost( double cost )
-{
-    costs.push_back( cost );
-    if( cost < bestCost )
-        bestCost = cost;  
 }
 
 } // namespace mcts

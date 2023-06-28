@@ -39,6 +39,7 @@
 #include <stack>
 #include <set>
 #include <math.h>
+#include <limits>
 
 namespace mockturtle
 {
@@ -46,7 +47,29 @@ namespace mockturtle
 namespace mcts
 {
 
+struct suppor_history_t
+{
+    std::set<std::vector<int>> set;
+    std::vector<std::vector<int>> list;
+    std::vector<double> costs;
 
+    void insert( std::vector<int> gene )
+    {
+        set.insert( gene );
+        list.push_back( gene );
+        costs.push_back( gene.size() );
+    }
+
+    std::set<std::vector<int>>::iterator find_in_set( std::vector<int> gene )
+    {
+        return set.find( gene );
+    }
+
+    std::set<std::vector<int>>::iterator end_of_set()
+    {
+        return set.end();
+    }
+};
 
 class support_generator_t
 {
@@ -56,7 +79,8 @@ class support_generator_t
         std::vector<int> TargetsDoneHere;
         node_ps ps;
         int nIdentity;
-        std::set<std::vector<int>> history;
+        //std::set<std::vector<int>> history;
+        suppor_history_t history;
 
         /* CONSTRUCT */
         support_generator_t( std::vector<divisor_t> *, std::vector<target_t> *, node_ps );
@@ -65,8 +89,9 @@ class support_generator_t
         ~support_generator_t(){};
 
         /* GROW */
-        std::vector<int> find_new( std::vector<int>, int );
+        template<supp_selection_t SEL_t>
         std::vector<int> find_new( int );
+
         void store_new( std::vector<int> );
         void print();
         void mark_closing_divisors();
@@ -146,6 +171,17 @@ void support_generator_t::next_layer( std::vector<divisor_t> * pDivs0, std::vect
                 if( kitty::equal( targets[iTrg].tt, divisors.back().tt ) || kitty::equal( targets[iTrg].tt, ~divisors.back().tt ) )
                 {    divisors.back().isPo = true; divisors.back().id2 = iTrg; targets[iTrg].div = divisors.back().id; }
             }
+
+            tt =  ttL ^  ttR;
+            if( kitty::count_ones(tt)>0 && kitty::count_zeros(tt)>0 )
+                divisors.emplace_back( divisors.size(), tt, 1, maxDelay+1, gate_t::EXOR, fanins );
+            for( int iTrg{0}; iTrg < targets.size(); ++iTrg )
+            {
+                if( targets[iTrg].isDone ) continue;
+                if( kitty::equal( targets[iTrg].tt, divisors.back().tt ) || kitty::equal( targets[iTrg].tt, ~divisors.back().tt ) )
+                {    divisors.back().isPo = true; divisors.back().id2 = iTrg; targets[iTrg].div = divisors.back().id; }
+            }
+
         }
     }  
 
@@ -161,7 +197,74 @@ support_generator_t::support_generator_t( std::vector<divisor_t> * pDivs0, std::
     next_layer( pDivs0, pTrgs0 );
 };
 
-std::vector<int> support_generator_t::find_new( int nIters )
+template<>
+std::vector<int> support_generator_t::find_new<supp_selection_t::SUP_RAND>( int nIters )
+{
+    bool isEnd = true;
+    for( int i{0}; i<targets.size(); ++i )
+        isEnd &= targets[i].isDone;
+    std::vector<int> support0;
+
+    if( isEnd )
+        return support0;
+    for( int i{0}; i<divisors.size();++i )
+    {
+        if( divisors[i].isPo )
+        {
+            support0.push_back(i);
+        }
+    }
+    std::vector<int> support;
+    double BETA=0;
+
+    for( int it{0}; it<nIters; ++it )
+    {
+        support = support0;
+        std::vector<DTT> target_graphs;
+        for( int i{0}; i<targets.size(); ++i )
+        {
+            //if( targets[i].div < 0 )
+            target_graphs.push_back( targets[i].graph );
+        }
+        std::vector<int> divisors_id;    
+        for( int i{0}; i<divisors.size(); ++i )
+            divisors_id.push_back( i );
+
+        for( int i{support.size()-1}; i>=0; --i )
+        {
+           target_graphs = cover_the_targets( &target_graphs, divisors[support[i]].graph ); 
+           divisors_id.erase( divisors_id.begin() + i );
+         }
+
+        int iNdPar{0};
+        int iNd;
+        while( target_graphs.size() > 0 )
+        {
+            std::uniform_int_distribution<> distrib(0, divisors_id.size()-1);
+            int iNew = distrib(ml_gen);
+            // update the targets
+            target_graphs = cover_the_targets( &target_graphs, divisors[divisors_id[iNew]].graph );
+            support.push_back( divisors_id[iNew] );
+            divisors_id.erase( divisors_id.begin() + iNew );
+
+            for( int i{target_graphs.size()-1}; i>=0; --i )
+            {
+                if( kitty::count_ones( target_graphs[i] ) == 0 )
+                    target_graphs.erase( target_graphs.begin() + i );
+            }
+        }
+        std::sort( support.begin(), support.end() );
+        if(support.size() > 1) support = erase_non_essential( &divisors, &targets, support );
+        if( history.find_in_set( support ) == history.end_of_set() )
+            return support;
+        else
+            support = {};
+    }
+    return support;   
+}
+
+template<>
+std::vector<int> support_generator_t::find_new<supp_selection_t::SUP_ENER>( int nIters )
 {
     bool isEnd = true;
     for( int i{0}; i<targets.size(); ++i )
@@ -193,6 +296,13 @@ std::vector<int> support_generator_t::find_new( int nIters )
         std::vector<int> divisors_id;    
         for( int i{0}; i<divisors.size(); ++i )
             divisors_id.push_back( i );
+
+        for( int i{support.size()-1}; i>=0; --i )
+        {
+           target_graphs = cover_the_targets( &target_graphs, divisors[support[i]].graph ); 
+           divisors_id.erase( divisors_id.begin() + i );
+        }
+
         int iNdPar{0};
         int iNd;
         while( target_graphs.size() > 0 )
@@ -213,7 +323,69 @@ std::vector<int> support_generator_t::find_new( int nIters )
         }
         std::sort( support.begin(), support.end() );
         if(support.size() > 1) support = erase_non_essential( &divisors, &targets, support );
-        if( history.find( support ) == history.end() )
+        if( history.find_in_set( support ) == history.end_of_set() )
+            return support;
+        else
+            support = {};
+    }
+    return support;   
+}
+
+template<>
+std::vector<int> support_generator_t::find_new<supp_selection_t::SUP_GENE>( int nIters )
+{
+    bool isEnd = true;
+    for( int i{0}; i<targets.size(); ++i )
+        isEnd &= targets[i].isDone;
+
+    std::vector<int> support0;
+
+    if( isEnd )
+        return support0;
+    for( int i{0}; i<divisors.size();++i )
+        if( divisors[i].isPo )
+            support0.push_back(i);
+
+    std::vector<int> support;
+
+    for( int it{0}; it<nIters; ++it )
+    {
+        support = support0;
+        std::vector<DTT> target_graphs;
+        for( int i{0}; i<targets.size(); ++i )
+            target_graphs.push_back( targets[i].graph );
+
+        std::vector<int> divisors_id;    
+        for( int i{0}; i<divisors.size(); ++i )
+            divisors_id.push_back( i );
+
+        for( int i{support.size()-1}; i>=0; --i )
+        {
+           target_graphs = cover_the_targets( &target_graphs, divisors[support[i]].graph ); 
+           divisors_id.erase( divisors_id.begin() + i );
+        }
+
+        int iNdPar{0};
+        int iNd;
+        while( target_graphs.size() > 0 )
+        {
+            std::vector<double> costs = compute_costs( ps, &divisors, &target_graphs, divisors_id );
+            std::vector<double> CDF = compute_cdf( costs, 0 );
+            int iNew = choose_divisor_from_cdf( CDF );
+            // update the targets
+            target_graphs = cover_the_targets( &target_graphs, divisors[divisors_id[iNew]].graph );
+            support.push_back( divisors_id[iNew] );
+            divisors_id.erase( divisors_id.begin() + iNew );
+
+            for( int i{target_graphs.size()-1}; i>=0; --i )
+            {
+                if( kitty::count_ones( target_graphs[i] ) == 0 )
+                    target_graphs.erase( target_graphs.begin() + i );
+            }
+        }
+        std::sort( support.begin(), support.end() );
+        if(support.size() > 1) support = erase_non_essential( &divisors, &targets, support );
+        if( history.find_in_set( support ) == history.end_of_set() )
             return support;
         else
             support = {};

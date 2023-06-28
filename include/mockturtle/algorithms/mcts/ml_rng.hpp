@@ -40,21 +40,39 @@ namespace mockturtle
 namespace mcts
 {
 
+enum supp_selection_t
+{
+    SUP_RAND = 0,
+    SUP_ENER = 1,
+    SUP_ENUM = 2,
+    SUP_GENE = 3
+};
+
 enum node_selection_t
 {
-    RAND
+    NODE_RAND = 0,
+    NODE_UCT = 1
 };
 
 struct node_ps
 {
-    node_selection_t sel_type = node_selection_t::RAND;
-    double BETA0 = 1000;
-    double BETAZ = 0;
+    supp_selection_t sel_type;
+    int nIters;
+    double BETA0;
+    double BETAZ;
+    node_ps()
+    {
+        sel_type = supp_selection_t::SUP_ENER;
+        nIters = 1;
+        BETA0 = 1000;
+        BETAZ = 0;    
+    }
 };
 
 struct mct_method_ps
 {
     bool verbose    = false;
+    node_selection_t sel_type = node_selection_t::NODE_RAND;
     mct_method_ps(){};
 };
 

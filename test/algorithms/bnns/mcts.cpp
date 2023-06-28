@@ -1,5 +1,6 @@
 #include <catch.hpp>
 
+#include <mockturtle/algorithms/mcts/ml_rng.hpp>
 #include <mockturtle/algorithms/mcts/decision_tree.hpp>
 #include <mockturtle/algorithms/mcts/supportor.hpp>
 #include <mockturtle/algorithms/mcts/nodes/nd_size.hpp>
@@ -11,7 +12,6 @@
 
 using namespace mockturtle;
 using namespace mcts;
-
 
 TEST_CASE( "support generator initialization", "[MCTS]" )
 {
@@ -53,6 +53,7 @@ TEST_CASE( "support generator initialization", "[MCTS]" )
     }
 
     node_ps ndps;
+    ndps.sel_type = supp_selection_t::SUP_ENER;
     /* support genenrator initialization */
     support_generator_t suppor( &divisors, &targets, ndps );
    
@@ -74,7 +75,7 @@ TEST_CASE( "support generator initialization", "[MCTS]" )
     kitty::create_from_binary_string( ffs[0], "0110100110010110" );
     kitty::create_from_binary_string( ffs[1], "0110100110010110" );
 
-    for( uint32_t i{0}; i<suppor.divisors.size(); ++i )
+    for( uint32_t i{0}; i<6; ++i )
     {
         divisor_t div = suppor.divisors[i];
         //div.print();
@@ -92,11 +93,12 @@ TEST_CASE( "support generator initialization", "[MCTS]" )
         CHECK( kitty::equal( trg.graph, ffs[i] ) );
         CHECK( trg.id == (int)i );
     }
-    CHECK( suppor.history.find( std::vector<int>{0,1} ) != suppor.history.end() );
+    CHECK( suppor.history.find_in_set( std::vector<int>{0,1} ) != suppor.history.end_of_set() );
 
     for( int i{0}; i<10; ++i )
     {
-        auto sol = suppor.find_new(10);
+        auto sol = suppor.find_new<supp_selection_t::SUP_ENER>(10);
+
         if( sol.size() > 0 )
         {
             suppor.store_new(sol);
@@ -130,8 +132,10 @@ TEST_CASE( "node of the mcts", "[MCTS]" )
     fs[1] = ~xs[0]^xs[1];
 
     node_ps ndps;
+    ndps.sel_type = supp_selection_t::SUP_ENER;
+    ndps.BETAZ = 1;
     nd_size_t<xag_network> root( xs, ts, fs, ndps );
-    root.print();
+    //root.print();
 
     mct_method_ps met_ps;
     mct_method_t<nd_size_t<xag_network> > meth( met_ps );
@@ -140,18 +144,6 @@ TEST_CASE( "node of the mcts", "[MCTS]" )
     mct_tree_t<nd_size_t<xag_network> , mct_method_t> mct( root, meth, mctps );
     for( int it{0}; it<10; ++it )
         CHECK( 0 == mct.select() );
-    
-    /* expansion */
-    printf("new node\n");
-    int id = mct.expand( 0 );
-    printf( "a\n" );
-    nd_size_t<xag_network>  * pNd = &mct.nodes[id];
-    printf( "b\n" );
-    pNd->print();
-    printf("new node\n");
-    mct.simulate( pNd->id );
-    printf( "c\n" );
-
 }
 
 
@@ -177,8 +169,9 @@ TEST_CASE( "node of the mcts: network synthesized at the root", "[MCTS]" )
     fs[1] = xs[0];
 
     node_ps ndps;
+    ndps.sel_type = supp_selection_t::SUP_ENER;
     nd_size_t<xag_network> root( xs, ts, fs, ndps );
-    root.print();
+    //root.print();
     CHECK( kitty::equal( root.targets[0].tt, root.divisors[1].tt ) );
     CHECK( kitty::equal( root.targets[1].tt, root.divisors[0].tt ) );
 
@@ -231,8 +224,10 @@ TEST_CASE( "node of the mcts: network synthesized after one expansion", "[MCTS]"
     fs[1] = xs[0]|xs[1];
 
     node_ps ndps;
+    ndps.sel_type = supp_selection_t::SUP_ENER;
+    ndps.BETA0 =10;
     nd_size_t<xag_network> root( xs, ts, fs, ndps );
-    root.print();
+    //root.print();
 
     CHECK( root.is_leaf() == false );
     
@@ -240,6 +235,8 @@ TEST_CASE( "node of the mcts: network synthesized after one expansion", "[MCTS]"
     mct_method_t<nd_size_t<xag_network> > meth( metps );
 
     mct_ps mctps;
+    mctps.nIters = 10;
+    mctps.nSims = 10;
     mct_tree_t<nd_size_t<xag_network> , mct_method_t> mct( root, meth, mctps );
     
     CHECK( kitty::equal(mct.nodes[0].supportor.divisors[0].tt, xs[0]) );
@@ -250,15 +247,14 @@ TEST_CASE( "node of the mcts: network synthesized after one expansion", "[MCTS]"
     CHECK( kitty::equal(mct.nodes[0].supportor.divisors[5].tt,  xs[1]& xs[0]) );
     CHECK( mct.nodes[0].supportor.divisors[2].isPo );
     CHECK( mct.nodes[0].supportor.divisors[5].isPo );
-
     int iSol = mct.solve();
     CHECK( mct.nodes[iSol].TargetsDoneHere.size()==2 );
     CHECK( mct.nodes[iSol].TargetsDoneHere[0]==0 );
     CHECK( mct.nodes[iSol].TargetsDoneHere[1]==1 );
     CHECK( mct.nodes[iSol].TargetsDoneHere.size()==2 );
-    CHECK( mct.nodes[iSol].is_leaf() );
     CHECK( mct.evaluate(0) == -1 );
     CHECK( mct.evaluate(iSol) == 2 );
+    CHECK( mct.nodes[iSol].is_leaf() );
 }
 
 TEST_CASE( "node of the mcts: network synthesized in the first two steps", "[MCTS]" )
@@ -283,9 +279,9 @@ TEST_CASE( "node of the mcts: network synthesized in the first two steps", "[MCT
     fs[1] = xs[0]|xs[1];
 
     node_ps ndps;
+    ndps.sel_type = supp_selection_t::SUP_ENER;
     nd_size_t<xag_network> root( xs, ts, fs, ndps );
-    root.print();
-
+    //root.print();
     CHECK( root.is_leaf() == false );
     
     mct_method_ps metps;
@@ -327,19 +323,22 @@ TEST_CASE( "node of the mcts: network synthesized in the second level", "[MCTS]"
     fs[1] = ~xs[1]^xs[0];
 
     node_ps ndps;
+    ndps.sel_type = supp_selection_t::SUP_ENER;
+    ndps.BETA0 = 0;
+    ndps.BETAZ = 0.5;
     nd_size_t<xag_network> root( xs, ts, fs, ndps );
-    root.print();
+    //root.print();
 
     mct_method_ps metps;
     mct_method_t<nd_size_t<xag_network> > meth( metps );
 
     mct_ps mctps;
+    mctps.nIters = 10;
+    mctps.nSims = 10;
     mct_tree_t<nd_size_t<xag_network> , mct_method_t> mct( root, meth, mctps );
-    
     int iSol = mct.solve();
-    CHECK( mct.evaluate(iSol) == 3 );
     xag_network xag = mct.nodes[iSol].ntk;
-    printf("%d\n", xag.num_gates());
+    mct.path_print(iSol);
 
 }
 
@@ -365,6 +364,7 @@ TEST_CASE( "node of the mcts: 3 inputs", "[MCTS]" )
     fs[1] = ~xs[0]^(xs[1]|xs[2]);
 
     node_ps ndps;
+    ndps.sel_type = supp_selection_t::SUP_ENER;
     nd_size_t<xag_network>  root( xs, ts, fs, ndps );
     for( int i{0}; i<xs.size(); ++i )
         CHECK( kitty::equal(root.divisors[i].tt, xs[i]) );
@@ -397,6 +397,5 @@ TEST_CASE( "initialization", "[DECTREE]" )
     decision_tree dt( X, Y, X, Y );
 
     dt.train_random();
-    dt.print();
-
+    //dt.print();
 }

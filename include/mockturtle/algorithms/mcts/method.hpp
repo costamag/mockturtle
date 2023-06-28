@@ -61,16 +61,18 @@ class mct_method_t
         ~mct_method_t(){};
 
         int select( std::vector<NODE> * );
+        
         NODE expand( NODE * );
         NODE simulate( NODE * );
-        void backpropagate( std::vector<NODE> *, NODE * );
+        void backpropagate( std::vector<NODE> *, int, double );
 
         double evaluate( std::vector<NODE *> );
 };
 
 #pragma region SELECT
+
 template<class NODE>
-int select_random( std::vector<NODE> * vNdPtrs )
+int select_at_random( std::vector<NODE> * vNdPtrs  )
 {
     std::uniform_int_distribution<> distrib(0, vNdPtrs->size()-1);
     return distrib(ml_gen);
@@ -79,7 +81,15 @@ int select_random( std::vector<NODE> * vNdPtrs )
 template<class NODE>
 int mct_method_t<NODE>::select( std::vector<NODE> * vNdPtrs )
 {
-    return select_random( vNdPtrs );
+    switch ( ps.sel_type )
+    {
+    case node_selection_t::NODE_RAND:
+        return select_at_random( vNdPtrs );
+        break;
+    
+    default:
+        break;
+    }
 }
 #pragma endregion SELECT
 
@@ -101,12 +111,15 @@ NODE mct_method_t<NODE>::simulate( NODE * pNd )
 
 #pragma region BACKPROP
 template<class NODE>
-void mct_method_t<NODE>::backpropagate( std::vector<NODE> * vNdPtrs, NODE * pNd )
+void mct_method_t<NODE>::backpropagate( std::vector<NODE> * vNdPtrs, int idEnd, double cost )
 {
-    NODE nd = *pNd; 
+    NODE nd = (*vNdPtrs)[idEnd]; 
+    (*vNdPtrs)[idEnd].add_cost( cost );
+
     while( !nd.isRoot )
     {
         nd = (*vNdPtrs)[nd.idPar];
+        (*vNdPtrs)[idEnd].add_cost( cost );
     }
 }
 #pragma endregion BACKPROP

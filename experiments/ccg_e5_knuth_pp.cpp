@@ -373,6 +373,11 @@ Ntk game_on( kitty::dynamic_truth_table * pF, int MET )
 
     node_ps ndps;
     mct_ps mctps;
+    ndps.sel_type = supp_selection_t::SUP_ENER;
+    mctps.nIters =500;
+    mctps.nSims = 1;
+    ndps.BETA0 = 100;
+    ndps.nIters = 1000;
 
     nd_size_t<xag_network> root( xs, ts, {*pF}, ndps );
     mct_method_ps metps;
