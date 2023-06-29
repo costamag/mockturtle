@@ -33,12 +33,17 @@
 
 #include <stdio.h>
 #include <stack>
+#include <kitty/dynamic_truth_table.hpp>
+#include <kitty/partial_truth_table.hpp>
 
 namespace mockturtle
 {
 
 namespace mcts
 {
+
+using DTT = kitty::dynamic_truth_table;
+using PTT = kitty::partial_truth_table;
 
 enum supp_selection_t
 {

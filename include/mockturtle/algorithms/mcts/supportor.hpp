@@ -57,7 +57,7 @@ struct suppor_history_t
     {
         set.insert( gene );
         list.push_back( gene );
-        costs.push_back( gene.size() );
+        costs.push_back( std::numeric_limits<double>::max() );
     }
 
     std::set<std::vector<int>>::iterator find_in_set( std::vector<int> gene )
@@ -68,6 +68,12 @@ struct suppor_history_t
     std::set<std::vector<int>>::iterator end_of_set()
     {
         return set.end();
+    }
+
+    void update_cost( int idx, double cost )
+    {
+        if( cost < costs[idx] )
+            costs[idx] = cost;
     }
 };
 
@@ -96,6 +102,7 @@ class support_generator_t
         void print();
         void mark_closing_divisors();
         void next_layer( std::vector<divisor_t> *, std::vector<target_t> * );
+        void add_cost( int, double );
 };
 
 support_generator_t::support_generator_t( std::vector<divisor_t> divisors, std::vector<target_t> targets, node_ps ps, int nIdentity ):
@@ -234,7 +241,7 @@ std::vector<int> support_generator_t::find_new<supp_selection_t::SUP_RAND>( int 
         {
            target_graphs = cover_the_targets( &target_graphs, divisors[support[i]].graph ); 
            divisors_id.erase( divisors_id.begin() + i );
-         }
+        }
 
         int iNdPar{0};
         int iNd;
@@ -430,6 +437,11 @@ void support_generator_t::print()
     for( auto trg : targets )
         trg.print();
     
+}
+
+void support_generator_t::add_cost( int idSupp, double cost )
+{
+    if( history.costs[idSupp] > cost )  history.costs[idSupp] = cost;
 }
 
 } // namespace mcts

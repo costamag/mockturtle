@@ -72,7 +72,7 @@ class mct_method_t
 #pragma region SELECT
 
 template<class NODE>
-int select_at_random( std::vector<NODE> * vNdPtrs  )
+int select_at_random( std::vector<NODE> * vNdPtrs )
 {
     std::uniform_int_distribution<> distrib(0, vNdPtrs->size()-1);
     return distrib(ml_gen);
@@ -83,8 +83,8 @@ int mct_method_t<NODE>::select( std::vector<NODE> * vNdPtrs )
 {
     switch ( ps.sel_type )
     {
-    case node_selection_t::NODE_RAND:
-        return select_at_random( vNdPtrs );
+    case node_selection_t::NODE_RAND :
+        return select_at_random<NODE>( vNdPtrs );
         break;
     
     default:
@@ -118,8 +118,10 @@ void mct_method_t<NODE>::backpropagate( std::vector<NODE> * vNdPtrs, int idEnd, 
 
     while( !nd.isRoot )
     {
+        (*vNdPtrs)[nd.idPar].update_support_info( nd, cost );
+
         nd = (*vNdPtrs)[nd.idPar];
-        (*vNdPtrs)[idEnd].add_cost( cost );
+        (*vNdPtrs)[nd.id].add_cost( cost );
     }
 }
 #pragma endregion BACKPROP

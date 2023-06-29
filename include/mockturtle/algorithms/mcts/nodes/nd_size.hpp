@@ -38,6 +38,7 @@
 #include <mockturtle/networks/aig.hpp>
 #include <mockturtle/algorithms/cleanup.hpp>
 #include <stdio.h>
+#include <limits>
 #include <stack>
 #include <iostream>
 
@@ -58,7 +59,7 @@ class nd_size_t
         std::vector<target_t>  targets;
         std::vector<int> TargetsDoneHere;
         std::vector<double> costs;
-        double bestCost = 100000000;
+        double bestCost = std::numeric_limits<double>::max();
         int id{0};
         int idPar{-1};
         std::vector<int> vKids;
@@ -67,6 +68,10 @@ class nd_size_t
         bool isLeaf;
         node_ps ps;
         NTK ntk;
+        /* BACKPROP PARAMS */
+        double ni = 0;
+        double wi = 0;
+        double Ni = 0; 
 
         /* CONSTRUCT/DESCTRUCT */
         /*! \brief generic node constructor */
@@ -89,6 +94,7 @@ class nd_size_t
         double evaluate( std::vector<nd_size_t<NTK> *> );
         bool check_closure();
         void add_cost( double cost );
+        void update_support_info( nd_size_t<NTK>, double );
 };
 
 
@@ -316,6 +322,21 @@ void nd_size_t<NTK>::add_cost( double cost )
     costs.push_back( cost );
     if( cost < bestCost )
         bestCost = cost;  
+}
+
+template<class NTK>
+void nd_size_t<NTK>::update_support_info( nd_size_t<NTK> child, double cost )
+{
+    int idx;
+    for( int i=0; i<vKids.size(); ++i  )
+    {
+        if( child.id == vKids[i] )
+        {
+            idx = i;
+            break;
+        }
+    }
+    supportor.history.update_cost( idx, cost );
 }
 
 } // namespace mcts

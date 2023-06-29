@@ -136,8 +136,11 @@ int mct_tree_t<NODE, METHOD>::solve()
     {
         bool FoundLeaf{false};
         int idEnd;
-        if(ps.verbose)  printf("iter %d\n", it );
-        int idSel = select();
+        if(ps.verbose)  printf("iter %d :", it );
+//for( auto CST : nodes[0].supportor.history.costs )
+//    printf("%f ", CST );
+//printf("\n");
+        int idSel = 0;//select();
         if( nodes[idSel].is_leaf() ) { FoundLeaf = true; idEnd = idSel;}
         if( nodes[idSel].is_null() ) { continue; }
         int idExp;
@@ -150,7 +153,8 @@ int mct_tree_t<NODE, METHOD>::solve()
         if( FoundLeaf )
         {
             double cost = evaluate( idEnd );
-            if(ps.verbose)  printf("cost %f\n", cost);
+            backpropagate( idEnd, cost );
+            if(ps.verbose)  printf("cost %f [%f]\n", cost, bestCost);
             if( cost >= 0 && cost < bestCost )
             {
                 idBest = idEnd;
@@ -165,7 +169,7 @@ int mct_tree_t<NODE, METHOD>::solve()
                 if( idEnd < 0 ) { continue; }
                 double cost = evaluate( idEnd );
                 backpropagate( idEnd, cost );
-                if(ps.verbose)  printf("cost %f\n", cost);
+                if(ps.verbose)  printf("cost %f [%f]\n", cost, bestCost);
                 if( cost >= 0 && cost < bestCost )
                 {
                     idBest = idEnd;

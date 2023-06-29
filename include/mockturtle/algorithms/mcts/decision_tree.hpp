@@ -90,6 +90,9 @@ private:
     std::vector<PTT> x_test;
     std::vector<PTT> y_test;
     std::vector<PTT> m_test;
+    std::vector<PTT> x_valid;
+    std::vector<PTT> y_valid;
+    std::vector<PTT> m_valid;
     std::vector<int> o_nodes;
 public:
 
@@ -103,12 +106,18 @@ public:
     uint32_t recursive_train_random( std::vector<int>, PTT, PTT );
     void train_random();
 
+    uint32_t recursive_train_ordered( std::vector<int>, PTT, PTT );
+    void train_ordered();
+
     size_t size();
     PTT compute_recursive( std::vector<PTT> * , int );
+    PTT compute_recursive( std::vector<PTT*> * , int );
     std::vector<PTT> compute( std::vector<PTT> );
+    std::vector<PTT> compute( std::vector<PTT*> );
     double accuracy( std::vector<PTT> * pX, std::vector<PTT> * pY, std::vector<PTT> * pM );
     double train_accuracy();
     double test_accuracy();
+    double valid_accuracy();
     void print();
 };
 
@@ -121,25 +130,69 @@ decision_tree::decision_tree( std::vector<PTT> xtrain, std::vector<PTT> ytrain, 
 
     PTT train0 = x_train[0].construct();
     PTT test0 = x_test[0].construct();
-    x_train.insert( x_train.begin(), ~train0 );
-    x_train.insert( x_train.begin(), train0 );
-    x_test.insert( x_test.begin(), ~test0 );
-    x_test.insert( x_test.begin(),  test0 );
+    if( ~kitty::is_const0(x_train[0]) || ~kitty::is_const0(~x_train[1]) )
+    {
+        x_train.insert( x_train.begin(), ~train0 );
+        x_train.insert( x_train.begin(), train0 );
+    }
+    if( ~kitty::is_const0(x_test[0]) || ~kitty::is_const0(~x_test[1]) )
+    {
+        x_test.insert( x_test.begin(), ~test0 );
+        x_test.insert( x_test.begin(),  test0 );
+    }
     for( int i{0}; i<x_train.size(); ++i )
         nodes.emplace_back( i );
 };
 
-decision_tree::decision_tree( std::vector<PTT> xtrain, std::vector<PTT> ytrain, std::vector<PTT> mtrain, std::vector<PTT> xtest, std::vector<PTT> ytest, std::vector<PTT> mtest ) : x_train(xtrain), y_train(ytrain), m_train(mtrain), x_test(xtest), y_test(ytest), m_test(mtest)
+decision_tree::decision_tree( std::vector<PTT> xtrain, std::vector<PTT> ytrain, std::vector<PTT> xvalid, std::vector<PTT> yvalid, std::vector<PTT> xtest, std::vector<PTT> ytest ) : x_train(xtrain), y_train(ytrain), x_valid(xvalid), y_valid(yvalid), x_test(xtest), y_test(ytest)
 {
+    for( int i{0}; i<y_train.size(); ++i )
+        m_train.push_back( ~y_train[0].construct() );
+    for( int i{0}; i<y_test.size(); ++i )
+        m_test.push_back( ~y_test[0].construct() );
+    for( int i{0}; i<y_valid.size(); ++i )
+        m_valid.push_back( ~y_valid[0].construct() );
+
     PTT train0 = x_train[0].construct();
+    PTT valid0 = x_valid[0].construct();
     PTT test0 = x_test[0].construct();
-    x_train.insert( x_train.begin(), ~train0 );
-    x_train.insert( x_train.begin(), train0 );
-    x_test.insert( x_test.begin(), ~test0 );
-    x_test.insert( x_test.begin(),  test0 );
+
+    if( ~kitty::is_const0(x_train[0]) || ~kitty::is_const0(~x_train[1]) )
+    {
+        x_train.insert( x_train.begin(), ~train0 );
+        x_train.insert( x_train.begin(), train0 );
+    }
+    if( ~kitty::is_const0(x_valid[0]) || ~kitty::is_const0(~x_valid[1]) )
+    {
+        x_valid.insert( x_valid.begin(), ~valid0 );
+        x_valid.insert( x_valid.begin(), valid0 );
+    }
+    if( ~kitty::is_const0(x_test[0]) || ~kitty::is_const0(~x_test[1]) )
+    {
+        x_test.insert( x_test.begin(), ~test0 );
+        x_test.insert( x_test.begin(),  test0 );
+    }
     for( int i{0}; i<x_train.size(); ++i )
         nodes.emplace_back( i );
 };
+
+//decision_tree::decision_tree( std::vector<PTT> xtrain, std::vector<PTT> ytrain, std::vector<PTT> mtrain, std::vector<PTT> xtest, std::vector<PTT> ytest, std::vector<PTT> mtest ) : x_train(xtrain), y_train(ytrain), m_train(mtrain), x_test(xtest), y_test(ytest), m_test(mtest)
+//{
+//    PTT train0 = x_train[0].construct();
+//    PTT test0 = x_test[0].construct();
+//    if( ~kitty::is_const0(x_train[0]) || ~kitty::is_const0(~x_train[1]) )
+//    {
+//        x_train.insert( x_train.begin(), ~train0 );
+//        x_train.insert( x_train.begin(), train0 );
+//    }
+//    if( ~kitty::is_const0(x_test[0]) || ~kitty::is_const0(~x_test[1]) )
+//    {
+//        x_test.insert( x_test.begin(), ~test0 );
+//        x_test.insert( x_test.begin(),  test0 );
+//    }
+//    for( int i{0}; i<x_train.size(); ++i )
+//        nodes.emplace_back( i );
+//};
 
 template<entropy_t MEASURE>
 double compute_entropy( PTT feature, PTT func, PTT mask );
@@ -277,13 +330,10 @@ void decision_tree::train_impurity()
 {
     for( int iTrg{0}; iTrg < y_train.size(); ++iTrg )
     {
-        PTT mask = ~(y_train[0].construct());
-        assert( kitty::is_const0(~mask) );
-
         std::vector<int> support_ids;
         for( int iFtr{2}; iFtr<x_train.size(); ++iFtr )
             support_ids.push_back( iFtr );
-        o_nodes.push_back( recursive_train_impurity<MEASURE>( support_ids, y_train[iTrg], mask ) );
+        o_nodes.push_back( recursive_train_impurity<MEASURE>( support_ids, y_train[iTrg], m_train[iTrg] ) );
     }
 }
 
@@ -326,13 +376,55 @@ void decision_tree::train_impurity()
     {
         for( int iTrg{0}; iTrg < y_train.size(); ++iTrg )
         {
-            PTT mask = ~(y_train[0].construct());
-            assert( kitty::is_const0(~mask) );
-
             std::vector<int> support_ids;
             for( int iFtr{2}; iFtr<x_train.size(); ++iFtr )
                 support_ids.push_back( iFtr );
-            o_nodes.push_back( recursive_train_random( support_ids, y_train[iTrg], mask ) );
+            o_nodes.push_back( recursive_train_random( support_ids, y_train[iTrg], m_train[iTrg] ) );
+        }
+    }
+
+   uint32_t decision_tree::recursive_train_ordered( std::vector<int> supp, PTT func, PTT mask )
+    {
+        
+        if( supp.size() == 0 )
+        {
+            int n0 = kitty::count_ones( mask & ~func );
+            int n1 = kitty::count_ones( mask &  func );
+            if( n1 > n0 )
+                return 1;
+            else
+                return 0;
+
+        }
+        if( (kitty::count_ones( mask & func ) == 0) )
+            return 0;
+        if( kitty::equal( mask, mask & func ) )
+            return 1;
+
+        int idx = 0;
+        int ftr = supp[idx];
+
+        supp.erase( supp.begin() + idx );
+        PTT func0 = func & ~x_train[ftr];
+        PTT mask0 = mask & ~x_train[ftr];
+        uint32_t idx0 = recursive_train_random( supp, func0, mask0 );
+        PTT func1 = func &  x_train[ftr];
+        PTT mask1 = mask &  x_train[ftr];
+        uint32_t idx1 = recursive_train_random( supp, func1, mask1 );
+        if( idx0 == idx1 )
+            return idx0;
+        nodes.emplace_back( nodes.size(), ftr, idx1, idx0 );
+        return nodes.back().get_idx();
+    } 
+
+    void decision_tree::train_ordered()
+    {
+        for( int iTrg{0}; iTrg < y_train.size(); ++iTrg )
+        {
+            std::vector<int> support_ids;
+            for( int iFtr{2}; iFtr<x_train.size(); ++iFtr )
+                support_ids.push_back( iFtr );
+            o_nodes.push_back( recursive_train_ordered( support_ids, y_train[iTrg], m_train[iTrg] ) );
         }
     }
 
@@ -364,6 +456,31 @@ void decision_tree::train_impurity()
         return otts;
     }
 
+    PTT decision_tree::compute_recursive( std::vector<PTT*> * pX, int idx )
+    {
+        if( nodes[idx].get_child0() == nodes[idx].get_child1() )
+            return *(*pX)[nodes[idx].get_child0()];
+        PTT TTC = *(*pX)[nodes[idx].get_ctrl()];
+        PTT TT1 = compute_recursive( pX, nodes[idx].get_child1() );
+        PTT TT0 = compute_recursive( pX, nodes[idx].get_child0() );
+        return TTC&TT1 | ( ~TTC )&TT0;        
+    }
+
+
+    std::vector<PTT> decision_tree::compute( std::vector<PTT*> X )
+    {
+        assert( kitty::is_const0( *X[0]));
+        assert( kitty::is_const0(~*X[1]));
+        assert( X.size() == x_train.size() );
+        std::vector<PTT> otts;
+        for( int i{0}; i<o_nodes.size(); ++i )
+        {
+            otts.push_back( compute_recursive( &X, nodes[o_nodes[i]].get_idx() ) );
+        }
+        return otts;
+    }
+
+
     double decision_tree::accuracy( std::vector<PTT> * pX, std::vector<PTT> * pY, std::vector<PTT> * pM )
     {
         assert( pM->size() == pY->size() );
@@ -378,6 +495,12 @@ void decision_tree::train_impurity()
     double decision_tree::train_accuracy()
     {
         return accuracy( &x_train, &y_train, &m_train );
+    }
+
+    double decision_tree::valid_accuracy()
+    {
+        //printf("%d %d %d\n", x_valid[0].num_bits(), y_valid[0].num_bits(), m_valid[0].num_bits());
+        return accuracy( &x_valid, &y_valid, &m_valid );
     }
 
     double decision_tree::test_accuracy()
