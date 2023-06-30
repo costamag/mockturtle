@@ -65,7 +65,7 @@ struct clnet_ps
 
 class clnet
 {
-private:
+public:
     std::vector<std::vector<PTT>> XYs;
     std::vector<decision_tree> trees;
     std::vector<double> rewards;
@@ -372,7 +372,7 @@ std::pair<int, int> clnet::binary_tournament()
         else
         {
             group0.push_back(i);
-            if( rewards[i] > bestRwd1 )
+            if( rewards[i] > bestRwd0 )
             {
                 best0 = i;
                 bestRwd0 = rewards[i];
@@ -402,15 +402,28 @@ void clnet::create_next_gen( std::pair<int, int> parents )
     for( int i{0}; i<tt1.size(); ++i )
     {
         mk = ~tt1[i]^tt2[i];
-        for( int iBit{0}; iBit < mk.num_bits(); ++iBit )
+        if( kitty::count_ones(mk)>0 )
         {
-            if( kitty::get_bit( mk, iBit ) == 0 )
+            for( int iBit{0}; iBit < mk.num_bits(); ++iBit )
+            {
+                if( kitty::get_bit( mk, iBit ) == 0 )
+                {
+                    if( distrib(ml_gen) < 0.1 )
+                        kitty::flip_bit( tt1[i], iBit );
+                    if( distrib(ml_gen) < 0.1 )
+                        kitty::flip_bit( tt2[i], iBit );
+                }
+            }
+        }
+        else
+        {
+            for( int iBit{0}; iBit < mk.num_bits(); ++iBit )
             {
                 if( distrib(ml_gen) < 0.1 )
                     kitty::flip_bit( tt1[i], iBit );
                 if( distrib(ml_gen) < 0.1 )
                     kitty::flip_bit( tt2[i], iBit );
-            }
+            } 
         }
     } 
 
