@@ -32,6 +32,7 @@
 #pragma once
 
 #include "ml_rng.hpp"
+#include "mct_utils.hpp"
 #include <stdio.h>
 #include <stack>
 #include <iostream>

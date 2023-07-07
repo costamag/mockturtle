@@ -396,11 +396,18 @@ Ntk game_on( kitty::dynamic_truth_table * pF, int MET )
     }
 
     node_ps ndps;
+    detailed_gate_t ai00_( gate_t::AI00, 2, 1.0, 1.0, &hpcompute_ai00 );
+    detailed_gate_t ai01_( gate_t::AI01, 2, 1.0, 1.0, &hpcompute_ai01 );
+    detailed_gate_t ai10_( gate_t::AI10, 2, 1.0, 1.0, &hpcompute_ai10 );
+    detailed_gate_t ai11_( gate_t::AI11, 2, 1.0, 1.0, &hpcompute_ai11 );
+    detailed_gate_t exor_( gate_t::EXOR, 2, 1.0, 1.0, &hpcompute_exor );
+    ndps.lib = { ai00_, ai01_, ai10_, ai11_, exor_ };
+
     mct_ps mctps;
     ndps.sel_type = supp_selection_t::SUP_ENER;
     mctps.nIters =100;
     mctps.nSims = 1;
-    mctps.verbose =false;
+    mctps.verbose =true;
     ndps.BETA0 = 100;
     ndps.nIters = 100;
 

@@ -32,7 +32,6 @@
 #pragma once
 
 #include "ml_rng.hpp"
-#include "supportor.hpp"
 #include <kitty/print.hpp>
 #include <stdio.h>
 #include <stack>
@@ -74,6 +73,65 @@ enum gate_t : uint8_t
     POS  = 0xFF
 };
 
+enum supp_selection_t
+{
+    SUP_RAND = 0,
+    SUP_ENER = 1,
+    SUP_ENUM = 2,
+    SUP_GENE = 3,
+    SUP_DECT = 4
+};
+
+enum node_selection_t
+{
+    NODE_RAND = 0,
+    NODE_UCT = 1
+};
+
+enum class entropy_t
+{
+    MINF,
+    GINI,
+    SHAN,
+    EN01
+};
+
+struct detailed_gate_t
+{
+  gate_t type;
+  double delay;
+  double area;
+  int nInputs;
+  DTT (*pFn)(std::vector<DTT>);
+
+  detailed_gate_t( gate_t type, int nInputs, double delay, double area, DTT (*pFn)( std::vector<DTT> ) ) : type(type), nInputs(nInputs), delay(delay), area(area), pFn(pFn){}
+  DTT compute( std::vector<DTT> xs ){ return pFn( xs ); };
+};
+
+struct node_ps
+{
+    supp_selection_t sel_type;
+    int nIters;
+    double BETA0;
+    double BETAZ;
+    std::vector<detailed_gate_t> lib;
+    bool use_inf_graph{true};
+    node_ps()
+    {
+        sel_type = supp_selection_t::SUP_ENER;
+        nIters = 1;
+        BETA0 = 1000;
+        BETAZ = 0;    
+    }
+};
+
+struct mct_method_ps
+{
+    bool verbose    = false;
+    node_selection_t sel_type = node_selection_t::NODE_RAND;
+    mct_method_ps(){};
+};
+
 #pragma region INFORMATION GRAPH
 /*! \brief converts a truth table to a graph representation */
 DTT create_information_graph( DTT tt )
@@ -107,6 +165,7 @@ DTT create_information_graph( DTT tt )
  */
 
 #pragma region DIVISOR
+
 struct divisor_t
 {
     std::vector<int> fanins;
@@ -118,25 +177,29 @@ struct divisor_t
     double  delay;
     gate_t  type;
     int     isPo{0};
+    bool    useIg;
  
     divisor_t(){}
 
-    divisor_t( int id, DTT tt, double area, double delay, gate_t type ):
-        id(id), tt(tt), area(area), delay(delay), type(type)
+    divisor_t( bool bIGs, int id, DTT tt, double area, double delay, gate_t type ):
+        useIg(bIGs), id(id), tt(tt), area(area), delay(delay), type(type)
     {
-        graph = create_information_graph( tt );
+        if( useIg )
+            graph = create_information_graph( tt );
     }
 
-    divisor_t( int id, DTT tt, double area, double delay, gate_t type, std::vector<int> fanins ):
-        id(id), tt(tt), area(area), delay(delay), type(type), fanins(fanins)
+    divisor_t( bool bIGs, int id, DTT tt, double area, double delay, gate_t type, std::vector<int> fanins ):
+        useIg(bIGs), id(id), tt(tt), area(area), delay(delay), type(type), fanins(fanins)
     {
-        graph = create_information_graph( tt );
+        if( useIg )
+            graph = create_information_graph( tt );
     }
 
-    divisor_t( int id, DTT tt, double area, double delay ):
-        id(id), tt(tt), area(area), delay(delay)
+    divisor_t( bool bIGs, int id, DTT tt, double area, double delay ):
+        useIg(bIGs), id(id), tt(tt), area(area), delay(delay)
     {
-        graph = create_information_graph( tt );
+        if(useIg)
+            graph = create_information_graph( tt );
     }
 
     ~divisor_t(){}
@@ -180,12 +243,30 @@ struct divisor_t
 };
 #pragma endregion DIVISOR
 
+DTT hpcompute_ai00( std::vector<DTT> xs ){ assert( xs.size() == 2 ); return ~xs[1] & ~xs[0]; }
+DTT hpcompute_ai01( std::vector<DTT> xs ){ assert( xs.size() == 2 ); return ~xs[1] &  xs[0]; }
+DTT hpcompute_ai10( std::vector<DTT> xs ){ assert( xs.size() == 2 ); return  xs[1] & ~xs[0]; }
+DTT hpcompute_ai11( std::vector<DTT> xs ){ assert( xs.size() == 2 ); return  xs[1] &  xs[0]; }
+DTT hpcompute_cmpl( std::vector<DTT> xs ){ assert( xs.size() == 2 ); return  ~xs[1]; }
+DTT hpcompute_cmpr( std::vector<DTT> xs ){ assert( xs.size() == 2 ); return  ~xs[0]; }
+DTT hpcompute_cntr( std::vector<DTT> xs ){ assert( xs.size() == 2 ); return  xs[0] & ~xs[0]; }
+DTT hpcompute_exor( std::vector<DTT> xs ){ assert( xs.size() == 2 ); return  xs[1] ^  xs[0]; }
+DTT hpcompute_oi00( std::vector<DTT> xs ){ assert( xs.size() == 2 ); return ~(~xs[1] & ~xs[0]); }
+DTT hpcompute_oi01( std::vector<DTT> xs ){ assert( xs.size() == 2 ); return ~(~xs[1] &  xs[0]); }
+DTT hpcompute_oi10( std::vector<DTT> xs ){ assert( xs.size() == 2 ); return ~( xs[1] & ~xs[0]); }
+DTT hpcompute_oi11( std::vector<DTT> xs ){ assert( xs.size() == 2 ); return ~( xs[1] &  xs[0]); }
+DTT hpcompute_prjl( std::vector<DTT> xs ){ assert( xs.size() == 2 ); return xs[1]; }
+DTT hpcompute_prjr( std::vector<DTT> xs ){ assert( xs.size() == 2 ); return xs[0]; }
+DTT hpcompute_taut( std::vector<DTT> xs ){ assert( xs.size() == 2 ); return xs[0]|~xs[0]; }
+DTT hpcompute_xnor( std::vector<DTT> xs ){ assert( xs.size() == 2 ); return ~xs[0] ^ xs[1]; }
+
 enum gen_method_t
 {
     BASE
 };
 
 #pragma region TARGET
+
 struct target_t
 {
     int id;
@@ -193,12 +274,14 @@ struct target_t
     DTT tt;
     DTT graph;
     gate_t type;
+    bool useIg;
     bool isDone{false};
     
-    target_t( int id, DTT tt ) : id(id), tt(tt) 
+    target_t( bool bIGs, int id, DTT tt ) : useIg(bIGs), id(id), tt(tt) 
     {
         div = -1;
-        graph = create_information_graph( tt );
+        if( useIg )
+            graph = create_information_graph( tt );
     };
     target_t(){};
     ~target_t(){};
@@ -293,6 +376,7 @@ std::vector<DTT> cover_the_targets( std::vector<DTT> * pGfs, DTT Gx )
         res[i]=res[i] & ~Gx;
     return res;
 }
+
 
 std::vector<int> erase_non_essential( std::vector<divisor_t> * pDivs, std::vector<target_t> * pTrgs, std::vector<int> support )
 {

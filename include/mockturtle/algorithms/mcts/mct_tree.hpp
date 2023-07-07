@@ -32,6 +32,8 @@
 #pragma once
 
 #include "ml_rng.hpp"
+#include "mct_utils.hpp"
+
 #include <stdio.h>
 #include <stack>
 #include <iostream>
@@ -49,6 +51,7 @@ struct mct_ps
     int nIters = 1;
     int nSims = 1;
     bool verbose = false;
+
 };
 
 template<class NODE, template<class> class METHOD>
@@ -137,9 +140,6 @@ int mct_tree_t<NODE, METHOD>::solve()
         bool FoundLeaf{false};
         int idEnd;
         if(ps.verbose)  printf("iter %d :", it );
-//for( auto CST : nodes[0].supportor.history.costs )
-//    printf("%f ", CST );
-//printf("\n");
         int idSel = 0;//select();
         if( nodes[idSel].is_leaf() ) { FoundLeaf = true; idEnd = idSel;}
         if( nodes[idSel].is_null() ) { continue; }

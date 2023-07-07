@@ -33,7 +33,7 @@ TEST_CASE( "support generator initialization", "[MCTS]" )
         DTT div_tt = xs[i];
         double div_area = 0;
         double div_delay = 0;
-        divisor_t div( div_id, div_tt, div_area, div_delay );
+        divisor_t div( true, div_id, div_tt, div_area, div_delay );
         divisors.push_back(div);
     }
 
@@ -47,12 +47,19 @@ TEST_CASE( "support generator initialization", "[MCTS]" )
     for( uint32_t i{0}; i<fs.size(); ++i )
     {
         DTT trg_tt = fs[i];
-        target_t trg( i, trg_tt );
+        target_t trg( true, i, trg_tt );
         targets.push_back( trg );
         //targets[i].print();
     }
 
     node_ps ndps;
+    detailed_gate_t ai00_( gate_t::AI00, 2, 1.0, 1.0, &hpcompute_ai00 );
+    detailed_gate_t ai01_( gate_t::AI01, 2, 1.0, 1.0, &hpcompute_ai01 );
+    detailed_gate_t ai10_( gate_t::AI10, 2, 1.0, 1.0, &hpcompute_ai10 );
+    detailed_gate_t ai11_( gate_t::AI11, 2, 1.0, 1.0, &hpcompute_ai11 );
+    detailed_gate_t exor_( gate_t::EXOR, 2, 1.0, 1.0, &hpcompute_exor );
+    ndps.lib = { ai00_, ai10_, ai01_, ai11_, exor_ };
+    
     ndps.sel_type = supp_selection_t::SUP_ENER;
     /* support genenrator initialization */
     support_generator_t suppor( &divisors, &targets, ndps );
@@ -132,6 +139,13 @@ TEST_CASE( "node of the mcts", "[MCTS]" )
     fs[1] = ~xs[0]^xs[1];
 
     node_ps ndps;
+    detailed_gate_t ai00_( gate_t::AI00, 2, 1.0, 1.0, &hpcompute_ai00 );
+    detailed_gate_t ai01_( gate_t::AI01, 2, 1.0, 1.0, &hpcompute_ai01 );
+    detailed_gate_t ai10_( gate_t::AI10, 2, 1.0, 1.0, &hpcompute_ai10 );
+    detailed_gate_t ai11_( gate_t::AI11, 2, 1.0, 1.0, &hpcompute_ai11 );
+    detailed_gate_t exor_( gate_t::EXOR, 2, 1.0, 1.0, &hpcompute_exor );
+    ndps.lib = { ai00_, ai10_, ai01_, ai11_, exor_ };
+
     ndps.sel_type = supp_selection_t::SUP_ENER;
     ndps.BETAZ = 1;
     nd_size_t<xag_network> root( xs, ts, fs, ndps );
@@ -169,6 +183,13 @@ TEST_CASE( "node of the mcts: network synthesized at the root", "[MCTS]" )
     fs[1] = xs[0];
 
     node_ps ndps;
+    detailed_gate_t ai00_( gate_t::AI00, 2, 1.0, 1.0, &hpcompute_ai00 );
+    detailed_gate_t ai01_( gate_t::AI01, 2, 1.0, 1.0, &hpcompute_ai01 );
+    detailed_gate_t ai10_( gate_t::AI10, 2, 1.0, 1.0, &hpcompute_ai10 );
+    detailed_gate_t ai11_( gate_t::AI11, 2, 1.0, 1.0, &hpcompute_ai11 );
+    detailed_gate_t exor_( gate_t::EXOR, 2, 1.0, 1.0, &hpcompute_exor );
+    ndps.lib = { ai00_, ai10_, ai01_, ai11_, exor_ };
+
     ndps.sel_type = supp_selection_t::SUP_ENER;
     nd_size_t<xag_network> root( xs, ts, fs, ndps );
     //root.print();
@@ -178,10 +199,10 @@ TEST_CASE( "node of the mcts: network synthesized at the root", "[MCTS]" )
     CHECK( root.is_leaf() == true );
     
     mct_method_ps metps;
-    mct_method_t<nd_size_t<xag_network> > meth( metps );
+    mct_method_t<nd_size_t<xag_network>> meth( metps );
 
     mct_ps mctps;
-    mct_tree_t<nd_size_t<xag_network> , mct_method_t> mct( root, meth, mctps );
+    mct_tree_t<nd_size_t<xag_network>, mct_method_t> mct( root, meth, mctps );
     for( int it{0}; it<10; ++it )
         CHECK( 0 == mct.select() );
     CHECK( mct.nodes[0].TargetsDoneHere.size()==2 );
@@ -224,6 +245,13 @@ TEST_CASE( "node of the mcts: network synthesized after one expansion", "[MCTS]"
     fs[1] = xs[0]|xs[1];
 
     node_ps ndps;
+    detailed_gate_t ai00_( gate_t::AI00, 2, 1.0, 1.0, &hpcompute_ai00 );
+    detailed_gate_t ai01_( gate_t::AI01, 2, 1.0, 1.0, &hpcompute_ai01 );
+    detailed_gate_t ai10_( gate_t::AI10, 2, 1.0, 1.0, &hpcompute_ai10 );
+    detailed_gate_t ai11_( gate_t::AI11, 2, 1.0, 1.0, &hpcompute_ai11 );
+    detailed_gate_t exor_( gate_t::EXOR, 2, 1.0, 1.0, &hpcompute_exor );
+    ndps.lib = { ai00_, ai10_, ai01_, ai11_, exor_ };
+
     ndps.sel_type = supp_selection_t::SUP_ENER;
     ndps.BETA0 =10;
     nd_size_t<xag_network> root( xs, ts, fs, ndps );
@@ -279,6 +307,13 @@ TEST_CASE( "node of the mcts: network synthesized in the first two steps", "[MCT
     fs[1] = xs[0]|xs[1];
 
     node_ps ndps;
+    detailed_gate_t ai00_( gate_t::AI00, 2, 1.0, 1.0, &hpcompute_ai00 );
+    detailed_gate_t ai01_( gate_t::AI01, 2, 1.0, 1.0, &hpcompute_ai01 );
+    detailed_gate_t ai10_( gate_t::AI10, 2, 1.0, 1.0, &hpcompute_ai10 );
+    detailed_gate_t ai11_( gate_t::AI11, 2, 1.0, 1.0, &hpcompute_ai11 );
+    detailed_gate_t exor_( gate_t::EXOR, 2, 1.0, 1.0, &hpcompute_exor );
+    ndps.lib = { ai00_, ai10_, ai01_, ai11_, exor_ };
+
     ndps.sel_type = supp_selection_t::SUP_ENER;
     nd_size_t<xag_network> root( xs, ts, fs, ndps );
     //root.print();
@@ -323,9 +358,19 @@ TEST_CASE( "node of the mcts: network synthesized in the second level", "[MCTS]"
     fs[1] = ~xs[1]^xs[0];
 
     node_ps ndps;
+    detailed_gate_t ai00_( gate_t::AI00, 2, 1.0, 1.0, &hpcompute_ai00 );
+    detailed_gate_t ai01_( gate_t::AI01, 2, 1.0, 1.0, &hpcompute_ai01 );
+    detailed_gate_t ai10_( gate_t::AI10, 2, 1.0, 1.0, &hpcompute_ai10 );
+    detailed_gate_t ai11_( gate_t::AI11, 2, 1.0, 1.0, &hpcompute_ai11 );
+    detailed_gate_t exor_( gate_t::EXOR, 2, 1.0, 1.0, &hpcompute_exor );
+    ndps.lib = { ai00_, ai10_, ai01_, ai11_, exor_ };
+
     ndps.sel_type = supp_selection_t::SUP_ENER;
     ndps.BETA0 = 0;
     ndps.BETAZ = 0.5;
+
+    ndps.lib = { ai00_, ai10_, ai01_, ai11_, exor_ };
+
     nd_size_t<xag_network> root( xs, ts, fs, ndps );
     //root.print();
 
@@ -364,6 +409,13 @@ TEST_CASE( "node of the mcts: 3 inputs", "[MCTS]" )
     fs[1] = ~xs[0]^(xs[1]|xs[2]);
 
     node_ps ndps;
+    detailed_gate_t ai00_( gate_t::AI00, 2, 1.0, 1.0, &hpcompute_ai00 );
+    detailed_gate_t ai01_( gate_t::AI01, 2, 1.0, 1.0, &hpcompute_ai01 );
+    detailed_gate_t ai10_( gate_t::AI10, 2, 1.0, 1.0, &hpcompute_ai10 );
+    detailed_gate_t ai11_( gate_t::AI11, 2, 1.0, 1.0, &hpcompute_ai11 );
+    detailed_gate_t exor_( gate_t::EXOR, 2, 1.0, 1.0, &hpcompute_exor );
+    ndps.lib = { ai00_, ai10_, ai01_, ai11_, exor_ };
+
     ndps.sel_type = supp_selection_t::SUP_ENER;
     nd_size_t<xag_network>  root( xs, ts, fs, ndps );
     for( int i{0}; i<xs.size(); ++i )

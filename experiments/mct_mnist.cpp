@@ -22,9 +22,9 @@ using namespace mcts;
 
 int main( int argc, char ** argv )
 {
-    int nTrain = 128;
-    int nValid = 1000;
-    int nTest = 1000;
+    int nTrain = 1000;//128
+    int nValid = 1000;//1000
+    int nTest = 1000;//1000
 
     std::vector<PTT> Xtrain = read_mnist_image_bin( "../experiments/MNIST/train-images.idx3-ubyte", nTrain+nValid );
     std::vector<PTT> Ytrain = read_mnist_label_04_59( "../experiments/MNIST/train-labels.idx1-ubyte", nTrain+nValid );
@@ -94,56 +94,74 @@ printf("GENET\n");
     genet.train_network();
 
     //cln.print_genome();
-printf("EVOLUT\n");
-    evolutG_ps_t evolutG_ps;
-    evolutG_ps.P0 = 0.9;
-    evolutG_ps.PZ = 0;
-    evolutG_ps.frac = 1.;
-    evolutG_t evolutG( genet, evolutG_ps );
 
-    evolutG.train();
+printf("SIMULATED ANNEALING\n");
+    evolutG_ps_t evolutSA_ps;
+    evolutSA_ps.PZ = 1.;
+
+    evolutSA_ps.P0 = 1.;
+    evolutSA_ps.frac = 1.;
+    evolutSA_ps.nInd = 1;
+    evolutG_t SA( genet, evolutSA_ps );
+
+    SA.simulated_annealing();
 
     printf("RESULT::: ");
-    printf("Atrain = %f  Avalid = %f Atest = %f \n", evolutG.bestInd.acc_train() , evolutG.bestInd.acc_valid(), evolutG.bestInd.acc_test() );
+    printf("Atrain = %f  Avalid = %f Atest = %f \n", SA.bestInd.acc_train() , SA.bestInd.acc_valid(), SA.bestInd.acc_test() );
 
-printf("MUTUAL INFORMATION\n");
-    decision_tree dt_h( x_train, y_train, x_test, y_test );
-    dt_h.train_impurity<entropy_t::MINF>();
-    printf("size = %d\n", dt_h.size());
-    printf("train acc = %f\n", dt_h.train_accuracy());
-    printf("test  acc = %f\n", dt_h.test_accuracy());
-printf("GINI\n");
-    decision_tree dt_g( x_train, y_train, x_test, y_test );
-    dt_g.train_impurity<entropy_t::GINI>();
-    printf("size = %d\n", dt_g.size());
-    printf("train acc = %f\n", dt_g.train_accuracy());
-    printf("test  acc = %f\n", dt_g.test_accuracy());
-printf("SHANNON\n");
-    decision_tree dt_s( x_train, y_train, x_test, y_test );
-    dt_s.train_impurity<entropy_t::SHAN>();
-    printf("size = %d\n", dt_s.size());
-    printf("train acc = %f\n", dt_s.train_accuracy());
-    printf("test  acc = %f\n", dt_s.test_accuracy());
-printf("0-1\n");
-    decision_tree dt_01( x_train, y_train, x_test, y_test );
-    dt_01.train_impurity<entropy_t::EN01>();
-    printf("size = %d\n", dt_01.size());
-    printf("train acc = %f\n", dt_01.train_accuracy());
-    printf("test  acc = %f\n", dt_01.test_accuracy());
+//printf("EVOLUT\n");
+//    evolutG_ps_t evolutG_ps;
+//    evolutG_ps.PZ = 0;
+//
+//    evolutG_ps.P0 = 0;
+//    evolutG_ps.frac = 1;
+//    evolutG_ps.mutation_rate = 0.01;
+//    evolutG_ps.nGens = 1000;
+//    evolutG_t evolutG( genet, evolutG_ps );
+//
+//    evolutG.train();
+//
+//    printf("RESULT::: ");
+//    printf("Atrain = %f  Avalid = %f Atest = %f \n", evolutG.bestInd.acc_train() , evolutG.bestInd.acc_valid(), evolutG.bestInd.acc_test() );
 
-printf("ORDERED\n");
-    decision_tree dt_o( x_train, y_train, x_test, y_test );
-    dt_o.train_ordered();
-    printf("size = %d\n", dt_o.size());
-    printf("train acc = %f\n", dt_o.train_accuracy());
-    printf("test  acc = %f\n", dt_o.test_accuracy());
-printf("RANDOM\n");
-
-    decision_tree dt_r( x_train, y_train, x_test, y_test );
-    dt_r.train_random();
-    printf("size = %d\n", dt_r.size());
-    printf("train acc = %f\n", dt_r.train_accuracy());
-    printf("test  acc = %f\n", dt_r.test_accuracy());
+//printf("MUTUAL INFORMATION\n");
+//    decision_tree dt_h( x_train, y_train, x_test, y_test );
+//    dt_h.train_impurity<entropy_t::MINF>();
+//    printf("size = %d\n", dt_h.size());
+//    printf("train acc = %f\n", dt_h.train_accuracy());
+//    printf("test  acc = %f\n", dt_h.test_accuracy());
+//printf("GINI\n");
+//    decision_tree dt_g( x_train, y_train, x_test, y_test );
+//    dt_g.train_impurity<entropy_t::GINI>();
+//    printf("size = %d\n", dt_g.size());
+//    printf("train acc = %f\n", dt_g.train_accuracy());
+//    printf("test  acc = %f\n", dt_g.test_accuracy());
+//printf("SHANNON\n");
+//    decision_tree dt_s( x_train, y_train, x_test, y_test );
+//    dt_s.train_impurity<entropy_t::SHAN>();
+//    printf("size = %d\n", dt_s.size());
+//    printf("train acc = %f\n", dt_s.train_accuracy());
+//    printf("test  acc = %f\n", dt_s.test_accuracy());
+//printf("0-1\n");
+//    decision_tree dt_01( x_train, y_train, x_test, y_test );
+//    dt_01.train_impurity<entropy_t::EN01>();
+//    printf("size = %d\n", dt_01.size());
+//    printf("train acc = %f\n", dt_01.train_accuracy());
+//    printf("test  acc = %f\n", dt_01.test_accuracy());
+//
+//printf("ORDERED\n");
+//    decision_tree dt_o( x_train, y_train, x_test, y_test );
+//    dt_o.train_ordered();
+//    printf("size = %d\n", dt_o.size());
+//    printf("train acc = %f\n", dt_o.train_accuracy());
+//    printf("test  acc = %f\n", dt_o.test_accuracy());
+//printf("RANDOM\n");
+//
+//    decision_tree dt_r( x_train, y_train, x_test, y_test );
+//    dt_r.train_random();
+//    printf("size = %d\n", dt_r.size());
+//    printf("train acc = %f\n", dt_r.train_accuracy());
+//    printf("test  acc = %f\n", dt_r.test_accuracy());
 //printf("GENETIC\n");
 //    clnet_ps clps;
 //    clps.nFilters = 10;

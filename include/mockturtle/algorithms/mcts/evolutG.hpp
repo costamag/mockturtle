@@ -62,6 +62,7 @@ struct evolutG_ps_t
     int nInd = 20;
     int nCandElim = 5;
     int nGens = 100;
+    double mutation_rate = 0.0001;
 };
 
 class evolutG_t
@@ -82,7 +83,10 @@ public:
     void train();
     void create_generation0();
     std::pair<int, int> binary_tournament_selection();
-    void crossover( std::pair<int, int> );
+    void create_new_children( std::pair<int, int> );
+    void simulated_annealing();
+    void simulate_system( int, double );
+
 };
 
 evolutG_t::evolutG_t( genet_t Gen0, evolutG_ps_t Ps ) : gen0(Gen0), bestInd(Gen0), ps(Ps)
@@ -98,8 +102,6 @@ evolutG_t::evolutG_t( genet_t Gen0, evolutG_ps_t Ps ) : gen0(Gen0), bestInd(Gen0
     for( int iLyr{1}; iLyr<nLyrs; ++iLyr )
         for( int iNd{0}; iNd<Gen0.net[iLyr].size()-1; ++iNd  )
             nNodes++;
-    //for( auto P : flipProbs )
-    //    printf( "%f\n", P );
 }
 
 evolutG_t::~evolutG_t()
@@ -109,7 +111,7 @@ evolutG_t::~evolutG_t()
 void evolutG_t::create_generation0()
 {
     int nLyrs = gen0.net.size();
-    std::uniform_int_distribution<> distrib_layers(1, nLyrs-1 );
+    std::uniform_int_distribution<> distrib_layers(1, nLyrs-2 );
     std::uniform_int_distribution<> distrib_seed( 0, 1000 );
     std::uniform_real_distribution<> distrib_thr( 0, 1 );
 
@@ -117,13 +119,17 @@ void evolutG_t::create_generation0()
     {
         genet_t geni = gen0;
 
-        for( int iRnd{0}; iRnd < (int)ps.frac*nNodes; ++iRnd )
+        for( int iRnd{0}; iRnd < (int)(ps.frac*nNodes); ++iRnd )
         {
             int iLyr = distrib_layers( ml_gen );
-            std::uniform_int_distribution<> distrib_nodes( geni.net[iLyr].size()-1 );
+            std::uniform_int_distribution<> distrib_nodes( 0, geni.net[iLyr].size()-1 );
             int iNd = distrib_nodes( ml_gen );
             if( distrib_thr(ml_gen) < flipProbs[iLyr-1] )
-                kitty::create_random( geni.train.y, distrib_seed(ml_gen) );
+            {
+                PTT rand = geni.net[iLyr][iNd].y_train.construct();
+                kitty::create_random( rand, distrib_seed(ml_gen) );
+                geni.net[iLyr][iNd].y_train = geni.net[iLyr][iNd].y_train ^ (  rand );//geni.e_train &
+            }
         }
         geni.train_network();
         printf("Atr=%f Ava=%f Ate=%f\n", geni.acc_train(), geni.acc_valid(), geni.acc_test() );
@@ -189,7 +195,7 @@ std::pair<int, int> evolutG_t::binary_tournament_selection()
     return std::make_pair( best0, best1 );
 }
 
-void evolutG_t::crossover( std::pair<int, int> parents )
+void evolutG_t::create_new_children( std::pair<int, int> parents )
 {
     printf("CROSSOVER WITH %d %d\n", parents.first, parents.second );
     genet_t P1 = population[parents.first];
@@ -204,12 +210,28 @@ void evolutG_t::crossover( std::pair<int, int> parents )
     {
         for( int iNd{0}; iNd<gen0.net[iLyr].size(); ++iNd )
         {
-            // we are at the node
             PTT diff = P1.net[iLyr][iNd].y_train^P2.net[iLyr][iNd].y_train;
             if( distrib(ml_gen) < f2/(f1+f2) )
                 C.net[iLyr][iNd].y_train = P2.net[iLyr][iNd].y_train;
         }
     }
+    std::uniform_int_distribution<> distrib_layers(1, nLyrs-2 );
+    std::uniform_real_distribution<> distrib_seed(0, 1000);
+    
+    
+    int nToMutate = ps.mutation_rate * nNodes;
+    for( int i{0}; i < nToMutate; ++i )
+    {
+        int iLyr = distrib_layers( ml_gen );
+        std::uniform_int_distribution<> distrib_nodes( 0, C.net[iLyr].size()-1 );
+        int iNd = distrib_nodes( ml_gen );
+        PTT rand = C.net[iLyr][iNd].y_train.construct();
+        kitty::create_random( rand, distrib_seed(ml_gen) );
+        C.net[iLyr][iNd].y_train = C.net[iLyr][iNd].y_train ^ ( C.e_train & rand );
+    }
+
+
+
     C.train_network();
 
     if( C.acc_valid() > bestInd.acc_valid() )
@@ -254,7 +276,63 @@ void evolutG_t::train()
     for( int iGen{0}; iGen < ps.nGens; ++iGen )
     {
         std::pair<int, int> parents = binary_tournament_selection();
-        crossover( parents );
+        create_new_children( parents );
+    }
+}
+
+void evolutG_t::simulate_system( int iIn, double Beta )
+{
+    genet_t net0 = population[iIn];
+    genet_t net1 = net0;
+    int nLyrs = gen0.net.size();
+    std::uniform_int_distribution<> distrib_layers(1, nLyrs-2 );
+    std::uniform_int_distribution<> distrib_nodes( 0, gen0.net[0].size()-1 );
+    std::uniform_int_distribution<> distrib_seed( 0, nLyrs*1000 );
+    std::uniform_real_distribution<> distrib_mc( 0, 1 );
+
+    std::vector<double> energies;
+    for( int it{0}; it < 10; ++it )
+    {
+        net1 = net0;
+        for( int iMod{0}; iMod<10; iMod++ )
+        {
+            int iLyr = distrib_layers( ml_gen );
+            int iNd = distrib_nodes( ml_gen ) % gen0.net[iLyr].size();
+            PTT rand = net1.net[iLyr][iNd].y_train.construct();
+            kitty::create_random( rand, distrib_seed(ml_gen) );
+            net1.net[iLyr][iNd].y_train = net1.net[iLyr][iNd].y_train ^ ( net1.e_train & rand) ;
+        }
+        net1.train_network();
+
+        double dE = net1.acc_valid()-net0.acc_valid();
+
+        printf( "%f %f %f\n", dE, Beta*dE, exp( -Beta*dE ) );
+
+        if( distrib_mc(ml_gen) < exp( -Beta*dE ) )
+        {
+            net0 = net1;
+            printf("accepted\n");
+        }        
+        else
+            printf("rejected\n");
+    }  
+    population[iIn] = net1;
+    if( net1.acc_valid() > bestInd.acc_valid() )
+        bestInd = net1;
+}
+
+void evolutG_t::simulated_annealing()
+{
+    create_generation0();
+    double Beta = 0.00001;
+    for( int iT{0}; iT < 10; ++iT )
+    {
+        for( int iIn{0}; iIn<population.size(); ++iIn )
+        {
+            printf("INIT %d\n", iIn );
+            simulate_system( iIn, Beta );
+            Beta*=10;
+        }
     }
 }
 

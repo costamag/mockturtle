@@ -32,8 +32,8 @@
 #pragma once
 
 #include "../ml_rng.hpp"
-#include "../mct_utils.hpp"
 #include "../supportor.hpp"
+#include "../mct_utils.hpp"
 #include <mockturtle/networks/xag.hpp>
 #include <mockturtle/networks/aig.hpp>
 #include <mockturtle/algorithms/cleanup.hpp>
@@ -51,7 +51,7 @@ namespace mcts
 using DTT = kitty::dynamic_truth_table;
 
 template<class NTK>
-class nd_size_t
+class nd_delay_t
 {
     public:
         support_generator_t supportor;
@@ -75,32 +75,32 @@ class nd_size_t
 
         /* CONSTRUCT/DESCTRUCT */
         /*! \brief generic node constructor */
-        nd_size_t( std::vector<divisor_t>, std::vector<target_t>, node_ps );
+        nd_delay_t( std::vector<divisor_t>, std::vector<target_t>, node_ps );
         /*! \brief root node constructor*/
-        nd_size_t( std::vector<DTT>, std::vector<double>, std::vector<DTT>, node_ps );
+        nd_delay_t( std::vector<DTT>, std::vector<double>, std::vector<DTT>, node_ps );
         /* default */
-        nd_size_t(){ isNull = true; };
-        ~nd_size_t(){};
+        nd_delay_t(){ isNull = true; };
+        ~nd_delay_t(){};
         /* PROPERTIES */
         void print();
         bool is_root();
         bool is_leaf();
         bool is_null();
         /* GROW */
-        nd_size_t find_new();
-        nd_size_t null_node();
+        nd_delay_t find_new();
+        nd_delay_t null_node();
         void add_child( int );
         /* SYNTHESIZE */
-        double evaluate( std::vector<nd_size_t<NTK> *> );
+        double evaluate( std::vector<nd_delay_t<NTK> *> );
         bool check_closure();
         void add_cost( double cost );
-        void update_support_info( nd_size_t<NTK>, double );
+        void update_support_info( nd_delay_t<NTK>, double );
 };
 
 
 
 template<class NTK>
-nd_size_t<NTK>::nd_size_t( std::vector<divisor_t> X, std::vector<target_t> Y, node_ps eps )
+nd_delay_t<NTK>::nd_delay_t( std::vector<divisor_t> X, std::vector<target_t> Y, node_ps eps )
 {
     ps=eps;
     isNull = false;
@@ -117,7 +117,7 @@ nd_size_t<NTK>::nd_size_t( std::vector<divisor_t> X, std::vector<target_t> Y, no
 }
 
 template<class NTK>
-nd_size_t<NTK>::nd_size_t( std::vector<DTT> X, std::vector<double> T, std::vector<DTT> Y, node_ps eps )
+nd_delay_t<NTK>::nd_delay_t( std::vector<DTT> X, std::vector<double> T, std::vector<DTT> Y, node_ps eps )
 {
     ps = eps;
     assert( X.size() == T.size() );
@@ -127,14 +127,14 @@ nd_size_t<NTK>::nd_size_t( std::vector<DTT> X, std::vector<double> T, std::vecto
         targets.emplace_back( ps.use_inf_graph, iTrg, Y[iTrg]);
     
     for( int iDiv{0}; iDiv<X.size(); ++iDiv )
-        divisors.emplace_back( ps.use_inf_graph, iDiv, X[iDiv], 0.0, T[iDiv], gate_t::PIS );
+        divisors.emplace_back(  ps.use_inf_graph, iDiv, X[iDiv], 0.0, T[iDiv], gate_t::PIS );
     
     isLeaf = check_closure();
     supportor = support_generator_t{ &divisors, &targets, ps };
 }
 
 template<class NTK>
-bool nd_size_t<NTK>::check_closure()
+bool nd_delay_t<NTK>::check_closure()
 {
     bool isClosed{true};
     for( int iTrg{0}; iTrg<targets.size(); ++iTrg )
@@ -168,14 +168,14 @@ bool nd_size_t<NTK>::check_closure()
 }
 
 #pragma region PROPERTIES
-template<class NTK> bool nd_size_t<NTK>::is_null(){ return isNull; }
-template<class NTK> bool nd_size_t<NTK>::is_root(){ return isRoot; }
-template<class NTK> bool nd_size_t<NTK>::is_leaf(){ return isLeaf; }
+template<class NTK> bool nd_delay_t<NTK>::is_null(){ return isNull; }
+template<class NTK> bool nd_delay_t<NTK>::is_root(){ return isRoot; }
+template<class NTK> bool nd_delay_t<NTK>::is_leaf(){ return isLeaf; }
 #pragma endregion PROPERTIES
 
 #pragma region GROW
 template<class NTK>
-nd_size_t<NTK> nd_size_t<NTK>::find_new()
+nd_delay_t<NTK> nd_delay_t<NTK>::find_new()
 {
     std::vector<int> supp;
     
@@ -196,19 +196,19 @@ nd_size_t<NTK> nd_size_t<NTK>::find_new()
     std::vector<divisor_t> divs;
     for( auto s : supp )    divs.push_back( supportor.divisors[s] );
 
-    nd_size_t node( divs, supportor.targets, ps );
+    nd_delay_t node( divs, supportor.targets, ps );
     return node;
 }
 
 template<class NTK>
-void nd_size_t<NTK>::add_child( int idChild )
+void nd_delay_t<NTK>::add_child( int idChild )
 {
     vKids.push_back( idChild );
 }
 #pragma endregion GROW
 
 template<class NTK>
-void nd_size_t<NTK>::print()
+void nd_delay_t<NTK>::print()
 {
     printf("=============================\n");
     for( int i{0}; i<divisors.size(); ++i )
@@ -220,9 +220,9 @@ void nd_size_t<NTK>::print()
 }
 
 template<class NTK>
-nd_size_t<NTK> nd_size_t<NTK>::null_node( )
+nd_delay_t<NTK> nd_delay_t<NTK>::null_node( )
 {
-    nd_size_t<NTK> node0;
+    nd_delay_t<NTK> node0;
     node0.isLeaf=false;
     node0.isRoot=false;
     node0.isNull=true;
@@ -230,14 +230,14 @@ nd_size_t<NTK> nd_size_t<NTK>::null_node( )
 }
 
 template<class NTK>
-double nd_size_t<NTK>::evaluate( std::vector<nd_size_t<NTK>*> vPtrs )
+double nd_delay_t<NTK>::evaluate( std::vector<nd_delay_t<NTK>*> vPtrs )
 {
     NTK net;
     std::vector<signal<NTK>> sigs_old;
     std::vector<signal<NTK>> sigs_new;
     std::vector<signal<NTK>> outSigs;
     /* deal with pis */
-    nd_size_t<NTK> * pNd = vPtrs[0];
+    nd_delay_t<NTK> * pNd = vPtrs[0];
     assert( pNd->idPar == -1 );
     for( int iPi{0}; iPi<pNd->divisors.size(); ++iPi )
         sigs_old.push_back( net.create_pi() );
@@ -250,6 +250,10 @@ double nd_size_t<NTK>::evaluate( std::vector<nd_size_t<NTK>*> vPtrs )
             if( pNd->targets[iTrg].type == gate_t::CMPL )
                 outSigs.insert( outSigs.begin()+iTrg,net.create_not(sigs_old[idDiv]));
             else if( pNd->targets[iTrg].type == gate_t::PRJL )
+                outSigs.insert( outSigs.begin()+iTrg, sigs_old[idDiv]);
+            else if( pNd->targets[iTrg].type == gate_t::CMPR )
+                outSigs.insert( outSigs.begin()+iTrg,net.create_not(sigs_old[idDiv]));
+            else if( pNd->targets[iTrg].type == gate_t::PRJR )
                 outSigs.insert( outSigs.begin()+iTrg, sigs_old[idDiv]);
             else
                 assert(0);
@@ -299,6 +303,7 @@ double nd_size_t<NTK>::evaluate( std::vector<nd_size_t<NTK>*> vPtrs )
         {
             for( auto iTrg : vPtrs[iLev]->TargetsDoneHere )
             {
+                printf("TYPE OUT %d\n", vPtrs[iLev]->targets[iTrg].type );
                 int idDiv = vPtrs[iLev]->supportor.targets[iTrg].div;
                 if( vPtrs[iLev]->targets[iTrg].type == gate_t::CMPL )
                     outSigs.insert( outSigs.begin()+iTrg,net.create_not(sigs_old[idDiv]));
@@ -320,11 +325,11 @@ double nd_size_t<NTK>::evaluate( std::vector<nd_size_t<NTK>*> vPtrs )
     }
     ntk = cleanup_dangling(net);
 
-    return ntk.num_gates();
+    return vPtrs.back()->divisors[vPtrs.back()->supportor.targets[0].div].delay;
 }
 
 template<class NTK>
-void nd_size_t<NTK>::add_cost( double cost )
+void nd_delay_t<NTK>::add_cost( double cost )
 {
     costs.push_back( cost );
     if( cost < bestCost )
@@ -332,7 +337,7 @@ void nd_size_t<NTK>::add_cost( double cost )
 }
 
 template<class NTK>
-void nd_size_t<NTK>::update_support_info( nd_size_t<NTK> child, double cost )
+void nd_delay_t<NTK>::update_support_info( nd_delay_t<NTK> child, double cost )
 {
     int idx;
     for( int i=0; i<vKids.size(); ++i  )

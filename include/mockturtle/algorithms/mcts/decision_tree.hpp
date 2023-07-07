@@ -35,6 +35,7 @@
 #include <kitty/bit_operations.hpp>
 #include <kitty/constructors.hpp>
 #include "ml_rng.hpp"
+#include "mct_utils.hpp"
 #include <stdio.h>
 #include <stack>
 #include <iostream>

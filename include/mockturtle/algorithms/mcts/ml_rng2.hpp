@@ -35,8 +35,6 @@
 #include <stack>
 #include <kitty/dynamic_truth_table.hpp>
 #include <kitty/partial_truth_table.hpp>
-#include <kitty/operations.hpp>
-#include <kitty/operators.hpp>
 #include <random>
 
 namespace mockturtle
@@ -46,12 +44,7 @@ namespace mcts
 {
 
 
-//detailed_gate_t not_( gate_t::CMPR, 1, 1*0.5, 1.0, &hpcompute_not );//0.5
-//detailed_gate_t nor_( gate_t::AI00, 2, 1*1.0, 1.0, &hpcompute_ai00 );
-//detailed_gate_t and_( gate_t::AI11, 2, 1*1.5, 1.0, &hpcompute_ai11 );
-//detailed_gate_t xor_( gate_t::EXOR, 2, 1*2.0, 1.0, &hpcompute_exor );
-
-std::mt19937 ml_gen(5);
+std::mt19937 ml_gen2(5);
 
 } // namespace mcts
 

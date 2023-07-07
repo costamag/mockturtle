@@ -120,6 +120,7 @@ enum genet_netcreator_t
 class genet_t
 {
 public:
+    PTT e_train;
     genet_data_t train;
     genet_data_t valid;
     genet_data_t test;
@@ -292,6 +293,7 @@ void genet_t::train_network()
                 train_node( iLyr, iNd );
 
     genet_node_t output_node = net[net.size()-1][0];
+    e_train = output_node.y_train ^ output_node.s_train;
     accTrain = (double)kitty::count_ones( ~output_node.y_train ^ output_node.s_train )/ (double)output_node.s_train.num_bits();
     accValid = (double)kitty::count_ones( ~output_node.y_valid ^ output_node.s_valid )/ (double)output_node.s_valid.num_bits();
     accTest  = (double)kitty::count_ones( ~output_node.y_test  ^ output_node.s_test  )/ (double)output_node.s_test.num_bits();

@@ -1,0 +1,106 @@
+/* mockturtle: C++ logic network library
+ * Copyright (C) 2018-2022  EPFL
+ *
+ * Permission is hereby granted, free of charge, to any person
+ * obtaining a copy of this software and associated documentation
+ * files (the "Software"), to deal in the Software without
+ * restriction, including without limitation the rights to use,
+ * copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following
+ * conditions:
+ *
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+ * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+ * HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
+ */
+
+/*!
+  \file enum4.hpp
+  \brief Enumerate the exact delay circuits for 4 inputs functions
+
+  \author Andrea Costamagna
+*/
+
+#pragma once
+#include <kitty/dynamic_truth_table.hpp>
+#include <kitty/operators.hpp>
+#include "mct_utils.hpp"
+
+namespace mockturtle
+{
+
+namespace mcts
+{
+
+using DTT = kitty::dynamic_truth_table;
+
+
+struct detailed_gate_t
+{
+  gate_t type;
+  double delay;
+  double area;
+  int nInputs;
+  DTT (*pFn)(std::vector<DTT>);
+
+  detailed_gate_t( gate_t type, int nInputs, double delay, double area, DTT (*pFn)( std::vector<DTT> ) ) : type(type), nInputs(nInputs), delay(delay), area(area), pFn(pFn){}
+  DTT compute( std::vector<DTT> xs ){ return pFn( xs ); };
+};
+DTT hpcompute_not( std::vector<DTT> xs ){ assert( xs.size() == 1 ); return ~xs[0]; }
+DTT hpcompute_ai00( std::vector<DTT> xs ){ assert( xs.size() == 2 ); return ~xs[1] & ~xs[0]; }
+DTT hpcompute_ai01( std::vector<DTT> xs ){ assert( xs.size() == 2 ); return ~xs[1] &  xs[0]; }
+DTT hpcompute_ai10( std::vector<DTT> xs ){ assert( xs.size() == 2 ); return  xs[1] & ~xs[0]; }
+DTT hpcompute_ai11( std::vector<DTT> xs ){ assert( xs.size() == 2 ); return  xs[1] &  xs[0]; }
+DTT hpcompute_exor( std::vector<DTT> xs ){ assert( xs.size() == 2 ); return  xs[1] ^  xs[0]; }
+
+class lib00_t
+{
+  public:
+    std::vector<detailed_gate_t> gates;
+
+    lib00_t()
+    {
+      detailed_gate_t not_( gate_t::CMPR, 1, 1*0.5, 1.0, &hpcompute_not );//0.5
+      detailed_gate_t nor_( gate_t::AI00, 2, 1*1.0, 1.0, &hpcompute_ai00 );
+      detailed_gate_t and_( gate_t::AI11, 2, 1*1.5, 1.0, &hpcompute_ai11 );
+      detailed_gate_t xor_( gate_t::EXOR, 2, 1*2.0, 1.0, &hpcompute_exor );
+
+      gates = { not_, nor_, and_, xor_ };
+
+      for( int i{1}; i<gates.size(); ++i )
+        assert( gates[i].delay >= gates[i-1].delay );
+    }
+};
+
+class lib01_t
+{
+  public:
+    std::vector<detailed_gate_t> gates;
+
+    lib01_t()
+    {
+      detailed_gate_t ai00_( gate_t::AI00, 2, 1.0, 1.0, &hpcompute_ai00 );
+      detailed_gate_t ai00_( gate_t::AI01, 2, 1.0, 1.0, &hpcompute_ai01 );
+      detailed_gate_t ai00_( gate_t::AI10, 2, 1.0, 1.0, &hpcompute_ai10 );
+      detailed_gate_t ai11_( gate_t::AI11, 2, 1.0, 1.0, &hpcompute_ai11 );
+      detailed_gate_t exor_( gate_t::EXOR, 2, 1.0, 1.0, &hpcompute_exor );
+
+      gates = { ai00_, ai11_, exor_ };
+
+      for( int i{1}; i<gates.size(); ++i )
+        assert( gates[i].delay >= gates[i-1].delay );
+    }
+};
+
+} // namespace HPC
+
+} // namespace mockturtle

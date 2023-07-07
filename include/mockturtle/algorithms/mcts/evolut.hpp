@@ -78,6 +78,7 @@ public:
     ~evolut_t();
 
     void train();
+    void simulated_annealing();
     void create_generation0();
     std::pair<int, int> binary_tournament_selection();
     void crossover( std::pair<int, int> );
@@ -248,6 +249,17 @@ void evolut_t::crossover( std::pair<int, int> parents )
 }
 
 void evolut_t::train()
+{
+    create_generation0();
+    
+    for( int iGen{0}; iGen < ps.nGens; ++iGen )
+    {
+        std::pair<int, int> parents = binary_tournament_selection();
+        crossover( parents );
+    }
+}
+
+void evolut_t::simulated_annealing()
 {
     create_generation0();
     
