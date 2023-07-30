@@ -87,7 +87,7 @@ int main()
   {
     std::string info = fmt::format("{:10s} | {:6d} | ", sF[i].c_str(), CC[i] );
 
-    for( int iMet{0}; iMet < 4; ++iMet )
+    for( int iMet{0}; iMet < 3; ++iMet )
     {
       kitty::dynamic_truth_table F;
       F = knuth_game( i );

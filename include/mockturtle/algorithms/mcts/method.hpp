@@ -68,6 +68,7 @@ class mct_method_t
         void backpropagate( std::vector<NODE> *, int, double );
 
         double evaluate( std::vector<NODE *> );
+
 };
 
 #pragma region SELECT
@@ -80,12 +81,21 @@ int select_at_random( std::vector<NODE> * vNdPtrs )
 }
 
 template<class NODE>
+int select_from_lay0( std::vector<NODE> * vNdPtrs )
+{
+    return 0;
+}
+
+template<class NODE>
 int mct_method_t<NODE>::select( std::vector<NODE> * vNdPtrs )
 {
     switch ( ps.sel_type )
     {
     case node_selection_t::NODE_RAND :
         return select_at_random<NODE>( vNdPtrs );
+        break;
+    case node_selection_t::NODE_LAY0 :
+        return select_from_lay0<NODE>( vNdPtrs );
         break;
     
     default:

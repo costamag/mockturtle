@@ -56,9 +56,11 @@ public:
   int nHunging;
   uint32_t nCuts{0u};
   uint32_t nNodes{0u};
+  uint32_t cost_xor{1u};
 
   net_t();
   net_t( std::vector<TT> const&, std::vector<TT> const& );
+  net_t( std::vector<TT> const&, std::vector<uint32_t> const&, std::vector<TT> const& );
   ~net_t();
 
   /* manipulate */
@@ -67,6 +69,7 @@ public:
   std::vector<symmetry_t> symmetry_analysis( std::vector<TT> * );
   void add_cut( cut_t );
   void add_cut( symmetry_t * );
+  uint32_t predelay_cost( symmetry_t * );
   void add_node_symL( cut_t *, symmetry_t * );
   void add_node_symR( cut_t *, symmetry_t * );
   void complete_cut( cut_t );
@@ -77,6 +80,7 @@ public:
   cut_t get_last_cut();
 
   template<class Ntk> Ntk convert();
+  template<class Ntk> signal<Ntk> create_in_ntk( Ntk * , std::vector<signal<Ntk>> );
 
   /* visualize */
   void print();
@@ -96,7 +100,30 @@ net_t::net_t( std::vector<TT> const& X, std::vector<TT> const& Y )
   
   for( uint32_t i{0u}; i < X.size(); ++i )
   {
-    cut.add_node( X[i], gate_t::PIS, i, i );
+    cut.add_node( X[i], gate_t::PIS, 0, i, i );
+    nNodes++;
+  }
+  cuts.push_back(cut);
+  nCuts++;
+
+  outCut.set_id( 0xFFFF );
+  /* output */
+  for( int i{0u}; i < Y.size(); ++i )
+    outCut.add_node( Y[i], gate_t::POS, INFTY, INFTY );
+  nHunging = Y.size();
+}
+
+net_t::net_t( std::vector<TT> const& X, std::vector<uint32_t> const& T, std::vector<TT> const& Y )
+{
+  uint32_t INFTY = 0xFFFFFFFF;
+
+  /* inputs */
+  cut_t cut;
+  cut.set_id(0x00000000);
+  
+  for( uint32_t i{0u}; i < X.size(); ++i )
+  {
+    cut.add_node( X[i], gate_t::PIS, T[i], i, i );
     nNodes++;
   }
   cuts.push_back(cut);
@@ -204,29 +231,29 @@ void net_t::add_node_symL( cut_t * pCut, symmetry_t * pSym )
   }
   switch ( pSym->type )
   {
-    case 0x33: pCut->add_node( ~( ~xL.tt &  xR.tt ), OI01, xL.id, xR.id ); break;  //nand( l', r )
-    case 0xCC: pCut->add_node(  (  xL.tt & ~xR.tt ), AI10, xL.id, xR.id ); break;  // and( l , r')
-    case 0x66: pCut->add_node( ~( ~xL.tt & ~xR.tt ), OI00, xL.id, xR.id ); break;  //or( l , r )
-    case 0x99: pCut->add_node(  (  xL.tt &  xR.tt ), AI11, xL.id, xR.id ); break;  //and( l , r )
-    case 0x44: pCut->add_node(                xL.tt, PRJL, xL.id, xL.id ); break;  // l            
-    case 0x11: pCut->add_node(                xL.tt, PRJL, xL.id, xL.id ); break;  // l            
-    case 0x77: pCut->add_node( ~( ~xL.tt & ~xR.tt ), OI00, xL.id, xR.id ); break;  //   or( l , r )
-    case 0xDD: pCut->add_node(  (  xL.tt & ~xR.tt ), AI10, xL.id, xR.id ); break;  //  and( l , r')
-    case 0x88: pCut->add_node(  (  xL.tt &  xR.tt ), AI11, xL.id, xR.id ); break;  //  and( l , r )
-    case 0x22: pCut->add_node( ~( ~xL.tt &  xR.tt ), OI01, xL.id, xR.id ); break;  // nand( l', r )
-    case 0xBB: pCut->add_node(                xL.tt, PRJL, xL.id, xL.id ); break;  // l            
-    case 0xEE: pCut->add_node(                xL.tt, PRJL, xL.id, xL.id ); break;  // l            
+    case 0x33: pCut->add_node( ~( ~xL.tt &  xR.tt ), OI01, std::max(xL.level, xR.level)+1, xL.id, xR.id ); break;  //nand( l', r )
+    case 0xCC: pCut->add_node(  (  xL.tt & ~xR.tt ), AI10, std::max(xL.level, xR.level)+1, xL.id, xR.id ); break;  // and( l , r')
+    case 0x66: pCut->add_node( ~( ~xL.tt & ~xR.tt ), OI00, std::max(xL.level, xR.level)+1, xL.id, xR.id ); break;  //or( l , r )
+    case 0x99: pCut->add_node(  (  xL.tt &  xR.tt ), AI11, std::max(xL.level, xR.level)+1, xL.id, xR.id ); break;  //and( l , r )
+    case 0x44: pCut->add_node(                xL.tt, PRJL, xL.level, xL.id, xL.id ); break;  // l            
+    case 0x11: pCut->add_node(                xL.tt, PRJL, xL.level, xL.id, xL.id ); break;  // l            
+    case 0x77: pCut->add_node( ~( ~xL.tt & ~xR.tt ), OI00, std::max(xL.level, xR.level)+1, xL.id, xR.id ); break;  //   or( l , r )
+    case 0xDD: pCut->add_node(  (  xL.tt & ~xR.tt ), AI10, std::max(xL.level, xR.level)+1, xL.id, xR.id ); break;  //  and( l , r')
+    case 0x88: pCut->add_node(  (  xL.tt &  xR.tt ), AI11, std::max(xL.level, xR.level)+1, xL.id, xR.id ); break;  //  and( l , r )
+    case 0x22: pCut->add_node( ~( ~xL.tt &  xR.tt ), OI01, std::max(xL.level, xR.level)+1, xL.id, xR.id ); break;  // nand( l', r )
+    case 0xBB: pCut->add_node(                xL.tt, PRJL, xL.level, xL.id, xL.id ); break;  // l            
+    case 0xEE: pCut->add_node(                xL.tt, PRJL, xL.level, xL.id, xL.id ); break;  // l            
     case 0x36: break;  // ]            
-    case 0x6C: pCut->add_node(  (  xL.tt ^  xR.tt ), EXOR, xL.id, xR.id ); break;  //  xor( l , r )
+    case 0x6C: pCut->add_node(  (  xL.tt ^  xR.tt ), EXOR, std::max(xL.level, xR.level)+cost_xor, xL.id, xR.id ); break;  //  xor( l , r )
     case 0x9C: break;  // ]            
-    case 0x39: pCut->add_node( ~(  xL.tt ^  xR.tt ), XNOR, xL.id, xR.id ); break;  // xnor( l , r )
-    case 0x19: pCut->add_node(  (  xL.tt &  xR.tt ), AI11, xL.id, xR.id ); break;  //  and( l , r )
+    case 0x39: pCut->add_node( ~(  xL.tt ^  xR.tt ), XNOR, std::max(xL.level, xR.level)+cost_xor, xL.id, xR.id ); break;  // xnor( l , r )
+    case 0x19: pCut->add_node(  (  xL.tt &  xR.tt ), AI11, std::max(xL.level, xR.level)+1, xL.id, xR.id ); break;  //  and( l , r )
     case 0x26: break;  // ]            
     case 0x37: break;  // ]            
-    case 0x4C: pCut->add_node(  (  xL.tt & ~xR.tt ), AI10, xL.id, xR.id ); break;  //  and( l , r')
+    case 0x4C: pCut->add_node(  (  xL.tt & ~xR.tt ), AI10, std::max(xL.level, xR.level)+1, xL.id, xR.id ); break;  //  and( l , r')
     case 0x8C: break;  // ]            
-    case 0x3B: pCut->add_node(  ( ~xL.tt &  xR.tt ), AI01, xL.id, xR.id ); break;  // nand( l', r )
-    case 0x6E: pCut->add_node( ~( ~xL.tt & ~xR.tt ), OI00, xL.id, xR.id ); break;  //   or( l , r )
+    case 0x3B: pCut->add_node(  ( ~xL.tt &  xR.tt ), AI01, std::max(xL.level, xR.level)+1, xL.id, xR.id ); break;  // nand( l', r )
+    case 0x6E: pCut->add_node( ~( ~xL.tt & ~xR.tt ), OI00, std::max(xL.level, xR.level)+1, xL.id, xR.id ); break;  //   or( l , r )
     case 0x9D: break;  // ]            
   }
 }
@@ -247,30 +274,30 @@ void net_t::add_node_symR( cut_t * pCut, symmetry_t * pSym )
   }
   switch ( pSym->type )
   {
-    case 0x33: pCut->add_node( ~(  xL.tt & ~xR.tt ), OI10, xL.id, xR.id ); break;// nand( l , r')
-    case 0xCC: pCut->add_node(  ( ~xL.tt &  xR.tt ), AI01, xL.id, xR.id ); break;//  and( l', r )
-    case 0x66: pCut->add_node(  (  xL.tt &  xR.tt ), AI11, xL.id, xR.id ); break;//  and( l , r )
-    case 0x99: pCut->add_node( ~( ~xL.tt & ~xR.tt ), OI00, xL.id, xR.id ); break;//   or( l , r )
-    case 0x44: pCut->add_node(  (  xL.tt &  xR.tt ), AI11, xL.id, xR.id ); break;//  and( l , r )
-    case 0x11: pCut->add_node( ~(  xL.tt & ~xR.tt ), OI10, xL.id, xR.id ); break;// nand( l , r')
-    case 0x77: pCut->add_node(                xR.tt, PRJR, xR.id, xR.id ); break;// r            
-    case 0xDD: pCut->add_node(                xR.tt, PRJR, xR.id, xR.id ); break;// r            
-    case 0x88: pCut->add_node(                xR.tt, PRJR, xR.id, xR.id ); break;// r            
-    case 0x22: pCut->add_node(                xR.tt, PRJR, xR.id, xR.id ); break;// r            
-    case 0xBB: pCut->add_node( ~( ~xL.tt & ~xR.tt ), OI00, xL.id, xR.id ); break;//   or( l , r )
-    case 0xEE: pCut->add_node(  ( ~xL.tt &  xR.tt ), AI01, xL.id, xR.id ); break;//  and( l', r )
-    case 0x36: pCut->add_node( ~(  xL.tt ^  xR.tt ), XNOR, xL.id, xR.id ); break;// xnor( l , r )
+    case 0x33: pCut->add_node( ~(  xL.tt & ~xR.tt ), OI10, std::max(xL.level, xR.level)+1, xL.id, xR.id ); break;// nand( l , r')
+    case 0xCC: pCut->add_node(  ( ~xL.tt &  xR.tt ), AI01, std::max(xL.level, xR.level)+1, xL.id, xR.id ); break;//  and( l', r )
+    case 0x66: pCut->add_node(  (  xL.tt &  xR.tt ), AI11, std::max(xL.level, xR.level)+1, xL.id, xR.id ); break;//  and( l , r )
+    case 0x99: pCut->add_node( ~( ~xL.tt & ~xR.tt ), OI00, std::max(xL.level, xR.level)+1, xL.id, xR.id ); break;//   or( l , r )
+    case 0x44: pCut->add_node(  (  xL.tt &  xR.tt ), AI11, std::max(xL.level, xR.level)+1, xL.id, xR.id ); break;//  and( l , r )
+    case 0x11: pCut->add_node( ~(  xL.tt & ~xR.tt ), OI10, std::max(xL.level, xR.level)+1, xL.id, xR.id ); break;// nand( l , r')
+    case 0x77: pCut->add_node(                xR.tt, PRJR, xR.level, xR.id, xR.id ); break;// r            
+    case 0xDD: pCut->add_node(                xR.tt, PRJR, xR.level, xR.id, xR.id ); break;// r            
+    case 0x88: pCut->add_node(                xR.tt, PRJR, xR.level, xR.id, xR.id ); break;// r            
+    case 0x22: pCut->add_node(                xR.tt, PRJR, xR.level, xR.id, xR.id ); break;// r            
+    case 0xBB: pCut->add_node( ~( ~xL.tt & ~xR.tt ), OI00, std::max(xL.level, xR.level)+1, xL.id, xR.id ); break;//   or( l , r )
+    case 0xEE: pCut->add_node(  ( ~xL.tt &  xR.tt ), AI01, std::max(xL.level, xR.level)+1, xL.id, xR.id ); break;//  and( l', r )
+    case 0x36: pCut->add_node( ~(  xL.tt ^  xR.tt ), XNOR, std::max(xL.level, xR.level)+cost_xor, xL.id, xR.id ); break;// xnor( l , r )
     case 0x6C: break;// ]            
-    case 0x9C: pCut->add_node(  (  xL.tt ^  xR.tt ), EXOR, xL.id, xR.id ); break;//  xor( l , r )
+    case 0x9C: pCut->add_node(  (  xL.tt ^  xR.tt ), EXOR, std::max(xL.level, xR.level)+cost_xor, xL.id, xR.id ); break;//  xor( l , r )
     case 0x39: break;// ]            
     case 0x19: break;// ]            
-    case 0x26: pCut->add_node(  (  xL.tt &  xR.tt ), AI11, xL.id, xR.id ); break;//  and( l , r )
-    case 0x37: pCut->add_node( ~(  xL.tt & ~xR.tt ), OI10, xL.id, xR.id ); break;// nand( l , r')
+    case 0x26: pCut->add_node(  (  xL.tt &  xR.tt ), AI11, std::max(xL.level, xR.level)+1, xL.id, xR.id ); break;//  and( l , r )
+    case 0x37: pCut->add_node( ~(  xL.tt & ~xR.tt ), OI10, std::max(xL.level, xR.level)+1, xL.id, xR.id ); break;// nand( l , r')
     case 0x4C: break;// ]            
-    case 0x8C: pCut->add_node(  ( ~xL.tt &  xR.tt ), AI01, xL.id, xR.id ); break;//  and( l', r )
+    case 0x8C: pCut->add_node(  ( ~xL.tt &  xR.tt ), AI01, std::max(xL.level, xR.level)+1, xL.id, xR.id ); break;//  and( l', r )
     case 0x3B: break;// ]            
     case 0x6E: break;// ]            
-    case 0x9D: pCut->add_node( ~( ~xL.tt & ~xR.tt ), OI00, xL.id, xR.id ); break;//   or( l , r )
+    case 0x9D: pCut->add_node( ~( ~xL.tt & ~xR.tt ), OI00, std::max(xL.level, xR.level)+1, xL.id, xR.id ); break;//   or( l , r )
   }
 }
 
@@ -298,7 +325,7 @@ void net_t::add_cut( symmetry_t * pSym )
     }
     else
     {
-      newCut.add_node( oldCut.nodes[i].tt, gate_t::PRJL, oldCut.nodes[i].id, oldCut.nodes[i].id );
+      newCut.add_node( oldCut.nodes[i].tt, gate_t::PRJL, oldCut.nodes[i].level, oldCut.nodes[i].id, oldCut.nodes[i].id );
       if( oldCut.nodes[i].is_remapped() ) newCut.nodes[nNodes0].idPi = idPi;
     }
   }
@@ -307,6 +334,43 @@ void net_t::add_cut( symmetry_t * pSym )
   newCut.mk = pSym->mk;
 
   cuts.push_back( newCut );
+}
+
+/*! \brief Add a cut to the network after adjusting its identifier. */
+uint32_t net_t::predelay_cost( symmetry_t * pSym )
+{
+  cut_t oldCut = cuts[nCuts-1];
+  cut_t newCut;
+  uint32_t level=0;
+
+  for( uint32_t i{0}; i < oldCut.size(); ++i )
+  {
+    int nNodes0 = newCut.nNodes;
+    bool isRem = oldCut.nodes[i].is_remapped();
+    int idPi   = oldCut.nodes[i].remapped_pi();
+    if( isRem && ( idPi == pSym->idL || idPi == pSym->idR ) )
+    {
+      if( idPi == pSym->idL ) 
+      {
+        add_node_symL( &newCut, pSym );
+      }
+      else
+        add_node_symR( &newCut, pSym );
+      if( newCut.nNodes > nNodes0 ) newCut.nodes[nNodes0].idPi = idPi;
+    }
+    else
+    {
+      newCut.add_node( oldCut.nodes[i].tt, gate_t::PRJL, oldCut.nodes[i].level, oldCut.nodes[i].id, oldCut.nodes[i].id );
+      if( oldCut.nodes[i].is_remapped() ) newCut.nodes[nNodes0].idPi = idPi;
+    }
+  }
+  for( auto nd : newCut.nodes )
+  {
+    if( nd.level > level )
+      level = nd.level;
+  }
+
+  return level;
 }
 
 /*! \brief Add nodes to the last cut. */
@@ -386,7 +450,7 @@ bool net_t::check_closure( cut_t * pCut, node_t * pOut, node_t xL, node_t xR )
 {
   if( kitty::equal( xL.tt & xR.tt, pOut->tt ) ) 
   {
-    node_t node = pCut->add_node( xL.tt & xR.tt, AI11, xL.id, xR.id );
+    node_t node = pCut->add_node( xL.tt & xR.tt, AI11, std::max(xL.level, xR.level)+1, xL.id, xR.id );
     pOut->gate = gate_t::PRJL;
     pOut->idL  = node.id;
     pOut->idR  = node.id;
@@ -395,7 +459,7 @@ bool net_t::check_closure( cut_t * pCut, node_t * pOut, node_t xL, node_t xR )
   }
   else if( kitty::equal( xL.tt & xR.tt, ~pOut->tt ) ) 
   {
-    node_t node = pCut->add_node( xL.tt & xR.tt, OI11, xL.id, xR.id );
+    node_t node = pCut->add_node( xL.tt & xR.tt, OI11, std::max(xL.level, xR.level)+1, xL.id, xR.id );
     pOut->gate = gate_t::PRJL;
     pOut->idL  = node.id;
     pOut->idR  = node.id;
@@ -404,7 +468,7 @@ bool net_t::check_closure( cut_t * pCut, node_t * pOut, node_t xL, node_t xR )
   }
   else if( kitty::equal( xL.tt & ~xR.tt, pOut->tt ) ) 
   {
-    node_t node = pCut->add_node( xL.tt & ~xR.tt, AI10, xL.id, xR.id );
+    node_t node = pCut->add_node( xL.tt & ~xR.tt, AI10, std::max(xL.level, xR.level)+1, xL.id, xR.id );
     pOut->gate = gate_t::PRJL;
     pOut->idL  = node.id;
     pOut->idR  = node.id;
@@ -413,7 +477,7 @@ bool net_t::check_closure( cut_t * pCut, node_t * pOut, node_t xL, node_t xR )
   }
   else if( kitty::equal( xL.tt & ~xR.tt, ~pOut->tt ) ) 
   {
-    node_t node = pCut->add_node( ~(xL.tt & ~xR.tt), OI10, xL.id, xR.id );
+    node_t node = pCut->add_node( ~(xL.tt & ~xR.tt), OI10, std::max(xL.level, xR.level)+1, xL.id, xR.id );
     pOut->gate = gate_t::PRJL;
     pOut->idL  = node.id;
     pOut->idR  = node.id;
@@ -422,7 +486,7 @@ bool net_t::check_closure( cut_t * pCut, node_t * pOut, node_t xL, node_t xR )
   }
   else if( kitty::equal( ~xL.tt & xR.tt, pOut->tt ) ) 
   {
-    node_t node = pCut->add_node( ~xL.tt & xR.tt, AI01, xL.id, xR.id );
+    node_t node = pCut->add_node( ~xL.tt & xR.tt, AI01, std::max(xL.level, xR.level)+1, xL.id, xR.id );
     pOut->gate = gate_t::PRJL;
     pOut->idL  = node.id;
     pOut->idR  = node.id;
@@ -431,7 +495,7 @@ bool net_t::check_closure( cut_t * pCut, node_t * pOut, node_t xL, node_t xR )
   }
   else if( kitty::equal( ~(~xL.tt & xR.tt), pOut->tt ) ) 
   {
-    node_t node = pCut->add_node( ~(~xL.tt & xR.tt), OI01, xL.id, xR.id );
+    node_t node = pCut->add_node( ~(~xL.tt & xR.tt), OI01, std::max(xL.level, xR.level)+1, xL.id, xR.id );
     pOut->gate = gate_t::PRJL;
     pOut->idL  = node.id;
     pOut->idR  = node.id;
@@ -440,7 +504,7 @@ bool net_t::check_closure( cut_t * pCut, node_t * pOut, node_t xL, node_t xR )
   }
   else if( kitty::equal( ~xL.tt & ~xR.tt, pOut->tt ) ) 
   {
-    node_t node = pCut->add_node( ~xL.tt & ~xR.tt, AI00, xL.id, xR.id );
+    node_t node = pCut->add_node( ~xL.tt & ~xR.tt, AI00, std::max(xL.level, xR.level)+1, xL.id, xR.id );
     pOut->gate = gate_t::PRJL;
     pOut->idL  = node.id;
     pOut->idR  = node.id;
@@ -449,7 +513,7 @@ bool net_t::check_closure( cut_t * pCut, node_t * pOut, node_t xL, node_t xR )
   }
   else if( kitty::equal( ~(~xL.tt & xR.tt), pOut->tt ) ) 
   {
-    node_t node = pCut->add_node( ~(~xL.tt & ~xR.tt), OI00, xL.id, xR.id );
+    node_t node = pCut->add_node( ~(~xL.tt & ~xR.tt), OI00, std::max(xL.level, xR.level)+1, xL.id, xR.id );
     pOut->gate = gate_t::PRJL;
     pOut->idL  = node.id;
     pOut->idR  = node.id;
@@ -458,7 +522,7 @@ bool net_t::check_closure( cut_t * pCut, node_t * pOut, node_t xL, node_t xR )
   }
   else if( kitty::equal( xL.tt ^ xR.tt, pOut->tt ) ) 
   {
-    node_t node = pCut->add_node( xL.tt ^ xR.tt, EXOR, xL.id, xR.id );
+    node_t node = pCut->add_node( xL.tt ^ xR.tt, EXOR, std::max(xL.level, xR.level)+cost_xor, xL.id, xR.id );
     pOut->gate = gate_t::PRJL;
     pOut->idL  = node.id;
     pOut->idR  = node.id;
@@ -467,7 +531,7 @@ bool net_t::check_closure( cut_t * pCut, node_t * pOut, node_t xL, node_t xR )
   }
   else if( kitty::equal( ~( xL.tt ^ xR.tt), pOut->tt ) ) 
   {
-    node_t node = pCut->add_node( ~( xL.tt ^  xR.tt), XNOR, xL.id, xR.id );
+    node_t node = pCut->add_node( ~( xL.tt ^  xR.tt), XNOR, std::max(xL.level, xR.level)+cost_xor, xL.id, xR.id );
     pOut->gate = gate_t::PRJL;
     pOut->idL  = node.id;
     pOut->idR  = node.id;
@@ -649,6 +713,105 @@ Ntk net_t::convert()
   }
   return ntk;
 }
+
+
+template<class Ntk> 
+signal<Ntk> net_t::create_in_ntk( Ntk * pNtk, std::vector<signal<Ntk>> iSigs )
+{
+  std::vector<std::vector<signal<Ntk>>> chain;
+  chain.emplace_back();
+  assert( cuts[0].nodes.size() == iSigs.size() );
+  for( int iPi{0}; iPi < cuts[0].nodes.size(); ++iPi )
+    chain[0].push_back( iSigs[iPi] );
+
+  for( int iCut{1}; iCut < cuts.size(); ++iCut )
+  {    
+    chain.emplace_back();
+
+    for( int iNode{0}; iNode < cuts[iCut].size(); ++iNode )
+    {
+      node_t * pNode = &cuts[iCut].nodes[iNode];
+      assert( ( (iCut-1) == ( pNode->get_glb_idL() ) ) );
+      assert( ( (iCut-1) == ( pNode->get_glb_idR() ) ) );
+      signal<Ntk> xL = chain[pNode->get_glb_idL()][pNode->get_loc_idL()];
+      signal<Ntk> xR = chain[pNode->get_glb_idR()][pNode->get_loc_idR()];
+
+      switch (pNode->gate)
+      {
+      case gate_t::PIS :
+        chain[iCut].push_back( pNtk->create_pi() );
+        break;
+      case gate_t::AI00 :
+        chain[iCut].push_back( pNtk->create_and( pNtk->create_not(xL), pNtk->create_not(xR)) );
+        break;
+      case gate_t::AI01 :
+        chain[iCut].push_back( pNtk->create_and( pNtk->create_not(xL), xR) );
+        break;
+      case gate_t::AI10 :
+        chain[iCut].push_back( pNtk->create_and( xL, pNtk->create_not(xR)) );
+        break;
+      case gate_t::AI11 :
+        chain[iCut].push_back( pNtk->create_and( xL, xR ) );
+        break;
+      case gate_t::CMPL :
+        chain[iCut].push_back( pNtk->create_not(xL) );
+        break;
+      case gate_t::CMPR :
+        chain[iCut].push_back( pNtk->create_not(xR) );
+        break;
+      case gate_t::EXOR :
+        chain[iCut].push_back( pNtk->create_xor( xL, xR) );
+        break;
+      case gate_t::OI00 :
+        chain[iCut].push_back( pNtk->create_nand( pNtk->create_not(xL), pNtk->create_not(xR)) );
+        break;
+      case gate_t::OI01 :
+        chain[iCut].push_back( pNtk->create_nand( pNtk->create_not(xL), xR) );
+        break;
+      case gate_t::OI10 :
+        chain[iCut].push_back( pNtk->create_nand( xL, pNtk->create_not(xR)) );
+        break;
+      case gate_t::OI11 :
+        chain[iCut].push_back( pNtk->create_nand( xL, xR ) );
+        break;
+      case gate_t::PRJL :
+        chain[iCut].push_back( pNtk->create_buf(xL) );
+        break;
+      case gate_t::PRJR :
+        chain[iCut].push_back( pNtk->create_buf(xR) );
+        break;
+      case gate_t::XNOR :
+        chain[iCut].push_back( pNtk->create_not(pNtk->create_xor( xL, xR ) ) );
+        break;
+      default:
+        break;
+      }
+    }
+  }
+
+  for( int iOut{0}; iOut < outCut.nodes.size(); ++iOut )
+  {
+    node_t out = outCut.nodes[iOut];
+    switch ( out.gate )
+    {
+    case gate_t::CMPL :
+      return pNtk->create_not( chain[out.get_glb_idL()][out.get_loc_idL()] );
+      break;
+    case gate_t::CMPR :
+      return pNtk->create_not( chain[out.get_glb_idR()][out.get_loc_idR()] );
+      break;
+    case gate_t::PRJL :
+      return chain[out.get_glb_idL()][out.get_loc_idL()];
+      break;
+    case gate_t::PRJR :
+      return chain[out.get_glb_idR()][out.get_loc_idR()];
+      break;
+    default:
+      break;
+    }
+  }
+}
+
 #pragma endregion transform
 
 #pragma region visualize

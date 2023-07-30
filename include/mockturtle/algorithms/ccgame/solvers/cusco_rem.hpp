@@ -36,6 +36,7 @@
 #include <kitty/operators.hpp>
 #include <kitty/constructors.hpp>
 #include <kitty/print.hpp>
+#include "../utils/ccg_rng.hpp"
 #include <stdio.h>
 #include <stack>
 
@@ -55,12 +56,18 @@ struct report_rem_t
   int nMin;
   int nMax;
   Ntk ntk;
+  uint32_t levels;
+  bool E_solution{false};
+  std::vector<signal<Ntk>> S;
+  Ntk * pNtk;
+  signal<Ntk> osig;
 };
 
 struct cusco_rem_ps
 {
   /* method */
   int nIters;
+  std::vector<uint32_t> T;
   cusco_rem_ps( int nIters ) : nIters( nIters ) {}
 };
 
@@ -78,8 +85,15 @@ public:
   ~cusco_rem();
   /* solve */
   report_rem_t<Ntk> solve_random( cusco_rem_ps const& );
+  report_rem_t<Ntk> solve_randelay( cusco_rem_ps const& );
   report_rem_t<Ntk> solve_entropic( cusco_rem_ps const& );
   report_rem_t<Ntk> solve_1shot( cusco_rem_ps const& );
+  report_rem_t<Ntk> solve_1delay( cusco_rem_ps const& );
+  report_rem_t<Ntk> solve_1delay( cusco_rem_ps const&, Ntk *, std::vector<signal<Ntk>> );
+  report_rem_t<Ntk> solve_Rdelay( cusco_rem_ps const& );
+  report_rem_t<Ntk> solve_Rdelay( cusco_rem_ps const&, Ntk *, std::vector<signal<Ntk>> );
+
+  report_rem_t<Ntk> solve_randelay( cusco_rem_ps const&, Ntk *, std::vector<signal<Ntk>> );
 };
 
 /* creation and destruction */
@@ -144,6 +158,11 @@ report_rem_t<Ntk> cusco_rem<Ntk>::solve_1shot( cusco_rem_ps const& ps )
   analyzer_t analyzer;
 
   net_t net( X, Y );
+
+  for( auto nd : net.cuts[0].nodes )
+    printf( "%d ", nd.level );
+  printf("\n");
+
   net.cuts[net.nCuts-1].set_func( func );
   net.cuts[net.nCuts-1].set_mask( mask );
   int idBound = 1;
@@ -181,10 +200,462 @@ report_rem_t<Ntk> cusco_rem<Ntk>::solve_1shot( cusco_rem_ps const& ps )
     rep.nIt0 = rep.ntk.num_gates();
     rep.nMax = rep.nIt0;
     rep.nMin = rep.nIt0;
+    rep.E_solution = true;
   }
   return rep;
 }
 
+template<class Ntk>
+report_rem_t<Ntk> cusco_rem<Ntk>::solve_1delay( cusco_rem_ps const& ps, Ntk * pNtk, std::vector<signal<Ntk>> S )
+{
+  report_rem_t<Ntk> rep;
+  std::random_device rd;  // a seed source for the random number engine
+  std::mt19937 gen(5); // mersenne_twister_engine seeded with rd()
+  int nVars = ceil(log2(X[0].num_bits()));
+  TT func( nVars );
+  TT mask( nVars );
+  kitty::create_from_binary_string( func, kitty::to_binary( Y[0] ) );
+  kitty::create_from_binary_string( mask, kitty::to_binary( Y[0] | ~Y[0] ) );
+  std::vector<TT> xs;
+  std::vector<uint32_t> T;
+  for( int i{0}; i < nVars; ++i )
+  {
+    xs.emplace_back( nVars );
+    kitty::create_nth_var( xs[i], i );
+    T.push_back( ps.T[i] );
+  }
+  analyzer_t analyzer;
+
+  net_t net( X, T, Y );
+
+//&  for( auto nd : net.cuts[0].nodes )
+//&    printf( "%d ", nd.level );
+//&  printf("\n");
+
+  net.cuts[net.nCuts-1].set_func( func );
+  net.cuts[net.nCuts-1].set_mask( mask );
+  int idBound = 1;
+  int bestRwd = -1;
+  uint32_t bestLevel=0;
+  symmetry_t bestSym;
+  while( net.nHunging > 0 )
+  {
+    //std::vector<symmetry_t> candidates = net.symmetry_analysis( &xs );
+    std::vector<symmetry_t> candidates = net.symmetry_analysis( &xs, idBound );
+    // process candidate to give levels
+    int bestCost = 1000;
+    int iCHOSEN;
+    if( candidates.size() == 0 ) break;
+    for( int iCand{0}; iCand<candidates.size(); ++iCand )
+    {
+      int size_ = sym_cost<Ntk>( candidates[iCand] );
+      int cost = net.predelay_cost(&candidates[iCand]);
+//&      printf( "[I.%d R.%d D.%d]", iCand, candidates[iCand].rwd , cost  );//
+
+      if( candidates[iCand].rwd > bestRwd || ( candidates[iCand].rwd == bestRwd && cost < bestCost ) )
+      {
+        bestSym = candidates[iCand];
+        bestRwd = candidates[iCand].rwd;
+        bestCost = cost;
+        bestLevel = cost;
+        iCHOSEN=iCand;
+        rep.levels = cost;
+      }
+    }
+//&    printf("->%d\n", iCHOSEN);
+    if( ( bestSym.idL == idBound ) || ( bestSym.idR == idBound  ) )
+      idBound += 2;
+    net.add_cut( &bestSym );
+
+    cut_t lcut = net.get_last_cut();
+//&    for( auto nd : lcut.nodes )
+//&      printf("%d ", nd.level );
+//&    printf("\n");
+
+    net.check_sym_closure();
+  }
+  if( net.nHunging > 0 )
+  {
+    rep.nMax = -1;
+    rep.nMin = -1;
+  }
+  else
+  {
+    rep.ntk  = net.convert<Ntk>();
+    if( S.size() > 0 )
+      rep.osig = net.create_in_ntk<Ntk>( pNtk, S );
+    rep.nIt0 = rep.ntk.num_gates();
+    rep.nMax = rep.nIt0;
+    rep.nMin = rep.nIt0;
+    rep.E_solution = true;
+    rep.levels = bestLevel;
+  }
+  return rep;
+}
+
+template<class Ntk>
+report_rem_t<Ntk> cusco_rem<Ntk>::solve_1delay( cusco_rem_ps const& ps )
+{
+  report_rem_t<Ntk> rep;
+  std::random_device rd;  // a seed source for the random number engine
+  std::mt19937 gen(5); // mersenne_twister_engine seeded with rd()
+  int nVars = ceil(log2(X[0].num_bits()));
+  TT func( nVars );
+  TT mask( nVars );
+  kitty::create_from_binary_string( func, kitty::to_binary( Y[0] ) );
+  kitty::create_from_binary_string( mask, kitty::to_binary( Y[0] | ~Y[0] ) );
+  std::vector<TT> xs;
+  std::vector<uint32_t> T;
+  for( int i{0}; i < nVars; ++i )
+  {
+    xs.emplace_back( nVars );
+    kitty::create_nth_var( xs[i], i );
+    T.push_back( ps.T[i] );
+  }
+  analyzer_t analyzer;
+
+  net_t net( X, T, Y );
+
+//&  for( auto nd : net.cuts[0].nodes )
+//&    printf( "%d ", nd.level );
+//&  printf("\n");
+
+  net.cuts[net.nCuts-1].set_func( func );
+  net.cuts[net.nCuts-1].set_mask( mask );
+  int idBound = 1;
+  int bestRwd = -1;
+  uint32_t bestLevel=0;
+  symmetry_t bestSym;
+  while( net.nHunging > 0 )
+  {
+    //std::vector<symmetry_t> candidates = net.symmetry_analysis( &xs );
+    std::vector<symmetry_t> candidates = net.symmetry_analysis( &xs, idBound );
+    // process candidate to give levels
+    int bestCost = 1000;
+    int iCHOSEN;
+    if( candidates.size() == 0 ) break;
+    for( int iCand{0}; iCand<candidates.size(); ++iCand )
+    {
+      int size_ = sym_cost<Ntk>( candidates[iCand] );
+      int cost = net.predelay_cost(&candidates[iCand]);
+//&      printf( "[I.%d R.%d D.%d]", iCand, candidates[iCand].rwd , cost  );//
+
+      if( candidates[iCand].rwd > bestRwd || ( candidates[iCand].rwd == bestRwd && cost < bestCost ) )
+      {
+        bestSym = candidates[iCand];
+        bestRwd = candidates[iCand].rwd;
+        bestCost = cost;
+        bestLevel = cost;
+        iCHOSEN=iCand;
+        rep.levels = cost;
+      }
+    }
+//&    printf("->%d\n", iCHOSEN);
+    if( ( bestSym.idL == idBound ) || ( bestSym.idR == idBound  ) )
+      idBound += 2;
+    net.add_cut( &bestSym );
+
+    cut_t lcut = net.get_last_cut();
+//&    for( auto nd : lcut.nodes )
+//&      printf("%d ", nd.level );
+//&    printf("\n");
+
+    net.check_sym_closure();
+  }
+  if( net.nHunging > 0 )
+  {
+    rep.nMax = -1;
+    rep.nMin = -1;
+  }
+  else
+  {
+    rep.ntk  = net.convert<Ntk>();
+    rep.nIt0 = rep.ntk.num_gates();
+    rep.nMax = rep.nIt0;
+    rep.nMin = rep.nIt0;
+    rep.E_solution = true;
+    rep.levels = bestLevel;
+  }
+  return rep;
+}
+
+
+template<class Ntk>
+report_rem_t<Ntk> cusco_rem<Ntk>::solve_Rdelay( cusco_rem_ps const& ps )
+{
+  std::random_device rd;  // a seed source for the random number engine
+  std::mt19937 gen(5); // mersenne_twister_engine seeded with rd()
+  int nVars = ceil(log2(X[0].num_bits()));
+  TT func( nVars );
+  TT mask( nVars );
+  kitty::create_from_binary_string( func, kitty::to_binary( Y[0] ) );
+  kitty::create_from_binary_string( mask, kitty::to_binary( Y[0] | ~Y[0] ) );
+  std::vector<TT> xs;
+  std::vector<uint32_t> T;
+  for( int i{0}; i < nVars; ++i )
+  {
+    xs.emplace_back( nVars );
+    kitty::create_nth_var( xs[i], i );
+    T.push_back( ps.T[i] );
+  }
+  analyzer_t analyzer;
+
+  report_rem_t<Ntk> REP;
+  uint32_t BEST_SIZE = std::numeric_limits<uint32_t>::max();
+  uint32_t BEST_DEPTH = std::numeric_limits<uint32_t>::max();
+  for( int iIter{0}; iIter < ps.nIters; ++iIter )
+  {
+    //printf("it %d/%d\n", iIter, ps.nIters);
+    report_rem_t<Ntk> rep;
+    net_t net( X, T, Y );
+
+  //&  for( auto nd : net.cuts[0].nodes )
+  //&    printf( "%d ", nd.level );
+  //&  printf("\n");
+
+    net.cuts[net.nCuts-1].set_func( func );
+    net.cuts[net.nCuts-1].set_mask( mask );
+    int idBound = 1;
+    int bestRwd = -1;
+    uint32_t bestLevel=0;
+    symmetry_t bestSym;
+    int old_reward = 0;
+    while( net.nHunging > 0 )
+    {
+      //std::vector<symmetry_t> candidates = net.symmetry_analysis( &xs );
+      std::vector<symmetry_t> candidates = net.symmetry_analysis( &xs, idBound );
+      // process candidate to give levels
+      int bestCost = 1000;
+      if( candidates.size() == 0 ) break;
+      std::vector<int> selected;
+      for( int iCand{0}; iCand<candidates.size(); ++iCand )
+      {
+        int size_ = sym_cost<Ntk>( candidates[iCand] );
+        int cost = net.predelay_cost(&candidates[iCand]);
+        //printf( "[I.%d R.%d D.%d]", iCand, candidates[iCand].rwd , cost  );//
+
+        if( candidates[iCand].rwd > bestRwd || ( candidates[iCand].rwd == bestRwd && cost <= bestCost ) )
+        {
+          if( (candidates[iCand].rwd > bestRwd) || ( candidates[iCand].rwd == bestRwd && cost < bestCost ) )
+          {
+            // reset
+            selected={iCand};
+            bestRwd = candidates[iCand].rwd;
+            bestCost = cost;
+            bestLevel = cost;
+          }
+          else if( candidates[iCand].rwd == bestRwd && cost == bestCost )
+          {
+            selected.push_back( iCand );
+            bestRwd = candidates[iCand].rwd;
+            bestCost = cost;
+            bestLevel = cost;
+          }
+          else
+            assert(0);
+        }
+      }
+
+      std::uniform_int_distribution<> distrib(0, selected.size()-1);
+      uint32_t IDX = distrib(ccg_gen);
+      uint32_t iCHOSEN = selected[IDX];
+      //printf("selected[%d/%d]=%d\n", IDX, selected.size()-1, iCHOSEN);
+
+      rep.levels = net.predelay_cost(&candidates[iCHOSEN]);;
+      bestSym = candidates[iCHOSEN];
+      bestRwd = candidates[iCHOSEN].rwd;
+      bestCost = rep.levels;
+      bestLevel = rep.levels;
+
+      if( ( bestSym.idL == idBound ) || ( bestSym.idR == idBound  ) )
+        idBound += 2;
+      net.add_cut( &bestSym );
+
+      cut_t lcut = net.get_last_cut();
+
+      net.check_sym_closure();
+    }
+    if( net.nHunging > 0 )
+    {
+      rep.nMax = -1;
+      rep.nMin = -1;
+    }
+    else
+    {
+      rep.ntk  = net.convert<Ntk>();
+      rep.ntk = cleanup_dangling( rep.ntk );
+      rep.nIt0 = rep.ntk.num_gates();
+      rep.nMax = rep.nIt0;
+      rep.nMin = rep.nIt0;
+      rep.E_solution = true;
+      rep.levels = bestLevel;
+      //printf("DEPTH %d<%d? SIZE %d<%d?\n", rep.levels, BEST_DEPTH, rep.nMin, BEST_SIZE );
+      if( rep.levels < BEST_DEPTH || ( rep.levels == BEST_DEPTH && rep.nMin < BEST_SIZE  ))
+      {
+        BEST_DEPTH     = rep.levels;
+        BEST_SIZE      = rep.nMin;
+        REP.ntk        = rep.ntk         ;
+        REP.nIt0       = rep.nIt0        ;
+        REP.nMax       = rep.nMax        ;
+        REP.nMin       = rep.nMin        ;
+        REP.E_solution = true ;
+        REP.levels     = rep.levels     ;
+      }
+    }
+  }
+  return REP;
+}
+
+template<class Ntk>
+report_rem_t<Ntk> cusco_rem<Ntk>::solve_Rdelay( cusco_rem_ps const& ps, Ntk * pNtk, std::vector<signal<Ntk>> S )
+{
+//printf("a\n");
+  std::random_device rd;  // a seed source for the random number engine
+  std::mt19937 gen(5); // mersenne_twister_engine seeded with rd()
+  int nVars = ceil(log2(X[0].num_bits()));
+  TT func( nVars );
+  TT mask( nVars );
+  kitty::create_from_binary_string( func, kitty::to_binary( Y[0] ) );
+  kitty::create_from_binary_string( mask, kitty::to_binary( Y[0] | ~Y[0] ) );
+  std::vector<TT> xs;
+  std::vector<uint32_t> T;
+  for( int i{0}; i < nVars; ++i )
+  {
+    xs.emplace_back( nVars );
+    kitty::create_nth_var( xs[i], i );
+    T.push_back( ps.T[i] );
+  }
+  analyzer_t analyzer;
+
+  report_rem_t<Ntk> REP;
+  net_t NET( X, T, Y );
+  bool FOUND_ONE = false;
+  uint32_t BEST_SIZE = std::numeric_limits<uint32_t>::max();
+  uint32_t BEST_DEPTH = std::numeric_limits<uint32_t>::max();
+  for( int iIter{0}; iIter < ps.nIters; ++iIter )
+  {
+//printf("it %d/%d\n", iIter, ps.nIters);
+    report_rem_t<Ntk> rep;
+    net_t net( X, T, Y );
+
+  //&  for( auto nd : net.cuts[0].nodes )
+  //&    printf( "%d ", nd.level );
+  //&  printf("\n");
+
+    net.cuts[net.nCuts-1].set_func( func );
+    net.cuts[net.nCuts-1].set_mask( mask );
+    int idBound = 1;
+    int bestRwd = -1;
+    uint32_t bestLevel=0;
+    symmetry_t bestSym;
+    int old_reward = 0;
+//printf("bef while\n");
+
+    while( net.nHunging > 0 )
+    {
+      //std::vector<symmetry_t> candidates = net.symmetry_analysis( &xs );
+//printf("sa\n");
+      std::vector<symmetry_t> candidates = net.symmetry_analysis( &xs, idBound );
+      // process candidate to give levels
+      int bestCost = 1000;
+      if( candidates.size() == 0 ) break;
+      std::vector<int> selected;
+      for( int iCand{0}; iCand<candidates.size(); ++iCand )
+      {
+//printf("costs\n");
+        int size_ = sym_cost<Ntk>( candidates[iCand] );
+        int cost = net.predelay_cost(&candidates[iCand]);
+//printf( "[R.%d D.%d]", candidates[iCand].rwd , cost  );//
+
+        if( candidates[iCand].rwd > bestRwd || ( candidates[iCand].rwd == bestRwd && cost <= bestCost ) )
+        {
+          if( (candidates[iCand].rwd > bestRwd) || ( candidates[iCand].rwd == bestRwd && cost < bestCost ) )
+          {
+            // reset
+//printf("_\n");
+            selected={iCand};
+            bestRwd = candidates[iCand].rwd;
+            bestCost = cost;
+            bestLevel = cost;
+          }
+          else if( candidates[iCand].rwd == bestRwd && cost == bestCost )
+          {
+//printf(".\n");
+            selected.push_back( iCand );
+            bestRwd = candidates[iCand].rwd;
+            bestCost = cost;
+            bestLevel = cost;
+          }
+          else
+            assert(0);
+        }
+//printf("endif\n");
+      }
+//printf("endfor\n");
+
+      if( selected.size() <= 0 )
+        break;
+      std::uniform_int_distribution<> distrib(0, selected.size()-1);
+      uint32_t IDX = distrib(ccg_gen);
+      uint32_t iCHOSEN = selected[IDX];
+//printf("selected[%d/%d]=%d/%d\n", IDX, selected.size()-1, iCHOSEN, candidates.size()-1);
+      rep.levels = net.predelay_cost(&candidates[iCHOSEN]);
+//printf("l1\n");
+      bestSym = candidates[iCHOSEN];
+      bestRwd = candidates[iCHOSEN].rwd;
+      bestCost = rep.levels;
+      bestLevel = rep.levels;
+
+      if( ( bestSym.idL == idBound ) || ( bestSym.idR == idBound  ) )
+        idBound += 2;
+      net.add_cut( &bestSym );
+//printf("l2\n");
+      cut_t lcut = net.get_last_cut();
+//printf("l3\n");
+      net.check_sym_closure();
+//printf("l4\n");
+    }
+    if( net.nHunging > 0 )
+    {
+      rep.nMax = -1;
+      rep.nMin = -1;
+    }
+    else
+    {
+//printf("l5\n");
+      rep.ntk  = net.convert<Ntk>();
+      rep.ntk = cleanup_dangling( rep.ntk );
+//printf("l6\n");
+      rep.nIt0 = rep.ntk.num_gates();
+      rep.nMax = rep.nIt0;
+      rep.nMin = rep.nIt0;
+      rep.E_solution = true;
+      rep.levels = bestLevel;
+//printf("l7\n");
+      //printf("DEPTH %d<%d? SIZE %d<%d?\n", rep.levels, BEST_DEPTH, rep.nMin, BEST_SIZE );
+      if( rep.levels < BEST_DEPTH || ( rep.levels == BEST_DEPTH && rep.nMin < BEST_SIZE  ))
+      {
+//printf("b\n");
+        FOUND_ONE = true;
+        BEST_DEPTH     = rep.levels;
+        BEST_SIZE      = rep.nMin;
+        REP.ntk        = rep.ntk ;
+        REP.nIt0       = rep.nIt0;
+        REP.nMax       = rep.nMax;
+        REP.nMin       = rep.nMin;
+        REP.E_solution = true ;
+        REP.levels     = rep.levels;
+        NET = net;
+      }
+    }
+  }
+//printf("l8\n");
+  if( S.size() > 0 )
+    REP.osig = NET.create_in_ntk<Ntk>( pNtk, S );
+//printf("c\n");
+
+  return REP;
+}
 
 template<class Ntk>
 report_rem_t<Ntk> cusco_rem<Ntk>::solve_random( cusco_rem_ps const& ps )
@@ -258,7 +729,7 @@ report_rem_t<Ntk> cusco_rem<Ntk>::solve_random( cusco_rem_ps const& ps )
     if( !notFound )
     {
       ntk = net.convert<Ntk>();
-      if( iIt == 0 )  rep.nIt0 = ntk.num_gates();;
+      if( iIt == 0 )  rep.nIt0 = ntk.num_gates();
       if( ntk.num_gates() < rep.nMin )
       {
         rep.ntk = ntk;
@@ -266,9 +737,16 @@ report_rem_t<Ntk> cusco_rem<Ntk>::solve_random( cusco_rem_ps const& ps )
       }
       if ( ntk.num_gates() > rep.nMax )  rep.nMax = ntk.num_gates();
     }
+    if( net.nHunging == 0 ) rep.E_solution = true;
+    cut_t lcut = net.get_last_cut();
+    for( auto nd : lcut.nodes )
+      printf("%d ", nd.level );
+    printf("\n");
   }
+  
   return rep;
 }
+
 
 template<class Ntk>
 report_rem_t<Ntk> cusco_rem<Ntk>::solve_entropic( cusco_rem_ps const& ps )

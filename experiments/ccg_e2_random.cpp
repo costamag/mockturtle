@@ -68,7 +68,7 @@ int main()
   {
     printf("%s\n", fNames[iFn].c_str() );
     printf("%2s ||%20s|%20s|%20s|%20s|%20s|%20s|%20s|%20s|\n", "n", "S1", "S2", "S3", "S3", "S5", "S6", "S7", "S8" );
-    for( uint32_t nVars{2}; nVars < 16; ++nVars )
+    for( uint32_t nVars{2}; nVars < 10; ++nVars )
     {
       std::string info = fmt::format("{:2} ||", nVars );
       for( uint32_t iThr{1}; iThr < ( floor( nVars/2 ) + 2 ); ++iThr )
@@ -80,7 +80,7 @@ int main()
         double duration;
         start = std::clock();
 
-        report_t<xag_network> rep = game_on<xag_network>(&F, 1, 33 ); // set to random sampling 1 for 33 iterations @.@
+        report_t<xag_network> rep = game_on<xag_network>(&F, 0, 33 ); // set to random sampling 1 for 33 iterations @.@
         xag_network xag = rep.ntk;
         duration = ( std::clock() - start ) / (double) CLOCKS_PER_SEC;
 

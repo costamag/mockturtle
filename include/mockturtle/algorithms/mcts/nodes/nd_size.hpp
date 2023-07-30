@@ -191,7 +191,7 @@ nd_size_t<NTK> nd_size_t<NTK>::find_new()
         break;
     }
 
-        
+    //printf("%d\n", supp.size());
     if( supp.size() == 0 )  {return null_node();}
     std::vector<divisor_t> divs;
     for( auto s : supp )    divs.push_back( supportor.divisors[s] );
@@ -276,6 +276,9 @@ double nd_size_t<NTK>::evaluate( std::vector<nd_size_t<NTK>*> vPtrs )
                 break;
             case gate_t::EXOR:
                 sigs_new.push_back( net.create_xor( sigs_old[vPtrs[iLev]->divisors[iDiv].fanins[1]], sigs_old[vPtrs[iLev]->divisors[iDiv].fanins[0]] ));
+                break;
+            case gate_t::MAJ3:
+                sigs_new.push_back( net.create_maj( sigs_old[vPtrs[iLev]->divisors[iDiv].fanins[2]], sigs_old[vPtrs[iLev]->divisors[iDiv].fanins[1]], sigs_old[vPtrs[iLev]->divisors[iDiv].fanins[0]] ));
                 break;
             case gate_t::PRJL:
                 sigs_new.push_back( sigs_old[vPtrs[iLev]->divisors[iDiv].fanins[1]]);

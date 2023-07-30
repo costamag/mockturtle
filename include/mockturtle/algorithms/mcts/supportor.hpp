@@ -142,14 +142,34 @@ void support_generator_t::next_layer( std::vector<divisor_t> * pDivs0, std::vect
 
             for( int i{0}; i<ps.lib.size(); ++i )
             {
-                tt = ps.lib[i].compute( {ttR, ttL} );
-                if( kitty::count_ones(tt)>0 && kitty::count_zeros(tt)>0 )
-                    divisors.emplace_back( ps.use_inf_graph, divisors.size(), tt, 1, maxDelay+ps.lib[i].delay, ps.lib[i].type, fanins );
-                for( int iTrg{0}; iTrg < targets.size(); ++iTrg )
+                if( ps.lib[i].nInputs == 2 )
                 {
-                    if( targets[iTrg].isDone ) continue;
-                    if( kitty::equal( targets[iTrg].tt, divisors.back().tt ) || kitty::equal( targets[iTrg].tt, ~divisors.back().tt ) )
-                    {    divisors.back().isPo = true; divisors.back().id2 = iTrg; targets[iTrg].div = divisors.back().id; }
+                    tt = ps.lib[i].compute( {ttR, ttL} );
+                    if( kitty::count_ones(tt)>0 && kitty::count_zeros(tt)>0 )
+                        divisors.emplace_back( ps.use_inf_graph, divisors.size(), tt, 1, maxDelay+ps.lib[i].delay, ps.lib[i].type, fanins );
+                    for( int iTrg{0}; iTrg < targets.size(); ++iTrg )
+                    {
+                        if( targets[iTrg].isDone ) continue;
+                        if( kitty::equal( targets[iTrg].tt, divisors.back().tt ) || kitty::equal( targets[iTrg].tt, ~divisors.back().tt ) )
+                        {    divisors.back().isPo = true; divisors.back().id2 = iTrg; targets[iTrg].div = divisors.back().id; }
+                    }
+                }
+                else if( ps.lib[i].nInputs == 3 )
+                {
+                    for( int iZ{iL+1}; iZ < pDivs0->size(); ++iZ )
+                    {
+                        fanins = { (*pDivs0)[iR].id, (*pDivs0)[iL].id, (*pDivs0)[iZ].id };
+                        DTT ttZ = (*pDivs0)[iZ].tt;
+                        tt = ps.lib[i].compute( {ttR, ttL, ttZ} );
+                        if( kitty::count_ones(tt)>0 && kitty::count_zeros(tt)>0 )
+                            divisors.emplace_back( ps.use_inf_graph, divisors.size(), tt, 1, maxDelay+ps.lib[i].delay, ps.lib[i].type, fanins );
+                        for( int iTrg{0}; iTrg < targets.size(); ++iTrg )
+                        {
+                            if( targets[iTrg].isDone ) continue;
+                            if( kitty::equal( targets[iTrg].tt, divisors.back().tt ) || kitty::equal( targets[iTrg].tt, ~divisors.back().tt ) )
+                            {    divisors.back().isPo = true; divisors.back().id2 = iTrg; targets[iTrg].div = divisors.back().id; }
+                        }  
+                    }  
                 }
             }
         }
@@ -240,9 +260,6 @@ std::vector<int> support_generator_t::find_new<supp_selection_t::SUP_ENER>( int 
     for( int i{0}; i<targets.size(); ++i )
         isEnd &= targets[i].isDone;
     std::vector<int> support0;
-
-    if( isEnd )
-        return support0;
     for( int i{0}; i<divisors.size();++i )
     {
         if( divisors[i].isPo )
@@ -250,6 +267,9 @@ std::vector<int> support_generator_t::find_new<supp_selection_t::SUP_ENER>( int 
             support0.push_back(i);
         }
     }
+    if( isEnd )
+        return support0;
+        
     std::vector<int> support;
     double BETA;
 
@@ -289,6 +309,11 @@ std::vector<int> support_generator_t::find_new<supp_selection_t::SUP_ENER>( int 
             {
                 if( kitty::count_ones( target_graphs[i] ) == 0 )
                     target_graphs.erase( target_graphs.begin() + i );
+            }
+            if( support.size() > ps.thresh )
+            {
+                support={};
+                return support;
             }
         }
         std::sort( support.begin(), support.end() );

@@ -80,5 +80,87 @@
       }
     ],
     "version": "1d6b32f"
+  },
+  {
+    "entries": [
+      {
+        "benchmark": "adder",
+        "equivalent": true,
+        "levels": 64,
+        "luts": 192,
+        "runtime": 0.004152687
+      },
+      {
+        "benchmark": "bar",
+        "equivalent": true,
+        "levels": 4,
+        "luts": 512,
+        "runtime": 0.013561509
+      },
+      {
+        "benchmark": "max",
+        "equivalent": true,
+        "levels": 156,
+        "luts": 744,
+        "runtime": 0.020467617
+      },
+      {
+        "benchmark": "arbiter",
+        "equivalent": true,
+        "levels": 19,
+        "luts": 2595,
+        "runtime": 0.119976928
+      },
+      {
+        "benchmark": "cavlc",
+        "equivalent": true,
+        "levels": 6,
+        "luts": 119,
+        "runtime": 0.003203193
+      },
+      {
+        "benchmark": "ctrl",
+        "equivalent": true,
+        "levels": 2,
+        "luts": 28,
+        "runtime": 0.000704597
+      },
+      {
+        "benchmark": "dec",
+        "equivalent": true,
+        "levels": 2,
+        "luts": 273,
+        "runtime": 0.0023669
+      },
+      {
+        "benchmark": "i2c",
+        "equivalent": true,
+        "levels": 5,
+        "luts": 341,
+        "runtime": 0.005942914
+      },
+      {
+        "benchmark": "int2float",
+        "equivalent": true,
+        "levels": 4,
+        "luts": 47,
+        "runtime": 0.001000186
+      },
+      {
+        "benchmark": "priority",
+        "equivalent": true,
+        "levels": 33,
+        "luts": 266,
+        "runtime": 0.005131934
+      },
+      {
+        "benchmark": "router",
+        "equivalent": true,
+        "levels": 13,
+        "luts": 54,
+        "runtime": 0.001471059
+      }
+    ],
+    "version": "9f9ccea4"
   }
 ]

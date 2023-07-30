@@ -70,7 +70,8 @@ enum gate_t : uint8_t
     OI01 = 0XD, // 1101
     OI00 = 0XE, // 1110
     TAUT = 0XF, // 1111
-    POS  = 0xFF
+    POS  = 0xFF,
+    MAJ3 = 0xF1
 };
 
 enum supp_selection_t
@@ -85,7 +86,8 @@ enum supp_selection_t
 enum node_selection_t
 {
     NODE_RAND = 0,
-    NODE_UCT = 1
+    NODE_LAY0 = 1,
+    NODE_UCT = 2
 };
 
 enum class entropy_t
@@ -114,6 +116,7 @@ struct node_ps
     int nIters;
     double BETA0;
     double BETAZ;
+    int thresh{1000};
     std::vector<detailed_gate_t> lib;
     bool use_inf_graph{true};
     node_ps()
@@ -231,6 +234,7 @@ struct divisor_t
         case gate_t::PRJR:      printf("PRJR : ");       break;
         case gate_t::TAUT:      printf("TAUT : ");       break;
         case gate_t::XNOR:      printf("XNOR : ");       break;
+        case gate_t::MAJ3:      printf("MAJ3 : ");       break;
         
         default:
             break;
@@ -259,6 +263,7 @@ DTT hpcompute_prjl( std::vector<DTT> xs ){ assert( xs.size() == 2 ); return xs[1
 DTT hpcompute_prjr( std::vector<DTT> xs ){ assert( xs.size() == 2 ); return xs[0]; }
 DTT hpcompute_taut( std::vector<DTT> xs ){ assert( xs.size() == 2 ); return xs[0]|~xs[0]; }
 DTT hpcompute_xnor( std::vector<DTT> xs ){ assert( xs.size() == 2 ); return ~xs[0] ^ xs[1]; }
+DTT hpcompute_maj3( std::vector<DTT> xs ){ assert( xs.size() == 3 ); return ( (xs[0] & xs[1]) | (xs[0] & xs[2]) | (xs[1] & xs[2]) ); }
 
 enum gen_method_t
 {

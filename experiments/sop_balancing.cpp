@@ -59,7 +59,7 @@ int main()
     ps.cut_enumeration_ps.cut_size = 4u;
     const auto aig4 = balancing( aig, { sop_balancing }, ps, &st4 );
 
-    ps.cut_enumeration_ps.cut_size = 6u;
+    ps.cut_enumeration_ps.cut_size = 4u;
     const auto aig6 = balancing( aig, { sop_balancing }, ps, &st6 );
 
     depth_view daig{ aig };

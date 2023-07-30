@@ -72,12 +72,14 @@ class nd_delay_t
         double ni = 0;
         double wi = 0;
         double Ni = 0; 
+        NTK * pNtkOUT;
 
         /* CONSTRUCT/DESCTRUCT */
         /*! \brief generic node constructor */
         nd_delay_t( std::vector<divisor_t>, std::vector<target_t>, node_ps );
         /*! \brief root node constructor*/
         nd_delay_t( std::vector<DTT>, std::vector<double>, std::vector<DTT>, node_ps );
+        nd_delay_t( std::vector<DTT>, std::vector<double>, std::vector<DTT>, node_ps, NTK * );
         /* default */
         nd_delay_t(){ isNull = true; };
         ~nd_delay_t(){};
@@ -95,6 +97,7 @@ class nd_delay_t
         bool check_closure();
         void add_cost( double cost );
         void update_support_info( nd_delay_t<NTK>, double );
+        signal<NTK> implant( std::vector<signal<NTK>>, std::vector<nd_delay_t<NTK>> );
 };
 
 
@@ -119,6 +122,24 @@ nd_delay_t<NTK>::nd_delay_t( std::vector<divisor_t> X, std::vector<target_t> Y, 
 template<class NTK>
 nd_delay_t<NTK>::nd_delay_t( std::vector<DTT> X, std::vector<double> T, std::vector<DTT> Y, node_ps eps )
 {
+    ps = eps;
+    assert( X.size() == T.size() );
+    isNull = false;
+    isRoot = true;
+    for( int iTrg{0}; iTrg<Y.size(); ++iTrg )  
+        targets.emplace_back( ps.use_inf_graph, iTrg, Y[iTrg]);
+    
+    for( int iDiv{0}; iDiv<X.size(); ++iDiv )
+        divisors.emplace_back(  ps.use_inf_graph, iDiv, X[iDiv], 0.0, T[iDiv], gate_t::PIS );
+    
+    isLeaf = check_closure();
+    supportor = support_generator_t{ &divisors, &targets, ps };
+}
+
+template<class NTK>
+nd_delay_t<NTK>::nd_delay_t( std::vector<DTT> X, std::vector<double> T, std::vector<DTT> Y, node_ps eps, NTK * pNTKOUT )
+{
+    pNtkOUT = pNTKOUT;
     ps = eps;
     assert( X.size() == T.size() );
     isNull = false;
@@ -230,6 +251,98 @@ nd_delay_t<NTK> nd_delay_t<NTK>::null_node( )
 }
 
 template<class NTK>
+signal<NTK> nd_delay_t<NTK>::implant( std::vector<signal<NTK>> S, std::vector<nd_delay_t<NTK>> path )
+{
+    NTK * pNet = path[0].pNtkOUT;
+    std::vector<signal<NTK>> sigs_old = S;
+    std::vector<signal<NTK>> sigs_new;
+    std::vector<signal<NTK>> outSigs;
+    /* deal with pis */
+    nd_delay_t<NTK> * pNd = &path[0];
+    assert( pNd->idPar == -1 );
+    
+    if( pNd->TargetsDoneHere.size() > 0 )
+    {
+        for( auto iTrg : pNd->TargetsDoneHere )
+        {
+            int idDiv = pNd->supportor.targets[iTrg].div;
+            if( pNd->targets[iTrg].type == gate_t::CMPL )
+                outSigs.insert( outSigs.begin()+iTrg,pNet->create_not(sigs_old[idDiv]));
+            else if( pNd->targets[iTrg].type == gate_t::PRJL )
+                outSigs.insert( outSigs.begin()+iTrg, sigs_old[idDiv]);
+            else if( pNd->targets[iTrg].type == gate_t::CMPR )
+                outSigs.insert( outSigs.begin()+iTrg,pNet->create_not(sigs_old[idDiv]));
+            else if( pNd->targets[iTrg].type == gate_t::PRJR )
+                outSigs.insert( outSigs.begin()+iTrg, sigs_old[idDiv]);
+            else
+                assert(0);
+        }
+    }
+
+    for( int iLev{1}; iLev < path.size(); ++iLev )
+    {
+        for( int iDiv{0}; iDiv < path[iLev].divisors.size(); ++iDiv )
+        {
+            switch ( path[iLev].divisors[iDiv].type )
+            {
+            case gate_t::AI00:
+                sigs_new.push_back( pNet->create_and(!sigs_old[path[iLev].divisors[iDiv].fanins[1]],!sigs_old[path[iLev].divisors[iDiv].fanins[0]] ));
+                break;
+            case gate_t::AI01:
+                sigs_new.push_back( pNet->create_and(!sigs_old[path[iLev].divisors[iDiv].fanins[1]], sigs_old[path[iLev].divisors[iDiv].fanins[0]] ));
+                break;
+            case gate_t::AI10:
+                sigs_new.push_back( pNet->create_and( sigs_old[path[iLev].divisors[iDiv].fanins[1]],!sigs_old[path[iLev].divisors[iDiv].fanins[0]] ));
+                break;
+            case gate_t::AI11:
+                sigs_new.push_back( pNet->create_and( sigs_old[path[iLev].divisors[iDiv].fanins[1]], sigs_old[path[iLev].divisors[iDiv].fanins[0]] ));
+                break;
+            case gate_t::EXOR:
+                sigs_new.push_back( pNet->create_xor( sigs_old[path[iLev].divisors[iDiv].fanins[1]], sigs_old[path[iLev].divisors[iDiv].fanins[0]] ));
+                break;
+            case gate_t::PRJL:
+                sigs_new.push_back( sigs_old[path[iLev].divisors[iDiv].fanins[1]]);
+                break;
+            case gate_t::PRJR:
+                sigs_new.push_back( sigs_old[path[iLev].divisors[iDiv].fanins[0]]);
+                break;
+            case gate_t::CMPL:
+                sigs_new.push_back( !sigs_old[path[iLev].divisors[iDiv].fanins[1]]);
+                break;
+            case gate_t::CMPR:
+                sigs_new.push_back( !sigs_old[path[iLev].divisors[iDiv].fanins[0]]);
+                break;
+            default:
+                break;
+            }
+        }
+        sigs_old = sigs_new;
+        sigs_new = {};
+        if( path[iLev].TargetsDoneHere.size() > 0 )
+        {
+            for( auto iTrg : path[iLev].TargetsDoneHere )
+            {
+                //printf("TYPE OUT %d\n", path[iLev].targets[iTrg].type );
+                int idDiv = path[iLev].supportor.targets[iTrg].div;
+                if( path[iLev].targets[iTrg].type == gate_t::CMPL )
+                    outSigs.insert( outSigs.begin()+iTrg,pNet->create_not(sigs_old[idDiv]));
+                else if( path[iLev].targets[iTrg].type == gate_t::PRJL )
+                    outSigs.insert( outSigs.begin()+iTrg, sigs_old[idDiv]);
+                else if( path[iLev].targets[iTrg].type == gate_t::CMPR )
+                    outSigs.insert( outSigs.begin()+iTrg,pNet->create_not(sigs_old[idDiv]));
+                else if( path[iLev].targets[iTrg].type == gate_t::PRJR )
+                    outSigs.insert( outSigs.begin()+iTrg, sigs_old[idDiv]);
+                else
+                    assert(0);
+            }
+        }
+    }
+    /* synthesize the outouts */
+    return outSigs[0];
+}
+
+
+template<class NTK>
 double nd_delay_t<NTK>::evaluate( std::vector<nd_delay_t<NTK>*> vPtrs )
 {
     NTK net;
@@ -303,7 +416,7 @@ double nd_delay_t<NTK>::evaluate( std::vector<nd_delay_t<NTK>*> vPtrs )
         {
             for( auto iTrg : vPtrs[iLev]->TargetsDoneHere )
             {
-                printf("TYPE OUT %d\n", vPtrs[iLev]->targets[iTrg].type );
+                //printf("TYPE OUT %d\n", vPtrs[iLev]->targets[iTrg].type );
                 int idDiv = vPtrs[iLev]->supportor.targets[iTrg].div;
                 if( vPtrs[iLev]->targets[iTrg].type == gate_t::CMPL )
                     outSigs.insert( outSigs.begin()+iTrg,net.create_not(sigs_old[idDiv]));

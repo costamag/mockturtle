@@ -53,7 +53,9 @@ using TT = kitty::dynamic_truth_table;
 enum solver_t
 {
   _SYM_1SH,
+  _SYM_1DE,
   _SYM_RND,
+  _SYM_RDE,
   _SYM_ENT,
   _COV_RND,
   _COV_DCM,
@@ -68,7 +70,16 @@ struct report_t
   int nMin;
   int nMax;
   Ntk ntk;
+  signal<Ntk> osig;
+  uint32_t levels{0u};
   double time;
+  bool Esl{false};
+  void set_ntk( Ntk ntk_new ){ ntk=ntk_new; };
+
+  void print()
+  {
+    printf( "nIt0=%d nMin=%d nMax=%d ntk.size()=%d time=%f\n", nIt0, nMin, nMax, ntk.size() );
+  }
 };
 
 struct cusco_ps
@@ -80,6 +91,8 @@ struct cusco_ps
   int nIters;
   /*! \brief capacity [only for covering -1 to let unbounded] */
   int nCap;
+  /*! \brief input arrival patterns */
+  std::vector<uint32_t> T;
 
   cusco_ps( solver_t type, int nIters ) : type( type ), nIters( nIters ) 
   {
@@ -102,6 +115,7 @@ public:
   ~cusco();
   /* solve */
   report_t<Ntk> solve( cusco_ps const& );
+  report_t<Ntk> solve( cusco_ps const&, std::vector<signal<Ntk>>, Ntk * );
 };
 
 /* creation and destruction */
@@ -130,6 +144,39 @@ report_t<Ntk> cusco<Ntk>::solve( cusco_ps const& ps )
       rp.nMin = rp0.nIt0;
       rp.nMax = rp0.nIt0;
       rp.ntk  = rp0.ntk;
+      rp.Esl = rp0.E_solution;
+      break;
+    }
+    case _SYM_1DE : 
+    {
+      assert( Y.size() == 1 );
+      cusco_rem<Ntk> solver0( X, Y );
+      cusco_rem_ps ps0_de( 1 );
+      ps0_de.T = ps.T;
+      assert( ps.T.size() == X.size() );
+      report_rem_t<Ntk> rp0_de = solver0.solve_1delay( ps0_de );
+      rp.nIt0 = rp0_de.nIt0;
+      rp.nMin = rp0_de.nIt0;
+      rp.nMax = rp0_de.nIt0;
+      rp.ntk  = rp0_de.ntk;
+      rp.Esl = rp0_de.E_solution;
+      rp.levels = rp0_de.levels;
+      break;
+    }
+    case _SYM_RDE : 
+    {
+      assert( Y.size() == 1 );
+      cusco_rem<Ntk> solverR( X, Y );
+      cusco_rem_ps psR_de( ps.nIters );
+      psR_de.T = ps.T;
+      assert( ps.T.size() == X.size() );
+      report_rem_t<Ntk> rpR_de = solverR.solve_Rdelay( psR_de );
+      rp.nIt0 = rpR_de.nIt0;
+      rp.nMin = rpR_de.nIt0;
+      rp.nMax = rpR_de.nIt0;
+      rp.ntk  = rpR_de.ntk;
+      rp.Esl = rpR_de.E_solution;
+      rp.levels = rpR_de.levels;
       break;
     }
     case _SYM_RND : 
@@ -142,6 +189,7 @@ report_t<Ntk> cusco<Ntk>::solve( cusco_ps const& ps )
       rp.nMin = rp1.nMin;
       rp.nMax = rp1.nMax;
       rp.ntk  = rp1.ntk;
+      rp.Esl  = rp1.E_solution;
       break;
     }
     case _SYM_ENT: 
@@ -187,7 +235,6 @@ report_t<Ntk> cusco<Ntk>::solve( cusco_ps const& ps )
       rp.nMin = rp4.nMin;
       rp.nMax = rp4.nMax;
       rp.ntk  = rp4.ntk;
-      printf("%d %d %d %d\n", rp.nIt0, rp.nMin, rp.nMax, rp.ntk );
       break;
     }
     case _COV_GEN :
@@ -210,6 +257,62 @@ report_t<Ntk> cusco<Ntk>::solve( cusco_ps const& ps )
   return rp;
 }
 
+
+template<class Ntk>
+report_t<Ntk> cusco<Ntk>::solve( cusco_ps const& ps, std::vector<signal<Ntk>> inSigs, Ntk * pNtk )
+{
+  std::clock_t start;
+  double duration;
+  start = std::clock();
+  report_t<Ntk> rp;
+
+  switch ( ps.type )
+  {
+    case _SYM_1DE : 
+    {
+      assert( Y.size() == 1 );
+      cusco_rem<Ntk> solver0( X, Y );
+      cusco_rem_ps ps0_de( 1 );
+      ps0_de.T = ps.T;
+      assert( ps.T.size() == X.size() );
+      report_rem_t<Ntk> rp0_de = solver0.solve_1delay( ps0_de, pNtk, inSigs );
+      rp.nIt0 = rp0_de.nIt0;
+      rp.nMin = rp0_de.nIt0;
+      rp.nMax = rp0_de.nIt0;
+      rp.ntk  = rp0_de.ntk;
+      rp.Esl = rp0_de.E_solution;
+      rp.levels = rp0_de.levels;
+      rp.osig = rp0_de.osig;
+
+      break;
+    }
+    case _SYM_RDE : 
+    {
+//printf("k\n");
+      assert( Y.size() == 1 );
+      cusco_rem<Ntk> solver1( X, Y );
+      cusco_rem_ps ps1_de( ps.nIters );
+      ps1_de.T = ps.T;
+      assert( ps.T.size() == X.size() );
+      report_rem_t<Ntk> rp1_de = solver1.solve_Rdelay( ps1_de, pNtk, inSigs );
+      rp.nIt0 = rp1_de.nIt0;
+      rp.nMin = rp1_de.nIt0;
+      rp.nMax = rp1_de.nIt0;
+      rp.ntk  = rp1_de.ntk;
+      rp.Esl  = rp1_de.E_solution;
+      rp.levels = rp1_de.levels;
+      rp.osig = rp1_de.osig;
+//printf("u\n");
+      break;
+    }
+  }
+  duration = ( std::clock() - start ) / (double) CLOCKS_PER_SEC;
+  rp.time = duration;
+  //printf("SUMMARY:\n");
+  //printf( "ngates = %d  time = %.2f\n", ntk.num_gates(), duration );
+
+  return rp;
+}
 
 } // namespace ccgame
 

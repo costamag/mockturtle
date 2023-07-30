@@ -51,6 +51,7 @@ struct mct_ps
     int nIters = 1;
     int nSims = 1;
     bool verbose = false;
+    int thresh_nd{1000};
 
 };
 
@@ -78,6 +79,7 @@ class mct_tree_t
         void path_print( int );
 
         double evaluate( int );
+        std::vector<NODE> get_path( int );
 };
 
 template<class NODE, template<class> class METHOD>
@@ -139,7 +141,7 @@ int mct_tree_t<NODE, METHOD>::solve()
     {
         bool FoundLeaf{false};
         int idEnd;
-        if(ps.verbose)  printf("iter %d :", it );
+        //if(ps.verbose)  printf("iter %d :", it );
         int idSel = 0;//select();
         if( nodes[idSel].is_leaf() ) { FoundLeaf = true; idEnd = idSel;}
         if( nodes[idSel].is_null() ) { continue; }
@@ -154,7 +156,7 @@ int mct_tree_t<NODE, METHOD>::solve()
         {
             double cost = evaluate( idEnd );
             backpropagate( idEnd, cost );
-            if(ps.verbose)  printf("cost %f [%f]\n", cost, bestCost);
+            if(ps.verbose)  printf("%f, ", cost);
             if( cost >= 0 && cost < bestCost )
             {
                 idBest = idEnd;
@@ -163,13 +165,16 @@ int mct_tree_t<NODE, METHOD>::solve()
         }
         else
         {
+            if(ps.verbose) printf("[");
             for( int itSim{0}; itSim<ps.nSims; ++itSim )
             {
                 idEnd = simulate( idExp );
                 if( idEnd < 0 ) { continue; }
                 double cost = evaluate( idEnd );
                 backpropagate( idEnd, cost );
-                if(ps.verbose)  printf("cost %f [%f]\n", cost, bestCost);
+                if(ps.verbose)  printf("%f", cost);
+                if(ps.verbose && itSim<ps.nSims-1)  printf(", ");
+
                 if( cost >= 0 && cost < bestCost )
                 {
                     idBest = idEnd;
@@ -177,7 +182,9 @@ int mct_tree_t<NODE, METHOD>::solve()
                 }
             }
         }
+        if(ps.verbose)  printf("],\n");
     }
+
     return idBest;
 }
 
@@ -194,6 +201,19 @@ double mct_tree_t<NODE, METHOD>::evaluate( int id )
     } while ( id >= 0 );
     
     return method.evaluate( path );
+}
+
+template<class NODE, template<class> class METHOD>
+std::vector<NODE> mct_tree_t<NODE, METHOD>::get_path( int id )
+{
+    std::vector<NODE> path;
+    do
+    {
+        path.insert( path.begin(), nodes[id] );
+        id = nodes[id].idPar;
+    } while ( id >= 0 );
+    
+    return path;
 }
 
 template<class NODE, template<class> class METHOD>

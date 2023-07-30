@@ -88,6 +88,8 @@ public:
   uint32_t idR;
   /*! \brief [1 bit NOT remapped 31 bits remapped pi] */
   uint32_t idPi;
+  /*! \brief delay */
+  int level;
 
 public:
   node_t( TT, gate_t, uint32_t, uint32_t, uint32_t );

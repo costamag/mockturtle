@@ -405,20 +405,33 @@ Ntk game_on( kitty::dynamic_truth_table * pF, int MET )
 
     mct_ps mctps;
     ndps.sel_type = supp_selection_t::SUP_ENER;
-    mctps.nIters =100;
-    mctps.nSims = 1;
-    mctps.verbose =true;
-    ndps.BETA0 = 100;
-    ndps.nIters = 100;
+    //mctps.nIters =100;
+    //mctps.nSims = 1;
+    //mctps.verbose =true;
+    //ndps.BETA0 = 100;
+    //ndps.nIters = 100;
+
+
+    mctps.nIters = 150;
+    mctps.nSims = 10;
+    mctps.verbose = true;
+
+    ndps.BETA0 = 1000;
+    ndps.BETAZ = 100;
+    ndps.nIters = 10;//Ntrails
+    ndps.thresh = 20;
+
 
     nd_size_t<xag_network> root( xs, ts, {*pF}, ndps );
     mct_method_ps metps;
+    metps.sel_type = node_selection_t::NODE_LAY0;
 
     mct_method_t<nd_size_t<xag_network> > meth( metps );
     mct_tree_t<nd_size_t<xag_network> , mct_method_t> mct( root, meth, mctps );
     int iSol = mct.solve();
     if( iSol == -1 ) printf("no solution found\n");
     rep = mct.nodes[iSol].ntk;
+    //mct.path_print( iSol );
   }
   else
   {

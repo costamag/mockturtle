@@ -57,6 +57,7 @@ public:
   TT tt;
   /*! \brief mask related to the cut functionality  */
   TT mk;
+  
 
   cut_t();
   ~cut_t();
@@ -68,6 +69,7 @@ public:
   uint32_t get_shifted_id();
 
   node_t add_node( TT, gate_t, uint32_t, uint32_t );
+  node_t add_node( TT, gate_t, uint32_t, uint32_t, uint32_t );
   node_t add_node( TT, gate_t );
   node_t add_node( node_t );
   int  size();
@@ -99,6 +101,19 @@ node_t cut_t::add_node( TT tt, gate_t gate, uint32_t idL, uint32_t idR )
   if( gate == PIS )
     node.idPi = nNodes;
   nNodes++;
+  nodes.push_back( node );
+  return node;
+}
+
+/*! \brief Add leaf to the cut from complete specification for generic node. */
+node_t cut_t::add_node( TT tt, gate_t gate, uint32_t level, uint32_t idL, uint32_t idR )
+{
+  uint32_t nodeId = shiftId | nNodes;
+  node_t node( tt, gate, nodeId, idL, idR );
+  if( gate == PIS )
+    node.idPi = nNodes;
+  nNodes++;
+  node.level = level;
   nodes.push_back( node );
   return node;
 }

@@ -1,14 +1,14 @@
 #include <kitty/constructors.hpp>
 #include <kitty/print.hpp>
 #include <kitty/dynamic_truth_table.hpp>
-#include <mockturtle/algorithms/decompose/DecSolver.hpp>
-#include <mockturtle/algorithms/ccgame/solvers/cusco.hpp>
-#include <mockturtle/algorithms/dcsynthesis/dc_solver.hpp>
 #include <mockturtle/algorithms/node_resynthesis/xag_npn.hpp>
 #include <mockturtle/algorithms/resyn_engines/xag_resyn.hpp>
 #include <mockturtle/algorithms/node_resynthesis/exact.hpp>
 #include <mockturtle/algorithms/resyn_engines/xag_resyn.hpp>
 #include <mockturtle/algorithms/simulation.hpp>
+#include <mockturtle/algorithms/mcts/mct_tree.hpp>
+#include <mockturtle/algorithms/mcts/method.hpp>
+#include <mockturtle/algorithms/mcts/nodes/nd_size.hpp>
 #include <mockturtle/io/write_aiger.hpp>
 #include <mockturtle/io/write_dot.hpp>
 #include <mockturtle/io/write_blif.hpp>
@@ -28,7 +28,7 @@
 #include <sys/stat.h>
 
 using namespace mockturtle;
-using namespace ccgame;
+using namespace mcts;
 
 #define ANSI_COLOR_RED     "\x1b[31m"
 #define ANSI_COLOR_GREEN   "\x1b[32m"
@@ -47,8 +47,7 @@ kitty::dynamic_truth_table propose_game(std::string*);
 kitty::dynamic_truth_table userdef_game();
 kitty::dynamic_truth_table knuth_game( int );
 
-template<class Ntk> report_t<Ntk> game_on( kitty::dynamic_truth_table *, int );
-
+template<class Ntk> Ntk game_on( kitty::dynamic_truth_table * );
 
 std::vector<int> Nsat;
 std::vector<int> Ncov;
@@ -86,7 +85,7 @@ int main()
   std::string dot_file  ;
   std::string blif_file ;
   std::string aig_file  ;
-  std::vector<int> MET = {1,1};
+  std::vector<int> MET = {1,4};
 
 
   printf("%20s| %7s %8s %7s | %7s %8s %7s |\n", "", "", "SYM-CUSCO", "", "", "COV-CUSCO", "" );
@@ -104,6 +103,9 @@ int main()
   TT target(4u);
   std::set<TT> reprs;
   int id=0;
+
+  std::vector<int> delta_covering;
+  std::vector<int> delta_sym;
   do
   {
     const auto repr = kitty::exact_npn_canonization(target);
@@ -116,8 +118,14 @@ int main()
     }
     else
     {
+      if (kitty::is_const0(target) || kitty::is_const0(~target) )
+      {
+        continue;
+      }
+      
       reprs.insert( std::get<0>(repr) );
-
+      kitty::print_binary( target );
+      printf("\n");
       aig_network aig;
       aig_network aig_sat;
 
@@ -136,11 +144,15 @@ int main()
       Nsat.push_back( aig_sat.num_gates() );
       /* SYM-CUSCO */
       /* COV-CUSCO */
-      for( int i{0}; i < 2; ++i )
+      //for( int i{0}; i < 2; ++i )
       {
-        report_t<aig_network> report = game_on<aig_network>( &target, MET[i] );
-        aig_network aig = report.ntk;
-
+        aig_network aig = game_on<aig_network>( &target );
+        if( aig.size() == 0 )
+        {
+          printf("E\n");
+          kitty::next_inplace( target );
+          continue;
+        }
         resubstitution_params ps;
         ps.max_pis = aig.num_pis();
         ps.max_inserts = 20u;
@@ -150,14 +162,12 @@ int main()
         auto aig_resub = cleanup_dangling( aig );
         sim_resubstitution( aig_resub, ps );
         aig_resub = cleanup_dangling( aig_resub );
-        if( report.nMin < 0 )
-          info += fmt::format("{:6s} | {:6s} | {:6s} | ", "-", "-", "-");
-        else
-          info += fmt::format("{:6d} | {:6d} | {:6.2f} | ", aig.num_gates(), aig_resub.num_gates(), report.time );
+        info += fmt::format("{:6d} | {:6d} | {:6.2f} | ", aig.num_gates(), aig_resub.num_gates(), 0.0 );
+        info += fmt::format("{:6d} | {:6d} | {:6.2f} | ", aig.num_gates(), aig_resub.num_gates(), 0.0 );
 
-        if( i == 0 )
-          Nsym.push_back( aig.num_gates() );
-        else
+        //if( i == 0 )
+        //  Nsym.push_back( aig.num_gates() );
+        //else
           Ncov.push_back( aig.num_gates() );
       }
       printf("%s\n", info.c_str() );
@@ -165,6 +175,7 @@ int main()
 
     }
   } while ( !kitty::is_const0( target ) );
+
 
   printf("\n SAT\n");
   for( int i{0}; i<Nsat.size(); ++i )
@@ -405,93 +416,131 @@ kitty::dynamic_truth_table knuth_game( int idGame )
 }
 
 template<class Ntk>
-report_t<Ntk> game_on( kitty::dynamic_truth_table * pF, int MET )
+Ntk game_on( kitty::dynamic_truth_table * pF )
 {
   using TT  = kitty::dynamic_truth_table;
 
-  typedef DecSolver<TT, Ntk> solver_t;
-  report_t<Ntk> rep;
+//  typedef DecSolver<TT, Ntk> solver_t;
+//  report_t<Ntk> rep;
   
   kitty::dynamic_truth_table mask = (*pF).construct();
   mask = mask | ~mask;
-  solver_t solver( {*pF}, {mask} );
+  //solver_t solver( {*pF}, {mask} );
   //solver.PrintSpecs();
   
-  if( MET == 0 )
-  {
-    //ntk = solver.aut_sym_solve( MET );
+ // if( MET == 0 )
+ // {
+ //   //ntk = solver.aut_sym_solve( MET );
+ //   std::vector<kitty::dynamic_truth_table> xs;
+ //   for( int i{0}; i<pF->num_vars(); ++i )
+ //   {
+ //     xs.emplace_back( pF->num_vars() );
+ //     kitty::create_nth_var( xs[i], i );
+ //   }
+ //   /* define the parameters */
+ //   int nIters = 100;
+ //   cusco_ps ps( ccgame::solver_t::_SYM_ENT, nIters );
+ //   /* solve */
+ //   cusco<Ntk> solver( xs, {*pF} );
+ //   rep = solver.solve( ps );
+ // }
+// if( MET == 1 )
+//  {
+//    std::vector<kitty::dynamic_truth_table> xs;
+//    for( int i{0}; i<pF->num_vars(); ++i )
+//    {
+//      xs.emplace_back( pF->num_vars() );
+//      kitty::create_nth_var( xs[i], i );
+//    }
+//    /* define the parameters */
+//    int nIters = 1;
+//    cusco_ps ps( ccgame::solver_t::_SYM_1SH, nIters );
+//    /* solve */
+//    cusco<Ntk> solver( xs, {*pF} );
+//    rep = solver.solve( ps );
+//  }
+//  else if( MET == 2 )
+//  {
+//    //ntk = solver.aut_sym_solve( MET );
+//    std::vector<kitty::dynamic_truth_table> xs;
+//    for( int i{0}; i<pF->num_vars(); ++i )
+//    {
+//      xs.emplace_back( pF->num_vars() );
+//      kitty::create_nth_var( xs[i], i );
+//    }
+//    /* define the parameters */
+//    int nIters = 100;
+//    cusco_ps ps( ccgame::solver_t::_SYM_RND, nIters );
+//    /* solve */
+//    cusco<Ntk> solver( xs, {*pF} );
+//    rep = solver.solve( ps );
+//  }
+//  else if( MET == 3 )
+//  {
+//    std::vector<kitty::dynamic_truth_table> xs;
+//    for( int i{0}; i<pF->num_vars(); ++i )
+//    {
+//      xs.emplace_back( pF->num_vars() );
+//      kitty::create_nth_var( xs[i], i );
+//    }
+//
+//    /* define the parameters */    
+//    int nIters = 10;
+//    cusco_ps ps( ccgame::solver_t::_COV_RND, nIters, -1 );
+//    /* solve */
+//    cusco<Ntk> solver( xs, {*pF} );
+//    rep = solver.solve( ps );
+//  }
+ // if( MET == 4 )
+  
+    std::vector<double> ts;
     std::vector<kitty::dynamic_truth_table> xs;
     for( int i{0}; i<pF->num_vars(); ++i )
     {
-      xs.emplace_back( pF->num_vars() );
-      kitty::create_nth_var( xs[i], i );
-    }
-    /* define the parameters */
-    int nIters = 100;
-    cusco_ps ps( ccgame::solver_t::_SYM_ENT, nIters );
-    /* solve */
-    cusco<Ntk> solver( xs, {*pF} );
-    rep = solver.solve( ps );
-  }
-  else if( MET == 1 )
-  {
-    std::vector<kitty::dynamic_truth_table> xs;
-    for( int i{0}; i<pF->num_vars(); ++i )
-    {
-      xs.emplace_back( pF->num_vars() );
-      kitty::create_nth_var( xs[i], i );
-    }
-    /* define the parameters */
-    int nIters = 1;
-    cusco_ps ps( ccgame::solver_t::_SYM_1SH, nIters );
-    /* solve */
-    cusco<Ntk> solver( xs, {*pF} );
-    rep = solver.solve( ps );
-  }
-  else if( MET == 2 )
-  {
-    //ntk = solver.aut_sym_solve( MET );
-    std::vector<kitty::dynamic_truth_table> xs;
-    for( int i{0}; i<pF->num_vars(); ++i )
-    {
-      xs.emplace_back( pF->num_vars() );
-      kitty::create_nth_var( xs[i], i );
-    }
-    /* define the parameters */
-    int nIters = 100;
-    cusco_ps ps( ccgame::solver_t::_SYM_RND, nIters );
-    /* solve */
-    cusco<Ntk> solver( xs, {*pF} );
-    rep = solver.solve( ps );
-  }
-  else if( MET == 3 )
-  {
-    std::vector<kitty::dynamic_truth_table> xs;
-    for( int i{0}; i<pF->num_vars(); ++i )
-    {
+      ts.push_back(0.0);
       xs.emplace_back( pF->num_vars() );
       kitty::create_nth_var( xs[i], i );
     }
 
-    /* define the parameters */    
-    int nIters = 10;
-    cusco_ps ps( ccgame::solver_t::_COV_RND, nIters, -1 );
-    /* solve */
-    cusco<Ntk> solver( xs, {*pF} );
-    rep = solver.solve( ps );
-  }
-  else
-  {
-    printf(ANSI_COLOR_RED " CHOICE NOT MATCHING ANY METHOD " ANSI_COLOR_RESET "\n" );   
-    assert(0);
-  }
+    node_ps ndps;
+    detailed_gate_t ai00_( gate_t::AI00, 2, 1.0, 1.0, &hpcompute_ai00 );
+    detailed_gate_t ai01_( gate_t::AI01, 2, 1.0, 1.0, &hpcompute_ai01 );
+    detailed_gate_t ai10_( gate_t::AI10, 2, 1.0, 1.0, &hpcompute_ai10 );
+    detailed_gate_t ai11_( gate_t::AI11, 2, 1.0, 1.0, &hpcompute_ai11 );
+    detailed_gate_t exor_( gate_t::EXOR, 2, 1.0, 3.0, &hpcompute_exor );
+    ndps.lib = { ai00_, ai01_, ai10_, ai11_};//, exor_ };
+
+    mct_ps mctps;
+    ndps.sel_type = supp_selection_t::SUP_ENER;
+    mctps.nIters =1000;
+    mctps.nSims = 5;
+    mctps.verbose =false;
+    ndps.BETA0 = 1000;
+    ndps.BETAZ = 10;
+    ndps.nIters = 5;
+    ndps.thresh = 8;
+
+    nd_size_t<Ntk> root( xs, ts, {*pF}, ndps );
+    mct_method_ps metps;
+
+    mct_method_t<nd_size_t<Ntk> > meth( metps );
+    mct_tree_t<nd_size_t<Ntk> , mct_method_t> mct( root, meth, mctps );
+    int iSol = mct.solve();
+    if( iSol == -1 ) printf("no solution found\n");
+    Ntk ntk = mct.nodes[iSol].ntk;
+  
+  //else
+  //{
+  //  printf(ANSI_COLOR_RED " CHOICE NOT MATCHING ANY METHOD " ANSI_COLOR_RESET "\n" );   
+  //  assert(0);
+  //}
 
   default_simulator<kitty::dynamic_truth_table> sim( (*pF).num_vars() );
-  const auto tt = simulate<kitty::dynamic_truth_table>( rep.ntk, sim )[0];
+  const auto tt = simulate<kitty::dynamic_truth_table>( ntk, sim )[0];
   assert( kitty::equal( tt, *pF ) );
   //std::cout << ( kitty::equal( tt, *pF ) ? " equal " : " different " ) << std::endl;
 
 
-  return rep;
+  return ntk;
 
 }
