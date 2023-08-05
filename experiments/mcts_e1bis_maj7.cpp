@@ -55,8 +55,8 @@ int main()
   printf(ANSI_COLOR_YELLOW " [1] Knuth: 'The art of computer programming' fascicle 1 vol. 4" ANSI_COLOR_RESET "\n\n" );
 
 
-  kitty::dynamic_truth_table F(5u);
-  kitty::create_from_binary_string( F, "01000011101110000110110000100101" );
+  kitty::dynamic_truth_table F(6u);
+  kitty::create_majority(F);
   xag_network xag = game_on<xag_network>(&F);
   printf("%d\n", xag.num_gates());
   
@@ -103,10 +103,10 @@ Ntk game_on( kitty::dynamic_truth_table * pF )
   mctps.nIters = 100;
   mctps.nSims = 10;
   mctps.verbose = true;
-  ndps.BETA0 = 100;
-  ndps.BETAZ = 100;
+  ndps.BETA0 = 1000;
+  ndps.BETAZ = 1000;
   ndps.nIters = 10;//Ntrails
-  ndps.thresh = 10;
+  ndps.thresh = 20;
 
   nd_size_t<xag_network> root( xs, ts, {*pF}, ndps );
   mct_method_ps metps;

@@ -208,6 +208,9 @@ nd_delay_t<NTK> nd_delay_t<NTK>::find_new()
     case supp_selection_t::SUP_DECT:
         supp = supportor.find_new<supp_selection_t::SUP_DECT>( ps.nIters );
         break;
+    case supp_selection_t::SUP_NORM:
+        supp = supportor.find_new<supp_selection_t::SUP_NORM>( ps.nIters );
+        break;
     default:
         break;
     }
@@ -436,9 +439,24 @@ double nd_delay_t<NTK>::evaluate( std::vector<nd_delay_t<NTK>*> vPtrs )
     {
         net.create_po(outSigs[iTrg]);
     }
-    ntk = cleanup_dangling(net);
+    net = cleanup_dangling(net);
+    ntk = net;
+    //printf("s=%d %d\n",net.num_gates(), ntk.num_gates());
 
-    return vPtrs.back()->divisors[vPtrs.back()->supportor.targets[0].div].delay;
+    double delta_delay;
+
+    if( vPtrs.back()->targets[0].type == gate_t::CMPL )
+        delta_delay = ps.delay_inv;
+    else if( vPtrs.back()->targets[0].type == gate_t::PRJL )
+        delta_delay = 0;
+    else if( vPtrs.back()->targets[0].type == gate_t::CMPR )
+        delta_delay = ps.delay_inv;
+    else if( vPtrs.back()->targets[0].type == gate_t::PRJR )
+        delta_delay = 0;
+    else
+        assert(0);
+
+    return vPtrs.back()->divisors[vPtrs.back()->supportor.targets[0].div].delay+delta_delay;
 }
 
 template<class NTK>

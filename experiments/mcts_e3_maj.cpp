@@ -34,15 +34,65 @@ kitty::dynamic_truth_table propose_game(std::string*);
 kitty::dynamic_truth_table userdef_game();
 kitty::dynamic_truth_table knuth_game( int );
 
-template<class Ntk> Ntk game_on( kitty::dynamic_truth_table *, int, mct_stats * );
+template<class Ntk> Ntk game_on( kitty::dynamic_truth_table *, int );
 
 int main()
 {
   printf(ANSI_COLOR_RED     "============================================================="     ANSI_COLOR_RESET "\n");
-  printf(ANSI_COLOR_YELLOW  "              Set Covering For Logic Synthesis               " ANSI_COLOR_RESET "\n" );
-  printf(ANSI_COLOR_YELLOW  "             EXPERIMENT 2: Symmetric Functions               " ANSI_COLOR_RESET "\n" );
   printf(ANSI_COLOR_RED     "============================================================="     ANSI_COLOR_RESET "\n\n");
 
+  printf(ANSI_COLOR_RED     "  ####         ####         ####     ####   #      # ########"     ANSI_COLOR_RESET "\n");
+  printf(ANSI_COLOR_RED     " ######       ######       ######   ######  ##    ## ########"     ANSI_COLOR_RESET "\n");
+  printf(ANSI_COLOR_GREEN   "###  ###     ###  ###     ###  ### ###  ### ###  ### ##      "   ANSI_COLOR_RESET "\n");
+  printf(ANSI_COLOR_GREEN   "##    ##     ##    ##     ##    ## ##    ## ######## ##      "   ANSI_COLOR_RESET "\n");
+  printf(ANSI_COLOR_YELLOW  "##           ##           ##       ##    ## ## ## ## ##      "  ANSI_COLOR_RESET "\n");
+  printf(ANSI_COLOR_YELLOW  "##           ##           ##       ##    ## ## ## ## #####   "  ANSI_COLOR_RESET "\n");
+  printf(ANSI_COLOR_BLUE    "##           ##           ##  #### ######## ## ## ## #####   "    ANSI_COLOR_RESET "\n");
+  printf(ANSI_COLOR_BLUE    "##           ##           ##  #### ######## ## ## ## ##      "    ANSI_COLOR_RESET "\n");
+  printf(ANSI_COLOR_MAGENTA "##    ##     ##    ##     ##    ## ##    ## ##    ## ##      " ANSI_COLOR_RESET "\n");
+  printf(ANSI_COLOR_MAGENTA "##   ###     ##   ###     ###  ### ##    ## ##    ## ##      " ANSI_COLOR_RESET "\n");
+  printf(ANSI_COLOR_CYAN    " ######  ##   ######  ##   ######  ##    ## ##    ## ########"    ANSI_COLOR_RESET "\n");
+  printf(ANSI_COLOR_CYAN    "  ####   ##    ####   ##    ####   ##    ## ##    ## ########"    ANSI_COLOR_RESET "\n");
+  printf( "\n\n" );
+  printf(ANSI_COLOR_CYAN     "============================================================="     ANSI_COLOR_RESET "\n");
+  printf(ANSI_COLOR_CYAN     "============================================================="     ANSI_COLOR_RESET "\n\n");
+
+  printf(ANSI_COLOR_YELLOW   "EXPERIMENT 3: COMPARISON WITH EXACT SYNTHESIS" ANSI_COLOR_RESET "" );
+  printf(ANSI_COLOR_YELLOW   " In this experiment we compare the CUSCO heuristic with the" ANSI_COLOR_RESET "\n" );
+  printf(ANSI_COLOR_YELLOW   "with the exact synthesis results obtained by Knuth [1]" ANSI_COLOR_RESET "\n" );
+  printf(ANSI_COLOR_CYAN     "======================= REFERENCES =========================="     ANSI_COLOR_RESET "\n\n");
+  printf(ANSI_COLOR_YELLOW " [1] Knuth: 'The art of computer programming' fascicle 1 vol. 4" ANSI_COLOR_RESET "\n\n" );
+
+
+  printf(ANSI_COLOR_YELLOW " KNUTH OR TRUTH TABLE OF YOUR CHOICHE [K/C]? " ANSI_COLOR_RESET "" );
+  
+  char selection;
+  
+  std::cin >> selection;
+  
+  kitty::dynamic_truth_table m5(5u);
+  kitty::dynamic_truth_table m7(7u);
+  kitty::dynamic_truth_table m9(9u);
+
+  kitty::create_majority( m5 );
+  kitty::create_majority( m7 );
+  kitty::create_majority( m9 );
+
+  kitty::print_binary( m5 ); printf("\n");
+  kitty::print_binary( m7 ); printf("\n");
+  kitty::print_binary( m9 ); printf("\n");
+
+  kitty::dynamic_truth_table F;
+  if( selection == 'C' || selection == 'c' )
+  {
+    F = userdef_game();
+    int iMet = 0;
+    mig_network xag = game_on<mig_network>(&F, iMet);
+    printf("%d\n", xag.num_gates());
+    //printf(ANSI_COLOR_YELLOW " THE FUNCTION IS " ANSI_COLOR_RESET "" );
+  }
+  else if( selection == 'K' || selection == 'k' )
+  {
 
     std::string dot_file  ;
     std::string blif_file ;
@@ -60,35 +110,54 @@ int main()
                                           "S4_1_2_4", "S4_1_2_3", "S4_1_2_3_4", 
                                           "S5_4", "S5_4_5", "S5_3", "S5_3_5", "S5_3_4", "S5_3_4_5", "S5_2_5", "S5_2_4", "S5_2_4_5",
                                         "S5_2_3_5", "S5_2_3", "S5_2_3_4", "S5_1_5", "S5_1_4", "S5_1_3_4", "S5_1_2_5" };
-    std::vector<std::string> sMet = {"5", "10", "100", "1000"};
+    std::vector<std::string> sMet = {"UNINF", "REM1", "REM100", "COV100"};
+    printf("%20s| %7s %8s %7s | %7s %8s %7s | %7s %8s %7s | %7s %8s %7s |\n", "", "", "UNINF", "", "", "REM-1", "", "", "REM-100", "", "", "CONV-100", "" );
+    printf("%10s | %6s | %6s | %6s | %6s | %6s | %6s | %6s | %6s | %6s | %6s | %6s | %6s | %6s |\n", "f", "C(f)", "XAIG", "XAIG*", "T[s]", "XAIG", "XAIG*", "T[s]", "XAIG", "XAIG*", "T[s]", "XAIG", "XAIG*", "T[s]" );
     for( uint32_t i{0}; i < 31; ++i )
     {
-      std::vector<uint32_t> vIters {100};
-      for( int iMet{0}; iMet < vIters.size(); ++iMet )
+      std::string info = fmt::format("{:10s} | {:6d} | ", sF[i].c_str(), CC[i] );
+
+      for( int iMet{0}; iMet < 1; ++iMet )
       {
         kitty::dynamic_truth_table F;
         F = knuth_game( i );
+        std::clock_t start;
+        double duration;
+        start = std::clock();
+        mig_network xag = game_on<mig_network>(&F, iMet);
+        duration = ( std::clock() - start ) / (double) CLOCKS_PER_SEC;
 
+        resubstitution_params ps;
+        ps.max_pis = xag.num_pis();
+        ps.max_inserts = 20u;
+        ps.max_divisors = 1000u;
+        ps.odc_levels = -1;
+        ps.progress = true;
+        auto xag_resub = cleanup_dangling( xag );
+        xag_resub = cleanup_dangling( xag_resub );
+        info += fmt::format("{:6d} | {:6d} | {:6.2f} | ", xag.num_gates(), xag_resub.num_gates(), duration );
 
-        mct_stats st;        
-        xag_network xag = game_on<xag_network>(&F, vIters[iMet], &st);
-
-        printf( "%s C(f)=%d:\n", sF[i].c_str(), CC[i] );
-        for( auto j{0u}; j<st.costs.size(); ++j )
-          printf("%f ", st.costs[j] );
-        printf("\n");
-        for( auto j{0u}; j<st.times.size(); ++j )
-          printf("%f ", st.times[j] );
-        printf("\n");
-        for( auto j{0u}; j<st.iters.size(); ++j )
-          printf("%d ", st.iters[j] );
-        printf("\n");
-        for( auto j{0u}; j<st.sims.size(); ++j )
-          printf("%d ", st.sims[j] );
-        printf("\n\n");
-
+        dot_file  = "EXPS/EXP3/" + sMet[iMet] + "/dot/"  + sNames[i] + ".dot";
+        blif_file = "EXPS/EXP3/" + sMet[iMet] + "/blif/" + sNames[i] + ".blif";
+        aig_file  = "EXPS/EXP3/" + sMet[iMet] + "/aig/"  + sNames[i] + ".aig";
+        write_dot( xag, dot_file );
+        write_dot( xag, blif_file );
+        write_aiger( xag, aig_file );
+        dot_file  = "EXPS/EXP3/" + sMet[iMet] + "/dot/"  + sNames[i] + "rs.dot";
+        blif_file = "EXPS/EXP3/" + sMet[iMet] + "/blif/" + sNames[i] + "rs.blif";
+        aig_file  = "EXPS/EXP3/" + sMet[iMet] + "/aig/"  + sNames[i] + "rs.aig";
+        write_dot( xag_resub, dot_file );
+        write_dot( xag_resub, blif_file );
+        write_aiger( xag_resub, aig_file );
       }
+      printf("%s\n", info.c_str() );
     }
+  }
+  else
+  {
+    printf("CHOICE NOT VALID\n");
+    assert(0);
+  }
   return 0;
 }
 
@@ -316,7 +385,7 @@ kitty::dynamic_truth_table knuth_game( int idGame )
 }
 
 template<class Ntk>
-Ntk game_on( kitty::dynamic_truth_table * pF, int nIters, mct_stats * pSt )
+Ntk game_on( kitty::dynamic_truth_table * pF, int MET )
 {
   using TT  = kitty::dynamic_truth_table;
 
@@ -326,6 +395,8 @@ Ntk game_on( kitty::dynamic_truth_table * pF, int nIters, mct_stats * pSt )
   mask = mask | ~mask;
   //solver.PrintSpecs();
   
+  if( MET == 0 )
+  {
     std::vector<double> ts;
     std::vector<kitty::dynamic_truth_table> xs;
     for( int i{0}; i<pF->num_vars(); ++i )
@@ -336,12 +407,10 @@ Ntk game_on( kitty::dynamic_truth_table * pF, int nIters, mct_stats * pSt )
     }
 
     node_ps ndps;
-    detailed_gate_t ai00_( gate_t::AI00, 2, 1.0, 1.0, &hpcompute_ai00 );
-    detailed_gate_t ai01_( gate_t::AI01, 2, 1.0, 1.0, &hpcompute_ai01 );
-    detailed_gate_t ai10_( gate_t::AI10, 2, 1.0, 1.0, &hpcompute_ai10 );
-    detailed_gate_t ai11_( gate_t::AI11, 2, 1.0, 1.0, &hpcompute_ai11 );
+    detailed_gate_t maj3_( gate_t::MAJ3, 3, 1.0, 1.0, &hpcompute_maj3 );
     detailed_gate_t exor_( gate_t::EXOR, 2, 1.0, 1.0, &hpcompute_exor );
-    ndps.lib = { ai00_, ai01_, ai10_, ai11_, exor_ };
+
+    ndps.lib = { maj3_ };
 
     mct_ps mctps;
     ndps.sel_type = supp_selection_t::SUP_NORM;
@@ -352,27 +421,32 @@ Ntk game_on( kitty::dynamic_truth_table * pF, int nIters, mct_stats * pSt )
     //ndps.nIters = 100;
 
 
-    mctps.nIters = nIters;
-    mctps.nSims = 10;
-    mctps.verbose = false;
+    mctps.nIters = 100;
+    mctps.nSims = 15;
+    mctps.verbose = true;
 
-    ndps.BETA0 = 100;
-    ndps.BETAZ = 100;
+    ndps.BETA0 = 1000;
+    ndps.BETAZ = 1000;
     ndps.nIters = 10;//Ntrails
     ndps.thresh = 10;
 
 
-    nd_size_t<xag_network> root( xs, ts, {*pF}, ndps );
+    nd_size_t<mig_network> root( xs, ts, {*pF}, ndps );
     mct_method_ps metps;
     metps.sel_type = node_selection_t::NODE_LAY0;
 
-    mct_method_t<nd_size_t<xag_network> > meth( metps );
-    mct_tree_t<nd_size_t<xag_network> , mct_method_t> mct( root, meth, mctps );
-    int iSol = mct.solve( pSt );
-    
-    if( iSol == -1 ) printf("ERROR no solution found\n");
+    mct_method_t<nd_size_t<mig_network> > meth( metps );
+    mct_tree_t<nd_size_t<mig_network> , mct_method_t> mct( root, meth, mctps );
+    int iSol = mct.solve();
+    if( iSol == -1 ) printf("no solution found\n");
     rep = mct.nodes[iSol].ntk;
-    //mct.path_print( iSol );
+    mct.path_print( iSol );
+  }
+  else
+  {
+    printf(ANSI_COLOR_RED " CHOICE NOT MATCHING ANY METHOD " ANSI_COLOR_RESET "\n" );   
+    assert(0);
+  }
 
   default_simulator<kitty::dynamic_truth_table> sim( (*pF).num_vars() );
   const auto tt = simulate<kitty::dynamic_truth_table>( rep, sim )[0];

@@ -121,6 +121,7 @@ struct node_ps
     std::vector<detailed_gate_t> lib;
     bool use_inf_graph{true};
     bool erase_not_essentials{true};
+    double delay_inv;
 
     node_ps()
     {

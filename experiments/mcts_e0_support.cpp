@@ -26,7 +26,7 @@ std::vector<int> get_supports( kitty::dynamic_truth_table, double, double, int, 
 int main()
 {
   printf(ANSI_COLOR_RED     "============================================================="     ANSI_COLOR_RESET "\n");
-  printf(ANSI_COLOR_YELLOW  "             Set Covering For Logic Synthesis                " ANSI_COLOR_RESET "\n" );
+  printf(ANSI_COLOR_YELLOW  "         Set Covering For Logic Synthesis                " ANSI_COLOR_RESET "\n" );
   printf(ANSI_COLOR_YELLOW  " EXPERIMENT 0: Effect of Temperature on set covering" ANSI_COLOR_RESET "\n" );
   printf(ANSI_COLOR_RED     "============================================================="     ANSI_COLOR_RESET "\n\n");
 
