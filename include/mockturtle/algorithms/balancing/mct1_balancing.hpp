@@ -91,7 +91,10 @@ struct mcts_rebalancing
     mcts::detailed_gate_t aig10_( mcts::gate_t::AI10, 2, 1.0, 1.0, &mcts::hpcompute_ai10 );
     mcts::detailed_gate_t aig11_( mcts::gate_t::AI11, 2, 1.0, 1.0, &mcts::hpcompute_ai11 );
     mcts::detailed_gate_t exor_( mcts::gate_t::EXOR, 2, 1.0, 1.0, &mcts::hpcompute_exor );
+
+
     ndps.lib = { aig00_, aig01_, aig10_, aig11_, exor_ };
+  //  ndps.lib = { cmpl_, nand_, and_, or_, exor_ };
 
     mcts::mct_ps mctps;
     ndps.sel_type = mcts::supp_selection_t::SUP_NORM;

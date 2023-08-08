@@ -33,6 +33,12 @@
 #include <mockturtle/networks/aig.hpp>
 #include <mockturtle/networks/xag.hpp>
 #include <mockturtle/views/depth_view.hpp>
+#include <mockturtle/algorithms/collapse_mapped.hpp>
+#include <mockturtle/algorithms/lut_mapper.hpp>
+#include <mockturtle/networks/klut.hpp>
+#include <mockturtle/views/depth_view.hpp>
+#include <mockturtle/views/mapping_view.hpp>
+
 #include <string>
 
 #include <iostream>
@@ -47,12 +53,12 @@ int main()
   using namespace experiments;
   using namespace mockturtle;
 
-  experiment<std::string, uint32_t, uint32_t, bool, uint32_t, uint32_t, double, bool> exp( "eds", "benchmark", "s(ORI)", "d(ORI)", "c(ORI)", "s(MCT)", "d(MCT)", "t(MCT)", "c(MCT)" );
+  experiment<std::string, uint32_t, uint32_t, bool, uint32_t, uint32_t, double, bool> exp( "eds", "benchmark", "d(ORI)", "s(ORI)", "c(ORI)", "d(MCT)", "s(MCT)", "t(MCT)", "c(MCT)" );
 
   mcts_rebalancing<xag_network> mct_balancing;
 
 
-  for ( auto const& benchmark : epfl_benchmarks( ~experiments::hyp ) )//bms__ 
+  for ( auto const& benchmark : epfl_benchmarks( ~experiments::hyp ) )//bms__ bms__
   {
     fmt::print( "[i] processing {}\n", benchmark );
     xag_network xag;
@@ -60,6 +66,19 @@ int main()
     {
       continue;
     }
+
+
+    lut_map_params ps_map0;
+    ps_map0.cut_enumeration_ps.cut_size = 6u;
+    ps_map0.cut_enumeration_ps.cut_limit = 8u;
+    ps_map0.recompute_cuts = true;
+    ps_map0.area_oriented_mapping = false;
+    ps_map0.cut_expansion = true;
+    lut_map_stats st_map0;
+    mapping_view<xag_network, false> mapped_xag0{ xag };
+    lut_map<decltype( mapped_xag0 ), false>( mapped_xag0, ps_map0, &st_map0 );
+    const auto klut0 = *collapse_mapped_network<klut_network>( mapped_xag0 ); 
+    depth_view dklut0 {klut0};
 
     using namespace std::chrono;
 
@@ -98,8 +117,11 @@ int main()
     bool isUpdated3{false};
     bool isUpdated4{false};
 
-    while( time_span.count() < 10 || (isUpdated0||isUpdated1||isUpdated2||isUpdated3||isUpdated4) )
+    int IT = 0;
+
+    while( (time_span.count() < 600)&&(time_span.count() < 120 || IT < 4 || (isUpdated0||isUpdated1||isUpdated2||isUpdated3||isUpdated4)) )
     {
+      IT++;
       if(depth_old == depth_new && K < 3u)
         ps.cut_enumeration_ps.cut_size = 4u+(K++);
       else if( depth_old == depth_new && K >=3u )
@@ -140,6 +162,8 @@ int main()
       isUpdated2 = isUpdated3;
       isUpdated3 = isUpdated4;
       isUpdated4 = (depth_old > depth_new);
+
+
     }
 
     resubstitution_params res_ps;
@@ -148,7 +172,21 @@ int main()
     // ps.pattern_filename = "1024sa1/" + benchmark + ".pat";
 
 
+    lut_map_params ps_map;
+    ps_map.cut_enumeration_ps.cut_size = 6u;
+    ps_map.cut_enumeration_ps.cut_limit = 8u;
+    ps_map.recompute_cuts = true;
+    ps_map.area_oriented_mapping = false;
+    ps_map.cut_expansion = true;
+    lut_map_stats st_map;
+    mapping_view<xag_network, false> mapped_xag{ xag_opt };
+    lut_map<decltype( mapped_xag ), false>( mapped_xag, ps_map, &st_map );
+    const auto klut = *collapse_mapped_network<klut_network>( mapped_xag ); 
+    depth_view dklut {klut};
+    const auto cec_klut = abc_cec( klut, benchmark );
+
     printf("-->: d=%d/%d g=%d/%d\n",DEPTH, dxag.depth(), SIZE, dxag.num_gates() );
+    printf("KLUT6 valid? %d : [NONE: d=%d g=%d] [MCTS: d=%d g=%d]\n", cec_klut, dklut0.depth(), klut0.num_gates(), dklut.depth(), klut.num_gates() );
 
 
     t2 = high_resolution_clock::now();
@@ -157,7 +195,7 @@ int main()
     const auto cec = abc_cec( xag, benchmark );
     const auto cec_opt = abc_cec( xag_opt, benchmark );
 
-    exp( benchmark, xag.num_gates(), dxag.depth(), cec, SIZE, DEPTH, time_span.count(), cec_opt  );
+    exp( benchmark, dklut0.depth(), dklut0.num_gates(), cec, dklut.depth(), dklut.num_gates(), time_span.count(), cec_opt  );
   }
 
   exp.save();
