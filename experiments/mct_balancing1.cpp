@@ -62,7 +62,7 @@ int main()
     double time_sop=0;
     ps.progress = true;
     ps.only_on_critical_path = true;
-    ps.cut_enumeration_ps.cut_size = 4u;
+    ps.cut_enumeration_ps.cut_size = 8u;
     const auto aig4_sop = balancing( aig, { sop_balancing }, ps, &st4_sop );
     depth_view daig_sop{ aig4_sop };
 

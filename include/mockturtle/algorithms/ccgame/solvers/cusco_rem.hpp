@@ -238,8 +238,10 @@ report_rem_t<Ntk> cusco_rem<Ntk>::solve_1delay( cusco_rem_ps const& ps, Ntk * pN
   int bestRwd = -1;
   uint32_t bestLevel=0;
   symmetry_t bestSym;
-  while( net.nHunging > 0 )
+  int iAbrt{0};
+  while( net.nHunging > 0 && iAbrt < 20 )
   {
+    iAbrt++;
     //std::vector<symmetry_t> candidates = net.symmetry_analysis( &xs );
     std::vector<symmetry_t> candidates = net.symmetry_analysis( &xs, idBound );
     // process candidate to give levels
@@ -326,8 +328,10 @@ report_rem_t<Ntk> cusco_rem<Ntk>::solve_1delay( cusco_rem_ps const& ps )
   int bestRwd = -1;
   uint32_t bestLevel=0;
   symmetry_t bestSym;
-  while( net.nHunging > 0 )
+  int itAbort{0};
+  while( net.nHunging > 0 && itAbort < 20 )
   {
+    itAbort++;
     //std::vector<symmetry_t> candidates = net.symmetry_analysis( &xs );
     std::vector<symmetry_t> candidates = net.symmetry_analysis( &xs, idBound );
     // process candidate to give levels
@@ -361,6 +365,7 @@ report_rem_t<Ntk> cusco_rem<Ntk>::solve_1delay( cusco_rem_ps const& ps )
 //&    printf("\n");
 
     net.check_sym_closure();
+
   }
   if( net.nHunging > 0 )
   {
@@ -494,12 +499,12 @@ report_rem_t<Ntk> cusco_rem<Ntk>::solve_Rdelay( cusco_rem_ps const& ps )
       {
         BEST_DEPTH     = rep.levels;
         BEST_SIZE      = rep.nMin;
-        REP.ntk        = rep.ntk         ;
-        REP.nIt0       = rep.nIt0        ;
-        REP.nMax       = rep.nMax        ;
-        REP.nMin       = rep.nMin        ;
+        REP.ntk        = rep.ntk ;
+        REP.nIt0       = rep.nIt0;
+        REP.nMax       = rep.nMax;
+        REP.nMin       = rep.nMin;
         REP.E_solution = true ;
-        REP.levels     = rep.levels     ;
+        REP.levels     = rep.levels;
       }
     }
   }

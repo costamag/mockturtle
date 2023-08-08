@@ -1,4 +1,5 @@
 #include <kitty/constructors.hpp>
+#include <kitty/print.hpp>
 #include <mockturtle/algorithms/mcts/mct_tree.hpp>
 #include <mockturtle/algorithms/mcts/method.hpp>
 #include <mockturtle/algorithms/mcts/nodes/nd_size.hpp>
@@ -66,6 +67,11 @@ int main()
 
   printf(ANSI_COLOR_YELLOW " KNUTH OR TRUTH TABLE OF YOUR CHOICHE [K/C]? " ANSI_COLOR_RESET "" );
   
+  kitty::dynamic_truth_table Tr(7u);
+  kitty::create_majority( Tr );
+  kitty::print_binary(Tr);
+  printf("\n");
+
   char selection;
   
   std::cin >> selection;
