@@ -34,8 +34,10 @@
 #include <kitty/partial_truth_table.hpp>
 #include <kitty/dynamic_truth_table.hpp>
 #include <kitty/bit_operations.hpp>
+#include <kitty/decomposition.hpp>
 #include <kitty/constructors.hpp>
 #include <kitty/operators.hpp>
+#include <kitty/print.hpp>
 #include <fmt/format.h>
 #include <stdio.h>
 #include <stack>
@@ -50,6 +52,11 @@ namespace mockturtle
 
 namespace techaware
 {
+
+void dprintf( std::string s )
+{
+  printf( "%s\n", s.c_str() );
+}
 
 using TT = kitty::dynamic_truth_table;
 uint32_t UNK32 = 0x0FFFFFFF;
@@ -80,8 +87,20 @@ enum gate_t : uint8_t
   IA01 = 0XD, // 1101
   IA00 = 0XE, // 1110
   TAUT = 0XF, // 1111
-  POS_ = 0xFF
+  TARG = 0xFF
 };
+
+/*! \brief Gate type in the techaware namespace. Convention Xl=1100, Xr=1010 */
+enum dec_t : uint8_t
+{
+  AND = 0x8,
+  OR_ = 0xE,
+  LE_ = 0xB,
+  LT_ = 0x2,
+  XOR = 0x6,
+  NUL = 0x0
+};
+
 
 #pragma region SYMMETRIES
 
@@ -175,6 +194,21 @@ struct symmetry_t
   }
 };
 
+
+struct decomposition_t
+{
+  uint8_t type;
+  int pi;
+  TT tTt;
+  TT tMk;
+
+  decomposition_t(){}
+  ~decomposition_t(){}
+
+};
+
+
+
 void print_symmetries( std::vector<symmetry_t> sym )
 {
   for( auto x : sym )
@@ -257,13 +291,21 @@ public:
   uint32_t nNodes{0};
   TT tTt;
   TT tMk;
-  node_t tNd;
+  uint32_t tCut;
+  uint32_t tRef;
   std::vector<uint32_t> pi_to_node;
   uint32_t delayCost{0};
 
   cut_t(){};
   cut_t( uint32_t id ) : id(id) {};
   ~cut_t(){};
+
+  void update_cut_id( uint32_t idCutNew )
+  {
+    id = idCutNew;
+    for( uint32_t iNd{0}; iNd<nodes.size(); ++iNd )
+      nodes[iNd].id = (nodes[iNd].id & 0x0000FFFF) | ( (idCutNew << 16u ) & 0xFFFF0000 );
+  }
 
   uint32_t add_node( gate_t gate, uint32_t level, TT sTt, TT sMk )
   { 
@@ -278,91 +320,105 @@ public:
     nd.idL = idL;
     nd.idR = idR;
     nd.idPi = idPi;
+    
+    if( pi_to_node.size() <= idPi )
+      for( uint32_t i{pi_to_node.size()}; i<idPi+1; ++i )
+        pi_to_node.push_back(UNK32);
+    pi_to_node[idPi]=nd.get_this_ref_id();
 
     if( level > delayCost ) delayCost = level;
-
-    return nodes.back().get_this_ref_id();
+    nodes.push_back( nd );
+    return nd.id;
   }
 
-template<class Ntk>
-void add_node_symL( cut_t * pPrevCut, symmetry_t * pSym )
-{
-  uint32_t iL = pPrevCut->pi_to_node[pSym->piL];
-  uint32_t iR = pPrevCut->pi_to_node[pSym->piR];
-  node_t xL = pPrevCut->nodes[iL];
-  node_t xR = pPrevCut->nodes[iR];
-
-  switch ( pSym->type )
+  template<class Ntk>
+  void add_node_symL( cut_t * pPrevCut, symmetry_t * pSym )
   {
-    case 0x33: add_node( IA01, std::max(xL.level, xR.level)+1, ~( ~xL.sTt &  xR.sTt ), xL.sMk | xR.sMk, id, pSym->piL, xL.id, xR.id ); break;  //nand( l', r )
-    case 0xCC: add_node( PA10, std::max(xL.level, xR.level)+1,  (  xL.sTt & ~xR.sTt ), xL.sMk | xR.sMk, id, pSym->piL, xL.id, xR.id ); break;  // and( l , r')
-    case 0x66: add_node( IA00, std::max(xL.level, xR.level)+1, ~( ~xL.sTt & ~xR.sTt ), xL.sMk | xR.sMk, id, pSym->piL, xL.id, xR.id ); break;  //or( l , r )
-    case 0x99: add_node( PA11, std::max(xL.level, xR.level)+1,  (  xL.sTt &  xR.sTt ), xL.sMk | xR.sMk, id, pSym->piL, xL.id, xR.id ); break;  //and( l , r )
-    case 0x44: add_node( PRJL, xL.level, xL.sTt, xL.sMk | xR.sMk, id, pSym->piL, xL.id, xL.id ); break;  // l            
-    case 0x11: add_node( PRJL, xL.level, xL.sTt, xL.sMk | xR.sMk, id, pSym->piL, xL.id, xL.id ); break;  // l            
-    case 0x77: add_node( IA00, std::max(xL.level, xR.level)+1, ~( ~xL.sTt & ~xR.sTt ), xL.sMk | xR.sMk, id, pSym->piL, xL.id, xR.id ); break;  //   or( l , r )
-    case 0xDD: add_node( PA10, std::max(xL.level, xR.level)+1,  (  xL.sTt & ~xR.sTt ), xL.sMk | xR.sMk, id, pSym->piL, xL.id, xR.id ); break;  //  and( l , r')
-    case 0x88: add_node( PA11, std::max(xL.level, xR.level)+1,  (  xL.sTt &  xR.sTt ), xL.sMk | xR.sMk, id, pSym->piL, xL.id, xR.id ); break;  //  and( l , r )
-    case 0x22: add_node( IA01, std::max(xL.level, xR.level)+1, ~( ~xL.sTt &  xR.sTt ), xL.sMk | xR.sMk, id, pSym->piL, xL.id, xR.id ); break;  // nand( l', r )
-    case 0xBB: add_node( PRJL, xL.level, xL.sTt, xL.sMk | xR.sMk, id, pSym->piL, xL.id, xL.id ); break;  // l            
-    case 0xEE: add_node( PRJL, xL.level, xL.sTt, xL.sMk | xR.sMk, id, pSym->piL, xL.id, xL.id ); break;  // l            
-    case 0x36: break;  // ]            
-    case 0x6C: add_node( EXOR, std::max(xL.level, xR.level)+delay_xor<Ntk>(), xL.sTt ^ xR.sTt, xL.sMk | xR.sMk, id, pSym->piL, xL.id, xR.id ); break;  //  xor( l , r )
-    case 0x9C: break;  // ]            
-    case 0x39: add_node( XNOR, std::max(xL.level, xR.level)+delay_xor<Ntk>(), ~(  xL.sTt ^  xR.sTt ), xL.sMk | xR.sMk, id, pSym->piL, xL.id, xR.id ); break;  // xnor( l , r )
-    case 0x19: add_node( PA11, std::max(xL.level, xR.level)+1, (  xL.sTt &  xR.sTt ), xL.sMk | xR.sMk, id, pSym->piL, xL.id, xR.id ); break;  //  and( l , r )
-    case 0x26: break;  // ]            
-    case 0x37: break;  // ]            
-    case 0x4C: add_node( PA10, std::max(xL.level, xR.level)+1, (  xL.sTt & ~xR.sTt ), xL.sMk | xR.sMk, id, pSym->piL, xL.id, xR.id ); break;  //  and( l , r')
-    case 0x8C: break;  // ]            
-    case 0x3B: add_node( PA01, std::max(xL.level, xR.level)+1,  ( ~xL.sTt &  xR.sTt ), xL.sMk | xR.sMk, id, pSym->piL, xL.id, xR.id ); break;  // nand( l', r )
-    case 0x6E: add_node( IA00, std::max(xL.level, xR.level)+1, ~( ~xL.sTt & ~xR.sTt ), xL.sMk | xR.sMk, id, pSym->piL, xL.id, xR.id ); break;  //   or( l , r )
-    case 0x9D: break;  // ]            
+    uint32_t iL = pPrevCut->pi_to_node[pSym->piL];
+    uint32_t iR = pPrevCut->pi_to_node[pSym->piR];
+    node_t xL = pPrevCut->nodes[iL];
+    node_t xR = pPrevCut->nodes[iR];
+
+    switch ( pSym->type )
+    {
+      case 0x33: add_node( IA01, std::max(xL.level, xR.level)+1, ~( ~xL.sTt &  xR.sTt ), xL.sMk | xR.sMk, id, pSym->piL, xL.id, xR.id ); break;  //nand( l', r )
+      case 0xCC: add_node( PA10, std::max(xL.level, xR.level)+1,  (  xL.sTt & ~xR.sTt ), xL.sMk | xR.sMk, id, pSym->piL, xL.id, xR.id ); break;  // and( l , r')
+      case 0x66: add_node( IA00, std::max(xL.level, xR.level)+1, ~( ~xL.sTt & ~xR.sTt ), xL.sMk | xR.sMk, id, pSym->piL, xL.id, xR.id ); break;  //or( l , r )
+      case 0x99: add_node( PA11, std::max(xL.level, xR.level)+1,  (  xL.sTt &  xR.sTt ), xL.sMk | xR.sMk, id, pSym->piL, xL.id, xR.id ); break;  //and( l , r )
+      case 0x44: add_node( PRJL, xL.level, xL.sTt, xL.sMk | xR.sMk, id, pSym->piL, xL.id, xL.id ); break;  // l            
+      case 0x11: add_node( PRJL, xL.level, xL.sTt, xL.sMk | xR.sMk, id, pSym->piL, xL.id, xL.id ); break;  // l            
+      case 0x77: add_node( IA00, std::max(xL.level, xR.level)+1, ~( ~xL.sTt & ~xR.sTt ), xL.sMk | xR.sMk, id, pSym->piL, xL.id, xR.id ); break;  //   or( l , r )
+      case 0xDD: add_node( PA10, std::max(xL.level, xR.level)+1,  (  xL.sTt & ~xR.sTt ), xL.sMk | xR.sMk, id, pSym->piL, xL.id, xR.id ); break;  //  and( l , r')
+      case 0x88: add_node( PA11, std::max(xL.level, xR.level)+1,  (  xL.sTt &  xR.sTt ), xL.sMk | xR.sMk, id, pSym->piL, xL.id, xR.id ); break;  //  and( l , r )
+      case 0x22: add_node( IA01, std::max(xL.level, xR.level)+1, ~( ~xL.sTt &  xR.sTt ), xL.sMk | xR.sMk, id, pSym->piL, xL.id, xR.id ); break;  // nand( l', r )
+      case 0xBB: add_node( PRJL, xL.level, xL.sTt, xL.sMk | xR.sMk, id, pSym->piL, xL.id, xL.id ); break;  // l            
+      case 0xEE: add_node( PRJL, xL.level, xL.sTt, xL.sMk | xR.sMk, id, pSym->piL, xL.id, xL.id ); break;  // l            
+      case 0x36: break;  // ]            
+      case 0x6C: add_node( EXOR, std::max(xL.level, xR.level)+delay_xor<Ntk>(), xL.sTt ^ xR.sTt, xL.sMk | xR.sMk, id, pSym->piL, xL.id, xR.id ); break;  //  xor( l , r )
+      case 0x9C: break;  // ]            
+      case 0x39: add_node( XNOR, std::max(xL.level, xR.level)+delay_xor<Ntk>(), ~(  xL.sTt ^  xR.sTt ), xL.sMk | xR.sMk, id, pSym->piL, xL.id, xR.id ); break;  // xnor( l , r )
+      case 0x19: add_node( PA11, std::max(xL.level, xR.level)+1, (  xL.sTt &  xR.sTt ), xL.sMk | xR.sMk, id, pSym->piL, xL.id, xR.id ); break;  //  and( l , r )
+      case 0x26: break;  // ]            
+      case 0x37: break;  // ]            
+      case 0x4C: add_node( PA10, std::max(xL.level, xR.level)+1, (  xL.sTt & ~xR.sTt ), xL.sMk | xR.sMk, id, pSym->piL, xL.id, xR.id ); break;  //  and( l , r')
+      case 0x8C: break;  // ]            
+      case 0x3B: add_node( PA01, std::max(xL.level, xR.level)+1,  ( ~xL.sTt &  xR.sTt ), xL.sMk | xR.sMk, id, pSym->piL, xL.id, xR.id ); break;  // nand( l', r )
+      case 0x6E: add_node( IA00, std::max(xL.level, xR.level)+1, ~( ~xL.sTt & ~xR.sTt ), xL.sMk | xR.sMk, id, pSym->piL, xL.id, xR.id ); break;  //   or( l , r )
+      case 0x9D: break;  // ]            
+    }
   }
-}
 
-template<class Ntk>
-void add_node_symR( cut_t * pPrevCut, symmetry_t * pSym )
-{
-  uint32_t iL = pPrevCut->pi_to_node[pSym->piL];
-  uint32_t iR = pPrevCut->pi_to_node[pSym->piR];
-  node_t xL = pPrevCut->nodes[iL];
-  node_t xR = pPrevCut->nodes[iR];
-
-  switch ( pSym->type )
+  template<class Ntk>
+  void add_node_symR( cut_t * pPrevCut, symmetry_t * pSym )
   {
-    case 0x33: add_node( IA10, std::max(xL.level, xR.level)+1, ~(  xL.sTt & ~xR.sTt ), xL.sMk | xR.sMk, id, pSym->piR, xL.id, xR.id ); break;// nand( l , r')
-    case 0xCC: add_node( PA01, std::max(xL.level, xR.level)+1,  ( ~xL.sTt &  xR.sTt ), xL.sMk | xR.sMk, id, pSym->piR, xL.id, xR.id ); break;//  and( l', r )
-    case 0x66: add_node( PA11, std::max(xL.level, xR.level)+1,  (  xL.sTt &  xR.sTt ), xL.sMk | xR.sMk, id, pSym->piR, xL.id, xR.id ); break;//  and( l , r )
-    case 0x99: add_node( IA00, std::max(xL.level, xR.level)+1, ~( ~xL.sTt & ~xR.sTt ), xL.sMk | xR.sMk, id, pSym->piR, xL.id, xR.id ); break;//   or( l , r )
-    case 0x44: add_node( PA11, std::max(xL.level, xR.level)+1,  (  xL.sTt &  xR.sTt ), xL.sMk | xR.sMk, id, pSym->piR, xL.id, xR.id ); break;//  and( l , r )
-    case 0x11: add_node( IA10, std::max(xL.level, xR.level)+1, ~(  xL.sTt & ~xR.sTt ), xL.sMk | xR.sMk, id, pSym->piR, xL.id, xR.id ); break;// nand( l , r')
-    case 0x77: add_node( PRJR, xR.level, xR.sTt, xL.sMk | xR.sMk, id, pSym->piR, xL.id, xR.id ); break;// r            
-    case 0xDD: add_node( PRJR, xR.level, xR.sTt, xL.sMk | xR.sMk, id, pSym->piR, xL.id, xR.id ); break;// r            
-    case 0x88: add_node( PRJR, xR.level, xR.sTt, xL.sMk | xR.sMk, id, pSym->piR, xL.id, xR.id ); break;// r            
-    case 0x22: add_node( PRJR, xR.level, xR.sTt, xL.sMk | xR.sMk, id, pSym->piR, xL.id, xR.id ); break;// r            
-    case 0xBB: add_node( IA00, std::max(xL.level, xR.level)+1, ~( ~xL.sTt & ~xR.sTt ), xL.sMk | xR.sMk, id, pSym->piR, xL.id, xR.id ); break;//   or( l , r )
-    case 0xEE: add_node( PA01, std::max(xL.level, xR.level)+1,  ( ~xL.sTt &  xR.sTt ), xL.sMk | xR.sMk, id, pSym->piR, xL.id, xR.id ); break;//  and( l', r )
-    case 0x36: add_node( XNOR, std::max(xL.level,xR.level)+delay_xor<Ntk>(), ~( xL.sTt ^  xR.sTt ), xL.sMk | xR.sMk, id, pSym->piR, xL.id, xR.id ); break;// xnor( l , r )
-    case 0x6C: break;// ]            
-    case 0x9C: add_node( EXOR, std::max(xL.level, xR.level)+delay_xor<Ntk>(), ( xL.sTt ^  xR.sTt ), xL.sMk | xR.sMk, id, pSym->piR, xL.id, xR.id ); break;//  xor( l , r )
-    case 0x39: break;// ]            
-    case 0x19: break;// ]            
-    case 0x26: add_node( PA11, std::max(xL.level, xR.level)+1,  (  xL.sTt &  xR.sTt ), xL.sMk | xR.sMk, id, pSym->piR, xL.id, xR.id ); break;//  and( l , r )
-    case 0x37: add_node( IA10, std::max(xL.level, xR.level)+1, ~(  xL.sTt & ~xR.sTt ), xL.sMk | xR.sMk, id, pSym->piR, xL.id, xR.id ); break;// nand( l , r')
-    case 0x4C: break;// ]            
-    case 0x8C: add_node( PA01, std::max(xL.level, xR.level)+1, ( ~xL.sTt &  xR.sTt ), xL.sMk | xR.sMk, id, pSym->piR, xL.id, xR.id ); break;//  and( l', r )
-    case 0x3B: break;// ]            
-    case 0x6E: break;// ]            
-    case 0x9D: add_node( IA00, std::max(xL.level, xR.level)+1, ~( ~xL.sTt & ~xR.sTt ), xL.sMk | xR.sMk, id, pSym->piR, xL.id, xR.id ); break;//   or( l , r )
-  }
-}
+    uint32_t iL = pPrevCut->pi_to_node[pSym->piL];
+    uint32_t iR = pPrevCut->pi_to_node[pSym->piR];
+    node_t xL = pPrevCut->nodes[iL];
+    node_t xR = pPrevCut->nodes[iR];
 
-  void set_target( TT func, TT mask, node_t tNode )
+    switch ( pSym->type )
+    {
+      case 0x33: add_node( IA10, std::max(xL.level, xR.level)+1, ~(  xL.sTt & ~xR.sTt ), xL.sMk | xR.sMk, id, pSym->piR, xL.id, xR.id ); break;// nand( l , r')
+      case 0xCC: add_node( PA01, std::max(xL.level, xR.level)+1,  ( ~xL.sTt &  xR.sTt ), xL.sMk | xR.sMk, id, pSym->piR, xL.id, xR.id ); break;//  and( l', r )
+      case 0x66: add_node( PA11, std::max(xL.level, xR.level)+1,  (  xL.sTt &  xR.sTt ), xL.sMk | xR.sMk, id, pSym->piR, xL.id, xR.id ); break;//  and( l , r )
+      case 0x99: add_node( IA00, std::max(xL.level, xR.level)+1, ~( ~xL.sTt & ~xR.sTt ), xL.sMk | xR.sMk, id, pSym->piR, xL.id, xR.id ); break;//   or( l , r )
+      case 0x44: add_node( PA11, std::max(xL.level, xR.level)+1,  (  xL.sTt &  xR.sTt ), xL.sMk | xR.sMk, id, pSym->piR, xL.id, xR.id ); break;//  and( l , r )
+      case 0x11: add_node( IA10, std::max(xL.level, xR.level)+1, ~(  xL.sTt & ~xR.sTt ), xL.sMk | xR.sMk, id, pSym->piR, xL.id, xR.id ); break;// nand( l , r')
+      case 0x77: add_node( PRJR, xR.level, xR.sTt, xL.sMk | xR.sMk, id, pSym->piR, xR.id, xR.id ); break;// r            
+      case 0xDD: add_node( PRJR, xR.level, xR.sTt, xL.sMk | xR.sMk, id, pSym->piR, xR.id, xR.id ); break;// r            
+      case 0x88: add_node( PRJR, xR.level, xR.sTt, xL.sMk | xR.sMk, id, pSym->piR, xR.id, xR.id ); break;// r            
+      case 0x22: add_node( PRJR, xR.level, xR.sTt, xL.sMk | xR.sMk, id, pSym->piR, xR.id, xR.id ); break;// r            
+      case 0xBB: add_node( IA00, std::max(xL.level, xR.level)+1, ~( ~xL.sTt & ~xR.sTt ), xL.sMk | xR.sMk, id, pSym->piR, xL.id, xR.id ); break;//   or( l , r )
+      case 0xEE: add_node( PA01, std::max(xL.level, xR.level)+1,  ( ~xL.sTt &  xR.sTt ), xL.sMk | xR.sMk, id, pSym->piR, xL.id, xR.id ); break;//  and( l', r )
+      case 0x36: add_node( XNOR, std::max(xL.level,xR.level)+delay_xor<Ntk>(), ~( xL.sTt ^  xR.sTt ), xL.sMk | xR.sMk, id, pSym->piR, xL.id, xR.id ); break;// xnor( l , r )
+      case 0x6C: break;// ]            
+      case 0x9C: add_node( EXOR, std::max(xL.level, xR.level)+delay_xor<Ntk>(), ( xL.sTt ^  xR.sTt ), xL.sMk | xR.sMk, id, pSym->piR, xL.id, xR.id ); break;//  xor( l , r )
+      case 0x39: break;// ]            
+      case 0x19: break;// ]            
+      case 0x26: add_node( PA11, std::max(xL.level, xR.level)+1,  (  xL.sTt &  xR.sTt ), xL.sMk | xR.sMk, id, pSym->piR, xL.id, xR.id ); break;//  and( l , r )
+      case 0x37: add_node( IA10, std::max(xL.level, xR.level)+1, ~(  xL.sTt & ~xR.sTt ), xL.sMk | xR.sMk, id, pSym->piR, xL.id, xR.id ); break;// nand( l , r')
+      case 0x4C: break;// ]            
+      case 0x8C: add_node( PA01, std::max(xL.level, xR.level)+1, ( ~xL.sTt &  xR.sTt ), xL.sMk | xR.sMk, id, pSym->piR, xL.id, xR.id ); break;//  and( l', r )
+      case 0x3B: break;// ]            
+      case 0x6E: break;// ]            
+      case 0x9D: add_node( IA00, std::max(xL.level, xR.level)+1, ~( ~xL.sTt & ~xR.sTt ), xL.sMk | xR.sMk, id, pSym->piR, xL.id, xR.id ); break;//   or( l , r )
+    }
+
+  }
+
+  void set_target( TT func, TT mask, uint32_t idCutTrg, uint32_t idRefTrg )
   {
     tTt = func;
     tMk = mask;
-    tNd = tNode;
+    tCut = idCutTrg;
+    tRef = idRefTrg;
+  }
+
+  void erase_node_from_pi( uint32_t idPi )
+  {
+    uint32_t idNd = pi_to_node[idPi];
+    nodes.erase( nodes.begin() + idNd );
+    pi_to_node[idPi] = UNK32;
   }
 
   void fill_pi_to_node()
@@ -387,8 +443,8 @@ void add_node_symR( cut_t * pPrevCut, symmetry_t * pSym )
       piR = nodes[iR].idPi;
       TT tt0  = kitty::cofactor0( tTt, piR );
       TT tt1  = kitty::cofactor1( tTt, piR );
-      TT mk0  = kitty::cofactor0( tTt, piR );
-      TT mk1  = kitty::cofactor1( tTt, piR );
+      TT mk0  = kitty::cofactor0( tMk, piR );
+      TT mk1  = kitty::cofactor1( tMk, piR );
 
       /* symmetry check */
       for( int iL{iR+1}; iL < nNodes; ++iL )
@@ -528,6 +584,80 @@ void add_node_symR( cut_t * pPrevCut, symmetry_t * pSym )
     return res;
   }
 
+
+  decomposition_t decomposition_analysis( std::vector<TT> * pX )
+  {
+    decomposition_t res;
+    int pi;
+
+    uint32_t levelWorst{0};
+    std::vector<uint32_t> vIdsNodesCritical;
+    for( uint32_t iNd{0}; iNd < nNodes-1; ++iNd )
+    {
+      if( nodes[iNd].level > levelWorst )
+      {
+        levelWorst = nodes[iNd].level;
+        vIdsNodesCritical = {iNd};
+      }
+      else if( nodes[iNd].level == levelWorst )
+        vIdsNodesCritical.push_back(iNd);
+    }
+
+    for( auto iNd : vIdsNodesCritical )
+    {
+      pi = nodes[iNd].idPi;
+      TT tt0  = kitty::cofactor0( tTt, pi );
+      TT tt1  = kitty::cofactor1( tTt, pi );
+      TT mk0  = kitty::cofactor0( tMk, pi );
+      TT mk1  = kitty::cofactor1( tMk, pi );
+
+      if( kitty::is_const0( tt0 & mk0 ) ) // f0 = 0
+      {
+        res.pi = pi;
+        res.tMk = mk1;
+        res.tTt = tt1;
+        res.type = 0x8;
+        return res;
+      }
+      else if( kitty::is_const0( tt1 & mk1 ) ) // f1 = 0
+      {
+        res.pi = pi;
+        res.tMk = mk0;
+        res.tTt = tt0;
+        res.type = 0x2;
+        return res;
+      }
+      else if( kitty::equal( tt0 & mk0, mk0 ) ) // f0 = 1
+      {
+        res.pi = pi;
+        res.tMk = mk1;
+        res.tTt = tt1;
+        res.type = 0xB;
+        return res;
+      } 
+      else if( kitty::equal( tt1 & mk1, mk1 ) ) // f1 = 1
+      {
+        res.pi = pi;
+        res.tMk = mk0;
+        res.tTt = tt0;
+        res.type = 0xE;
+        return res;
+      } 
+      else if( kitty::equal( tt1 & mk1 & mk0, ~tt0 & mk1 & mk0 ) ) // f1 = f0'
+      {
+        res.pi = pi;
+        res.tMk = mk0 | mk1;
+        res.tTt = ( mk0 & tt0 ) | ( mk1 & ~tt1 );
+        res.type = 0x6;
+        return res;
+      }  
+    }  
+    res.type = 0x0;
+    return res;
+  }
+
+
+
   void print()
   {
     for( int j{0}; j < nodes.size(); ++j )
@@ -559,7 +689,7 @@ void add_node_symR( cut_t * pPrevCut, symmetry_t * pSym )
           case gate_t::IA01 : { printf("[%d.%d= or( %d.%2d , %d.%2d' ) @ %s ]", c, x, cL, xL, cR, xR, sLevel.c_str() ); break; }
           case gate_t::IA00 : { printf("[%d.%d= or( %d.%2d , %d.%2d  ) @ %s ]", c, x, cL, xL, cR, xR, sLevel.c_str() ); break; }
           case gate_t::TAUT : { printf("[11 %d.%2d @ %s ]", c, x, sLevel.c_str() ); break; }
-          case gate_t::POS_ : { printf("[ PO %d.%2d @ %s]", c,  x, sLevel.c_str() ); break; }
+          case gate_t::TARG : { printf("[ PO %d.%2d @ %s]", c,  x, sLevel.c_str() ); break; }
           default:  break;
         }
     }
@@ -574,8 +704,9 @@ struct net_t
 public:
   std::vector<cut_t> cuts;
   uint32_t nCuts{0u};
-  std::vector<uint32_t> edgeCuts;
-  uint32_t idOutNd;
+  std::vector<uint32_t> vCutsEdge;
+  uint32_t idCutPo{0};
+  uint32_t idRefPo{0};
   bool error{false};
   std::vector<TT> X;
 
@@ -583,7 +714,8 @@ public:
   net_t( TT const&, std::vector<uint32_t> const& );
   ~net_t();
 
-  void add_cut( cut_t );
+  void add_remapping_cut( uint32_t, cut_t );
+  void add_decomposition_cut( uint32_t, decomposition_t );
   cut_t candidate_cut_from_symmetry( cut_t *, symmetry_t * );
   void print();
 };
@@ -598,8 +730,10 @@ net_t<Ntk>::net_t( TT const& func, std::vector<uint32_t> const& levels )
 
   /* output cut */
   cut_t ocut(nCuts++);
-  uint32_t iOut = ocut.add_node( gate_t::POS_, UNK32, func, mk );
+  uint32_t iOut = ocut.add_node( gate_t::TARG, UNK32, func, mk );
   cuts.push_back( ocut );
+  idCutPo = ocut.id;
+  idRefPo = iOut;
 
   /* input cut */
   cut_t icut(nCuts++);
@@ -611,17 +745,85 @@ net_t<Ntk>::net_t( TT const& func, std::vector<uint32_t> const& levels )
     iNd = icut.add_node( gate_t::PIS_, levels[i], X[i], mk );
     icut.nodes[iNd].idPi = i;
   }
-  icut.set_target( func, mk, ocut.nodes[iOut] );
+  icut.set_target( func, mk, ocut.id, iOut );
   icut.fill_pi_to_node();
 
   cuts.push_back( icut );
-  edgeCuts.push_back( icut.id );
+  vCutsEdge.push_back( icut.id );
 }
 
 template<class Ntk>
 net_t<Ntk>::~net_t()
 {
 }
+
+template<class Ntk>
+void net_t<Ntk>::add_remapping_cut( uint32_t idxCutEdge, cut_t cutRemap )
+{
+  cutRemap.update_cut_id( nCuts++ );
+  cuts.push_back( cutRemap );
+  vCutsEdge.erase( vCutsEdge.begin() + idxCutEdge );
+  vCutsEdge.push_back( cutRemap.id );
+}
+
+template<class Ntk>
+void net_t<Ntk>::add_decomposition_cut( uint32_t idxCutEdge, decomposition_t dec )
+{
+  /* create a cut containing the remainder*/
+  uint32_t idCutEdge = vCutsEdge[idxCutEdge];
+  cut_t * pCutPrev = &cuts[idCutEdge];
+  node_t * pNdDiv = &(pCutPrev->nodes[pCutPrev->pi_to_node[dec.pi]]);
+  node_t * pTrgPrev = &cuts[pCutPrev->tCut].nodes[pCutPrev->tRef];
+
+  cut_t tCut(nCuts++);
+
+  uint32_t iOut;
+  TT sTtDiv = pCutPrev->nodes[pCutPrev->pi_to_node[dec.pi]].sTt;
+  switch (dec.type)
+  {
+  case 0x8: // top and
+    iOut = tCut.add_node( gate_t::TARG, UNK32, pTrgPrev->sTt, pTrgPrev->sMk & ~sTtDiv );
+    pTrgPrev->gate = PA11;
+    pTrgPrev->level = pNdDiv->level + 1;
+    break;
+  case 0xE: // top or
+    iOut = tCut.add_node( gate_t::TARG, UNK32, pTrgPrev->sTt, pTrgPrev->sMk & sTtDiv );
+    pTrgPrev->gate = IA00;
+    pTrgPrev->level = pNdDiv->level + 1;
+    break;
+  case 0xB: // top le
+    iOut = tCut.add_node( gate_t::TARG, UNK32, pTrgPrev->sTt, pTrgPrev->sMk & ~sTtDiv );
+    pTrgPrev->gate = IA10;
+    pTrgPrev->level = pNdDiv->level + 1;
+    break;
+  case 0x2:
+    iOut = tCut.add_node( gate_t::TARG, UNK32, pTrgPrev->sTt, pTrgPrev->sMk & sTtDiv );
+    pTrgPrev->gate = PA01;
+    pTrgPrev->level = pNdDiv->level + 1;
+    break;
+  case 0x6:
+    iOut = tCut.add_node( gate_t::TARG, UNK32, sTtDiv ^ pTrgPrev->sTt , pTrgPrev->sMk );
+    pTrgPrev->gate = EXOR;
+    pTrgPrev->level = pNdDiv->level + delay_xor<Ntk>();
+    break;
+  default:
+    break;
+  }
+  cuts.push_back( tCut );
+
+  cut_t rCut = *pCutPrev;
+  rCut.update_cut_id( nCuts++ );
+  rCut.erase_node_from_pi( dec.pi );
+  rCut.tCut = tCut.id;
+  rCut.tRef = iOut;
+  rCut.tMk = dec.tMk;
+  rCut.tTt = dec.tTt;
+  cuts.push_back( rCut );
+
+  vCutsEdge.erase( vCutsEdge.begin() + idxCutEdge );
+  vCutsEdge.push_back( rCut.id );
+}
+
 
 template<class Ntk>
 cut_t net_t<Ntk>::candidate_cut_from_symmetry( cut_t * pCut, symmetry_t * pSym )
@@ -631,17 +833,24 @@ cut_t net_t<Ntk>::candidate_cut_from_symmetry( cut_t * pCut, symmetry_t * pSym )
   for( uint32_t i{0}; i < pCut->nodes.size(); ++i )
   {
     uint32_t idPi    = pCut->nodes[i].idPi;
-    if( idPi == pSym->piL ) 
-      newCut.add_node_symL<Ntk>( pCut, pSym );
-    else if( idPi == pSym->piR ) 
-      newCut.add_node_symR<Ntk>( pCut, pSym );
-    else
-      newCut.add_node( gate_t::PRJL, pCut->nodes[i].level, pCut->nodes[i].sTt, pCut->nodes[i].sMk, pCut->id, pCut->nodes[i].idPi, pCut->nodes[i].idL, pCut->nodes[i].idR );
-  }
 
+    if( idPi == pSym->piL ) 
+    {
+      newCut.add_node_symL<Ntk>( pCut, pSym );
+    }
+    else if( idPi == pSym->piR ) 
+    {
+      newCut.add_node_symR<Ntk>( pCut, pSym );
+    }
+    else
+    {
+      newCut.add_node( gate_t::PRJL, pCut->nodes[i].level, pCut->nodes[i].sTt, pCut->nodes[i].sMk, pCut->id, pCut->nodes[i].idPi, pCut->nodes[i].idL, pCut->nodes[i].idR );
+    }
+  }
   newCut.tTt = pSym->tTt;
   newCut.tMk = pSym->tMk;
-  newCut.tNd = pCut->tNd;
+  newCut.tCut = pCut->tCut;
+  newCut.tRef = pCut->tRef;
 
   return newCut;
 }
@@ -654,9 +863,12 @@ void net_t<Ntk>::print()
     printf(" CUT %d\n", i );
     cuts[i].print();
   }
-  printf("active cuts:\n");
-  for( auto c : edgeCuts )
-    printf( "%d->[%d %d] ", c, cuts[c].tNd.get_linp_cut_id(), cuts[c].tNd.get_linp_ref_id() );
+  if( vCutsEdge.size() > 0 )
+  {
+    printf("active cuts:\n");
+    for( auto c : vCutsEdge )
+      printf( "%d->[%d %d] ", c, cuts[c].tCut, cuts[c].tRef );
+  }
   printf("\n");
 }
 
@@ -674,6 +886,8 @@ public:
     sym_synthesis( TT const&, std::vector<uint32_t> const& );
     ~sym_synthesis();
 
+    bool try_functionality_matching();
+    bool try_top_decomposition_on_critical();
     bool try_symmetry_remapping();
     void run();
 };
@@ -692,50 +906,94 @@ sym_synthesis<Ntk>::~sym_synthesis()
 }
 
 template<class Ntk>
+bool sym_synthesis<Ntk>::try_functionality_matching()
+{
+  for( uint32_t idxCutEdge{0}; idxCutEdge<net.vCutsEdge.size(); ++idxCutEdge )
+  {
+    uint32_t idCutEdge = net.vCutsEdge[idxCutEdge];
+    cut_t * pCut = &net.cuts[idCutEdge];
+    node_t * pTrg = &(net.cuts[pCut->tCut].nodes[pCut->tRef]);
+        
+    for( uint32_t iNd{0}; iNd<pCut->nodes.size(); ++iNd )
+    {
+      if( kitty::equal( pCut->nodes[iNd].sTt & pTrg->sMk, pTrg->sTt & pTrg->sMk ) ) // equal matching
+      {
+        pTrg->gate = gate_t::PRJL;
+        pTrg->idL = pCut->nodes[iNd].id;
+        pTrg->level = pCut->nodes[iNd].level;
+        net.vCutsEdge.erase( net.vCutsEdge.begin() + idxCutEdge );
+        return true;
+      }
+      else if ( kitty::equal( pCut->nodes[iNd].sTt & pTrg->sMk, ~pTrg->sTt & pTrg->sMk ) ) // equal matching
+      {
+        pTrg->gate = gate_t::CMPL;
+        pTrg->idL = pCut->nodes[iNd].id;
+        pTrg->level = pCut->nodes[iNd].level;
+        net.vCutsEdge.erase( net.vCutsEdge.begin() + idxCutEdge );
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+template<class Ntk>
 bool sym_synthesis<Ntk>::try_symmetry_remapping()
 {
+  uint32_t idxCutEdge{net.vCutsEdge.size()-1};
+  uint32_t idCutEdge{net.vCutsEdge.back()};
   /* perform symmetry analysis */
-  cut_t * pCut = &net.cuts[net.edgeCuts.back()];
+  cut_t * pCut = &net.cuts[idCutEdge];
   std::vector<symmetry_t> candidates = pCut->symmetry_analysis( &net.X );
+
   if( candidates.size() == 0 )  return false;
 
   /* select the symmetry */
-  print_symmetries( candidates );
+  cut_t cutBest;
+  uint32_t delayBest {0xFFFFFFFF};
+  uint32_t rewardBest {0x00000000};
 
   for( int iCand{0}; iCand<candidates.size(); ++iCand )
   {
     cut_t candidateCut = net.candidate_cut_from_symmetry( pCut, &candidates[iCand] );
-    printf("%d\n", candidateCut.delayCost );
-    //  if( candidates[iCand].reward > bestRwd || ( candidates[iCand].reward == bestRwd && cost < bestCost ) )
-    //  {
-    //    bestSym = candidates[iCand];
-    //    bestRwd = candidates[iCand].rwd;
-    //    bestCost = cost;
-    //    bestLevel = cost;
-    //    iCHOSEN=iCand;
-    //    rep.levels = cost;
-    //  }
+    if( candidates[iCand].reward > rewardBest || ( candidates[iCand].reward == rewardBest && candidateCut.delayCost < delayBest ) )
+    {
+      rewardBest = candidates[iCand].reward;
+      delayBest = candidateCut.delayCost;
+      cutBest = candidateCut;
     }
-//&    printf("->%d\n", iCHOSEN);
- //   if( ( bestSym.idL == idBound ) || ( bestSym.idR == idBound  ) )
- //     idBound += 2;
- //   net.add_cut( &bestSym );
+  }
+  net.add_remapping_cut( idxCutEdge, cutBest );
 
+  return true;
+}
 
+template<class Ntk>
+bool sym_synthesis<Ntk>::try_top_decomposition_on_critical()
+{
+  uint32_t idxCutEdge{net.vCutsEdge.size()-1};
+  uint32_t idCutEdge{net.vCutsEdge.back()};
+  cut_t * pCut = &net.cuts[idCutEdge];
+  decomposition_t dec = pCut->decomposition_analysis( &net.X );
+  if( dec.type == 0x0 )  return false;
+  net.add_decomposition_cut( idxCutEdge, dec );
   return true;
 }
 
 template<class Ntk>
 void sym_synthesis<Ntk>::run()
 {
-  net.print();
-  while( net.edgeCuts.size() > 0 || !net.error )
+  while( net.vCutsEdge.size() > 0 && !net.error )
   {
-    if( try_symmetry_remapping() ) break;//continue;
+    if( try_functionality_matching() ) continue;
+    //if( try_top_decomposition_on_critical() ) continue;
+    if( try_symmetry_remapping() )  continue;
+    net.error = true;
     break;
   }
   if( net.error )
     printf("ERROR: network not found\n");
+  net.print();
 }
 
 #pragma endregion SYNTHESIS_t
