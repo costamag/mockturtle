@@ -56,10 +56,11 @@ int main()
     balancing_stats st4, st6;
 
     ps.progress = true;
+    ps.only_on_critical_path = true;
     ps.cut_enumeration_ps.cut_size = 4u;
     const auto xaig4 = balancing( xaig, { sym_balancing }, ps, &st4 );
 
-    ps.cut_enumeration_ps.cut_size = 6u;
+    ps.cut_enumeration_ps.cut_size = 4u;
     const auto xaig6 = balancing( xaig, { sym_balancing }, ps, &st6 );
 
     depth_view dxaig{ xaig };

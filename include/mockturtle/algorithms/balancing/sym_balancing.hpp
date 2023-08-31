@@ -24,10 +24,12 @@
  */
 
 /*!
-  \file sym_balancing.hpp
-  \brief Symmetry-based balancing engine for `balancing` algorithm
+  \file esop_balancing.hpp
+  \brief ESOP-based balancing engine for `balancing` algorithm
 
-  \author Andrea Costamagna
+  \author Alessandro Tempia Calvino
+  \author Heinz Riener
+  \author Mathias Soeken
 */
 
 #pragma once
@@ -51,10 +53,13 @@
 #include "../../utils/stopwatch.hpp"
 #include "../balancing.hpp"
 #include "../exorcism.hpp"
+#include "../../algorithms/techaware/sym_synthesis.hpp"
 #include "utils.hpp"
 
 namespace mockturtle
 {
+
+using namespace techaware;
 
 template<class Ntk>
 struct sym_rebalancing
@@ -62,40 +67,26 @@ struct sym_rebalancing
   void operator()( Ntk& dest, kitty::dynamic_truth_table const& function, std::vector<arrival_time_pair<Ntk>> const& inputs, uint32_t best_level, uint32_t best_cost, rebalancing_function_callback_t<Ntk> const& callback ) const
   {
     bool inverted = false;
-    auto [and_terms, max_level, num_and_gates] = create_function( dest, function, inputs, inverted );
-
-    /* Try with MUX decomposition */
-    if ( mux_optimization )
-    {
-      const auto index = std::distance( inputs.begin(), std::max_element( inputs.begin(), inputs.end(), []( auto const& a1, auto const& a2 ) { return a1.level < a2.level; } ) );
-
-      bool inverted0 = false, inverted1 = false;
-      auto [and_terms0, max_level0, num_and_gates0] = create_function( dest, kitty::cofactor0( function, static_cast<uint8_t>( index ) ), inputs, inverted0 );
-      auto [and_terms1, max_level1, num_and_gates1] = create_function( dest, kitty::cofactor1( function, static_cast<uint8_t>( index ) ), inputs, inverted1 );
-
-      const auto max_level_mux = std::max( max_level0, max_level1 ) + 1u;
-
-      if ( max_level_mux < max_level && max_level_mux < best_level )
-      {
-        callback( { dest.create_ite( inputs[index].f,
-                                     balanced_xor_tree( dest, and_terms1 ).f ^ inverted1,
-                                     balanced_xor_tree( dest, and_terms0 ).f ^ inverted0 ),
-                                     max_level_mux },
-                                     num_and_gates0 + num_and_gates1 + 1u );
-        return;
-      }
-    }
-
+    auto [and_terms, max_level, num_and_gates] = create_esop_function( dest, function, inputs, inverted );
     arrival_time_pair<Ntk> cand = balanced_xor_tree( dest, and_terms );
-    if ( cand.level < best_level || ( cand.level == best_level && num_and_gates < best_cost ) )
+
+    auto [csym, num_sym_gates, symError] = create_symm_function( dest, function, inputs );
+
+    //printf("d(SYM)=%d a(SYM)=%d, d(ESOP)=%d a(ESOP)=%d\n", csym.level, num_sym_gates, cand.level, num_and_gates );
+
+    //if ( symError && ( cand.level < best_level || ( cand.level == best_level && num_and_gates < best_cost ) ) )
+    //{
+    //  cand.f = cand.f ^ inverted;
+    //  callback( cand, num_and_gates );
+    //}
+    if ( !symError && (csym.level < best_level || ( csym.level == best_level && num_sym_gates < best_cost ) ))
     {
-      cand.f = cand.f ^ inverted;
-      callback( cand, num_and_gates );
+      callback( csym, num_sym_gates );
     }
   }
 
 private:
-  std::tuple<arrival_time_queue<Ntk>, uint32_t, uint32_t> create_function( Ntk& dest, kitty::dynamic_truth_table const& func, std::vector<arrival_time_pair<Ntk>> const& arrival_times, bool& inverted ) const
+  std::tuple<arrival_time_queue<Ntk>, uint32_t, uint32_t> create_esop_function( Ntk& dest, kitty::dynamic_truth_table const& func, std::vector<arrival_time_pair<Ntk>> const& arrival_times, bool& inverted ) const
   {
     if ( spp_optimization )
     {
@@ -105,6 +96,26 @@ private:
     {
       return create_function_from_esop( dest, func, arrival_times, inverted );
     }
+  }
+
+  std::tuple<arrival_time_pair<Ntk>, uint32_t, bool> create_symm_function( Ntk& dest, kitty::dynamic_truth_table const& func, std::vector<arrival_time_pair<Ntk>> const& arrival_times ) const
+  {
+
+    std::vector<uint32_t> T;
+    std::vector<signal<Ntk>> S;
+    for( auto time : arrival_times )
+    {
+      T.push_back( time.level );
+      S.push_back( time.f );
+    }
+
+    sym_synthesis<Ntk> synt( func, T );
+    
+    signal<Ntk> sigOut = synt.rewrite( &dest, S );
+    uint32_t out_level = synt.get_output_level();
+    arrival_time_pair<Ntk> csym {sigOut, out_level};
+
+    return { csym, synt.get_num_nodes(), synt.net.error };
   }
 
   std::tuple<arrival_time_queue<Ntk>, uint32_t, uint32_t> create_function_from_esop( Ntk& dest, kitty::dynamic_truth_table const& func, std::vector<arrival_time_pair<Ntk>> const& arrival_times, bool& inverted ) const

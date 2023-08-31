@@ -57,6 +57,7 @@ int main()
 
     ps.progress = true;
     ps.cut_enumeration_ps.cut_size = 4u;
+    ps.only_on_critical_path = true;
     const auto xaig4 = balancing( xaig, { esop_balancing }, ps, &st4 );
 
     ps.cut_enumeration_ps.cut_size = 6u;

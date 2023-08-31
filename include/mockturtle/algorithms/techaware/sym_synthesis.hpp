@@ -67,27 +67,33 @@ uint32_t delay_xor()
   return std::is_same<Ntk, xag_network>::value ? 1 : 2;
 }
 
-/*! \brief Gate type in the techaware namespace. Convention Xl=1100, Xr=1010 */
-enum gate_t : uint8_t
+template<class Ntk>
+uint32_t size_xor()
 {
-  PIS_ = 0xF0,
-  CNTR = 0x0, // 0000
-  PA00 = 0x1, // 0001
-  PA01 = 0x2, // 0010
-  CMPL = 0x3, // 0011
-  PA10 = 0x4, // 0100
-  CMPR = 0X5, // 0101
-  EXOR = 0X6, // 0110
-  IA11 = 0X7, // 0111
-  PA11 = 0X8, // 1000
-  XNOR = 0X9, // 1001
-  PRJR = 0XA, // 1010
-  IA10 = 0XB, // 1011
-  PRJL = 0XC, // 1100
-  IA01 = 0XD, // 1101
-  IA00 = 0XE, // 1110
-  TAUT = 0XF, // 1111
-  TARG = 0xFF
+  return std::is_same<Ntk, xag_network>::value ? 1 : 3;
+}
+
+/*! \brief Gate type in the techaware namespace. Convention Xl=1100, Xr=1010 */
+enum gate_t : uint32_t
+{
+  PIS_ = 0x000000F0,
+  CNTR = 0x00000000, // 0000
+  PA00 = 0x00000001, // 0001
+  PA01 = 0x00000002, // 0010
+  CMPL = 0x00000003, // 0011
+  PA10 = 0x00000004, // 0100
+  CMPR = 0X00000005, // 0101
+  EXOR = 0X00000006, // 0110
+  IA11 = 0X00000007, // 0111
+  PA11 = 0X00000008, // 1000
+  XNOR = 0X00000009, // 1001
+  PRJR = 0X0000000A, // 1010
+  IA10 = 0X0000000B, // 1011
+  PRJL = 0X0000000C, // 1100
+  IA01 = 0X0000000D, // 1101
+  IA00 = 0X0000000E, // 1110
+  TAUT = 0X0000000F, // 1111
+  TARG = 0x000000FF
 };
 
 /*! \brief Gate type in the techaware namespace. Convention Xl=1100, Xr=1010 */
@@ -99,6 +105,108 @@ enum dec_t : uint8_t
   LT_ = 0x2,
   XOR = 0x6,
   NUL = 0x0
+};
+
+struct chain_node_t
+{
+  uint32_t info{0};
+
+  chain_node_t(){};
+  chain_node_t( gate_t gate, uint32_t idL, uint32_t idR )
+  { 
+    uint32_t G = 0xFF000000 & (gate << 24u);
+    uint32_t L = 0x00FFF000 & (idL << 12u );
+    uint32_t R = 0x00000FFF & idR;
+    info = G | L | R;
+  }
+  
+  uint32_t get_gate_t(){ return (info >> 24u) & 0x000000FF; }
+  uint32_t get_childL(){ return (info >> 12u) & 0x00000FFF; }
+  uint32_t get_childR(){ return info & 0x00000FFF; }
+};
+
+struct boolean_chain_t
+{
+  std::vector<chain_node_t> chain;
+  uint32_t nVars{0};
+  uint32_t nNodes{0};
+
+  boolean_chain_t(){}
+  ~boolean_chain_t(){}
+
+  uint32_t add_node( gate_t gate, uint32_t iL, uint32_t iR )
+  {
+    if(gate==gate_t::PIS_) nVars++;
+    chain.emplace_back( gate, iL, iR );
+    return nNodes++;
+  }
+
+  template<class Ntk>
+  signal<Ntk> add_to_network( Ntk * pNtk, std::vector<signal<Ntk>> * pVecSigs )
+  {
+    std::vector<signal<Ntk>> node_to_sigs = *pVecSigs;
+    for( uint32_t iNd{nVars}; iNd<nNodes; ++iNd )
+    {
+      gate_t gate = (gate_t)chain[iNd].get_gate_t();
+      uint32_t idL = chain[iNd].get_childL();
+      uint32_t idR = chain[iNd].get_childR();
+      signal<Ntk> sL = node_to_sigs[idL];
+      signal<Ntk> sR = node_to_sigs[idR];
+
+      switch ( gate )
+      {
+        case gate_t::CMPL : node_to_sigs.push_back( pNtk->create_not( sL ) );  break;
+        case gate_t::CMPR : node_to_sigs.push_back( pNtk->create_not( sR ) );  break;
+        case gate_t::PRJL : node_to_sigs.push_back( sL );  break;
+        case gate_t::PRJR : node_to_sigs.push_back( sR );  break;
+        case gate_t::IA00 : node_to_sigs.push_back( pNtk->create_or(  sL,  sR ) );  break;
+        case gate_t::IA01 : node_to_sigs.push_back( pNtk->create_or(  sL, !sR ) );  break;
+        case gate_t::IA10 : node_to_sigs.push_back( pNtk->create_or( !sL,  sR ) );  break;
+        case gate_t::IA11 : node_to_sigs.push_back( pNtk->create_or( !sL, !sR ) );  break;
+        case gate_t::PA00 : node_to_sigs.push_back( pNtk->create_and( !sL, !sR ) );  break;
+        case gate_t::PA01 : node_to_sigs.push_back( pNtk->create_and( !sL,  sR ) );  break;
+        case gate_t::PA10 : node_to_sigs.push_back( pNtk->create_and(  sL, !sR ) );  break;
+        case gate_t::PA11 : node_to_sigs.push_back( pNtk->create_and(  sL,  sR ) );  break;
+        case gate_t::EXOR : node_to_sigs.push_back( pNtk->create_xor( sL,  sR ) );  break;
+        case gate_t::XNOR : node_to_sigs.push_back( pNtk->create_xor( !sL,  sR ) );  break;
+      default:
+        break;
+      }
+    }
+    return node_to_sigs.back();
+  }
+
+  void print_chain()
+  {
+    for( uint32_t i{0}; i<chain.size(); ++i )
+    {
+      chain_node_t elem = chain[i];
+      gate_t gate = (gate_t)elem.get_gate_t();
+      switch (gate)
+      {
+        case gate_t::PIS_: printf("[PI %d]", elem.get_childL());  break;
+        case gate_t::CMPL: printf("[%d = not(%d)]", i, elem.get_childL());  break;
+        case gate_t::CMPR: printf("[%d = not(%d)]", i, elem.get_childR());  break;
+        case gate_t::CNTR: printf("[%d = 0]", i);  break;
+        case gate_t::EXOR: printf("[%d = exor(%d,%d)]", i, elem.get_childL(), elem.get_childR());  break;
+        case gate_t::IA00: printf("[%d = nand(%d',%d')]", i, elem.get_childL(), elem.get_childR());  break;
+        case gate_t::IA01: printf("[%d = nand(%d',%d)]", i, elem.get_childL(), elem.get_childR());  break;
+        case gate_t::IA10: printf("[%d = nand(%d,%d')]", i, elem.get_childL(), elem.get_childR());  break;
+        case gate_t::IA11: printf("[%d = nand(%d,%d)]", i, elem.get_childL(), elem.get_childR());  break;
+        case gate_t::PA00: printf("[%d = and(%d',%d')]", i, elem.get_childL(), elem.get_childR());  break;
+        case gate_t::PA01: printf("[%d = and(%d',%d)]", i, elem.get_childL(), elem.get_childR());  break;
+        case gate_t::PA10: printf("[%d = and(%d,%d')]", i, elem.get_childL(), elem.get_childR());  break;
+        case gate_t::PA11: printf("[%d = and(%d,%d)]", i, elem.get_childL(), elem.get_childR());  break;
+        case gate_t::PRJL: printf("[%d = %d]", i, elem.get_childL());  break;
+        case gate_t::PRJR: printf("[%d = %d]", i, elem.get_childR());  break;
+        case gate_t::TARG: printf("[TARG %d]", i);  break;
+        case gate_t::XNOR: printf("[%d = xnor(%d,%d)]", i, elem.get_childL(), elem.get_childR());  break;
+        case gate_t::TAUT: printf("[%d = 1]", i);  break;
+        default: break;
+      }
+    }
+    printf("\n");
+  }
 };
 
 
@@ -264,7 +372,9 @@ struct node_t
   /*! \brief [1 bit NOT remapped 32 bits remapped pi] */
   uint32_t idPi{0x80000000};
   /*! \brief delay */
-  int level;
+  uint32_t level;
+  /*! \brief chain id */
+  uint32_t idChain{UNK32};
 
   node_t(){}
   ~node_t(){}
@@ -345,14 +455,14 @@ public:
       case 0xCC: add_node( PA10, std::max(xL.level, xR.level)+1,  (  xL.sTt & ~xR.sTt ), xL.sMk | xR.sMk, id, pSym->piL, xL.id, xR.id ); break;  // and( l , r')
       case 0x66: add_node( IA00, std::max(xL.level, xR.level)+1, ~( ~xL.sTt & ~xR.sTt ), xL.sMk | xR.sMk, id, pSym->piL, xL.id, xR.id ); break;  //or( l , r )
       case 0x99: add_node( PA11, std::max(xL.level, xR.level)+1,  (  xL.sTt &  xR.sTt ), xL.sMk | xR.sMk, id, pSym->piL, xL.id, xR.id ); break;  //and( l , r )
-      case 0x44: add_node( PRJL, xL.level, xL.sTt, xL.sMk | xR.sMk, id, pSym->piL, xL.id, xL.id ); break;  // l            
-      case 0x11: add_node( PRJL, xL.level, xL.sTt, xL.sMk | xR.sMk, id, pSym->piL, xL.id, xL.id ); break;  // l            
+      case 0x44: add_node( PRJL, xL.level                      , xL.sTt                , xL.sMk | xR.sMk, id, pSym->piL, xL.id, xL.id ); break;  // l            
+      case 0x11: add_node( PRJL, xL.level                      , xL.sTt                , xL.sMk | xR.sMk, id, pSym->piL, xL.id, xL.id ); break;  // l            
       case 0x77: add_node( IA00, std::max(xL.level, xR.level)+1, ~( ~xL.sTt & ~xR.sTt ), xL.sMk | xR.sMk, id, pSym->piL, xL.id, xR.id ); break;  //   or( l , r )
       case 0xDD: add_node( PA10, std::max(xL.level, xR.level)+1,  (  xL.sTt & ~xR.sTt ), xL.sMk | xR.sMk, id, pSym->piL, xL.id, xR.id ); break;  //  and( l , r')
       case 0x88: add_node( PA11, std::max(xL.level, xR.level)+1,  (  xL.sTt &  xR.sTt ), xL.sMk | xR.sMk, id, pSym->piL, xL.id, xR.id ); break;  //  and( l , r )
       case 0x22: add_node( IA01, std::max(xL.level, xR.level)+1, ~( ~xL.sTt &  xR.sTt ), xL.sMk | xR.sMk, id, pSym->piL, xL.id, xR.id ); break;  // nand( l', r )
-      case 0xBB: add_node( PRJL, xL.level, xL.sTt, xL.sMk | xR.sMk, id, pSym->piL, xL.id, xL.id ); break;  // l            
-      case 0xEE: add_node( PRJL, xL.level, xL.sTt, xL.sMk | xR.sMk, id, pSym->piL, xL.id, xL.id ); break;  // l            
+      case 0xBB: add_node( PRJL, xL.level                      , xL.sTt                , xL.sMk | xR.sMk, id, pSym->piL, xL.id, xL.id ); break;  // l            
+      case 0xEE: add_node( PRJL, xL.level                      , xL.sTt                , xL.sMk | xR.sMk, id, pSym->piL, xL.id, xL.id ); break;  // l            
       case 0x36: break;  // ]            
       case 0x6C: add_node( EXOR, std::max(xL.level, xR.level)+delay_xor<Ntk>(), xL.sTt ^ xR.sTt, xL.sMk | xR.sMk, id, pSym->piL, xL.id, xR.id ); break;  //  xor( l , r )
       case 0x9C: break;  // ]            
@@ -584,7 +694,6 @@ public:
     return res;
   }
 
-
   decomposition_t decomposition_analysis( std::vector<TT> * pX )
   {
     decomposition_t res;
@@ -683,9 +792,9 @@ public:
           case gate_t::IA11 : { printf("[%d.%d= or( %d.%2d', %d.%2d' ) @ %s ]", c, x, cL, xL, cR, xR, sLevel.c_str() ); break; }
           case gate_t::PA11 : { printf("[%d.%d=and( %d.%2d , %d.%2d  ) @ %s ]", c, x, cL, xL, cR, xR, sLevel.c_str() ); break; }
           case gate_t::XNOR : { printf("[%d.%d=xor( %d.%2d', %d.%2d' ) @ %s ]", c, x, cL, xL, cR, xR, sLevel.c_str() ); break; }
-          case gate_t::PRJR : { printf("[%d.%d=buf(    %d.%2d     ) @ %s ]", c, x, cR, xR, sLevel.c_str() ); break; }
+          case gate_t::PRJR : { printf("[%d.%d=bufR(    %d.%2d     ) @ %s ]", c, x, cR, xR, sLevel.c_str() ); break; }
           case gate_t::IA10 : { printf("[%d.%d= or( %d.%2d', %d.%2d  ) @ %s ]", c, x, cL, xL, cR, xR, sLevel.c_str() ); break; }
-          case gate_t::PRJL : { printf("[%d.%d=buf(    %d.%2d     ) @ %s ]", c, x, cL, xL, sLevel.c_str() ); break; }
+          case gate_t::PRJL : { printf("[%d.%d=bufL(    %d.%2d     ) @ %s ]", c, x, cL, xL, sLevel.c_str() ); break; }
           case gate_t::IA01 : { printf("[%d.%d= or( %d.%2d , %d.%2d' ) @ %s ]", c, x, cL, xL, cR, xR, sLevel.c_str() ); break; }
           case gate_t::IA00 : { printf("[%d.%d= or( %d.%2d , %d.%2d  ) @ %s ]", c, x, cL, xL, cR, xR, sLevel.c_str() ); break; }
           case gate_t::TAUT : { printf("[11 %d.%2d @ %s ]", c, x, sLevel.c_str() ); break; }
@@ -697,7 +806,6 @@ public:
   }
 };
 
-
 template<class Ntk>
 struct net_t
 {
@@ -705,10 +813,14 @@ public:
   std::vector<cut_t> cuts;
   uint32_t nCuts{0u};
   std::vector<uint32_t> vCutsEdge;
+  uint32_t idCutPi{1};
   uint32_t idCutPo{0};
   uint32_t idRefPo{0};
   bool error{false};
   std::vector<TT> X;
+  boolean_chain_t chain;
+
+  std::vector<uint32_t> chain_to_net;
 
 public:
   net_t( TT const&, std::vector<uint32_t> const& );
@@ -717,6 +829,8 @@ public:
   void add_remapping_cut( uint32_t, cut_t );
   void add_decomposition_cut( uint32_t, decomposition_t );
   cut_t candidate_cut_from_symmetry( cut_t *, symmetry_t * );
+  void create_chain();
+  uint32_t create_chain_recursive( uint32_t, uint32_t );
   void print();
 };
 
@@ -747,6 +861,7 @@ net_t<Ntk>::net_t( TT const& func, std::vector<uint32_t> const& levels )
   }
   icut.set_target( func, mk, ocut.id, iOut );
   icut.fill_pi_to_node();
+  idCutPi = icut.id;
 
   cuts.push_back( icut );
   vCutsEdge.push_back( icut.id );
@@ -832,7 +947,7 @@ cut_t net_t<Ntk>::candidate_cut_from_symmetry( cut_t * pCut, symmetry_t * pSym )
 
   for( uint32_t i{0}; i < pCut->nodes.size(); ++i )
   {
-    uint32_t idPi    = pCut->nodes[i].idPi;
+    uint32_t idPi = pCut->nodes[i].idPi;
 
     if( idPi == pSym->piL ) 
     {
@@ -844,9 +959,10 @@ cut_t net_t<Ntk>::candidate_cut_from_symmetry( cut_t * pCut, symmetry_t * pSym )
     }
     else
     {
-      newCut.add_node( gate_t::PRJL, pCut->nodes[i].level, pCut->nodes[i].sTt, pCut->nodes[i].sMk, pCut->id, pCut->nodes[i].idPi, pCut->nodes[i].idL, pCut->nodes[i].idR );
+      newCut.add_node( gate_t::PRJL, pCut->nodes[i].level, pCut->nodes[i].sTt, pCut->nodes[i].sMk, nCuts, pCut->nodes[i].idPi, pCut->nodes[i].id, pCut->nodes[i].id );
     }
   }
+
   newCut.tTt = pSym->tTt;
   newCut.tMk = pSym->tMk;
   newCut.tCut = pCut->tCut;
@@ -872,8 +988,67 @@ void net_t<Ntk>::print()
   printf("\n");
 }
 
+template<class Ntk>
+uint32_t net_t<Ntk>::create_chain_recursive( uint32_t idCut, uint32_t idRef )
+{
+  node_t * pNd = &cuts[idCut].nodes[idRef];
+
+  if( pNd->gate == gate_t::PIS_ ) { return pNd->idChain; }
+  if( pNd->idChain != UNK32 ) { return pNd->idChain; }
+  else if( pNd->gate == gate_t::CMPL || pNd->gate == gate_t::PRJL )
+  {
+      uint32_t idCutL = pNd->get_linp_cut_id();
+      uint32_t idRefL = pNd->get_linp_ref_id();
+      uint32_t idChainL = create_chain_recursive( idCutL, idRefL );
+      uint32_t idChain = chain.add_node( pNd->gate, idChainL, idChainL );
+      pNd->idChain = idChain;
+      chain_to_net.push_back(pNd->id);
+      return idChain;
+  }
+  if( pNd->gate == gate_t::CMPR || pNd->gate == gate_t::PRJR )
+  {
+      uint32_t idCutR = pNd->get_rinp_cut_id();
+      uint32_t idRefR = pNd->get_rinp_ref_id();
+      uint32_t idChainR = create_chain_recursive( idCutR, idRefR );
+      uint32_t idChain = chain.add_node( pNd->gate, idChainR, idChainR );
+      pNd->idChain = idChain;
+      chain_to_net.push_back(pNd->id);
+      return idChain;
+  }
+  else
+  {
+      uint32_t idCutR = pNd->get_rinp_cut_id();
+      uint32_t idRefR = pNd->get_rinp_ref_id();
+      uint32_t idCutL = pNd->get_linp_cut_id();
+      uint32_t idRefL = pNd->get_linp_ref_id();
+
+      uint32_t idChainR = create_chain_recursive( idCutR, idRefR );
+      uint32_t idChainL = create_chain_recursive( idCutL, idRefL );
+
+      uint32_t idChain = chain.add_node( pNd->gate, idChainL, idChainR );
+      pNd->idChain = idChain;
+      chain_to_net.push_back(pNd->id);
+      return idChain;
+  }
+  return;
+}
+
+template<class Ntk>
+void net_t<Ntk>::create_chain()
+{
+  cut_t * pCutIn = &cuts[idCutPi];
+  uint32_t nVars{pCutIn->nNodes};
+  for( uint32_t i{0}; i<nVars; ++i )
+  {
+    uint32_t idChain = chain.add_node( PIS_, i, i );
+    pCutIn->nodes[i].idChain = idChain;
+    chain_to_net.push_back(pCutIn->nodes[i].id);
+  }
+  create_chain_recursive( idCutPo, idRefPo );
+}
 
 #pragma endregion SYMMETRIES_t
+
 
 
 template<class Ntk>
@@ -881,6 +1056,7 @@ class sym_synthesis
 {
 public:
     net_t<Ntk> net;
+    uint32_t nNodes{0u};
 
 public:
     sym_synthesis( TT const&, std::vector<uint32_t> const& );
@@ -890,6 +1066,9 @@ public:
     bool try_top_decomposition_on_critical();
     bool try_symmetry_remapping();
     void run();
+    signal<Ntk> rewrite( Ntk *, std::vector<signal<Ntk>> );
+    uint32_t get_output_level();
+    uint32_t get_num_nodes();
 };
 
 #pragma region SYNTHESIS_t
@@ -920,6 +1099,7 @@ bool sym_synthesis<Ntk>::try_functionality_matching()
       {
         pTrg->gate = gate_t::PRJL;
         pTrg->idL = pCut->nodes[iNd].id;
+        pTrg->idR = pCut->nodes[iNd].id;
         pTrg->level = pCut->nodes[iNd].level;
         net.vCutsEdge.erase( net.vCutsEdge.begin() + idxCutEdge );
         return true;
@@ -928,6 +1108,7 @@ bool sym_synthesis<Ntk>::try_functionality_matching()
       {
         pTrg->gate = gate_t::CMPL;
         pTrg->idL = pCut->nodes[iNd].id;
+        pTrg->idR = pCut->nodes[iNd].id;
         pTrg->level = pCut->nodes[iNd].level;
         net.vCutsEdge.erase( net.vCutsEdge.begin() + idxCutEdge );
         return true;
@@ -993,7 +1174,38 @@ void sym_synthesis<Ntk>::run()
   }
   if( net.error )
     printf("ERROR: network not found\n");
-  net.print();
+  //net.print();
+  net.create_chain();
+
+  for( uint32_t i{0}; i<net.chain.nNodes; ++i )
+  {
+    chain_node_t x = net.chain.chain[i];
+    gate_t gate = (gate_t)x.get_gate_t();
+
+    if( gate!=gate_t::EXOR && gate!=gate_t::XNOR && gate!=gate_t::CMPL && gate!=gate_t::CMPR && gate!=gate_t::PRJL && gate!=gate_t::PRJR && gate!=gate_t::PIS_ && gate!=gate_t::TARG && gate!=gate_t::CNTR && gate!=gate_t::TAUT )
+      nNodes++;
+    if( gate==gate_t::EXOR || gate==gate_t::XNOR )
+      nNodes += size_xor<Ntk>();
+  }
+  //net.chain.print_chain();
+}
+
+template<class Ntk>
+signal<Ntk> sym_synthesis<Ntk>::rewrite( Ntk * pNtk, std::vector<signal<Ntk>> vSigsIn )
+{
+  return net.chain.add_to_network( pNtk, &vSigsIn );
+}
+
+template<class Ntk>
+uint32_t sym_synthesis<Ntk>::get_output_level()
+{
+  return net.cuts[net.idCutPo].nodes[net.idRefPo].level;
+}
+
+template<class Ntk>
+uint32_t sym_synthesis<Ntk>::get_num_nodes()
+{
+  return nNodes;
 }
 
 #pragma endregion SYNTHESIS_t
