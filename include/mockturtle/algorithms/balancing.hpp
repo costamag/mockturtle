@@ -56,6 +56,7 @@
 #include "../views/topo_view.hpp"
 #include "balancing/esop_balancing.hpp"
 #include "balancing/sop_balancing.hpp"
+#include "balancing/xxx_balancing.hpp"
 #include "balancing/utils.hpp"
 #include "cleanup.hpp"
 #include "cut_enumeration.hpp"
@@ -427,6 +428,170 @@ Ntk esop_balancing( Ntk const& ntk, lut_map_params const& ps = {}, lut_map_stats
   /* decompose mapping */
   esop_rebalancing<Ntk> balance_fn;
   balance_fn.both_phases = true;
+  const auto dest = call_with_stopwatch( st.time_total, [&]() {
+    return detail::balancing_decomp_impl<Ntk>{ map_ntk, balance_fn }.run();
+  } );
+
+  if ( pst )
+  {
+    *pst = st;
+  }
+  if ( ps.verbose )
+  {
+    st.report();
+  }
+
+  return dest;
+}
+
+/*! \brief SYM balancing of a logic network
+ *
+ * This function implements an LUT-based ESOP balancing algorithm.
+ * It returns a new network of the same type and performs
+ * generic balancing by providing a rebalancing function.
+ *
+ */
+//   template<class Ntk>
+//   Ntk port_esop_balancing( Ntk const& ntk, lut_map_params const& ps = {}, lut_map_stats* pst = nullptr )
+//   {
+//     static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
+//     static_assert( has_create_not_v<Ntk>, "Ntk does not implement the create_not method" );
+//     static_assert( has_create_pi_v<Ntk>, "Ntk does not implement the create_pi method" );
+//     static_assert( has_create_po_v<Ntk>, "Ntk does not implement the create_po method" );
+//     static_assert( has_foreach_pi_v<Ntk>, "Ntk does not implement the foreach_pi method" );
+//     static_assert( has_foreach_po_v<Ntk>, "Ntk does not implement the foreach_po method" );
+//     static_assert( has_get_constant_v<Ntk>, "Ntk does not implement the get_constant method" );
+//     static_assert( has_get_node_v<Ntk>, "Ntk does not implement the get_node method" );
+//     static_assert( has_is_complemented_v<Ntk>, "Ntk does not implement the is_complemented method" );
+//     static_assert( has_is_constant_v<Ntk>, "Ntk does not implement the is_constant method" );
+//     static_assert( has_is_pi_v<Ntk>, "Ntk does not implement the is_pi method" );
+//     static_assert( has_node_to_index_v<Ntk>, "Ntk does not implement the node_to_index method" );
+//     static_assert( has_size_v<Ntk>, "Ntk does not implement the size method" );
+//   
+//     lut_map_params mps;
+//     mps = ps;
+//     mps.sop_balancing = false;
+//     mps.esop_balancing = true;
+//     mps.verbose = false;
+//     lut_map_stats st;
+//   
+//     /* perform SYM-driven mapping */
+//     mapping_view<Ntk, true> map_ntk{ ntk };
+//     lut_map_inplace<decltype( map_ntk ), true>( map_ntk, mps, &st );
+//   
+//     /* decompose mapping */
+//     techaware::port_esop_rebalancing<Ntk> balance_fn;
+//     //balance_fn.both_phases_ = true; NO SUCH MEMBER
+//     const auto dest = call_with_stopwatch( st.time_total, [&]() {
+//       return detail::balancing_decomp_impl<Ntk>{ map_ntk, balance_fn }.run();
+//     } );
+//   
+//     if ( pst )
+//     {
+//       *pst = st;
+//     }
+//     if ( ps.verbose )
+//     {
+//       st.report();
+//     }
+//   
+//     return dest;
+//   }
+//   
+/*! \brief SYM balancing of a logic network
+ *
+ * This function implements an LUT-based ESOP balancing algorithm.
+ * It returns a new network of the same type and performs
+ * generic balancing by providing a rebalancing function.
+ *
+ */
+
+//template<class Ntk>
+//Ntk port_sop_balancing( Ntk const& ntk, lut_map_params const& ps = {}, lut_map_stats* pst = nullptr )
+//{
+//  static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
+//  static_assert( has_create_not_v<Ntk>, "Ntk does not implement the create_not method" );
+//  static_assert( has_create_pi_v<Ntk>, "Ntk does not implement the create_pi method" );
+//  static_assert( has_create_po_v<Ntk>, "Ntk does not implement the create_po method" );
+//  static_assert( has_foreach_pi_v<Ntk>, "Ntk does not implement the foreach_pi method" );
+//  static_assert( has_foreach_po_v<Ntk>, "Ntk does not implement the foreach_po method" );
+//  static_assert( has_get_constant_v<Ntk>, "Ntk does not implement the get_constant method" );
+//  static_assert( has_get_node_v<Ntk>, "Ntk does not implement the get_node method" );
+//  static_assert( has_is_complemented_v<Ntk>, "Ntk does not implement the is_complemented method" );
+//  static_assert( has_is_constant_v<Ntk>, "Ntk does not implement the is_constant method" );
+//  static_assert( has_is_pi_v<Ntk>, "Ntk does not implement the is_pi method" );
+//  static_assert( has_node_to_index_v<Ntk>, "Ntk does not implement the node_to_index method" );
+//  static_assert( has_size_v<Ntk>, "Ntk does not implement the size method" );
+//
+//  lut_map_params mps;
+//  mps = ps;
+//  mps.sop_balancing = false;
+//  mps.esop_balancing = true;
+//  mps.verbose = false;
+//  lut_map_stats st;
+//
+//  /* perform SYM-driven mapping */
+//  mapping_view<Ntk, true> map_ntk{ ntk };
+//  lut_map_inplace<decltype( map_ntk ), true>( map_ntk, mps, &st );
+//
+//  /* decompose mapping */
+//  techaware::port_sop_rebalancing<Ntk> balance_fn;
+//  //balance_fn.both_phases_ = true; NO SUCH MEMBER
+//  const auto dest = call_with_stopwatch( st.time_total, [&]() {
+//    return detail::balancing_decomp_impl<Ntk>{ map_ntk, balance_fn }.run();
+//  } );
+//
+//  if ( pst )
+//  {
+//    *pst = st;
+//  }
+//  if ( ps.verbose )
+//  {
+//    st.report();
+//  }
+//
+//  return dest;
+//}
+
+/*! \brief SYM balancing of a logic network
+ *
+ * This function implements an LUT-based ESOP balancing algorithm.
+ * It returns a new network of the same type and performs
+ * generic balancing by providing a rebalancing function.
+ *
+ */
+template<class Ntk>
+Ntk xxx_balancing( Ntk const& ntk, lut_map_params const& ps = {}, lut_map_stats* pst = nullptr )
+{
+  static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
+  static_assert( has_create_not_v<Ntk>, "Ntk does not implement the create_not method" );
+  static_assert( has_create_pi_v<Ntk>, "Ntk does not implement the create_pi method" );
+  static_assert( has_create_po_v<Ntk>, "Ntk does not implement the create_po method" );
+  static_assert( has_foreach_pi_v<Ntk>, "Ntk does not implement the foreach_pi method" );
+  static_assert( has_foreach_po_v<Ntk>, "Ntk does not implement the foreach_po method" );
+  static_assert( has_get_constant_v<Ntk>, "Ntk does not implement the get_constant method" );
+  static_assert( has_get_node_v<Ntk>, "Ntk does not implement the get_node method" );
+  static_assert( has_is_complemented_v<Ntk>, "Ntk does not implement the is_complemented method" );
+  static_assert( has_is_constant_v<Ntk>, "Ntk does not implement the is_constant method" );
+  static_assert( has_is_pi_v<Ntk>, "Ntk does not implement the is_pi method" );
+  static_assert( has_node_to_index_v<Ntk>, "Ntk does not implement the node_to_index method" );
+  static_assert( has_size_v<Ntk>, "Ntk does not implement the size method" );
+
+  lut_map_params mps;
+  mps = ps;
+  mps.sop_balancing = false;
+  mps.esop_balancing = false;
+  mps.xxx_balancing = true;
+  mps.verbose = false;
+  lut_map_stats st;
+
+  /* perform XXX-driven mapping */
+  mapping_view<Ntk, true> map_ntk{ ntk };
+  lut_map_inplace<decltype( map_ntk ), true>( map_ntk, mps, &st );
+
+  /* decompose mapping */
+  xxx_rebalancing<Ntk> balance_fn;
+  //balance_fn.both_phases_ = true; NO SUCH MEMBER
   const auto dest = call_with_stopwatch( st.time_total, [&]() {
     return detail::balancing_decomp_impl<Ntk>{ map_ntk, balance_fn }.run();
   } );

@@ -307,8 +307,11 @@ struct decomposition_t
 {
   uint8_t type;
   int pi;
-  TT tTt;
-  TT tMk;
+  int id;
+  TT tTt0;
+  TT tMk0;
+  TT tTt1;
+  TT tMk1;
 
   decomposition_t(){}
   ~decomposition_t(){}
@@ -548,8 +551,13 @@ public:
   {
     std::vector<symmetry_t> res;
     int piL, piR;
+    for( int delta{1}; delta<nNodes; ++delta )
+    {    
     for( int iR{0}; iR < nNodes-1; ++iR )
     {
+    int iL = iR+delta;
+    if (iL >= nNodes ) break;
+
       piR = nodes[iR].idPi;
       TT tt0  = kitty::cofactor0( tTt, piR );
       TT tt1  = kitty::cofactor1( tTt, piR );
@@ -557,7 +565,7 @@ public:
       TT mk1  = kitty::cofactor1( tMk, piR );
 
       /* symmetry check */
-      for( int iL{iR+1}; iL < nNodes; ++iL )
+      //for( int iL{iR+1}; iL < nNodes; ++iL )
       {
         piL = nodes[iL].idPi;
         assert( piL > piR );
@@ -691,9 +699,10 @@ public:
         }
       }
     }  
+    }
     return res;
   }
-
+/*
   decomposition_t decomposition_analysis( std::vector<TT> * pX )
   {
     decomposition_t res;
@@ -764,6 +773,49 @@ public:
     res.type = 0x0;
     return res;
   }
+*/
+
+
+  decomposition_t decomposition_analysis( std::vector<TT> * pX )
+  {
+    decomposition_t res;
+    int pi;
+
+    uint32_t levelWorst{0};
+    std::vector<uint32_t> vIdsNodesCritical;
+    for( uint32_t iNd{0}; iNd < nNodes-1; ++iNd )
+    {
+      if( nodes[iNd].level > levelWorst )
+      {
+        levelWorst = nodes[iNd].level;
+        vIdsNodesCritical = {iNd};
+      }
+      else if( nodes[iNd].level == levelWorst )
+        vIdsNodesCritical.push_back(iNd);
+    }
+
+    for( auto iNd : vIdsNodesCritical )
+    {
+      pi = nodes[iNd].idPi;
+      res.id = nodes[iNd].id;
+      res.pi = pi;
+      res.tTt0  = kitty::cofactor0( tTt, pi );
+      res.tTt1  = kitty::cofactor1( tTt, pi );
+      res.tMk0  = kitty::cofactor0( tMk, pi );
+      res.tMk1  = kitty::cofactor1( tMk, pi );
+
+      if( kitty::is_const0( res.tTt0 & res.tMk0 ) ) // f0 = 0
+      {
+        res.type = 0x8;
+        printf("TOP AND DEC\n");
+        return res;
+      }
+    }  
+    res.type = 0x0;
+    return res;
+  }
+
+
 
 
 
@@ -801,6 +853,9 @@ public:
           case gate_t::TARG : { printf("[ PO %d.%2d @ %s]", c,  x, sLevel.c_str() ); break; }
           default:  break;
         }
+    printf("\n");
+    kitty::print_binary( nodes[j].sTt ); printf("\n");
+    kitty::print_binary( nodes[j].sMk ); printf("\n");
     }
     printf("\n");
   }
@@ -881,9 +936,68 @@ void net_t<Ntk>::add_remapping_cut( uint32_t idxCutEdge, cut_t cutRemap )
   vCutsEdge.push_back( cutRemap.id );
 }
 
+//template<class Ntk>
+//void net_t<Ntk>::add_decomposition_cut( uint32_t idxCutEdge, decomposition_t dec )
+//{
+//  /* create a cut containing the remainder*/
+//  uint32_t idCutEdge = vCutsEdge[idxCutEdge];
+//  cut_t * pCutPrev = &cuts[idCutEdge];
+//  node_t * pNdDiv = &(pCutPrev->nodes[pCutPrev->pi_to_node[dec.pi]]);
+//  node_t * pTrgPrev = &cuts[pCutPrev->tCut].nodes[pCutPrev->tRef];
+//
+//  cut_t tCut(nCuts++);
+//
+//  uint32_t iOut;
+//  TT sTtDiv = pCutPrev->nodes[pCutPrev->pi_to_node[dec.pi]].sTt;
+//  switch (dec.type)
+//  {
+//  case 0x8: // top and
+//    iOut = tCut.add_node( gate_t::TARG, UNK32, pTrgPrev->sTt, pTrgPrev->sMk & ~sTtDiv );
+//    pTrgPrev->gate = PA11;
+//    pTrgPrev->level = pNdDiv->level + 1;
+//    break;
+//  case 0xE: // top or
+//    iOut = tCut.add_node( gate_t::TARG, UNK32, pTrgPrev->sTt, pTrgPrev->sMk & sTtDiv );
+//    pTrgPrev->gate = IA00;
+//    pTrgPrev->level = pNdDiv->level + 1;
+//    break;
+//  case 0xB: // top le
+//    iOut = tCut.add_node( gate_t::TARG, UNK32, pTrgPrev->sTt, pTrgPrev->sMk & ~sTtDiv );
+//    pTrgPrev->gate = IA10;
+//    pTrgPrev->level = pNdDiv->level + 1;
+//    break;
+//  case 0x2:
+//    iOut = tCut.add_node( gate_t::TARG, UNK32, pTrgPrev->sTt, pTrgPrev->sMk & sTtDiv );
+//    pTrgPrev->gate = PA01;
+//    pTrgPrev->level = pNdDiv->level + 1;
+//    break;
+//  case 0x6:
+//    iOut = tCut.add_node( gate_t::TARG, UNK32, sTtDiv ^ pTrgPrev->sTt , pTrgPrev->sMk );
+//    pTrgPrev->gate = EXOR;
+//    pTrgPrev->level = pNdDiv->level + delay_xor<Ntk>();
+//    break;
+//  default:
+//    break;
+//  }
+//  cuts.push_back( tCut );
+//
+//  cut_t rCut = *pCutPrev;
+//  rCut.update_cut_id( nCuts++ );
+//  rCut.erase_node_from_pi( dec.pi );
+//  rCut.tCut = tCut.id;
+//  rCut.tRef = iOut;
+//  rCut.tMk = dec.tMk0; // error
+//  rCut.tTt = dec.tTt0; // error
+//  cuts.push_back( rCut );
+//
+//  vCutsEdge.erase( vCutsEdge.begin() + idxCutEdge );
+//  vCutsEdge.push_back( rCut.id );
+//}
+
 template<class Ntk>
 void net_t<Ntk>::add_decomposition_cut( uint32_t idxCutEdge, decomposition_t dec )
 {
+    dprintf("D0\n");
   /* create a cut containing the remainder*/
   uint32_t idCutEdge = vCutsEdge[idxCutEdge];
   cut_t * pCutPrev = &cuts[idCutEdge];
@@ -891,52 +1005,47 @@ void net_t<Ntk>::add_decomposition_cut( uint32_t idxCutEdge, decomposition_t dec
   node_t * pTrgPrev = &cuts[pCutPrev->tCut].nodes[pCutPrev->tRef];
 
   cut_t tCut(nCuts++);
+  cut_t rCut(nCuts++);
 
   uint32_t iOut;
   TT sTtDiv = pCutPrev->nodes[pCutPrev->pi_to_node[dec.pi]].sTt;
+
   switch (dec.type)
   {
   case 0x8: // top and
-    iOut = tCut.add_node( gate_t::TARG, UNK32, pTrgPrev->sTt, pTrgPrev->sMk & ~sTtDiv );
+  {
+    iOut = tCut.add_node( gate_t::TARG, UNK32, pTrgPrev->sTt, pTrgPrev->sMk & sTtDiv );
+    cuts.push_back(tCut);
+
+    for( uint32_t i{0}; i<pCutPrev->nodes.size(); ++i )
+      if( pCutPrev->nodes[i].id != dec.id )
+        rCut.add_node( gate_t::PRJL, pCutPrev->nodes[i].level, pCutPrev->nodes[i].sTt, pCutPrev->nodes[i].sMk, nCuts-1, pCutPrev->nodes[i].idPi, pCutPrev->nodes[i].id, pCutPrev->nodes[i].id );
+    pTrgPrev->idL = dec.id;
+    pTrgPrev->idR = cuts[tCut.id].nodes[iOut].id;
     pTrgPrev->gate = PA11;
-    pTrgPrev->level = pNdDiv->level + 1;
+    pTrgPrev->level;
+    //cuts.push_back( tCut );
+    //rCut.update_cut_id( nCuts++ );
+    //rCut.erase_node_from_pi( dec.pi );
+    rCut.tCut = tCut.id;
+    rCut.tRef = iOut;
+    rCut.tMk = dec.tMk1; // error
+    rCut.tTt = dec.tTt1; // error
+    //kitty::print_binary( rCut.tMk ); printf("\n");
+    //kitty::print_binary( rCut.tTt ); printf("\n");
+    //kitty::print_binary( cuts[tCut.id].nodes[iOut].sMk ); printf("\n");
+    //kitty::print_binary( cuts[tCut.id].nodes[iOut].sTt ); printf("\n");
+    cuts.push_back(rCut);
+
+    //cuts.push_back( rCut );
+    vCutsEdge.erase( vCutsEdge.begin() + idxCutEdge );
+    vCutsEdge.push_back( rCut.id );
     break;
-  case 0xE: // top or
-    iOut = tCut.add_node( gate_t::TARG, UNK32, pTrgPrev->sTt, pTrgPrev->sMk & sTtDiv );
-    pTrgPrev->gate = IA00;
-    pTrgPrev->level = pNdDiv->level + 1;
-    break;
-  case 0xB: // top le
-    iOut = tCut.add_node( gate_t::TARG, UNK32, pTrgPrev->sTt, pTrgPrev->sMk & ~sTtDiv );
-    pTrgPrev->gate = IA10;
-    pTrgPrev->level = pNdDiv->level + 1;
-    break;
-  case 0x2:
-    iOut = tCut.add_node( gate_t::TARG, UNK32, pTrgPrev->sTt, pTrgPrev->sMk & sTtDiv );
-    pTrgPrev->gate = PA01;
-    pTrgPrev->level = pNdDiv->level + 1;
-    break;
-  case 0x6:
-    iOut = tCut.add_node( gate_t::TARG, UNK32, sTtDiv ^ pTrgPrev->sTt , pTrgPrev->sMk );
-    pTrgPrev->gate = EXOR;
-    pTrgPrev->level = pNdDiv->level + delay_xor<Ntk>();
-    break;
+  }
   default:
     break;
   }
-  cuts.push_back( tCut );
 
-  cut_t rCut = *pCutPrev;
-  rCut.update_cut_id( nCuts++ );
-  rCut.erase_node_from_pi( dec.pi );
-  rCut.tCut = tCut.id;
-  rCut.tRef = iOut;
-  rCut.tMk = dec.tMk;
-  rCut.tTt = dec.tTt;
-  cuts.push_back( rCut );
-
-  vCutsEdge.erase( vCutsEdge.begin() + idxCutEdge );
-  vCutsEdge.push_back( rCut.id );
 }
 
 
@@ -1166,15 +1275,21 @@ void sym_synthesis<Ntk>::run()
 {
   while( net.vCutsEdge.size() > 0 && !net.error )
   {
+
+    net.print();
     if( try_functionality_matching() ) continue;
-    //if( try_top_decomposition_on_critical() ) continue;
+    if( try_top_decomposition_on_critical() ) continue;
     if( try_symmetry_remapping() )  continue;
     net.error = true;
     break;
   }
   if( net.error )
-    printf("ERROR: network not found\n");
-  //net.print();
+  {
+    printf(" [e] network not found\n");
+    assert(0);
+    return;
+  }
+  net.print();
   net.create_chain();
 
   for( uint32_t i{0}; i<net.chain.nNodes; ++i )

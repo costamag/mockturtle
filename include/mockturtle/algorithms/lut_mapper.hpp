@@ -126,6 +126,9 @@ struct lut_map_params
   /*! \brief Depth optimization by balancing ESOPs */
   bool esop_balancing{ false };
 
+  /*! \brief Depth optimization by balancing XXXs */
+  bool xxx_balancing{ false };
+
   /*! \brief Maximum number variables for cost function caching */
   uint32_t cost_cache_vars{ 3u };
 
