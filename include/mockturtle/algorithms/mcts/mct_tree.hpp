@@ -33,6 +33,7 @@
 
 #include "ml_rng.hpp"
 #include "mct_utils.hpp"
+#include <mockturtle/io/write_dot.hpp>
 
 #include <stdio.h>
 #include <stack>
@@ -199,7 +200,6 @@ int mct_tree_t<NODE, METHOD>::solve()
 template<class NODE, template<class> class METHOD>
 int mct_tree_t<NODE, METHOD>::solve( mct_stats * pStats )
 {
-
     std::clock_t start;
     double duration;
     start = std::clock();

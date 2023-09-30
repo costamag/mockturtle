@@ -81,7 +81,8 @@ enum supp_selection_t
     SUP_ENUM = 2,
     SUP_GENE = 3,
     SUP_DECT = 4,
-    SUP_NORM = 5
+    SUP_NORM = 5,
+    SUP_BDD = 6
 };
 
 enum node_selection_t
@@ -357,6 +358,27 @@ std::vector<double> compute_costs( node_ps ps, std::vector<divisor_t> * pDivs, s
                 costs[i] = (costs[i]-min_cost)/(max_cost-min_cost);
 
             break;
+        }  
+        case supp_selection_t::SUP_BDD:
+        {
+            double mean;
+            double sdev;
+            double nDivs = (double)idDivs.size();
+            double min_cost = std::numeric_limits<double>::max();
+            double max_cost = std::numeric_limits<double>::min();
+            for( int i{0}; i < idDivs.size(); ++i )
+            {
+                DTT Gi = (*pDivs)[idDivs[i]].graph;
+                costs.push_back(0);
+                for( int j{0}; j<pTrgs->size(); ++j )
+                    costs[i] += (double)kitty::count_ones( (*pTrgs)[j] & ~Gi )/(double)kitty::count_ones((*pTrgs)[j] );
+                min_cost = min_cost < costs[i] ? min_cost : costs[i];
+                max_cost = max_cost > costs[i] ? max_cost : costs[i];
+            }
+            for( int i{0}; i<nDivs; ++i )
+                costs[i] = (costs[i]-min_cost)/(max_cost-min_cost);
+
+            break;
         }    
         default:
         {
@@ -405,6 +427,20 @@ std::vector<DTT> cover_the_targets( std::vector<DTT> * pGfs, DTT Gx )
     for( int i{0}; i<pGfs->size(); ++i )
         res[i]=res[i] & ~Gx;
     return res;
+}
+
+void cover_the_targets_bdd( std::vector<DTT> * pGfs, std::vector<DTT> * pMKs, DTT Gx )
+{
+    std::vector<DTT> resF = *pGfs;
+    std::vector<DTT> resM = *pMKs;
+    int nTrg = pGfs->size();
+    for( int i{0}; i<nTrg; ++i )
+    {
+        pGfs->push_back((*pGfs)[i]);
+        pMKs->push_back((*pMKs)[i]);
+        (*pMKs)[i] &= Gx;
+        (*pMKs)[pMKs->size()-1] &= ~Gx;
+    }
 }
 
 

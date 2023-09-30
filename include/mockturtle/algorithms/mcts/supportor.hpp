@@ -47,6 +47,58 @@ namespace mockturtle
 namespace mcts
 {
 
+
+std::vector<double> bdd_compute_costs( std::vector<divisor_t> * pDivs, std::vector<DTT> * pFns, std::vector<DTT> * pMks, std::vector<int> ids )
+{
+    double edge_to_cover{0};
+    for( int j{0}; j<pFns->size(); ++j )
+    {
+        double n = (double)kitty::count_ones( (*pMks)[j] );
+        double n1 = (double)kitty::count_ones( (*pFns)[j]&(*pMks)[j] );
+        double n0 = n-n1;
+        edge_to_cover += n0*n1;
+    }
+
+    double min_cost = std::numeric_limits<double>::max();
+    double max_cost = std::numeric_limits<double>::min();
+
+    std::vector<double> costs;
+    double nBits = (*pFns)[0].num_bits();
+    for( int i{0}; i<ids.size(); ++i )
+    {
+        double cost{0};
+        for( int j{0}; j<pFns->size(); ++j )
+        {
+            double nOn = kitty::count_ones( (*pMks)[j] );
+            if( nOn > 0 )
+            {
+                DTT D = (*pDivs)[ids[i]].tt;
+                DTT M0 = (*pMks)[j] & ~D;
+                DTT M1 = (*pMks)[j] &  D;
+                int nM0 = kitty::count_ones(M0);
+                int c1M0 = kitty::count_ones(M0 & (*pFns)[j] );
+                int c0M0 = nM0 - c1M0;
+
+                int nM1 = kitty::count_ones(M1);
+                int c1M1 = kitty::count_ones(M1 & (*pFns)[j] );
+                int c0M1 = nM1 - c1M1;
+
+                cost += c0M0*c1M0+c0M1*c1M1;
+            }
+        }
+        costs.push_back(cost/edge_to_cover);
+
+        min_cost = min_cost < costs[i] ? min_cost : costs[i];
+        max_cost = max_cost > costs[i] ? max_cost : costs[i];
+        //printf("cost %f\n", 1-max_reward/pFns->size());
+    }
+
+    for( int i{0}; i<costs.size(); ++i )
+        costs[i] = (costs[i]-min_cost)/(max_cost-min_cost);
+
+    return costs;
+}
+
 struct suppor_history_t
 {
     std::set<std::vector<int>> set;
@@ -402,6 +454,127 @@ std::vector<int> support_generator_t::find_new<supp_selection_t::SUP_NORM>( int 
     return support;   
 }
 
+template<>
+std::vector<int> support_generator_t::find_new<supp_selection_t::SUP_BDD>( int nIters )
+{
+    bool isEnd = true;
+    for( int i{0}; i<targets.size(); ++i )
+        isEnd &= targets[i].isDone;
+    std::vector<int> support0;
+    for( int i{0}; i<divisors.size();++i )
+    {
+        if( divisors[i].isPo )
+        {
+            support0.push_back(i);
+        }
+    }
+    if( isEnd )
+        return support0;
+        
+    std::vector<int> support;
+    double BETA;
+
+    for( int it{0}; it<nIters; ++it )
+    {
+        BETA = nIters <= 1 ? ps.BETA0 : ps.BETA0 + it*(ps.BETAZ-ps.BETA0)/(nIters-1);
+        //printf("BETA %f\n", BETA);
+        support = support0;
+        
+        std::vector<DTT> target_grafs;
+        std::vector<DTT> target_masks;
+
+        for( int i{0}; i<targets.size(); ++i )
+        {
+            //if( targets[i].div < 0 )
+            target_grafs.push_back( targets[i].tt );
+            target_masks.push_back( ~(targets[i].tt.construct()) );
+        }
+        std::vector<int> divisors_id;    
+        for( int i{0}; i<divisors.size(); ++i )
+            divisors_id.push_back( i );
+
+        for( int i{support.size()-1}; i>=0; --i )
+        {
+           cover_the_targets_bdd( &target_grafs, &target_masks, divisors[support[i]].tt ); 
+           divisors_id.erase( divisors_id.begin() + i );
+        }
+        for( int i{target_grafs.size()-1}; i>=0; --i )
+        {
+            bool bErase{false};
+            bErase |= kitty::count_ones(target_grafs[i]&target_masks[i])==0 ;
+            bErase |= kitty::equal(target_grafs[i]&target_masks[i], target_masks[i] );
+            if( bErase )
+            {
+                target_grafs.erase( target_grafs.begin() + i );
+                target_masks.erase( target_masks.begin() + i );
+            }
+        }
+
+        int iNdPar{0};
+        int iNd;
+        while( target_grafs.size() > 0 )
+        {
+            std::vector<double> costs = bdd_compute_costs( &divisors, &target_grafs, &target_masks, divisors_id );
+
+            std::vector<double> CDF = compute_cdf( costs, BETA );
+            
+            int iNew = choose_divisor_from_cdf( CDF );
+
+            //int knt{0};
+            //for( int iD{0}; iD<divisors_id.size(); ++iD )
+            //{
+            //    printf("%d:", knt++);
+            //    kitty::print_binary(divisors[divisors_id[iD]].tt);
+            //    printf("\n");
+            //}
+
+            //printf("CHOOSE: %d\n", iNew);
+            // update the targets
+            cover_the_targets_bdd( &target_grafs, &target_masks, divisors[divisors_id[iNew]].tt );
+            support.push_back( divisors_id[iNew] );
+            divisors_id.erase( divisors_id.begin() + iNew );
+            for( int i{target_grafs.size()-1}; i>=0; --i )
+            {
+                bool bErase{false};
+                bErase |= (kitty::count_ones(target_grafs[i]&target_masks[i])==0) ;
+                bErase |= kitty::equal(target_grafs[i]&target_masks[i], target_masks[i] );
+                if( bErase )
+                {
+                    target_grafs.erase( target_grafs.begin() + i );
+                    target_masks.erase( target_masks.begin() + i );
+                }
+            }
+            //printf("|MK|=%d\n", target_masks.size() );
+            //for( int i{0}; i<target_masks.size(); ++i )
+            //{
+            //    auto mk = target_masks[i];
+            //    auto tt = target_grafs[i];
+            //    printf("mk:");
+            //    kitty::print_binary(mk);
+            //    printf("\n");
+            //    printf("tt:");
+            //    kitty::print_binary(tt);
+            //    printf("\n");
+            //}
+
+            if( support.size() > ps.thresh )
+            {
+                //printf("THR\n");
+                support={};
+                return support;
+            }
+        }
+        std::sort( support.begin(), support.end() );
+        //if( ps.erase_not_essentials )
+        //    if(support.size() > 1) support = erase_non_essential( &divisors, &targets, support );
+        if( history.find_in_set( support ) == history.end_of_set() )
+            return support;
+        else
+            support = {};
+    }
+    return support;    
+}
+
 void update_targets( std::vector<DTT> * pFns, std::vector<DTT> * pMks, divisor_t div )
 {
     int nFns = pFns->size();
@@ -450,6 +623,8 @@ std::vector<double> compute_costs_( std::vector<divisor_t> * pDivs, std::vector<
     }
     return costs;
 }
+
+
 
 template<>
 std::vector<int> support_generator_t::find_new<supp_selection_t::SUP_DECT>( int nIters )
@@ -500,8 +675,8 @@ std::vector<int> support_generator_t::find_new<supp_selection_t::SUP_DECT>( int 
                 target_graphs.erase( target_graphs.begin() );
                 target_masks.erase( target_masks.begin() );
             }
+            
             //printf("%d\n", target_graphs.size());
-
             divisors_id.erase( divisors_id.begin() + support[i] );
         }
         int iNdPar{0};
@@ -616,7 +791,6 @@ std::vector<int> support_generator_t::find_new<supp_selection_t::SUP_GENE>( int 
             support = {};
     }
     return support;
-    
 }
 
 void support_generator_t::mark_closing_divisors()

@@ -79,6 +79,9 @@ struct resubstitution_params
   /*! \brief Be verbose. */
   bool verbose{ false };
 
+  /*! \brief IG. */
+  bool useInfo{ false };
+
   /****** window-based resub engine ******/
 
   /*! \brief Use don't cares for optimization. Only used by window-based resub engine. */

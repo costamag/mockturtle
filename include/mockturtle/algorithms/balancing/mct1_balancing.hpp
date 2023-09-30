@@ -76,9 +76,6 @@ struct mcts_rebalancing
     const auto cand = balanced_tree( dest, and_terms, false );
 
   //  ADDON
-
-
-
     std::vector<kitty::dynamic_truth_table> X;
     for( int i{0}; i<function.num_vars(); ++i )
     {
@@ -98,12 +95,12 @@ struct mcts_rebalancing
 
     mcts::mct_ps mctps;
     ndps.sel_type = mcts::supp_selection_t::SUP_NORM;
-    mctps.nIters = 1;
-    mctps.nSims  = 1;
+    mctps.nIters = 10;
+    mctps.nSims  = 10;
     mctps.verbose =false;
     ndps.BETA0 = 100;
     ndps.nIters = 10;
-    ndps.thresh = function.num_vars()+3;
+    ndps.thresh = function.num_vars()+5;
 
     std::vector<double> T;
     std::vector<signal<Ntk>> S;
@@ -143,17 +140,18 @@ struct mcts_rebalancing
   //  }
   //}
 
-  if( !isValid || cand.level < cmct.level )
+  // MCT1 JUST REMOVED : if( !isValid || cand.level < cmct.level )
+  // MCT1 JUST REMOVED : {
+  // MCT1 JUST REMOVED :   if ( cand.level < best_level || ( cand.level == best_level && num_and_gates <= best_cost ) )
+  // MCT1 JUST REMOVED :   {
+  // MCT1 JUST REMOVED :     //printf("%d < %d\n", cmct.level, best_level);
+  // MCT1 JUST REMOVED :     callback( cand, num_and_gates );
+  // MCT1 JUST REMOVED :   }
+  // MCT1 JUST REMOVED : }
+  // MCT1 JUST REMOVED : else
+  if( isValid )
   {
-    if ( cand.level < best_level || ( cand.level == best_level && num_and_gates <= best_cost ) )
-    {
-      //printf("%d < %d\n", cmct.level, best_level);
-      callback( cand, num_and_gates );
-    }
-  }
-  else
-  {
-    if ( cmct.level < best_level || ( cmct.level == best_level && AREA < best_cost ) ) //WARNING THERE WAS EQUAL SIGN
+    if ( cmct.level < best_level || ( cmct.level == best_level && AREA <= best_cost ) ) //WARNING THERE WAS EQUAL SIGN
     {
       //printf("%d < %d\n", cmct.level, best_level);
       callback( cmct, AREA );

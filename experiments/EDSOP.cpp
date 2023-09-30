@@ -43,6 +43,10 @@
 
 #include <experiments.hpp>
 
+using namespace mockturtle;
+
+template<class Ntk> aig_network abc_sopbalancing( Ntk );
+
 int main()
 {
   using namespace experiments;
@@ -50,13 +54,13 @@ int main()
 
   experiment<std::string, uint32_t, uint32_t, bool, uint32_t, uint32_t, double, bool> exp( "eds", "benchmark", "s(ORI)", "d(ORI)", "c(ORI)", "s(MCT)", "d(MCT)", "t(MCT)", "c(MCT)" );
 
-  mcts_rebalancing<xag_network> mct_balancing;
+  mcts_rebalancing<aig_network> mct_balancing;
 
 
-  for ( auto const& benchmark : iscas_benchmarks( ~(experiments::c17) ) )//bms__ ~experiments::hyp bms__
+  for ( auto const& benchmark : iscas_benchmarks( ) )//bms__ ~experiments::hyp
   {
     fmt::print( "[i] processing {}\n", benchmark );
-    xag_network xag;
+    aig_network xag;
     if ( lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( xag ) ) != lorina::return_code::success )
     {
       continue;
@@ -77,7 +81,7 @@ int main()
     ps.progress = true;
     ps.only_on_critical_path = true;
     ps.cut_enumeration_ps.cut_size = 4u;
-    auto xag_opt = balancing( xag, { mct_balancing }, ps, &st );
+    auto xag_opt = abc_sopbalancing( xag );
     depth_view dxag_opt{ xag_opt };
 
     if( (dxag_opt.depth() < DEPTH) || ((dxag_opt.depth() == DEPTH) && (dxag_opt.num_gates() < SIZE)) )
@@ -101,23 +105,18 @@ int main()
 
     //int iter {5};
     //while( iter-- > 0 )
-    while( (time_span.count() < 300.00) && (isUpdated0||isUpdated1||isUpdated2||isUpdated3||isUpdated4) )
+    while( (isUpdated0||isUpdated1||isUpdated2||isUpdated3||isUpdated4) )
     {
-      if((depth_old == depth_new) && K < 3u)
-        ps.cut_enumeration_ps.cut_size = 4u+(K++);
-      else if( (depth_old == depth_new) && K >=3u )
+      if( depth_new == depth_old )
       {
-        //ps.only_on_critical_path = false;
-        K=0;
-        ps.cut_enumeration_ps.cut_size = 4u;
+        xag_opt = balancing( xag_opt, { mct_balancing }, ps, &st );
+        ps.cut_enumeration_ps.cut_size = 4 + K++;
       }
       else
       {
-        ps.only_on_critical_path = true;
-        K=0;   
+        xag_opt = abc_sopbalancing( xag_opt );
+        K = 0;
       }
-      
-      xag_opt = balancing( xag_opt, { mct_balancing }, ps, &st );
 
       depth_view dloc{ xag_opt };
       //daig_mct = d_mct;
@@ -131,6 +130,9 @@ int main()
         DEPTH = dxag_opt.depth();
         SIZE = dxag_opt.num_gates();
       }
+
+      t2 = high_resolution_clock::now();
+      time_span = duration_cast<duration<double>>(t2 - t1);
       ps.only_on_critical_path = true;
 
       isUpdated0 = isUpdated1;
@@ -138,9 +140,6 @@ int main()
       isUpdated2 = isUpdated3;
       isUpdated3 = isUpdated4;
       isUpdated4 = (depth_old > depth_new);
-      t2 = high_resolution_clock::now();
-      time_span = duration_cast<duration<double>>(t2 - t1);
-
     }
 
     resubstitution_params res_ps;
@@ -152,6 +151,8 @@ int main()
     printf("-->: d=%d/%d g=%d/%d\n",DEPTH, dxag.depth(), SIZE, dxag.num_gates() );
 
 
+    t2 = high_resolution_clock::now();
+    time_span = duration_cast<duration<double>>(t2 - t1);
 
     const auto cec = abc_cec( xag, benchmark );
     const auto cec_opt = abc_cec( xag_opt, benchmark );
@@ -163,4 +164,31 @@ int main()
   exp.table();
 
   return 0;
+}
+
+template<class Ntk>
+aig_network abc_sopbalancing( Ntk ntk )
+{
+  aig_network res;
+  write_blif( ntk, "/tmp/pre.blif" );
+
+  std::string command = "abc -q \"r /tmp/pre.blif; if -g -K 6 -C 8; write_aiger /tmp/pre.aig\"";
+
+  std::array<char, 128> buffer;
+  std::string result;
+  std::unique_ptr<FILE, decltype( &pclose )> pipe( popen( command.c_str(), "r" ), pclose );
+  if ( !pipe )
+  {
+    throw std::runtime_error( "popen() failed" );
+  }
+  while ( fgets( buffer.data(), buffer.size(), pipe.get() ) != nullptr )
+  {
+    result += buffer.data();
+  }
+
+  std::string string_path = ( "/tmp/pre.aig" );
+  if( lorina::read_aiger( string_path, aiger_reader( res ) ) != lorina::return_code::success )
+    std::cerr << "read_aiger failed" << std::endl;
+
+  return res;
 }

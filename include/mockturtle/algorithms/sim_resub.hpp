@@ -42,6 +42,7 @@
 #include "pattern_generation.hpp"
 #include "resubstitution.hpp"
 #include "resyn_engines/xag_resyn.hpp"
+#include "resyn_engines/xag_iresyn.hpp"
 #include "simulation.hpp"
 
 #include <bill/bill.hpp>
@@ -372,40 +373,81 @@ void sim_resubstitution( Ntk& ntk, resubstitution_params const& ps = {}, resubst
   depth_view<Ntk> depth_view{ ntk };
   resub_view_t resub_view{ depth_view };
 
-  if constexpr ( std::is_same_v<typename Ntk::base_type, aig_network> )
+  if( ps.useInfo )
   {
-    using resyn_engine_t = xag_resyn_decompose<kitty::partial_truth_table, aig_resyn_static_params_for_sim_resub<resub_view_t>>;
-
-    if ( ps.odc_levels != 0 )
+    if constexpr ( std::is_same_v<typename Ntk::base_type, aig_network> )
     {
-      using validator_t = circuit_validator<resub_view_t, bill::solvers::bsat2, false, true, true>;
-      using resub_impl_t = typename detail::resubstitution_impl<resub_view_t, typename detail::simulation_based_resub_engine<resub_view_t, validator_t, resyn_engine_t>>;
-      detail::sim_resubstitution_run<resub_view_t, resub_impl_t>( resub_view, ps, pst );
+      using resyn_engine_t = xag_iresyn_decompose<kitty::partial_truth_table, aig_iresyn_static_params_for_sim_resub<resub_view_t>>;
+
+      if ( ps.odc_levels != 0 )
+      {
+        using validator_t = circuit_validator<resub_view_t, bill::solvers::bsat2, false, true, true>;
+        using resub_impl_t = typename detail::resubstitution_impl<resub_view_t, typename detail::simulation_based_resub_engine<resub_view_t, validator_t, resyn_engine_t>>;
+        detail::sim_resubstitution_run<resub_view_t, resub_impl_t>( resub_view, ps, pst );
+      }
+      else
+      {
+        using validator_t = circuit_validator<resub_view_t, bill::solvers::bsat2, false, true, false>;
+        using resub_impl_t = typename detail::resubstitution_impl<resub_view_t, typename detail::simulation_based_resub_engine<resub_view_t, validator_t, resyn_engine_t>>;
+        detail::sim_resubstitution_run<resub_view_t, resub_impl_t>( resub_view, ps, pst );
+      }
     }
     else
     {
-      using validator_t = circuit_validator<resub_view_t, bill::solvers::bsat2, false, true, false>;
-      using resub_impl_t = typename detail::resubstitution_impl<resub_view_t, typename detail::simulation_based_resub_engine<resub_view_t, validator_t, resyn_engine_t>>;
-      detail::sim_resubstitution_run<resub_view_t, resub_impl_t>( resub_view, ps, pst );
+      using resyn_engine_t = xag_iresyn_decompose<kitty::partial_truth_table, xag_iresyn_static_params_for_sim_resub<resub_view_t>>;
+
+      if ( ps.odc_levels != 0 )
+      {
+        using validator_t = circuit_validator<resub_view_t, bill::solvers::bsat2, false, true, true>;
+        using resub_impl_t = typename detail::resubstitution_impl<resub_view_t, typename detail::simulation_based_resub_engine<resub_view_t, validator_t, resyn_engine_t>>;
+        detail::sim_resubstitution_run<resub_view_t, resub_impl_t>( resub_view, ps, pst );
+      }
+      else
+      {
+        using validator_t = circuit_validator<resub_view_t, bill::solvers::bsat2, false, true, false>;
+        using resub_impl_t = typename detail::resubstitution_impl<resub_view_t, typename detail::simulation_based_resub_engine<resub_view_t, validator_t, resyn_engine_t>>;
+        detail::sim_resubstitution_run<resub_view_t, resub_impl_t>( resub_view, ps, pst );
+      }
     }
   }
   else
   {
-    using resyn_engine_t = xag_resyn_decompose<kitty::partial_truth_table, xag_resyn_static_params_for_sim_resub<resub_view_t>>;
-
-    if ( ps.odc_levels != 0 )
+      if constexpr ( std::is_same_v<typename Ntk::base_type, aig_network> )
     {
-      using validator_t = circuit_validator<resub_view_t, bill::solvers::bsat2, false, true, true>;
-      using resub_impl_t = typename detail::resubstitution_impl<resub_view_t, typename detail::simulation_based_resub_engine<resub_view_t, validator_t, resyn_engine_t>>;
-      detail::sim_resubstitution_run<resub_view_t, resub_impl_t>( resub_view, ps, pst );
+      using resyn_engine_t = xag_resyn_decompose<kitty::partial_truth_table, aig_resyn_static_params_for_sim_resub<resub_view_t>>;
+
+      if ( ps.odc_levels != 0 )
+      {
+        using validator_t = circuit_validator<resub_view_t, bill::solvers::bsat2, false, true, true>;
+        using resub_impl_t = typename detail::resubstitution_impl<resub_view_t, typename detail::simulation_based_resub_engine<resub_view_t, validator_t, resyn_engine_t>>;
+        detail::sim_resubstitution_run<resub_view_t, resub_impl_t>( resub_view, ps, pst );
+      }
+      else
+      {
+        using validator_t = circuit_validator<resub_view_t, bill::solvers::bsat2, false, true, false>;
+        using resub_impl_t = typename detail::resubstitution_impl<resub_view_t, typename detail::simulation_based_resub_engine<resub_view_t, validator_t, resyn_engine_t>>;
+        detail::sim_resubstitution_run<resub_view_t, resub_impl_t>( resub_view, ps, pst );
+      }
     }
     else
     {
-      using validator_t = circuit_validator<resub_view_t, bill::solvers::bsat2, false, true, false>;
-      using resub_impl_t = typename detail::resubstitution_impl<resub_view_t, typename detail::simulation_based_resub_engine<resub_view_t, validator_t, resyn_engine_t>>;
-      detail::sim_resubstitution_run<resub_view_t, resub_impl_t>( resub_view, ps, pst );
+      using resyn_engine_t = xag_resyn_decompose<kitty::partial_truth_table, xag_resyn_static_params_for_sim_resub<resub_view_t>>;
+
+      if ( ps.odc_levels != 0 )
+      {
+        using validator_t = circuit_validator<resub_view_t, bill::solvers::bsat2, false, true, true>;
+        using resub_impl_t = typename detail::resubstitution_impl<resub_view_t, typename detail::simulation_based_resub_engine<resub_view_t, validator_t, resyn_engine_t>>;
+        detail::sim_resubstitution_run<resub_view_t, resub_impl_t>( resub_view, ps, pst );
+      }
+      else
+      {
+        using validator_t = circuit_validator<resub_view_t, bill::solvers::bsat2, false, true, false>;
+        using resub_impl_t = typename detail::resubstitution_impl<resub_view_t, typename detail::simulation_based_resub_engine<resub_view_t, validator_t, resyn_engine_t>>;
+        detail::sim_resubstitution_run<resub_view_t, resub_impl_t>( resub_view, ps, pst );
+      }
     }
   }
+
 }
 
 } /* namespace mockturtle */

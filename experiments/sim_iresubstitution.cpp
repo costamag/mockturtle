@@ -40,9 +40,9 @@ int main()
   using namespace experiments;
   using namespace mockturtle;
 
-  experiment<std::string, uint32_t, uint32_t, float, bool> exp( "sim_resubstitution", "benchmark", "size", "gain", "runtime", "equivalent" );
+  experiment<std::string, uint32_t, uint32_t, float, bool> exp( "sim_iresubstitution", "benchmark", "size", "gain", "runtime", "equivalent" );
 
-  for ( auto const& benchmark : iscas_benchmarks() )
+  for ( auto const& benchmark : epfl_benchmarks( ) )
   {
     fmt::print( "[i] processing {}\n", benchmark );
     aig_network aig;
@@ -56,6 +56,7 @@ int main()
 
     // ps.pattern_filename = "1024sa1/" + benchmark + ".pat";
     ps.max_inserts = 20;
+    ps.useInfo  = true;
     ps.max_pis = 8;
     ps.max_divisors = std::numeric_limits<uint32_t>::max();
 

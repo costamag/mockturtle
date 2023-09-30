@@ -27,6 +27,9 @@ using namespace mcts;
 
 template<class Ntk> Ntk game_on( kitty::dynamic_truth_table * );
 
+template<class Ntk> Ntk abc_deepsyn( DTT );
+template<class Ntk> Ntk abc_transduction( DTT );
+
 int main()
 {
   printf(ANSI_COLOR_RED     "============================================================="     ANSI_COLOR_RESET "\n");
@@ -55,10 +58,20 @@ int main()
   printf(ANSI_COLOR_YELLOW " [1] Knuth: 'The art of computer programming' fascicle 1 vol. 4" ANSI_COLOR_RESET "\n\n" );
 
 
-  kitty::dynamic_truth_table F(5u);
-  kitty::create_from_binary_string( F, "01000011101110000110110000100101" );
-  xag_network xag = game_on<xag_network>(&F);
-  printf("%d\n", xag.num_gates());
+  kitty::dynamic_truth_table F(3u);
+
+  printf("function | deepsyn  | transd 1 | transd N\n");
+
+  for( uint32_t i{0}; i<20; ++i )
+  {
+    kitty::create_random( F );
+    aig_network aig0 = abc_deepsyn<aig_network>( F );
+    aig_network aig1 = abc_transduction<aig_network>( F );
+    aig_network aig = game_on<aig_network>(&F);
+    kitty::print_hex(F);
+    printf(" | %8d | %8d | %8d \n", aig0.num_gates(), aig1.num_gates(), aig.num_gates());
+
+  }
   
   return 0;
 }
@@ -88,8 +101,8 @@ Ntk game_on( kitty::dynamic_truth_table * pF )
   detailed_gate_t ai01_( gate_t::AI01, 2, 1.0, 1.0, &hpcompute_ai01 );
   detailed_gate_t ai10_( gate_t::AI10, 2, 1.0, 1.0, &hpcompute_ai10 );
   detailed_gate_t ai11_( gate_t::AI11, 2, 1.0, 1.0, &hpcompute_ai11 );
-  detailed_gate_t exor_( gate_t::EXOR, 2, 1.0, 1.0, &hpcompute_exor );
-  ndps.lib = { ai00_, ai01_, ai10_, ai11_, exor_ };
+  detailed_gate_t exor_( gate_t::EXOR, 2, 2.0, 1.0, &hpcompute_exor );
+  ndps.lib = { ai00_, ai01_, ai10_, ai11_};//, exor_ };
 
   mct_ps mctps;
   ndps.sel_type = supp_selection_t::SUP_NORM;
@@ -100,23 +113,25 @@ Ntk game_on( kitty::dynamic_truth_table * pF )
   //ndps.nIters = 100;
 
 
-  mctps.nIters = 100;
+  mctps.nIters = 20;
   mctps.nSims = 10;
   mctps.verbose = true;
-  ndps.BETA0 = 100;
-  ndps.BETAZ = 100;
-  ndps.nIters = 10;//Ntrails
-  ndps.thresh = 10;
+  ndps.BETA0 = 20;
+  ndps.BETAZ = 20;
+  ndps.nIters = 5;//Ntrails
+  ndps.thresh = 15;
 
-  nd_size_t<xag_network> root( xs, ts, {*pF}, ndps );
+  nd_size_t<aig_network> root( xs, ts, {*pF}, ndps );
   mct_method_ps metps;
   metps.sel_type = node_selection_t::NODE_LAY0;
 
-  mct_method_t<nd_size_t<xag_network> > meth( metps );
-  mct_tree_t<nd_size_t<xag_network> , mct_method_t> mct( root, meth, mctps );
+  mct_method_t<nd_size_t<aig_network> > meth( metps );
+  mct_tree_t<nd_size_t<aig_network> , mct_method_t> mct( root, meth, mctps );
   int iSol = mct.solve();
   if( iSol == -1 ) printf("ERROR no solution found\n");
   rep = mct.nodes[iSol].ntk;
+  std::string nameFile = "ntk.dot";
+  write_dot(rep, nameFile );
   //mct.path_print( iSol );
 
   default_simulator<kitty::dynamic_truth_table> sim( (*pF).num_vars() );
@@ -126,6 +141,59 @@ Ntk game_on( kitty::dynamic_truth_table * pF )
   return rep;
 
 }
+
+template<class Ntk>
+Ntk abc_transduction( DTT truth )
+{
+  Ntk res;
+
+  std::string command = "abc -q \"read_truth -x " + kitty::to_binary(truth) + "; fraig; &get; &transduction -T 8; &put; write_aiger /tmp/pre.aig\"";
+
+  std::array<char, 128> buffer;
+  std::string result;
+  std::unique_ptr<FILE, decltype( &pclose )> pipe( popen( command.c_str(), "r" ), pclose );
+  if ( !pipe )
+  {
+    throw std::runtime_error( "popen() failed" );
+  }
+  while ( fgets( buffer.data(), buffer.size(), pipe.get() ) != nullptr )
+  {
+    result += buffer.data();
+  }
+
+  std::string string_path = ( "/tmp/pre.aig" );
+  if( lorina::read_aiger( string_path, aiger_reader( res ) ) != lorina::return_code::success )
+    std::cerr << "read_aiger failed" << std::endl;
+
+  return res;
+}
+
+template<class Ntk>
+Ntk abc_deepsyn( DTT truth )
+{
+  Ntk res;
+
+  std::string command = "abc -q \"read_truth -x " + kitty::to_binary(truth) + "; fraig; &get; &deepsyn -I 10 -J 100; &put; write_aiger /tmp/pre.aig\"";
+
+  std::array<char, 128> buffer;
+  std::string result;
+  std::unique_ptr<FILE, decltype( &pclose )> pipe( popen( command.c_str(), "r" ), pclose );
+  if ( !pipe )
+  {
+    throw std::runtime_error( "popen() failed" );
+  }
+  while ( fgets( buffer.data(), buffer.size(), pipe.get() ) != nullptr )
+  {
+    result += buffer.data();
+  }
+
+  std::string string_path = ( "/tmp/pre.aig" );
+  if( lorina::read_aiger( string_path, aiger_reader( res ) ) != lorina::return_code::success )
+    std::cerr << "read_aiger failed" << std::endl;
+
+  return res;
+}
+
 
 /*
     ndps.BETA0 = 10000;

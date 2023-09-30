@@ -37,6 +37,10 @@
 #include <mockturtle/networks/xag.hpp>
 #include <mockturtle/networks/aig.hpp>
 #include <mockturtle/algorithms/cleanup.hpp>
+#include <lorina/aiger.hpp>
+#include <lorina/lorina.hpp>
+#include <mockturtle/io/aiger_reader.hpp>
+#include <mockturtle/io/write_aiger.hpp>
 #include <stdio.h>
 #include <limits>
 #include <stack>
@@ -47,6 +51,8 @@ namespace mockturtle
 
 namespace mcts
 {
+
+template<class Ntk> Ntk abc_transduction( Ntk );
 
 using DTT = kitty::dynamic_truth_table;
 
@@ -190,6 +196,9 @@ nd_size_t<NTK> nd_size_t<NTK>::find_new()
     case supp_selection_t::SUP_NORM:
         supp = supportor.find_new<supp_selection_t::SUP_NORM>( ps.nIters );
         break;
+    case supp_selection_t::SUP_BDD:
+        supp = supportor.find_new<supp_selection_t::SUP_BDD>( ps.nIters );
+        break;
     default:
         break;
     }
@@ -326,6 +335,8 @@ double nd_size_t<NTK>::evaluate( std::vector<nd_size_t<NTK>*> vPtrs )
     }
     ntk = cleanup_dangling(net);
 
+    //ntk = abc_transduction( ntk );
+
     return ntk.num_gates();
 }
 
@@ -350,6 +361,34 @@ void nd_size_t<NTK>::update_support_info( nd_size_t<NTK> child, double cost )
         }
     }
     supportor.history.update_cost( idx, cost );
+}
+
+template<class Ntk>
+Ntk abc_transduction( Ntk ntk )
+{
+  Ntk res;
+  write_blif( ntk, "/tmp/pre.blif" );
+
+  std::string command = "abc -q \"r /tmp/pre.blif; &get; &transduction -T 8; &put; write_aiger /tmp/pre.aig\"";
+  //std::string command = "abc -q \"r /tmp/pre.blif; resyn2rs; write_aiger /tmp/pre.aig\"";
+
+  std::array<char, 128> buffer;
+  std::string result;
+  std::unique_ptr<FILE, decltype( &pclose )> pipe( popen( command.c_str(), "r" ), pclose );
+  if ( !pipe )
+  {
+    throw std::runtime_error( "popen() failed" );
+  }
+  while ( fgets( buffer.data(), buffer.size(), pipe.get() ) != nullptr )
+  {
+    result += buffer.data();
+  }
+
+  std::string string_path = ( "/tmp/pre.aig" );
+  if( lorina::read_aiger( string_path, aiger_reader( res ) ) != lorina::return_code::success )
+    std::cerr << "read_aiger failed" << std::endl;
+
+  return res;
 }
 
 } // namespace mcts
