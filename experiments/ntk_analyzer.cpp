@@ -29,7 +29,7 @@
 #include <fmt/format.h>
 #include <lorina/aiger.hpp>
 #include <mockturtle/algorithms/cleanup.hpp>
-#include <mockturtle/algorithms/sim_resub.hpp>
+#include <mockturtle/algorithms/network_analyzer.hpp>
 #include <mockturtle/io/aiger_reader.hpp>
 #include <mockturtle/networks/aig.hpp>
 
@@ -40,9 +40,9 @@ int main()
   using namespace experiments;
   using namespace mockturtle;
 
-  experiment<std::string, uint32_t, uint32_t, float, bool> exp( "sim_resubstitution", "benchmark", "size", "gain", "runtime", "equivalent" );
+  experiment<std::string, uint32_t, uint32_t, float, bool> exp( "ntk_analyzer", "benchmark", "size", "gain", "runtime", "equivalent" );
 
-  for ( auto const& benchmark : epfl_benchmarks() )
+  for ( auto const& benchmark : iscas_benchmarks() )
   {
     fmt::print( "[i] processing {}\n", benchmark );
     aig_network aig;
@@ -51,8 +51,8 @@ int main()
       continue;
     }
 
-    resubstitution_params ps;
-    resubstitution_stats st;
+    analyzer_params ps;
+    analyzer_stats st;
 
     // ps.pattern_filename = "1024sa1/" + benchmark + ".pat";
     ps.max_inserts = 20;
@@ -60,7 +60,9 @@ int main()
     ps.max_divisors = std::numeric_limits<uint32_t>::max();
 
     const uint32_t size_before = aig.num_gates();
-    sim_resubstitution( aig, ps, &st );
+
+    default_analyzer( aig, ps, &st );
+
     aig = cleanup_dangling( aig );
 
     const auto cec = benchmark == "hyp" ? true : abc_cec( aig, benchmark );

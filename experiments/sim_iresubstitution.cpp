@@ -42,7 +42,7 @@ int main()
 
   experiment<std::string, uint32_t, uint32_t, float, bool> exp( "sim_iresubstitution", "benchmark", "size", "gain", "runtime", "equivalent" );
 
-  for ( auto const& benchmark : epfl_benchmarks( ) )
+  for ( auto const& benchmark : iscas_benchmarks( ) )
   {
     fmt::print( "[i] processing {}\n", benchmark );
     aig_network aig;

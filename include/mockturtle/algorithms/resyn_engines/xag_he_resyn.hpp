@@ -24,11 +24,11 @@
  */
 
 /*!
-  \file xag_resyn.hpp
+  \file xag_he_resyn.hpp
   \brief Resynthesis by recursive decomposition for AIGs or XAGs.
   (based on ABC's implementation in `giaResub.c` by Alan Mishchenko)
 
-  \author Siang-Yun Lee
+  \author Andrea Costamagna
 */
 
 #pragma once
@@ -45,13 +45,17 @@
 #include <optional>
 #include <type_traits>
 #include <vector>
+#include <time.h>
+#include <thread>
 
 namespace mockturtle
 {
 
-struct xag_resyn_static_params
+std::atomic<uint32_t> idDiv{1};
+
+struct xag_he_static_params
 {
-  using base_type = xag_resyn_static_params;
+  using base_type = xag_he_static_params;
 
   /*! \brief Maximum number of binate divisors to be considered. */
   static constexpr uint32_t max_binates{ 50u };
@@ -83,37 +87,39 @@ struct xag_resyn_static_params
   /*! \brief Depth cost of each XOR gate (only relevant when `preserve_depth = true` and `use_xor = true`). */
   static constexpr uint32_t depth_cost_of_xor{ 1u };
 
+  static constexpr uint32_t max_support_size{4u};
+
   using truth_table_storage_type = void;
   using node_type = void;
 };
 
 template<class TT>
-struct xag_resyn_static_params_default : public xag_resyn_static_params
+struct xag_he_static_params_default : public xag_he_static_params
 {
   using truth_table_storage_type = std::vector<TT>;
   using node_type = uint32_t;
 };
 
 template<class TT>
-struct aig_resyn_static_params_default : public xag_resyn_static_params_default<TT>
+struct aig_he_resyn_static_params_default : public xag_he_static_params_default<TT>
 {
   static constexpr bool use_xor = false;
 };
 
 template<class Ntk>
-struct xag_resyn_static_params_for_sim_resub : public xag_resyn_static_params
+struct xag_he_static_params_for_sim_resub : public xag_he_static_params
 {
   using truth_table_storage_type = incomplete_node_map<kitty::partial_truth_table, Ntk>;
   using node_type = typename Ntk::node;
 };
 
 template<class Ntk>
-struct aig_resyn_static_params_for_sim_resub : public xag_resyn_static_params_for_sim_resub<Ntk>
+struct aig_he_resyn_static_params_for_sim_resub : public xag_he_static_params_for_sim_resub<Ntk>
 {
   static constexpr bool use_xor = false;
 };
 
-struct xag_resyn_stats
+struct xag_he_resyn_stats
 {
   /*! \brief Time for finding 0-resub and collecting unate literals. */
   stopwatch<>::duration time_unate{ 0 };
@@ -138,7 +144,7 @@ struct xag_resyn_stats
 
   void report() const
   {
-    fmt::print( "[i]         <xag_resyn_decompose>\n" );
+    fmt::print( "[i]         <xag_he_resyn_decompose>\n" );
     fmt::print( "[i]             0-resub      : {:>5.2f} secs\n", to_seconds( time_unate ) );
     fmt::print( "[i]             1-resub      : {:>5.2f} secs\n", to_seconds( time_resub1 ) );
     fmt::print( "[i]             2-resub      : {:>5.2f} secs\n", to_seconds( time_resub2 ) );
@@ -173,16 +179,16 @@ struct xag_resyn_stats
       const std::vector<aig_network::node> divisors = ...;
       const node_map<TT, aig_network> tts = ...;
       const TT target = ..., care = ...;
-      xag_resyn_stats st;
-      xag_resyn_decompose<TT, node_map<TT, aig_network>, false, false, aig_network::node> resyn( st );
+      xag_he_resyn_stats st;
+      xag_he_resyn_decompose<TT, node_map<TT, aig_network>, false, false, aig_network::node> resyn( st );
       auto result = resyn( target, care, divisors.begin(), divisors.end(), tts );
    \endverbatim
  */
-template<class TT, class static_params = xag_resyn_static_params_default<TT>>
-class xag_resyn_decompose
+template<class TT, class static_params = xag_he_static_params_default<TT>>
+class xag_he_decompose
 {
 public:
-  using stats = xag_resyn_stats;
+  using stats = xag_he_resyn_stats;
   using index_list_t = large_xag_index_list;
   using truth_table_t = TT;
 
@@ -224,12 +230,13 @@ private:
   };
 
 public:
-  explicit xag_resyn_decompose( stats& st ) noexcept
+  explicit xag_he_decompose( stats& st ) noexcept
       : st( st )
   {
-    static_assert( std::is_same_v<typename static_params::base_type, xag_resyn_static_params>, "Invalid static_params type" );
+    static_assert( std::is_same_v<typename static_params::base_type, xag_he_static_params>, "Invalid static_params type" );
     static_assert( !( static_params::uniform_div_cost && static_params::preserve_depth ), "If depth is to be preserved, divisor depth cost must be provided (usually not uniform)" );
     divisors.reserve( static_params::reserve );
+    _vNumEdges.reserve( static_params::reserve );
   }
 
   /*! \brief Perform XAG resynthesis.
@@ -255,10 +262,12 @@ public:
     on_off_sets[1] = target & care;
 
     _care = care;
+    _func = on_off_sets[1];
 
     divisors.resize( 1 ); /* clear previous data and reserve 1 dummy node for constant */
     while ( begin != end )
     {
+      _vNumEdges.emplace_back(0);
       if constexpr ( static_params::copy_tts )
       {
         divisors.emplace_back( ( *ptts )[*begin] );
@@ -295,7 +304,382 @@ private:
       index_list.add_output( *lit );
       return index_list;
     }
+
+    index_list.clear();
+    index_list.add_inputs( divisors.size() - 1 );
+    auto const litHe = compute_function_high_effort( num_inserts );
+    if ( litHe )
+    {
+      assert( index_list.num_gates() <= num_inserts );
+      index_list.add_output( *litHe );
+      return index_list;
+    }
+
+
     return std::nullopt;
+  }
+
+  std::optional<uint32_t> compute_function_high_effort( uint32_t num_inserts )
+  {
+    if( num_inserts <= 4 )
+      return std::nullopt;
+    auto supp = find_support_greedy();
+
+    if( supp )
+    {
+      //for( auto x : *supp )
+      //  printf("%d ", x);
+      //printf("\n");
+      return find_function_from_support(*supp, num_inserts);
+    }
+    //printf("\n");
+
+
+    return std::nullopt;
+  }
+
+  struct divisor_t
+  {
+    divisor_t( TT func, uint32_t lit ) : func(func), lit(lit) {}
+    divisor_t( TT func ) : func(func) {}
+    TT func;
+    uint32_t lit;
+  };
+
+  enum best_t
+  {
+    PA00,
+    PA01,
+    PA10,
+    PA11,
+    IA00,
+    IA01,
+    IA10,
+    IA11,
+    INV_,
+    BUF_,
+    EXOR
+  };
+
+  std::pair<uint32_t, std::vector<divisor_t>> update_divisors( std::vector<divisor_t> const& divs )
+  {
+    std::vector<divisor_t> newDivs;
+    uint32_t numGates{0};
+    reset_masks();
+    uint32_t numEdge, numOnes;
+    uint32_t minEdge = std::numeric_limits<uint32_t>::max();
+    uint32_t a, b;
+    best_t gate;
+    TT tt;
+    uint32_t buffer_counter{0};
+
+    while( ( ( 1u << _nMasks ) > ( _killed + 1 ) ) && (newDivs.size() < _masks.size()) )
+    {
+      if( buffer_counter < divs.size()-1 )
+      {
+        for( auto v = 0; v<divs.size(); ++v )
+        {
+          numEdge = 0;
+          for( auto m = 0; m < _nMasks; ++m )
+          {
+            if( ((_killed >> m) & 1u) != 1u )
+            {
+              numOnes = kitty::count_ones( _masks[m] & divs[v].func & _func );
+              numEdge += numOnes*(kitty::count_ones( divs[v].func & _masks[m] )-numOnes);
+              numOnes = kitty::count_ones( ~divs[v].func & _func & _masks[m] );
+              numEdge += numOnes*(kitty::count_ones( ~divs[v].func & _masks[m] )-numOnes);
+            }
+          }
+          if( numEdge < minEdge )
+          {
+            minEdge = numEdge;
+            a = v;
+            b = v;
+            gate = BUF_;
+            tt=divs[v].func;
+          }
+        }
+      }
+
+      std::vector<TT> funcs;
+      std::vector<best_t> gates;
+
+      for( auto v1 = 0; v1<divs.size(); ++v1 )
+      {
+        for( auto v2 = v1+1; v2<divs.size(); ++v2 )
+        {
+          funcs = { divs[v1].func&divs[v2].func, ~divs[v1].func&divs[v2].func, divs[v1].func & ~divs[v2].func, ~divs[v1].func&~divs[v2].func };
+          gates = { PA11, PA01, PA10, PA11 };
+          if constexpr ( static_params::use_xor )
+          {
+            funcs.push_back( divs[v1].func^divs[v2].func );
+            gates.push_back( EXOR );
+          }
+
+          for( uint32_t iFn{0}; iFn<funcs.size(); ++iFn )
+          {
+            numEdge = 0;
+            for( auto m = 0; m < _nMasks; ++m )
+            {
+              if( ((_killed >> m) & 1u) != 1u )
+              {
+                numOnes = kitty::count_ones( _masks[m] & funcs[iFn] & _func );
+                numEdge += numOnes*(kitty::count_ones( funcs[iFn] & _masks[m] )-numOnes);
+                numOnes = kitty::count_ones( ~funcs[iFn] & _func & _masks[m] );
+                numEdge += numOnes*(kitty::count_ones( ~funcs[iFn] & _masks[m] )-numOnes);
+              }
+            }
+            if( numEdge < minEdge )
+            {
+              minEdge = numEdge;
+              a = v1;
+              b = v2;
+              gate = gates[iFn];
+              tt = funcs[iFn];
+            }
+          }
+        }
+      }
+      switch (gate)
+      {
+      case PA00:
+        newDivs.emplace_back( tt, index_list.add_and( divs[a].lit | 0x1, divs[b].lit | 0x1 ) );
+        numGates+=1;
+        break;
+      case PA01:
+        newDivs.emplace_back( tt, index_list.add_and( divs[a].lit | 0x1, divs[b].lit ) );
+        numGates+=1;
+        break;
+      case PA10:
+        newDivs.emplace_back( tt, index_list.add_and( divs[a].lit, divs[b].lit | 0x1) );
+        numGates+=1;
+        break;
+      case PA11:
+        newDivs.emplace_back( tt, index_list.add_and( divs[a].lit, divs[b].lit ) );
+        numGates+=1;
+        break;
+      case EXOR:
+        newDivs.emplace_back( tt, index_list.add_xor( divs[a].lit, divs[b].lit ) );
+        numGates+=1;
+        break;
+      case BUF_:
+        newDivs.emplace_back( tt, divs[a].lit );
+        buffer_counter++;
+        break;
+      default:
+        break;
+      }
+      update_masks( tt );
+    }
+    if( numGates == 0 )
+      printf("[w] no gates added\n");
+    return std::make_pair(numGates, newDivs);
+  }
+
+  std::optional<uint32_t> find_function_from_support( std::vector<uint32_t> supp, uint32_t max_num_gates )
+  {
+    uint32_t delta, cnt{0};
+    std::vector<divisor_t> divs;
+    for( uint32_t v{0}; v<supp.size(); ++v )
+      divs.emplace_back( get_div(supp[v]), supp[v] << 1 );
+    
+    while( ( max_num_gates > cnt ) && ( divs.size() > 1 ) )
+    {
+      std::tie(delta, divs) = update_divisors( divs );
+      cnt+=delta;
+    }
+    if( divs.size() == 1 )
+    {
+      if( kitty::equal( divs[0].func & _care, _func & _care ) )
+      {
+        return divs[0].lit;
+      }
+      else if( kitty::equal( ~divs[0].func & _care, _func & _care ) )
+      {
+        return divs[0].lit & 0x1;
+      }
+      else
+        assert(0);
+    }
+    return std::nullopt;
+  }
+
+//  std::optional<std::vector<uint32_t>> find_support_greedy()
+//  {
+//    auto compute_coverage = []( xag_he_decompose * p )
+//    {
+//      uint32_t v = idDiv++;
+//      uint32_t numOnes, numEdge;
+//      while( v < p->divisors.size() )
+//      {
+//        for( auto m = 0; m < p->_nMasks; ++m )
+//        {
+//          if( ((p->_killed >> m) & 1u) != 1u )
+//          {
+//            numOnes = kitty::count_ones( p->_masks[m] & p->get_div(v) & p->_func );
+//            numEdge = numOnes*(kitty::count_ones( p->get_div(v) & p->_masks[m] )-numOnes);
+//            numOnes = kitty::count_ones( ~p->get_div(v) & p->_func & p->_masks[m] );
+//            numEdge += numOnes*(kitty::count_ones( ~p->get_div(v) & p->_masks[m] )-numOnes);
+//          }
+//        }
+//        p->_vNumEdges[v-1] = numEdge;
+//        v=idDiv++;
+//      }
+//    };
+//
+//    std::set<uint32_t> sSupp;
+//    uint32_t numOnes, numEdge, divBest;
+//
+//    uint32_t minEdge = std::numeric_limits<uint32_t>::max();
+//    reset_masks();
+//    while( ( ( 1u << _nMasks ) > ( _killed + 1 ) ) && (sSupp.size() < static_params::max_support_size) ) 
+//    {
+//      std::vector<std::thread> vThread;
+//      idDiv=1;
+//
+//      const auto processor_count = std::thread::hardware_concurrency();
+//      for ( auto i = 0u; i < processor_count; ++i )
+//      {
+//        vThread.emplace_back( compute_coverage, this );
+//      }
+//
+//      for ( auto i = 0u; i < processor_count; ++i )
+//      {
+//        vThread[i].join();
+//      }
+//
+//      for( auto v = 1u; v < divisors.size(); ++v )
+//      {
+//        if( _vNumEdges[v-1]<minEdge )
+//        {
+//          divBest = v;
+//          minEdge = _vNumEdges[v-1];
+//        }
+//      }
+//
+//      sSupp.insert(divBest);
+//      update_masks(divBest);
+//    }
+//
+//    if( ( 1<<_nMasks ) == (_killed + 1) )
+//    {
+//      std::vector<uint32_t> vSupp(sSupp.begin(), sSupp.end());
+//      std::sort(vSupp.begin(), vSupp.end());
+//      return vSupp;
+//    }
+//    return std::nullopt;
+//  }
+//
+
+
+  std::optional<std::vector<uint32_t>> find_support_greedy()
+  {
+    std::set<uint32_t> sSupp;
+    uint32_t numOnes, numEdge, divBest;
+
+    uint32_t minEdge = std::numeric_limits<uint32_t>::max();
+    reset_masks();
+    while( ( ( 1u << _nMasks ) > ( _killed + 1 ) ) && (sSupp.size() < static_params::max_support_size) ) 
+    {
+      for( auto v = 1u; v < divisors.size(); ++v )
+      {
+        numEdge = 0;
+        for( auto m = 0; m < _nMasks; ++m )
+        {
+          if( ((_killed >> m) & 1u) != 1u )
+          {
+            numOnes = kitty::count_ones( _masks[m] & get_div(v) & _func );
+            numEdge += numOnes*(kitty::count_ones( get_div(v) & _masks[m] )-numOnes);
+            numOnes = kitty::count_ones( ~get_div(v) & _func & _masks[m] );
+            numEdge += numOnes*(kitty::count_ones( ~get_div(v) & _masks[m] )-numOnes);
+          }
+        }
+        //printf(" %d", numEdge );
+        if( numEdge < minEdge )
+        {
+          if( sSupp.find(v) == sSupp.end() )
+          {
+            minEdge = numEdge;
+            divBest = v;
+          //  printf("<");
+          }
+          //else
+          //  printf("x");
+        }
+      }
+      //printf("\n");
+      sSupp.insert(divBest);
+      update_masks(divBest);
+    }
+
+    if( ( 1<<_nMasks ) == (_killed + 1) )
+    {
+      std::vector<uint32_t> vSupp(sSupp.begin(), sSupp.end());
+      std::sort(vSupp.begin(), vSupp.end());
+      return vSupp;
+    }
+    return std::nullopt;
+  }
+
+  void reset_masks()
+  {
+    _masks[0] = _care;
+    _nMasks = 1u;
+    _killed = 0u;
+  }
+
+  void update_masks( uint32_t iDiv )
+  {
+    for( uint32_t iMask{0}; iMask < _nMasks; ++iMask )
+    {
+      if( (( _killed >> iMask ) & 1u) == 0x1 )
+      {
+        _killed |= (1u << _nMasks+iMask);
+      }
+      else
+      {
+        _masks[_nMasks+iMask] = _masks[iMask] & get_div( iDiv );
+        _masks[iMask] = _masks[iMask] & ~get_div( iDiv );
+
+        if( kitty::count_ones( _func & _masks[_nMasks+iMask] ) == 0 )
+          _killed |= (1u << (_nMasks+iMask));
+        else if( kitty::equal( _func & _masks[_nMasks+iMask], _masks[_nMasks+iMask] ) )
+          _killed |= (1u << (_nMasks+iMask));
+
+        if( kitty::count_ones( _func & _masks[iMask] ) == 0 )
+          _killed |= (1u << iMask);
+        else if( kitty::equal( _func & _masks[iMask], _masks[iMask] ) )
+          _killed |= (1u << iMask);
+      }
+    }
+    _nMasks=_nMasks*2;
+  }
+
+  void update_masks( TT tt )
+  {
+    for( uint32_t iMask{0}; iMask < _nMasks; ++iMask )
+    {
+      if( (( _killed >> iMask ) & 1u) == 0x1 )
+      {
+        _killed |= (1u << _nMasks+iMask);
+      }
+      else
+      {
+        _masks[_nMasks+iMask] = _masks[iMask] & tt;
+        _masks[iMask] = _masks[iMask] & ~tt;
+
+        if( kitty::count_ones( _func & _masks[_nMasks+iMask] ) == 0 )
+          _killed |= (1u << (_nMasks+iMask));
+        else if( kitty::equal( _func & _masks[_nMasks+iMask], _masks[_nMasks+iMask] ) )
+          _killed |= (1u << (_nMasks+iMask));
+
+        if( kitty::count_ones( _func & _masks[iMask] ) == 0 )
+          _killed |= (1u << iMask);
+        else if( kitty::equal( _func & _masks[iMask], _masks[iMask] ) )
+          _killed |= (1u << iMask);
+      }
+    }
+    _nMasks+=_nMasks;
   }
 
   std::optional<uint32_t> compute_function_rec( uint32_t num_inserts )
@@ -605,7 +989,7 @@ private:
     } );
   }
 
-
+/*
   void TESTplacement( uint32_t a, uint32_t b )
   {
     std::vector<uint32_t> costs;
@@ -643,6 +1027,7 @@ private:
     }
     printf("%d %d / %d\n", std::min(pa,pb), std::max(pa,pb), costs.size());
   }
+*/
 
   /* See if there are two unate divisors covering all on-set bits or all off-set bits.
      - For `pos_unate_lits`, `on_off` = 1, try covering all on-set bits by combining two with an OR gate;
@@ -903,9 +1288,14 @@ private:
   std::array<TT, 2> on_off_sets;
   std::array<uint32_t, 2> num_bits; /* number of bits in on-set and off-set */
   TT _care;
+  TT _func;
+  std::array<TT, 64> _masks;
+  uint64_t _nMasks{1};
+  uint64_t _killed{0}; 
 
   const typename static_params::truth_table_storage_type* ptts;
   std::vector<std::conditional_t<static_params::copy_tts, TT, typename static_params::node_type>> divisors;
+  std::vector<uint32_t> _vNumEdges;
 
   index_list_t index_list;
 
@@ -916,28 +1306,28 @@ private:
   std::vector<fanin_pair> pos_unate_pairs, neg_unate_pairs;
 
   stats& st;
-}; /* xag_resyn_decompose */
+}; /* xag_he_resyn_decompose */
 
-struct xag_resyn_abc_stats
+struct xag_he_resyn_abc_stats
 {
 };
 
-template<class TT, class static_params = xag_resyn_static_params_default<TT>>
-class xag_resyn_abc
+template<class TT, class static_params = xag_he_static_params_default<TT>>
+class xag_he_resyn_abc
 {
 public:
-  using stats = xag_resyn_abc_stats;
+  using stats = xag_he_resyn_abc_stats;
   using index_list_t = large_xag_index_list;
   using truth_table_t = TT;
 
-  explicit xag_resyn_abc( stats& st ) noexcept
+  explicit xag_he_resyn_abc( stats& st ) noexcept
       : st( st ), counter( 0 )
   {
-    static_assert( std::is_same_v<typename static_params::base_type, xag_resyn_static_params>, "Invalid static_params type" );
+    static_assert( std::is_same_v<typename static_params::base_type, xag_he_static_params>, "Invalid static_params type" );
     static_assert( !static_params::preserve_depth && static_params::uniform_div_cost, "Advanced resynthesis is not implemented for this solver" );
   }
 
-  virtual ~xag_resyn_abc()
+  virtual ~xag_he_resyn_abc()
   {
     abcresub::Abc_ResubPrepareManager( 0 );
     release();
@@ -1042,6 +1432,6 @@ protected:
   abcresub::Vec_Ptr_t* abc_divs{ nullptr };
 
   stats& st;
-}; /* xag_resyn_abc */
+}; /* xag_he_resyn_abc */
 
 } /* namespace mockturtle */

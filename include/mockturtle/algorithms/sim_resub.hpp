@@ -42,7 +42,7 @@
 #include "pattern_generation.hpp"
 #include "resubstitution.hpp"
 #include "resyn_engines/xag_resyn.hpp"
-#include "resyn_engines/xag_iresyn.hpp"
+#include "resyn_engines/xag_he_resyn.hpp"
 #include "simulation.hpp"
 
 #include <bill/bill.hpp>
@@ -377,7 +377,7 @@ void sim_resubstitution( Ntk& ntk, resubstitution_params const& ps = {}, resubst
   {
     if constexpr ( std::is_same_v<typename Ntk::base_type, aig_network> )
     {
-      using resyn_engine_t = xag_iresyn_decompose<kitty::partial_truth_table, aig_iresyn_static_params_for_sim_resub<resub_view_t>>;
+      using resyn_engine_t = xag_he_decompose<kitty::partial_truth_table, aig_he_resyn_static_params_for_sim_resub<resub_view_t>>;
 
       if ( ps.odc_levels != 0 )
       {
@@ -394,7 +394,7 @@ void sim_resubstitution( Ntk& ntk, resubstitution_params const& ps = {}, resubst
     }
     else
     {
-      using resyn_engine_t = xag_iresyn_decompose<kitty::partial_truth_table, xag_iresyn_static_params_for_sim_resub<resub_view_t>>;
+      using resyn_engine_t = xag_he_decompose<kitty::partial_truth_table, xag_he_static_params_for_sim_resub<resub_view_t>>;
 
       if ( ps.odc_levels != 0 )
       {

@@ -1,0 +1,529 @@
+/* mockturtle: C++ logic network library
+ * Copyright (C) 2018-2022  EPFL
+ *
+ * Permission is hereby granted, free of charge, to any person
+ * obtaining a copy of this software and associated documentation
+ * files (the "Software"), to deal in the Software without
+ * restriction, including without limitation the rights to use,
+ * copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following
+ * conditions:
+ *
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+ * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+ * HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
+ */
+
+/*!
+  \file spfd_resyn.hpp
+  \brief SPFD-based resynthesis
+
+  \author Andrea Costamagna
+*/
+
+#pragma once
+
+#include "../../utils/index_list.hpp"
+#include "../../utils/node_map.hpp"
+#include "../../utils/stopwatch.hpp"
+
+#include <abcresub/abcresub.hpp>
+#include <fmt/format.h>
+#include <kitty/kitty.hpp>
+
+#include <algorithm>
+#include <optional>
+#include <type_traits>
+#include <vector>
+
+namespace mockturtle
+{
+
+std::mt19937 rgen(5);
+
+struct spfd_resyn_static_params
+{
+  using base_type = spfd_resyn_static_params;
+
+  /*! \brief Maximum number of binate divisors to be considered. */
+  static constexpr uint32_t max_binates{ 50u };
+
+  /*! \brief Maximum number of active literals */
+  static constexpr uint32_t max_active{ 5u };
+
+  /*! \brief Reserved capacity for divisor truth tables (number of divisors). */
+  static constexpr uint32_t reserve{ 200u };
+
+  /*! \brief Whether to consider single XOR gates (i.e., using XAGs instead of AIGs). */
+  static constexpr bool use_xor{ true };
+
+  /*! \brief Whether to copy truth tables. */
+  static constexpr bool copy_tts{ false };
+
+  /*! \brief Whether to preserve depth. */
+  static constexpr bool preserve_depth{ false };
+
+  /*! \brief Whether the divisors have uniform costs (size and depth, whenever relevant). */
+  static constexpr bool uniform_div_cost{ true };
+
+  /*! \brief Size cost of each AND gate. */
+  static constexpr uint32_t size_cost_of_and{ 1u };
+
+  /*! \brief Size cost of each XOR gate (only relevant when `use_xor = true`). */
+  static constexpr uint32_t size_cost_of_xor{ 1u };
+
+  /*! \brief Depth cost of each AND gate (only relevant when `preserve_depth = true`). */
+  static constexpr uint32_t depth_cost_of_and{ 1u };
+
+  /*! \brief Depth cost of each XOR gate (only relevant when `preserve_depth = true` and `use_xor = true`). */
+  static constexpr uint32_t depth_cost_of_xor{ 1u };
+
+  static constexpr uint32_t max_support_size{ 4u };
+
+  using truth_table_storage_type = void;
+  using node_type = void;
+};
+
+template<class TT>
+struct spfd_resyn_static_params_default : public spfd_resyn_static_params
+{
+  using truth_table_storage_type = std::vector<TT>;
+  using node_type = uint32_t;
+};
+
+template<class TT>
+struct aig_iresyn_static_params_default : public spfd_resyn_static_params_default<TT>
+{
+  static constexpr bool use_xor = false;
+};
+
+template<class Ntk>
+struct spfd_resyn_static_params_for_sim_resub : public spfd_resyn_static_params
+{
+  using truth_table_storage_type = incomplete_node_map<kitty::partial_truth_table, Ntk>;
+  using node_type = typename Ntk::node;
+};
+
+template<class Ntk>
+struct aig_iresyn_static_params_for_sim_resub : public spfd_resyn_static_params_for_sim_resub<Ntk>
+{
+  static constexpr bool use_xor = false;
+};
+
+struct spfd_resyn_stats
+{
+
+  /*! \brief Time for verifying if the function is a constant */
+  stopwatch<>::duration time_constant_resub{ 0 };
+
+  /*! \brief Time for verifying if there is a ddivisor with the same functionality as the target and sort the divisors */
+  stopwatch<>::duration time_0_resub{ 0 };
+
+  /*! \brief Time for sorting the input literals */
+  stopwatch<>::duration time_0_sort{ 0 };
+
+  /*! \brief Time for sorting the input literals */
+  stopwatch<>::duration time_greedy_support_search{ 0 };
+
+  void report() const
+  {
+    fmt::print( "[i]         <spfd_resyn_decompose>\n" );
+    fmt::print( "[i]             C-resub      : {:>5.2f} secs\n", to_seconds( time_constant_resub ) );
+    fmt::print( "[i]             0-resub      : {:>5.2f} secs\n", to_seconds( time_0_resub ) );
+    fmt::print( "[i]             0-level sort : {:>5.2f} secs\n", to_seconds( time_0_sort ) );
+  }
+};
+
+/*! \brief SPFD-based resynthesys engine for AIGs or XAGs.
+ *
+ * Divisors are sorted by coverage of the information graph.
+ * Next a scalable support minimization procedure is carried on the most promising _divisors.
+ * Finally, a spfd-based bottom-up k-resub is performed.
+ * 
+   \verbatim embed:rst
+
+   Example
+
+   .. code-block:: c++
+
+      using TT = kitty::static_truth_table<6>;
+      const std::vector<aig_network::node> _divisors = ...;
+      const node_map<TT, aig_network> tts = ...;
+      const TT target = ..., care = ...;
+      spfd_resyn_stats st;
+      spfd_resyn_decompose<TT, node_map<TT, aig_network>, false, false, aig_network::node> iresyn( st );
+      auto result = iresyn( target, care, _divisors.begin(), _divisors.end(), tts );
+   \endverbatim
+ */
+template<class TT, class static_params = spfd_resyn_static_params_default<TT>>
+class spfd_resyn_decompose
+{
+public:
+  using stats = spfd_resyn_stats;
+  using index_list_t = large_xag_index_list;
+  using truth_table_t = TT;
+
+private:
+  struct literal_t
+  {
+    literal_t( uint32_t l )
+        : lit( l )
+    {}
+
+    bool operator==( literal_t const& other ) const
+    {
+      return lit == other.lit;
+    }
+
+    bool operator>=( literal_t const& other ) const
+    {
+      return cost >= other.cost;
+    }
+
+    uint32_t lit;
+    uint32_t cost{ 0 };
+  };
+
+  struct fanin_pair
+  {
+    fanin_pair( uint32_t l1, uint32_t l2 )
+        : lit1( l1 < l2 ? l1 : l2 ), lit2( l1 < l2 ? l2 : l1 )
+    {}
+
+    fanin_pair( uint32_t l1, uint32_t l2, bool is_xor )
+        : lit1( l1 > l2 ? l1 : l2 ), lit2( l1 > l2 ? l2 : l1 )
+    {
+      (void)is_xor;
+    }
+
+    bool operator==( fanin_pair const& other ) const
+    {
+      return lit1 == other.lit1 && lit2 == other.lit2;
+    }
+
+    uint32_t lit1, lit2;
+    uint32_t score{ 0 };
+  };
+
+public:
+  explicit spfd_resyn_decompose( stats& st ) noexcept
+      : _st( st )
+  {
+    static_assert( std::is_same_v<typename static_params::base_type, spfd_resyn_static_params>, "Invalid static_params type" );
+    static_assert( !( static_params::uniform_div_cost && static_params::preserve_depth ), "If depth is to be preserved, divisor depth cost must be provided (usually not uniform)" );
+    _divisors.reserve( static_params::reserve );
+  }
+
+  /*! \brief Perform SPFD-resynthesis.
+   *
+   * `tts[*begin]` must be of type `TT`.
+   * Moreover, if `static_params::copy_tts = false`, `*begin` must be of type `static_params::node_type`.
+   *
+   * \param target Truth table of the target function.
+   * \param care Truth table of the care set.
+   * \param begin Begin iterator to divisor nodes.
+   * \param end End iterator to divisor nodes.
+   * \param tts A data structure (e.g. std::vector<TT>) that stores the truth tables of the divisor functions.
+   * \param max_size Maximum number of nodes allowed in the dependency circuit.
+   */
+  template<class iterator_type,
+           bool enabled = static_params::uniform_div_cost && !static_params::preserve_depth, typename = std::enable_if_t<enabled>>
+  std::optional<index_list_t> operator()( TT const& target, TT const& care, iterator_type begin, iterator_type end, typename static_params::truth_table_storage_type const& tts, uint32_t max_size = std::numeric_limits<uint32_t>::max() )
+  {
+    static_assert( static_params::copy_tts || std::is_same_v<typename std::iterator_traits<iterator_type>::value_type, typename static_params::node_type>, "iterator_type does not dereference to static_params::node_type" );
+    _care = care;
+    _ptts = &tts;
+    _func = target & care;
+
+    _divisors.resize( 1 ); /* clear previous data and reserve 1 dummy node for constant */
+    
+    while ( begin != end )
+    {
+      if constexpr ( static_params::copy_tts )
+      {
+        _divisors.emplace_back( ( *_ptts )[*begin] );
+      }
+      else
+      {
+        _divisors.emplace_back( *begin );
+      }
+      ++begin;
+    }
+    return compute_function( max_size );
+  }
+
+  template<class iterator_type, class Fn,
+           bool enabled = !static_params::uniform_div_cost && !static_params::preserve_depth, typename = std::enable_if_t<enabled>>
+  std::optional<index_list_t> operator()( TT const& target, TT const& care, iterator_type begin, iterator_type end, typename static_params::truth_table_storage_type const& tts, Fn&& size_cost, uint32_t max_size = std::numeric_limits<uint32_t>::max() )
+  {}
+
+  template<class iterator_type, class Fn,
+           bool enabled = !static_params::uniform_div_cost && static_params::preserve_depth, typename = std::enable_if_t<enabled>>
+  std::optional<index_list_t> operator()( TT const& target, TT const& care, iterator_type begin, iterator_type end, typename static_params::truth_table_storage_type const& tts, Fn&& size_cost, Fn&& depth_cost, uint32_t max_size = std::numeric_limits<uint32_t>::max(), uint32_t max_depth = std::numeric_limits<uint32_t>::max() )
+  {}
+
+private:
+  std::optional<index_list_t> compute_function( uint32_t num_inserts )
+  {
+    _index_list.clear();
+    _index_list.add_inputs( _divisors.size() - 1 );
+    auto const lit = compute_function_details( num_inserts );
+    if ( lit )
+    {
+      assert( _index_list.num_gates() <= num_inserts );
+      _index_list.add_output( *lit );
+      return _index_list;
+    }
+    return std::nullopt;
+  }
+
+  std::optional<uint32_t> compute_function_details( uint32_t num_inserts )
+  {
+    /* try constant-resub */
+    auto const resC = call_with_stopwatch( _st.time_constant_resub, [&]() {
+      return find_constant_resub();
+    } );
+    if ( resC )
+    {  
+      return *resC; 
+    }
+
+    /* try 0-resub and assign a weight to the divisors */
+    auto const res0 = call_with_stopwatch( _st.time_0_resub, [&]() {
+      return find_0_resub();
+    } );
+    if( res0 )
+    {
+      return *res0;
+    }
+    if ( num_inserts == 0u )
+    {
+      return std::nullopt;
+    }
+
+    /* find a support */
+    auto const supp = call_with_stopwatch( _st.time_greedy_support_search, [&]() {
+      return find_support_greedy();
+    } );
+
+    if( supp )
+    {
+      if( supp->size() == 2 )
+        return find_1_resub( *supp );
+      else
+        return std::nullopt;
+    }
+    if ( num_inserts == 1u )
+    {
+      return std::nullopt;
+    }
+
+    /* nothing worked */
+    return std::nullopt;
+  }
+
+  std::optional<uint32_t> find_constant_resub()
+  {
+    if( kitty::count_ones( _func ) == 0 )
+      return 0;
+    if( kitty::equal( _func, _care ) )
+      return 1;
+    return std::nullopt;
+  }
+
+  std::optional<uint32_t> find_0_resub()
+  {
+    for ( auto v = 1u; v < _divisors.size(); ++v )
+    {
+      if( kitty::equal( get_div(v) & _care, _func ) )
+        return v << 1u;
+      if( kitty::equal( ~get_div(v) & _care, _func ) )
+        return v << 1u | 1u;
+    }
+    return std::nullopt;
+  }
+
+  std::optional<uint32_t> find_1_resub( std::vector<uint32_t> const& supp )
+  {
+    TT a = get_div(supp[0]);
+    TT b = get_div(supp[1]);
+
+    if( kitty::equal( _func, a & b ) )
+    {
+      auto const new_lit =_index_list.add_and( supp[0]<<1, supp[1]<<1 );
+      return new_lit;
+    }
+    if( kitty::equal( _func, ~a & b ) )
+    {
+      auto const new_lit =_index_list.add_and( supp[0]<<1 | 0x1, supp[1]<<1 );
+      return new_lit;
+    }
+    if( kitty::equal( _func, a & ~b ) )
+    {
+      auto const new_lit =_index_list.add_and( supp[0]<<1, supp[1]<<1 | 0x1 );
+      return new_lit;
+    }
+    if( kitty::equal( _func, ~a & ~b ) )
+    {
+      auto const new_lit =_index_list.add_and( supp[0]<<1 | 0x1, supp[1]<<1 | 0x1 );
+      return new_lit;
+    }
+    if( kitty::equal( _func, a | b ) )
+    {
+      auto const new_lit =_index_list.add_and( supp[0]<<1 | 0x1, supp[1]<<1 | 0x1 );
+      return new_lit;
+    }
+    if( kitty::equal( _func, ~a | b ) )
+    {
+      auto const new_lit =_index_list.add_and( supp[0]<<1, supp[1]<<1 | 0x1 );
+      return new_lit;
+    }
+    if( kitty::equal( _func, a | ~b ) )
+    {
+      auto const new_lit =_index_list.add_and( supp[0]<<1 | 0x1, supp[1]<<1 );
+      return new_lit;
+    }
+    if( kitty::equal( _func, ~a | ~b ) )
+    {
+      auto const new_lit =_index_list.add_and( supp[0]<<1, supp[1]<<1 );
+      return new_lit;
+    }
+    if( kitty::equal( _func, a ^ b ) )
+    {
+      auto const new_lit =_index_list.add_xor( supp[0]<<1, supp[1]<<1  );
+      return new_lit;
+    }
+    if( kitty::equal( ~_func, a ^ b ) )
+    {
+      auto const new_lit =_index_list.add_xor( supp[0]<<1 | 0x1, supp[1]<<1  );
+      return new_lit;
+    }
+    return std::nullopt;
+  }
+
+  std::optional<std::vector<uint32_t>> find_support_greedy()
+  {
+    reset_masks();
+    std::set<uint32_t> bSupp{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18};
+    std::set<uint32_t> sSupp;
+    uint32_t numOnes, numEdge, divBest, minEdge;
+
+    while( ( ( 1u << _nMasks ) > ( _killed + 1 ) ) && (sSupp.size() < static_params::max_support_size) ) 
+    {
+      minEdge = std::numeric_limits<uint32_t>::max();
+      numEdge = 0;
+      for( auto v = 1u; v < _divisors.size(); ++v )
+      {
+        for( auto m = 0; m < _nMasks; ++m )
+        {
+          if( (_killed >> m) & 1u == 0 )
+          {
+            numOnes = kitty::count_ones( get_div(v) & _func );
+            numEdge += numOnes*(kitty::count_ones( get_div(v) & _care )-numOnes);
+            numOnes = kitty::count_ones( ~get_div(v) & _func );
+            numEdge += numOnes*(kitty::count_ones( ~get_div(v) & _care )-numOnes);
+          }
+        }
+        if( numEdge <= minEdge )
+        {
+          if( sSupp.find(v) == sSupp.end() )
+          {
+            minEdge = numEdge;
+            divBest = v;
+          }
+        }
+      }
+      sSupp.insert(divBest);
+      update_masks(divBest);
+    }
+
+    if( ( 1<<_nMasks ) == (_killed + 1) )
+    {
+      std::vector<uint32_t> vSupp(sSupp.begin(), sSupp.end());
+      std::sort(vSupp.begin(), vSupp.end());
+      return vSupp;
+    }
+    return std::nullopt;
+  }
+
+  void reset_masks()
+  {
+    _masks[0] = _care;
+    _nMasks = 1u;
+    _killed = 0u;
+  }
+
+  void update_masks( uint32_t iDiv )
+  {
+    for( uint32_t iMask{0}; iMask < _nMasks; ++iMask )
+    {
+      if( (( _killed >> iMask ) & 1u) == 1u )
+      {
+        _killed |=(1u << _nMasks+iMask);
+      }
+      else
+      {
+        _masks[_nMasks+iMask] = _masks[iMask] & get_div( iDiv );
+        _masks[iMask] = _masks[iMask] & ~get_div( iDiv );
+
+        if( kitty::count_ones( _func & _masks[_nMasks+iMask] ) == 0 )
+          _killed |= (1u << (_nMasks+iMask));
+        else if( kitty::equal( _func & _masks[_nMasks+iMask], _masks[_nMasks+iMask] ) )
+          _killed |= (1u << (_nMasks+iMask));
+
+        if( kitty::count_ones( _func & _masks[iMask] ) == 0 )
+          _killed |= (1u << iMask);
+        else if( kitty::equal( _func & _masks[iMask], _masks[iMask] ) )
+          _killed |= (1u << iMask);
+      }
+    }
+    _nMasks=_nMasks*2;
+  }
+
+  inline TT const& get_div( uint32_t idx ) const
+  {
+    if constexpr ( static_params::copy_tts )
+    {
+      return _divisors[idx];
+    }
+    else
+    {
+      return ( *_ptts )[_divisors[idx]];
+    }
+  }
+
+private:
+  TT _func;
+  TT _care;
+  std::array<TT, 16> _masks;
+  uint32_t _killed = 0;
+  uint32_t _nMasks = 0;
+
+  const typename static_params::truth_table_storage_type* _ptts;
+  std::vector<std::conditional_t<static_params::copy_tts, TT, typename static_params::node_type>> _divisors;
+
+  index_list_t _index_list;
+
+  stats& _st;
+}; /* spfd_resyn_decompose */
+
+} /* namespace mockturtle */
+
+      /*literal_t lit{v};
+
+      nOnes = kitty::count_ones( get_div(v) & _func );
+      lit.cost = nOnes*(kitty::count_ones( get_div(v) & _care )-nOnes);
+
+      nOnes = kitty::count_ones( ~get_div(v) & _func );
+      lit.cost += nOnes*(kitty::count_ones( ~get_div(v) & _care )-nOnes);
+
+      _active_literals.emplace_back( lit );*/
