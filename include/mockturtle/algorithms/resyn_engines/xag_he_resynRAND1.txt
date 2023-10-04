@@ -359,44 +359,25 @@ private:
     IA11,
     INV_,
     BUF_,
-    EXOR,
-    NONE
+    EXOR
   };
 
-  std::optional<std::pair<uint32_t, std::vector<divisor_t>>> update_divisors( std::vector<divisor_t> const& divs )
+  std::pair<uint32_t, std::vector<divisor_t>> update_divisors( std::vector<divisor_t> const& divs )
   {
-
     std::vector<divisor_t> newDivs;
     uint32_t numGates{0};
     reset_masks();
-    double numEdge{0};
-    double numOnes;
-    uint32_t KNT{0};
+    uint32_t numEdge, numOnes;
+    uint32_t minEdge = std::numeric_limits<uint32_t>::max();
+    
+    std::vector<uint32_t> bestAs, bestBs;
+    std::vector<TT> bestTts;
+    std::vector<best_t> bestGates;
 
     uint32_t buffer_counter{0};
 
-    std::set<uint32_t> USED;
-
-    while( ( _nMasks > _nKilled ) && (newDivs.size() < _masks.size()) )
+    while( ( ( 1u << _nMasks ) > ( _killed + 1 ) ) && (newDivs.size() < _masks.size()) )
     {
-      double numEdgeTotal{0};
-      for( auto m = 0; m < _nMasks; ++m )
-      {
-        if( !_killed[m] )
-        {
-          numOnes = kitty::count_ones( _masks[m] & _func );
-          numEdgeTotal += numOnes*(kitty::count_ones( _masks[m] )-numOnes);
-        }
-      }
-
-      double minEdge = std::numeric_limits<uint32_t>::max();
-      double maxEdge = std::numeric_limits<uint32_t>::min();
-      std::vector<uint32_t> As = {0};
-      std::vector<uint32_t> Bs = {0};
-      std::vector<TT> Tts = {_func};
-      std::vector<best_t> Gates ={NONE};
-      std::vector<double> Costs = {0};
-
       if( buffer_counter < divs.size()-1 )
       {
         for( auto v = 0; v<divs.size(); ++v )
@@ -404,22 +385,29 @@ private:
           numEdge = 0;
           for( auto m = 0; m < _nMasks; ++m )
           {
-
-            if( !_killed[m] )
+            if( ((_killed >> m) & 1u) != 1u )
             {
               numOnes = kitty::count_ones( _masks[m] & divs[v].func & _func );
-              numEdge += numOnes*(kitty::count_ones( divs[v].func & _masks[m] )-numOnes)/numEdgeTotal;
+              numEdge += numOnes*(kitty::count_ones( divs[v].func & _masks[m] )-numOnes);
               numOnes = kitty::count_ones( ~divs[v].func & _func & _masks[m] );
-              numEdge += numOnes*(kitty::count_ones( ~divs[v].func & _masks[m] )-numOnes)/numEdgeTotal;
+              numEdge += numOnes*(kitty::count_ones( ~divs[v].func & _masks[m] )-numOnes);
             }
           }
-          As.push_back(v);
-          Bs.push_back(v);
-          Tts.push_back(divs[v].func);
-          Gates.push_back(BUF_);
-          Costs.push_back(numEdge);
-          if( numEdge < minEdge ) minEdge = numEdge;
-          if( numEdge > maxEdge ) maxEdge = numEdge;
+          if( numEdge < minEdge )
+          {
+            minEdge = numEdge;
+            bestAs = {v};
+            bestBs = {v};
+            bestGates = {BUF_};
+            bestTts = {divs[v].func};
+          }
+          else if( numEdge == minEdge )
+          {
+            bestAs.push_back(v);
+            bestBs.push_back(v);
+            bestGates.push_back(BUF_);
+            bestTts.push_back(divs[v].func);
+          }
         }
       }
 
@@ -443,58 +431,44 @@ private:
             numEdge = 0;
             for( auto m = 0; m < _nMasks; ++m )
             {
-              if( !_killed[m] )
+              if( ((_killed >> m) & 1u) != 1u )
               {
                 numOnes = kitty::count_ones( _masks[m] & funcs[iFn] & _func );
-                numEdge += numOnes*(kitty::count_ones( funcs[iFn] & _masks[m] )-numOnes)/numEdgeTotal;
+                numEdge += numOnes*(kitty::count_ones( funcs[iFn] & _masks[m] )-numOnes);
                 numOnes = kitty::count_ones( ~funcs[iFn] & _func & _masks[m] );
-                numEdge += numOnes*(kitty::count_ones( ~funcs[iFn] & _masks[m] )-numOnes)/numEdgeTotal;
+                numEdge += numOnes*(kitty::count_ones( ~funcs[iFn] & _masks[m] )-numOnes);
               }
             }
 
-            As.push_back(v1);
-            Bs.push_back(v2);
-            Tts.push_back(funcs[iFn]);
-            Gates.push_back(gates[iFn]);
-            Costs.push_back(numEdge);
-            if( numEdge < minEdge ) minEdge = numEdge;
-            if( numEdge > maxEdge ) maxEdge = numEdge;
+            if( numEdge < minEdge )
+            {
+              minEdge = numEdge;
+              bestAs = {v1};
+              bestBs = {v2};
+              bestGates = {gates[iFn]};
+              bestTts = {funcs[iFn]};
+            }
+            else if( numEdge == minEdge )
+            {
+              bestAs.push_back(v1);
+              bestBs.push_back(v2);
+              bestGates.push_back(gates[iFn]);
+              bestTts.push_back(funcs[iFn]);
+            }
           }
         }
       }
 
-      double beta{100};
-      for( uint32_t i{1}; i<Costs.size(); ++i )
-      {
-        if( USED.find(i) == USED.end() )
-        {
-          Costs[i] = Costs[i-1] + exp(-beta*(Costs[i]-minEdge)/(maxEdge-minEdge));
-        }
-        else
-          Costs[i] = Costs[i-1];
-      }
-      double sum = Costs[Costs.size()-1];
-//
-      std::uniform_real_distribution<> distrib(0, 1);
-      double rnd = distrib(rgen);
-      uint32_t v;
-      //printf("%f:\n", rnd );
-      for( uint32_t i{1}; i<Costs.size(); ++i )
-      {
-        //printf("%f ", Costs[i]);
-        if( rnd <= Costs[i]/sum )
-        {
-          v = i;
-          break;
-        }
-      }
 
-      uint32_t a = As[v];
-      uint32_t b = Bs[v];
-      best_t gate = Gates[v];
-      TT tt = Tts[v];
-      USED.insert(v);
+      std::uniform_int_distribution<int>  distr(0, bestAs.size()-1);
+      uint32_t v = distr(rgen);
+
+      uint32_t a = bestAs[v];
+      uint32_t b = bestBs[v];
+      best_t gate = bestGates[v];
+      TT tt = bestTts[v];
       
+
       switch (gate)
       {
       case PA00:
@@ -522,17 +496,12 @@ private:
         buffer_counter++;
         break;
       default:
-        assert(0);
         break;
       }
       update_masks( tt );
     }
-    /* termination options */
-    if( (numGates == 0) && (newDivs.size() == divs.size()))
-    {
+    if( numGates == 0 )
       printf("[w] no gates added\n");
-      return std::nullopt;
-    }
     return std::make_pair(numGates, newDivs);
   }
 
@@ -542,34 +511,21 @@ private:
     std::vector<divisor_t> divs;
     for( uint32_t v{0}; v<supp.size(); ++v )
       divs.emplace_back( get_div(supp[v]), supp[v] << 1 );
-    //if( supp.size() == 5 )
-    //  printf("\n %d :", max_num_gates);
+    if( supp.size() == 5 )
+      printf("\n %d :", max_num_gates);
     
-    index_list_t safe_copy_list = index_list;
-    std::vector<divisor_t> safe_copy_divs = divs;
+    index_list_t copy = index_list;
+    std::vector<divisor_t> tmpDivs = divs;
     uint32_t K = 0;
     while( ( max_num_gates > cnt ) && ( divs.size() > 1 ) && (K < 10) )
     {
-      auto UPD = update_divisors( divs );//std::tie(, divs)
-      if( UPD )
-      {
-        delta = UPD->first;
-        divs = UPD->second;
-        cnt+=delta;
-      }
-      if( !UPD || ((divs.size()>1)&&(cnt>=max_num_gates)) )
-      {
-          K++;
-          index_list = safe_copy_list;
-          divs = safe_copy_divs;
-          //if( supp.size() == 5 )
-          //  printf("new try\n");
-          cnt = 0;
-      }
+      std::tie(delta, divs) = update_divisors( divs );
+      cnt+=delta;
+      if( supp.size() == 5 )
+        printf("%d ", cnt );
     }
-
-    //if( supp.size() == 5 )
-    //  printf("\n");
+    if( supp.size() == 5 )
+      printf("\n");
     if( divs.size() == 1 )
     {
       if( kitty::equal( divs[0].func & _care, _func & _care ) )
@@ -583,7 +539,6 @@ private:
       else
         assert(0);
     }
-
     return std::nullopt;
   }
 
@@ -662,7 +617,7 @@ private:
 
     uint32_t minEdge = std::numeric_limits<uint32_t>::max();
     reset_masks();
-    while( ( _nMasks > _nKilled ) && (sSupp.size() < static_params::max_support_size) ) 
+    while( ( ( 1u << _nMasks ) > ( _killed + 1 ) ) && (sSupp.size() < static_params::max_support_size) ) 
     {
       std::vector<uint32_t> divsBest;
       for( auto v = 1u; v < divisors.size(); ++v )
@@ -670,7 +625,7 @@ private:
         numEdge = 0;
         for( auto m = 0; m < _nMasks; ++m )
         {
-          if( !_killed[m] )
+          if( ((_killed >> m) & 1u) != 1u )
           {
             numOnes = kitty::count_ones( _masks[m] & get_div(v) & _func );
             numEdge += numOnes*(kitty::count_ones( get_div(v) & _masks[m] )-numOnes);
@@ -705,7 +660,7 @@ private:
       update_masks(divsBest[v]);
     }
 
-    if( _nMasks == _nKilled )
+    if( ( 1<<_nMasks ) == (_killed + 1) )
     {
       std::vector<uint32_t> vSupp(sSupp.begin(), sSupp.end());
       std::sort(vSupp.begin(), vSupp.end());
@@ -718,46 +673,31 @@ private:
   {
     _masks[0] = _care;
     _nMasks = 1u;
-    _killed[0] = false;
-    _nKilled = 0;
+    _killed = 0u;
   }
 
   void update_masks( uint32_t iDiv )
   {
     for( uint32_t iMask{0}; iMask < _nMasks; ++iMask )
     {
-      if( _killed[iMask] )
+      if( (( _killed >> iMask ) & 1u) == 0x1 )
       {
-        _killed[_nMasks+iMask] = true;
-        _nKilled++;
+        _killed |= (1u << _nMasks+iMask);
       }
       else
       {
-        _killed[_nMasks+iMask] = false;
         _masks[_nMasks+iMask] = _masks[iMask] & get_div( iDiv );
         _masks[iMask] = _masks[iMask] & ~get_div( iDiv );
 
         if( kitty::count_ones( _func & _masks[_nMasks+iMask] ) == 0 )
-        {
-          _killed[_nMasks+iMask] = true;
-          _nKilled++;
-        }
+          _killed |= (1u << (_nMasks+iMask));
         else if( kitty::equal( _func & _masks[_nMasks+iMask], _masks[_nMasks+iMask] ) )
-        {
-          _killed[_nMasks+iMask] = true;
-          _nKilled++;
-        }
+          _killed |= (1u << (_nMasks+iMask));
 
         if( kitty::count_ones( _func & _masks[iMask] ) == 0 )
-        {
-          _killed[iMask] = true;
-          _nKilled++;
-        }
+          _killed |= (1u << iMask);
         else if( kitty::equal( _func & _masks[iMask], _masks[iMask] ) )
-        {
-          _killed[iMask] = true;
-          _nKilled++;
-        }
+          _killed |= (1u << iMask);
       }
     }
     _nMasks=_nMasks*2;
@@ -767,41 +707,27 @@ private:
   {
     for( uint32_t iMask{0}; iMask < _nMasks; ++iMask )
     {
-      if( _killed[iMask] )
+      if( (( _killed >> iMask ) & 1u) == 0x1 )
       {
-        _killed[_nMasks+iMask] = true;
-        _nKilled++;
+        _killed |= (1u << _nMasks+iMask);
       }
       else
       {
-        _killed[_nMasks+iMask] = false;
         _masks[_nMasks+iMask] = _masks[iMask] & tt;
         _masks[iMask] = _masks[iMask] & ~tt;
 
         if( kitty::count_ones( _func & _masks[_nMasks+iMask] ) == 0 )
-        {
-          _killed[_nMasks+iMask] = true;
-          _nKilled++;
-        }
+          _killed |= (1u << (_nMasks+iMask));
         else if( kitty::equal( _func & _masks[_nMasks+iMask], _masks[_nMasks+iMask] ) )
-        {
-          _killed[_nMasks+iMask] = true;
-          _nKilled++;
-        }
+          _killed |= (1u << (_nMasks+iMask));
 
         if( kitty::count_ones( _func & _masks[iMask] ) == 0 )
-        {
-          _killed[iMask] = true;
-          _nKilled++;
-        }
+          _killed |= (1u << iMask);
         else if( kitty::equal( _func & _masks[iMask], _masks[iMask] ) )
-        {
-          _killed[iMask] = true;
-          _nKilled++;
-        }
+          _killed |= (1u << iMask);
       }
     }
-    _nMasks=_nMasks*2;
+    _nMasks+=_nMasks;
   }
 
   std::optional<uint32_t> compute_function_rec( uint32_t num_inserts )
@@ -1411,10 +1337,9 @@ private:
   std::array<uint32_t, 2> num_bits; /* number of bits in on-set and off-set */
   TT _care;
   TT _func;
-  std::array<TT, 128> _masks;
-  std::array<bool, 128> _killed;
+  std::array<TT, 64> _masks;
   uint64_t _nMasks{1};
-  uint32_t _nKilled{0};
+  uint64_t _killed{0}; 
 
   const typename static_params::truth_table_storage_type* ptts;
   std::vector<std::conditional_t<static_params::copy_tts, TT, typename static_params::node_type>> divisors;

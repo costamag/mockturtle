@@ -43,7 +43,7 @@ int main()
 
   experiment<std::string, uint32_t, uint32_t, uint32_t, float, uint32_t, float, float> exp( "sim_resub_he_xag", "benchmark", "size", "#LMFFC", "rs", "t(A)", "hers", "t(B)", "d(gates)"  );
 
-  for ( auto const& benchmark : all_benchmarks() )
+  for ( auto const& benchmark : lmffc_benchmarks() )
   {
     fmt::print( "[i] processing {}\n", benchmark );
     
@@ -72,6 +72,7 @@ int main()
     default_analyzer( xag, anPs, &anSt );
 
     uint32_t nLargeMffc = anSt.nXXLMFFC;
+    printf("|LMFFC|=%d:", nLargeMffc);
     const uint32_t size_before = xag.num_gates();
 
     resubstitution_params psA;
@@ -79,17 +80,22 @@ int main()
     psA.max_inserts = 20;
     psA.max_pis = 8;
     psA.max_divisors = std::numeric_limits<uint32_t>::max();
+    psA.max_trials = 100;
+    psA.progress = true;
     sim_resubstitution( xagA, psA, &stA );
     xagA = cleanup_dangling( xagA );
     float nA = xagA.num_gates();
     float timeA = to_seconds( stA.time_total );
-    const auto cecA = benchmark == "hyp" ? true : abc_cec( xagA, benchmark );
+    bool TOOLARGE = ( benchmark == "hyp" || benchmark == "leon2" || benchmark == "leon3_opt" || benchmark == "leon3" || benchmark == "leon3mp" || benchmark == "netcard" );
+    const auto cecA = TOOLARGE ? true : abc_cec( xagA, benchmark );
     assert(cecA);
 
     resubstitution_params psB;
     resubstitution_stats stB;
     psB.max_inserts = 20;
     psB.max_pis = 8;
+    psB.progress = true;
+    psB.max_trials = 100;
     psB.max_divisors = std::numeric_limits<uint32_t>::max();
     psB.useInfo = true;
     sim_resubstitution( xagB, psB, &stB );
@@ -97,11 +103,12 @@ int main()
     float nB = xagB.num_gates();
     float timeB = to_seconds( stB.time_total );
 
-    const auto cecB = benchmark == "hyp" ? true : abc_cec( xagB, benchmark );
+    const auto cecB = TOOLARGE ? true : abc_cec( xagB, benchmark );
     assert(cecB);
     float deltaG = 100*(nB-nA)/nA;
 
     float deltaT = (timeB-timeA)/(timeA);
+    printf("srs=%d hers=%d %f %\n", xagA.num_gates(), xagB.num_gates(), deltaG );
 
     exp( benchmark, size_before, nLargeMffc, xagA.num_gates(), timeA , xagB.num_gates(), timeB, deltaG );
   }

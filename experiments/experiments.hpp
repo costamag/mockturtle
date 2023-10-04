@@ -479,17 +479,17 @@ std::vector<std::string> iwls_benchmarks( uint64_t selection = iwls )
   return result;
 }
 
-std::vector<std::string> lmffc_benchmarks( uint64_t selection = iwls )
+std::vector<std::string> lmffc_benchmarks( uint64_t selection = epfl | iscas )
 {
   std::vector<std::string> result;
-  for ( uint32_t i = 0u; i < 20u; ++i )
+  for ( uint32_t i = 47u; i < 58u; ++i )
   {
     if ( ( selection >> i ) & 1 )
     {
       result.push_back( benchmarks[i] );
     }
   }
-  for ( uint32_t i = 47u; i < 58u; ++i )
+  for ( uint32_t i = 0u; i < 20u; ++i )
   {
     if ( ( selection >> i ) & 1 )
     {
@@ -577,3 +577,5 @@ inline bool abc_cec( Ntk const& ntk, std::string const& benchmark )
 }
 
 } // namespace experiments
+
+
