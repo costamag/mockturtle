@@ -43,7 +43,7 @@ int main()
 
   experiment<std::string, uint32_t, uint32_t, uint32_t, float, bool, uint32_t, float, bool, float, float> exp( "sim_resub_he", "benchmark", "size", "#LMFFC", "rs", "t(A)", "eq(A)", "hers", "t(B)", "eq(B)", "d(gates)", "d(time)"  );
 
-  for ( auto const& benchmark : epfl_benchmarks() )
+  for ( auto const& benchmark : iscas_benchmarks( ~( experiments::leon2 | experiments::leon3 | experiments::leon3_opt | experiments::leon3mp | experiments::netcard ) ) )
   {
     fmt::print( "[i] processing {}\n", benchmark );
     
@@ -78,6 +78,7 @@ int main()
     resubstitution_stats stA;
     psA.max_inserts = 20;
     psA.max_pis = 8;
+    psA.max_trials = 1;
     psA.max_divisors = std::numeric_limits<uint32_t>::max();
     sim_resubstitution( aigA, psA, &stA );
     aigA = cleanup_dangling( aigA );
@@ -89,7 +90,7 @@ int main()
     resubstitution_stats stB;
     psB.max_inserts = 20;
     psB.max_pis = 8;
-    psB.max_trials = 100;
+    psB.max_trials = 1;
     psB.max_divisors = std::numeric_limits<uint32_t>::max();
     psB.useInfo = true;
     sim_resubstitution( aigB, psB, &stB );

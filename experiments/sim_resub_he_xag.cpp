@@ -43,7 +43,7 @@ int main()
 
   experiment<std::string, uint32_t, uint32_t, uint32_t, float, uint32_t, float, float> exp( "sim_resub_he_xag", "benchmark", "size", "#LMFFC", "rs", "t(A)", "hers", "t(B)", "d(gates)"  );
 
-  for ( auto const& benchmark : lmffc_benchmarks() )
+  for ( auto const& benchmark : lmffc_benchmarks())//~( experiments::leon2 | experiments::leon3 | experiments::leon3_opt | experiments::leon3mp | experiments::netcard )) )
   {
     fmt::print( "[i] processing {}\n", benchmark );
     
@@ -80,8 +80,9 @@ int main()
     psA.max_inserts = 20;
     psA.max_pis = 8;
     psA.max_divisors = std::numeric_limits<uint32_t>::max();
-    psA.max_trials = 100;
+    psA.max_trials = 1;
     psA.progress = true;
+    psA.use_dont_cares = true;
     sim_resubstitution( xagA, psA, &stA );
     xagA = cleanup_dangling( xagA );
     float nA = xagA.num_gates();
@@ -95,9 +96,11 @@ int main()
     psB.max_inserts = 20;
     psB.max_pis = 8;
     psB.progress = true;
-    psB.max_trials = 100;
+    psB.max_trials = 1;
     psB.max_divisors = std::numeric_limits<uint32_t>::max();
     psB.useInfo = true;
+    psB.use_dont_cares = true;
+
     sim_resubstitution( xagB, psB, &stB );
     xagB = cleanup_dangling( xagB );
     float nB = xagB.num_gates();

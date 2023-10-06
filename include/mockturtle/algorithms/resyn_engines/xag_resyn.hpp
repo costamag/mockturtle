@@ -358,8 +358,6 @@ private:
       return std::nullopt;
     }
 
-    return std::nullopt;
-
     /* collect AND-type unate pairs and sort (both types), then try 2- and 3-resub */
     call_with_stopwatch( st.time_collect_pairs, [&]() {
       collect_unate_pairs();

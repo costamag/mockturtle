@@ -418,8 +418,8 @@ private:
       {
         for( auto v2 = v1+1; v2<divs.size(); ++v2 )
         {
-          funcs = { divs[v1].func&divs[v2].func, ~divs[v1].func&divs[v2].func, divs[v1].func & ~divs[v2].func, ~divs[v1].func&~divs[v2].func };
-          gates = { PA11, PA01, PA10, PA11 };
+          funcs = { ~divs[v1].func&~divs[v2].func, ~divs[v1].func&divs[v2].func, divs[v1].func & ~divs[v2].func, divs[v1].func&divs[v2].func };
+          gates = { PA00, PA01, PA10, PA11 };
           if constexpr ( static_params::use_xor )
           {
             funcs.push_back( divs[v1].func^divs[v2].func );

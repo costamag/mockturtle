@@ -88,7 +88,7 @@ struct xag_he_static_params
   /*! \brief Depth cost of each XOR gate (only relevant when `preserve_depth = true` and `use_xor = true`). */
   static constexpr uint32_t depth_cost_of_xor{ 1u };
 
-  static constexpr uint32_t max_support_size{4u};
+  static constexpr uint32_t max_support_size{5u};
 
   using truth_table_storage_type = void;
   using node_type = void;
@@ -305,7 +305,7 @@ private:
       index_list.add_output( *lit );
       return index_list;
     }
-//
+
     index_list.clear();
     index_list.add_inputs( divisors.size() - 1 );
     auto const litHe = compute_function_high_effort( num_inserts );
@@ -322,8 +322,8 @@ private:
 
   std::optional<uint32_t> compute_function_high_effort( uint32_t num_inserts )
   {
-    //if( num_inserts <= 4 )
-    //  return std::nullopt;
+    if( num_inserts <= 4 )
+      return std::nullopt;
     auto supp = find_support_greedy();
 
     if( supp )
@@ -334,6 +334,8 @@ private:
       return find_function_from_support(*supp, num_inserts);
     }
     //printf("\n");
+
+
     return std::nullopt;
   }
 
@@ -428,8 +430,8 @@ private:
       {
         for( auto v2 = v1+1; v2<divs.size(); ++v2 )
         {
-          funcs = { ~divs[v1].func&~divs[v2].func, ~divs[v1].func&divs[v2].func, divs[v1].func & ~divs[v2].func, divs[v1].func&divs[v2].func };
-          gates = { PA00, PA01, PA10, PA11 };
+          funcs = { divs[v1].func&divs[v2].func, ~divs[v1].func&divs[v2].func, divs[v1].func & ~divs[v2].func, ~divs[v1].func&~divs[v2].func };
+          gates = { PA11, PA01, PA10, PA11 };
           if constexpr ( static_params::use_xor )
           {
             funcs.push_back( divs[v1].func^divs[v2].func );
@@ -652,6 +654,108 @@ private:
 //  }
 //
 
+/*
+  std::optional<std::vector<uint32_t>> find_support_greedy()
+  {
+    std::set<uint32_t> sSupp;
+    double numOnes;
+    double numEdge;
+    //divBest;
+    double numEdgesTotal;
+
+    reset_masks();
+    while( ( _nMasks > _nKilled ) && (sSupp.size() < static_params::max_support_size) ) 
+    {
+      double minEdge = std::numeric_limits<uint32_t>::max();
+      double maxEdge = std::numeric_limits<uint32_t>::min();
+      std::vector<double> costs = {0};
+
+      numEdgesTotal = 0;
+      for( auto m = 0; m < _nMasks; ++m )
+      {
+        if( !_killed[m] )
+        {
+          numOnes = kitty::count_ones( _masks[m] & _func );
+          numEdgesTotal += numOnes*(kitty::count_ones( _masks[m] )-numOnes);
+        }
+      }
+
+      for( auto v = 1u; v < divisors.size(); ++v )
+      {
+        numEdge = 0;
+        for( auto m = 0; m < _nMasks; ++m )
+        {
+          if( !_killed[m] )
+          {
+            numOnes = kitty::count_ones( _masks[m] & get_div(v) & _func );
+            numEdge += numOnes*(kitty::count_ones( get_div(v) & _masks[m] )-numOnes)/numEdgesTotal;
+            numOnes = kitty::count_ones( ~get_div(v) & _func & _masks[m] );
+            numEdge += numOnes*(kitty::count_ones( ~get_div(v) & _masks[m] )-numOnes)/numEdgesTotal;
+          }
+        }
+        //printf(" %d", numEdge );
+        //if( numEdge == minEdge )
+        //{
+        //  if( sSupp.find(v) == sSupp.end() )
+        //  {
+        //    minEdge = numEdge;
+        //    divBest = v;
+        //  }
+        //}
+        //else if( numEdge < minEdge )
+        //{
+        //  if( sSupp.find(v) == sSupp.end() )
+        //  {
+        //    minEdge = numEdge;
+        //    divBest = v;
+        //  }
+        //  //else
+        //  //  printf("x");
+        //}
+        if( numEdge > maxEdge ) maxEdge = numEdge;
+        if( numEdge < minEdge ) minEdge = numEdge;
+
+        costs.push_back( 1.0*numEdge );
+      }
+
+      double beta{100};
+      for( uint32_t i{1}; i<costs.size(); ++i )
+      {
+        if( sSupp.find(i) == sSupp.end() )
+        {
+          costs[i] = costs[i-1] + exp(-beta*(costs[i]-minEdge)/(maxEdge-minEdge));
+        }
+        else
+          costs[i] = costs[i-1];
+      }
+      double sum = costs[costs.size()-1];
+
+      std::uniform_real_distribution<> distrib(0, 1);
+      double rnd = distrib(rgen);
+      uint32_t v;
+
+      for( uint32_t i{1}; i<costs.size(); ++i )
+      {
+        //printf("%f %f:\n",costs[i]/sum, rnd );
+        if( costs[i]/sum >= rnd )
+        {
+          v = i;
+          break;
+        }
+      }
+      //printf("\n");
+      sSupp.insert(v);
+      update_masks(v);
+    }
+    if( _nMasks == _nKilled )
+    {
+      std::vector<uint32_t> vSupp(sSupp.begin(), sSupp.end());
+      std::sort(vSupp.begin(), vSupp.end());
+      return vSupp;
+    }
+    return std::nullopt;
+  }
+*/
 
   std::optional<std::vector<uint32_t>> find_support_greedy()
   {
@@ -696,11 +800,11 @@ private:
           //  printf("x");
         }
       }
-      std::uniform_int_distribution<int>  distr(0, divsBest.size()-1);
-      uint32_t v = distr(rgen);
+      //std::uniform_int_distribution<int>  distr(0, divsBest.size()-1);
+      //uint32_t v = distr(rgen);
 
-      sSupp.insert(divsBest[v]);
-      update_masks(divsBest[v]);
+      sSupp.insert(divsBest[0]);
+      update_masks(divsBest[0]);
     }
 
     if( _nMasks == _nKilled )
@@ -862,6 +966,8 @@ private:
       return std::nullopt;
     }
 
+    return std::nullopt;
+
     /* collect AND-type unate pairs and sort (both types), then try 2- and 3-resub */
     call_with_stopwatch( st.time_collect_pairs, [&]() {
       collect_unate_pairs();
@@ -1000,19 +1106,6 @@ private:
         return new_lit2 + on_off_pair;
       }
     }
-
-
-    //if( num_inserts <= 4 )
-    //  return std::nullopt;
-//        auto supp = find_support_greedy();
-//        if( supp )
-//        {
-//            auto const resSPFD =  find_function_from_support(*supp, num_inserts);
-//          if( resSPFD )
-//            return *resSPFD;
-//        }
-
-
 
     return std::nullopt;
   }
