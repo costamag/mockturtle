@@ -31,7 +31,7 @@
 #include <mockturtle/algorithms/cleanup.hpp>
 #include <mockturtle/algorithms/sim_resub.hpp>
 #include <mockturtle/io/aiger_reader.hpp>
-#include <mockturtle/networks/aig.hpp>
+#include <mockturtle/networks/xag.hpp>
 
 #include <experiments.hpp>
 
@@ -40,13 +40,13 @@ int main()
   using namespace experiments;
   using namespace mockturtle;
 
-  experiment<std::string, uint32_t, uint32_t, float, bool> exp( "sim_resubstitution", "benchmark", "size", "gain", "runtime", "equivalent" );
+  experiment<std::string, uint32_t, uint32_t, float, bool> exp( "spfd_resubstitution_xag", "benchmark", "size", "gain", "runtime", "equivalent" );
 
   for ( auto const& benchmark : iscas_benchmarks() )
   {
     fmt::print( "[i] processing {}\n", benchmark );
-    aig_network aig;
-    if ( lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( aig ) ) != lorina::return_code::success )
+    xag_network xag;
+    if ( lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( xag ) ) != lorina::return_code::success )
     {
       continue;
     }
@@ -59,13 +59,13 @@ int main()
     ps.max_pis = 8;
     ps.max_divisors = std::numeric_limits<uint32_t>::max();
 
-    const uint32_t size_before = aig.num_gates();
-    sim_resubstitution( aig, ps, &st );
-    aig = cleanup_dangling( aig );
+    const uint32_t size_before = xag.num_gates();
+    spfd_resubstitution( xag, ps, &st );
+    xag = cleanup_dangling( xag );
 
-    const auto cec = benchmark == "hyp" ? true : abc_cec( aig, benchmark );
+    const auto cec = benchmark == "hyp" ? true : abc_cec( xag, benchmark );
 
-    exp( benchmark, size_before, size_before - aig.num_gates(), to_seconds( st.time_total ), cec );
+    exp( benchmark, size_before, size_before - xag.num_gates(), to_seconds( st.time_total ), cec );
   }
 
   exp.save();

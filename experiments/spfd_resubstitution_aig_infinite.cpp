@@ -40,7 +40,7 @@ int main()
   using namespace experiments;
   using namespace mockturtle;
 
-  experiment<std::string, uint32_t, uint32_t, float, bool> exp( "sim_resubstitution", "benchmark", "size", "gain", "runtime", "equivalent" );
+  experiment<std::string, uint32_t, uint32_t, uint32_t, double, float, float, bool, bool> exp( "spfd_resubstitution_aig_infinite", "benchmark", "size", "u-size", "i-size", "i-gain", "u-runtime", "i-runtime", "u-equivalent" , "i-equivalent" );
 
   for ( auto const& benchmark : iscas_benchmarks() )
   {
@@ -52,20 +52,39 @@ int main()
     }
 
     resubstitution_params ps;
-    resubstitution_stats st;
+    resubstitution_stats ust;
+    resubstitution_stats ist;
 
     // ps.pattern_filename = "1024sa1/" + benchmark + ".pat";
     ps.max_inserts = 20;
     ps.max_pis = 8;
+    ps.progress = true;
     ps.max_divisors = std::numeric_limits<uint32_t>::max();
 
     const uint32_t size_before = aig.num_gates();
-    sim_resubstitution( aig, ps, &st );
+
+    /* urs x infinite */
+    uint32_t size_new = aig.num_gates();
+    uint32_t size_old = std::numeric_limits<uint32_t>::max();
+    while( size_new < size_old )
+    {
+      sim_resubstitution( aig, ps, &ust );
+      aig = cleanup_dangling( aig );
+      size_old = size_new;
+      size_new = aig.num_gates();
+    }
+    double size_urs = aig.num_gates();
+    const auto cecu = benchmark == "hyp" ? true : abc_cec( aig, benchmark );
+    
+    /* irs x 1 */
+    spfd_resubstitution( aig, ps, &ist );
     aig = cleanup_dangling( aig );
+    double size_irs = aig.num_gates();
 
-    const auto cec = benchmark == "hyp" ? true : abc_cec( aig, benchmark );
+    const auto ceci = benchmark == "hyp" ? true : abc_cec( aig, benchmark );
+    double gain = (size_irs-size_urs)/size_urs;
 
-    exp( benchmark, size_before, size_before - aig.num_gates(), to_seconds( st.time_total ), cec );
+    exp( benchmark, size_before, (uint32_t)size_urs, (uint32_t)size_irs, gain, to_seconds( ust.time_total ), to_seconds( ist.time_total ), cecu, ceci );
   }
 
   exp.save();

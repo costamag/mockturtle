@@ -40,7 +40,7 @@ int main()
   using namespace experiments;
   using namespace mockturtle;
 
-  experiment<std::string, uint32_t, uint32_t, float, bool> exp( "sim_resubstitution", "benchmark", "size", "gain", "runtime", "equivalent" );
+  experiment<std::string, uint32_t, uint32_t, float, bool> exp( "spfd_resubstitution_aig", "benchmark", "size", "gain", "runtime", "equivalent" );
 
   for ( auto const& benchmark : iscas_benchmarks() )
   {
@@ -60,7 +60,7 @@ int main()
     ps.max_divisors = std::numeric_limits<uint32_t>::max();
 
     const uint32_t size_before = aig.num_gates();
-    sim_resubstitution( aig, ps, &st );
+    spfd_resubstitution( aig, ps, &st );
     aig = cleanup_dangling( aig );
 
     const auto cec = benchmark == "hyp" ? true : abc_cec( aig, benchmark );

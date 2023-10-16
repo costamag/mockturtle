@@ -25,10 +25,11 @@
 
 /*!
   \file xag_resyn.hpp
-  \brief Resynthesis by recursive decomposition for AIGs or XAGs.
-  (based on ABC's implementation in `giaResub.c` by Alan Mishchenko)
+  \brief Resynthesis for AIGs or XAGs.
+  The engine based on decomposition is based on ABC's implementation in `giaResub.c` by Alan Mishchenko
 
   \author Siang-Yun Lee
+  \author Andrea Costamagna
 */
 
 #pragma once
@@ -48,6 +49,8 @@
 
 namespace mockturtle
 {
+
+std::mt19937 RNGSPFD(5);
 
 struct xag_resyn_static_params
 {
@@ -82,6 +85,17 @@ struct xag_resyn_static_params
 
   /*! \brief Depth cost of each XOR gate (only relevant when `preserve_depth = true` and `use_xor = true`). */
   static constexpr uint32_t depth_cost_of_xor{ 1u };
+
+  /*! \brief Maximum support size */
+  static constexpr uint32_t max_support_size{ 4u };
+
+  /*! \brief exploration parameter */
+  static constexpr double beta_support{ 100 };
+
+  /*! \brief Use statistical support selection */
+  static constexpr bool use_statistical_support{ false };
+
+  static constexpr uint32_t max_resynthesis_attempts{ 1u };
 
   using truth_table_storage_type = void;
   using node_type = void;
@@ -136,6 +150,7 @@ struct xag_resyn_stats
   /*! \brief Time for dividing the target and recursive call. */
   stopwatch<>::duration time_divide{ 0 };
 
+
   void report() const
   {
     fmt::print( "[i]         <xag_resyn_decompose>\n" );
@@ -178,6 +193,7 @@ struct xag_resyn_stats
       auto result = resyn( target, care, divisors.begin(), divisors.end(), tts );
    \endverbatim
  */
+
 template<class TT, class static_params = xag_resyn_static_params_default<TT>>
 class xag_resyn_decompose
 {
@@ -999,4 +1015,855 @@ protected:
   stats& st;
 }; /* xag_resyn_abc */
 
+template<class TT, class static_params = xag_resyn_static_params_default<TT>>
+class xag_resyn_spfd
+{
+public:
+  using stats = xag_resyn_stats;
+  using index_list_t = large_xag_index_list;
+  using truth_table_t = TT;
+
+private:
+  struct unate_lit
+  {
+    unate_lit( uint32_t l )
+        : lit( l )
+    {}
+
+    bool operator==( unate_lit const& other ) const
+    {
+      return lit == other.lit;
+    }
+
+    uint32_t lit;
+    uint32_t score{ 0 };
+  };
+
+  struct fanin_pair
+  {
+    fanin_pair( uint32_t l1, uint32_t l2 )
+        : lit1( l1 < l2 ? l1 : l2 ), lit2( l1 < l2 ? l2 : l1 )
+    {}
+
+    fanin_pair( uint32_t l1, uint32_t l2, bool is_xor )
+        : lit1( l1 > l2 ? l1 : l2 ), lit2( l1 > l2 ? l2 : l1 )
+    {
+      (void)is_xor;
+    }
+
+    bool operator==( fanin_pair const& other ) const
+    {
+      return lit1 == other.lit1 && lit2 == other.lit2;
+    }
+
+    uint32_t lit1, lit2;
+    uint32_t score{ 0 };
+  };
+
+  struct divisor_s_t
+  {
+    divisor_s_t( kitty::static_truth_table<5u> func, uint32_t lit ) : func(func), lit(lit) {}
+    divisor_s_t( kitty::static_truth_table<5u> func ) : func(func) {}
+    kitty::static_truth_table<5u> func;
+    uint32_t lit;
+  };
+
+  enum best_t
+  {
+    PA00,
+    PA01,
+    PA10,
+    PA11,
+    IA00,
+    IA01,
+    IA10,
+    IA11,
+    INV_,
+    BUF_,
+    EXOR,
+    NONE
+  };
+
+public:
+  explicit xag_resyn_spfd( stats& st ) noexcept
+      : st( st )
+  {
+    static_assert( std::is_same_v<typename static_params::base_type, xag_resyn_static_params>, "Invalid static_params type" );
+    static_assert( !( static_params::uniform_div_cost && static_params::preserve_depth ), "If depth is to be preserved, divisor depth cost must be provided (usually not uniform)" );
+    divisors.reserve( static_params::reserve );
+    for( uint32_t i{0}; i<5; ++i )
+      kitty::create_nth_var( _s_xs[i], i );
+  }
+
+  /*! \brief Perform XAG resynthesis.
+   *
+   * `tts[*begin]` must be of type `TT`.
+   * Moreover, if `static_params::copy_tts = false`, `*begin` must be of type `static_params::node_type`.
+   *
+   * \param target Truth table of the target function.
+   * \param care Truth table of the care set.
+   * \param begin Begin iterator to divisor nodes.
+   * \param end End iterator to divisor nodes.
+   * \param tts A data structure (e.g. std::vector<TT>) that stores the truth tables of the divisor functions.
+   * \param max_size Maximum number of nodes allowed in the dependency circuit.
+   */
+  template<class iterator_type,
+           bool enabled = static_params::uniform_div_cost && !static_params::preserve_depth, typename = std::enable_if_t<enabled>>
+  std::optional<index_list_t> operator()( TT const& target, TT const& care, iterator_type begin, iterator_type end, typename static_params::truth_table_storage_type const& tts, uint32_t max_size = std::numeric_limits<uint32_t>::max() )
+  {
+    static_assert( static_params::copy_tts || std::is_same_v<typename std::iterator_traits<iterator_type>::value_type, typename static_params::node_type>, "iterator_type does not dereference to static_params::node_type" );
+
+    ptts = &tts;
+    on_off_sets[0] = ~target & care;
+    on_off_sets[1] = target & care;
+    _care = care;
+
+    divisors.resize( 1 ); /* clear previous data and reserve 1 dummy node for constant */
+    while ( begin != end )
+    {
+      if constexpr ( static_params::copy_tts )
+      {
+        divisors.emplace_back( ( *ptts )[*begin] );
+      }
+      else
+      {
+        divisors.emplace_back( *begin );
+      }
+      ++begin;
+    }
+
+    return compute_function( max_size );
+  }
+
+  template<class iterator_type, class Fn,
+           bool enabled = !static_params::uniform_div_cost && !static_params::preserve_depth, typename = std::enable_if_t<enabled>>
+  std::optional<index_list_t> operator()( TT const& target, TT const& care, iterator_type begin, iterator_type end, typename static_params::truth_table_storage_type const& tts, Fn&& size_cost, uint32_t max_size = std::numeric_limits<uint32_t>::max() )
+  {}
+
+  template<class iterator_type, class Fn,
+           bool enabled = !static_params::uniform_div_cost && static_params::preserve_depth, typename = std::enable_if_t<enabled>>
+  std::optional<index_list_t> operator()( TT const& target, TT const& care, iterator_type begin, iterator_type end, typename static_params::truth_table_storage_type const& tts, Fn&& size_cost, Fn&& depth_cost, uint32_t max_size = std::numeric_limits<uint32_t>::max(), uint32_t max_depth = std::numeric_limits<uint32_t>::max() )
+  {}
+
+private:
+  std::optional<index_list_t> compute_function( uint32_t num_inserts )
+  {
+    index_list.clear();
+    index_list.add_inputs( divisors.size() - 1 );
+    auto const lit = compute_function_rec( num_inserts );
+    if ( lit )
+    {
+      assert( index_list.num_gates() <= num_inserts );
+      index_list.add_output( *lit );
+      return index_list;
+    }
+    return std::nullopt;
+  }
+
+  std::optional<uint32_t> compute_function_rec( uint32_t num_inserts )
+  {
+    pos_unate_lits.clear();
+    neg_unate_lits.clear();
+    binate_divs.clear();
+    pos_unate_pairs.clear();
+    neg_unate_pairs.clear();
+
+    /* try constant-resub */
+    auto const resc = call_with_stopwatch( st.time_unate, [&]() {
+      return find_cresub();
+    } );
+    if ( resc )
+    {
+      return *resc;
+    }
+  //  if ( num_inserts == 0u )
+  //  {
+  //    return std::nullopt;
+  //  }
+
+    /* try 0-resub */
+    auto const res0 = call_with_stopwatch( st.time_unate, [&]() {
+      return find_0resub();
+    } );
+    if ( res0 )
+    {
+      return *res0;
+    }
+  //  if ( num_inserts == 0u )
+  //  {
+  //    return std::nullopt;
+  //  }
+
+    /* try SPFD-resub */
+
+    if( static_params::use_statistical_support )
+    {
+      auto supp = find_support_stats();
+      if( supp )//&& supp->size() < num_inserts )
+      {
+        return find_function_from_support_s(*supp, num_inserts);
+      }
+    }
+    else
+    {
+      auto supp = find_support_greedy();
+      if( supp )//&& supp->size() < num_inserts )
+      {
+        return find_function_from_support_s(*supp, num_inserts);
+      }
+    }
+
+    return std::nullopt;
+  }
+
+  /* See if the function is a constant.
+   */
+  std::optional<uint32_t> find_cresub()
+  {
+    num_bits[0] = kitty::count_ones( on_off_sets[0] ); /* off-set */
+    num_bits[1] = kitty::count_ones( on_off_sets[1] ); /* on-set */
+    if ( num_bits[0] == 0 )
+    {
+      return 1;
+    }
+    if ( num_bits[1] == 0 )
+    {
+      return 0;
+    }
+
+    return std::nullopt;
+  }
+
+  /* See if there is a divisor covering all on-set bits or all off-set bits.
+   */
+  std::optional<uint32_t> find_0resub()
+  {
+    for ( auto v = 1u; v < divisors.size(); ++v )
+    {
+      bool unateness[4] = { false, false, false, false };
+      /* check intersection with off-set */
+      if ( kitty::intersection_is_empty<TT, 1, 1>( get_div( v ), on_off_sets[0] ) )
+      {
+        unateness[0] = true;
+      }
+      else if ( kitty::intersection_is_empty<TT, 0, 1>( get_div( v ), on_off_sets[0] ) )
+      {
+        unateness[1] = true;
+      }
+
+      /* check intersection with on-set */
+      if ( kitty::intersection_is_empty<TT, 1, 1>( get_div( v ), on_off_sets[1] ) )
+      {
+        unateness[2] = true;
+      }
+      else if ( kitty::intersection_is_empty<TT, 0, 1>( get_div( v ), on_off_sets[1] ) )
+      {
+        unateness[3] = true;
+      }
+
+      /* 0-resub */
+      if ( unateness[0] && unateness[3] )
+      {
+        return ( v << 1 );
+      }
+      if ( unateness[1] && unateness[2] )
+      {
+        return ( v << 1 ) + 1;
+      }
+      /* useless unate literal */
+
+    }
+    return std::nullopt;
+  }
+
+  /* Find a support by greedily solving set covering
+   */
+  std::optional<std::vector<uint32_t>> find_support_greedy()
+  { 
+    std::vector<uint32_t> supp;
+    supp.reserve(static_params::max_support_size+1);
+    std::vector<uint32_t> vBestDivs;
+    reset_masks();
+
+    uint32_t numOnes, numEdge, divBest;
+    uint32_t minEdge = std::numeric_limits<uint32_t>::max();
+
+    while( ( _nMasks > _nKilled ) && (supp.size() < static_params::max_support_size) ) 
+    {
+      for( auto v = 1u; v < divisors.size(); ++v )
+      {
+        numEdge = 0;
+        for( auto m = 0; m < _nMasks; ++m )
+        {
+          if( !_killed[m] )
+          {
+            numOnes = kitty::count_ones( _masks[m] & get_div(v) & on_off_sets[1] );
+            numEdge += numOnes*(kitty::count_ones( get_div(v) & _masks[m] )-numOnes);
+            numOnes = kitty::count_ones( ~get_div(v) & on_off_sets[1] & _masks[m] );
+            numEdge += numOnes*(kitty::count_ones( ~get_div(v) & _masks[m] )-numOnes);
+          }
+        }
+        if( numEdge == minEdge )
+        {
+          minEdge = numEdge;
+          vBestDivs.push_back(v);
+        }
+        else if( numEdge < minEdge )
+        {
+          minEdge = numEdge;
+          vBestDivs = {v};
+        }
+      }
+      std::uniform_int_distribution<int>  distr(0, vBestDivs.size()-1);
+      uint32_t v = vBestDivs.size() <= 1 ? 0 : distr(RNGSPFD);
+      supp.push_back(vBestDivs[v]);
+      update_masks(get_div(vBestDivs[v]));
+    }
+
+    if( _nMasks == _nKilled )
+    {
+      std::sort(supp.begin(), supp.end());
+      return supp;
+    }
+    return std::nullopt;
+  }
+
+  std::optional<std::vector<uint32_t>> find_support_stats()
+  { 
+    std::vector<uint32_t> supp;
+    supp.reserve(static_params::max_support_size+1);
+    std::vector<uint32_t> vBestDivs;
+    reset_masks();
+
+    double numOnes, numEdge, divBest;
+    double minEdge = std::numeric_limits<double>::max();
+    double maxEdge = std::numeric_limits<double>::min();
+
+    std::vector<double> costs;
+    costs.reserve( divisors.size() );
+
+    while( ( _nMasks > _nKilled ) && (supp.size() < static_params::max_support_size) ) 
+    {
+      double numEdgeTotal{0};
+      for( auto m = 0; m < _nMasks; ++m )
+      {
+        if( !_killed[m] )
+        {
+          numOnes = kitty::count_ones( _masks[m] & on_off_sets[1] );
+          numEdgeTotal += numOnes*(kitty::count_ones( _masks[m] )-numOnes);
+        }
+      }
+
+      costs.clear();
+      costs.push_back(0);
+      for( auto v = 1u; v < divisors.size(); ++v )
+      {
+        numEdge = 0;
+        for( auto m = 0; m < _nMasks; ++m )
+        {
+          if( !_killed[m] )
+          {
+            numOnes = kitty::count_ones( _masks[m] & get_div(v) & on_off_sets[1] );
+            numEdge += numOnes*(kitty::count_ones( get_div(v) & _masks[m] )-numOnes)/numEdgeTotal;
+            numOnes = kitty::count_ones( ~get_div(v) & on_off_sets[1] & _masks[m] );
+            numEdge += numOnes*(kitty::count_ones( ~get_div(v) & _masks[m] )-numOnes)/numEdgeTotal;
+          }
+        }
+        if( numEdge < minEdge ) minEdge = numEdge;
+        if( numEdge > maxEdge ) maxEdge = numEdge;
+        costs.push_back(numEdge);
+      }
+
+      costs[0]=0;
+      for( uint32_t i{1}; i<costs.size(); ++i )
+        costs[i] = exp(-static_params::beta_support*(costs[i]-minEdge)/(maxEdge-minEdge));
+      for( auto v : supp )
+        costs[v]=0;
+      for( uint32_t i{1}; i<costs.size(); ++i )
+        costs[i] += costs[i-1];
+
+      double sum = costs[costs.size()-1];
+
+      std::uniform_real_distribution<> distrib(0, 1);
+      double rnd = distrib(RNGSPFD);
+      uint32_t v;
+      for( uint32_t i{1}; i<costs.size(); ++i )
+      {
+        if( rnd*sum <= costs[i] )
+        {
+          v = i;
+          break;
+        }
+      }
+      supp.push_back(v);
+      update_masks(get_div(v));
+    }
+
+    if( _nMasks == _nKilled )
+    {
+      std::sort(supp.begin(), supp.end());
+      return supp;
+    }
+    return std::nullopt;
+  }
+
+
+  std::optional<uint32_t> find_function_from_support_s( std::vector<uint32_t> supp, uint32_t max_num_gates )
+  {
+    if( supp.size() > static_params::max_support_size )
+      return std::nullopt;
+
+    uint32_t delta, cnt{0};
+    std::vector<divisor_s_t> divs;
+    for( uint32_t v{0}; v<supp.size(); ++v )
+      divs.emplace_back( _s_xs[v], supp[v] << 1 );
+    
+    uint32_t nSupp = supp.size();
+    uint32_t nMnts = 1u << supp.size();
+    
+    TT jolly = on_off_sets[1];
+
+    _s_care ^= _s_care;
+
+
+    for( uint32_t m{0}; m < 32u; ++m )
+    {
+      if( m < nMnts )
+      {
+        jolly = jolly | ~jolly;
+        for( uint32_t v{0}; v < nSupp; ++v )
+        {
+          if( ( m >> v ) & 1u == 1u )
+            jolly &= get_div(supp[v]);
+          else
+            jolly &= ~get_div(supp[v]);
+        }
+        
+        if( kitty::count_ones( jolly ) > 0 )
+        {
+          kitty::set_bit( _s_care, m );
+          jolly = jolly & _care & on_off_sets[1];
+          if( kitty::count_ones(jolly) > 0 )
+          {
+            kitty::set_bit( _s_func, m );
+          }
+          else
+          {
+            kitty::clear_bit( _s_func, m );
+          }
+        }
+        else
+        {
+          kitty::clear_bit( _s_care, m );
+        }
+      }
+      else
+        break;
+    }
+    reset_masks_s();
+    
+    index_list_t safe_copy_list = index_list;
+    std::vector<divisor_s_t> safe_copy_divs = divs;
+    uint32_t K = 0;
+
+    while( ( max_num_gates > cnt ) && ( divs.size() > 1 ) && (K < static_params::max_resynthesis_attempts) )
+    {
+      auto UPD = update_divisors_s( divs, max_num_gates );
+      if( UPD )
+      {
+        delta = UPD->first;
+        divs = UPD->second;
+        cnt+=delta;
+      }
+      if( !UPD || ((divs.size()>1)&&(cnt>=max_num_gates)) )
+      {
+          K++;
+          index_list = safe_copy_list;
+          divs = safe_copy_divs;
+          cnt = 0;
+      }
+    }
+
+    if( divs.size() == 1 )
+    {
+      if( kitty::equal( divs[0].func & _s_care, _s_func & _s_care ) )
+      {
+        return divs[0].lit;
+      }
+      else if( kitty::equal( ~divs[0].func & _s_care, _s_func & _s_care ) )
+      {
+        return divs[0].lit & 0x1;
+      }
+      else
+      {
+        printf("[w]\n");
+        return std::nullopt;
+      }
+    }
+
+    return std::nullopt;
+  }
+
+
+  std::optional<std::pair<uint32_t, std::vector<divisor_s_t>>> update_divisors_s( std::vector<divisor_s_t> const& divs, uint32_t max_num_gates )
+  {
+    std::vector<divisor_s_t> newDivs;
+    uint32_t numGates{0};
+    reset_masks_s();
+    double numEdge{0};
+    double numOnes;
+    uint32_t KNT{0};
+
+    uint32_t buffer_counter{0};
+
+    std::set<uint32_t> USED;
+
+    while( ( _s_nMasks > _s_nKilled ) && (newDivs.size() < _s_masks.size()) )
+    {
+      double numEdgeTotal{0};
+      for( auto m = 0; m < _s_nMasks; ++m )
+      {
+        if( !_s_killed[m] )
+        {
+          numOnes = kitty::count_ones( _s_masks[m] & _s_func );
+          numEdgeTotal += numOnes*(kitty::count_ones( _s_masks[m] )-numOnes);
+        }
+      }
+
+      double minEdge = std::numeric_limits<uint32_t>::max();
+      double maxEdge = std::numeric_limits<uint32_t>::min();
+      std::vector<uint32_t> As = {0};
+      std::vector<uint32_t> Bs = {0};
+      std::vector<kitty::static_truth_table<5u>> Tts = {_s_func};
+      std::vector<best_t> Gates ={NONE};
+      std::vector<double> Costs = {0};
+
+      if( buffer_counter < divs.size()-1 )
+      {
+        for( auto v = 0; v<divs.size(); ++v )
+        {
+          numEdge = 0;
+          for( auto m = 0; m < _s_nMasks; ++m )
+          {
+            if( !_s_killed[m] )
+            {
+              numOnes = kitty::count_ones( _s_masks[m] & divs[v].func & _s_func );
+              numEdge += numOnes*(kitty::count_ones( divs[v].func & _s_masks[m] )-numOnes)/numEdgeTotal;
+              numOnes = kitty::count_ones( ~divs[v].func & _s_func & _s_masks[m] );
+              numEdge += numOnes*(kitty::count_ones( ~divs[v].func & _s_masks[m] )-numOnes)/numEdgeTotal;
+            }
+          }
+          As.push_back(v);
+          Bs.push_back(v);
+          Tts.push_back(divs[v].func);
+          Gates.push_back(BUF_);
+          Costs.push_back(numEdge);
+          if( numEdge < minEdge ) minEdge = numEdge;
+          if( numEdge > maxEdge ) maxEdge = numEdge;
+        }
+      }
+
+      kitty::static_truth_table<5u> funcs[5];
+      best_t gates[5] = { PA00, PA01, PA10, PA11, EXOR };
+
+      uint32_t nFuncs = static_params::use_xor ? 5 : 4; 
+
+      for( auto v1 = 0; v1<divs.size()-1; ++v1 )
+      {
+        for( auto v2 = v1+1; v2<divs.size(); ++v2 )
+        {
+          funcs[0] = ~divs[v1].func & ~divs[v2].func;
+          funcs[1] = ~divs[v1].func & divs[v2].func; 
+          funcs[2] = divs[v1].func & ~divs[v2].func;
+          funcs[3] = divs[v1].func & divs[v2].func;
+          if constexpr ( static_params::use_xor )
+            funcs[4] = divs[v1].func ^ divs[v2].func;
+
+          for( uint32_t iFn{0}; iFn < nFuncs; ++iFn )
+          {
+            numEdge = 0;
+            for( auto m = 0; m < _s_nMasks; ++m )
+            {
+              if( !_s_killed[m] )
+              {
+                numOnes = kitty::count_ones( _s_masks[m] & funcs[iFn] & _s_func );
+                numEdge += numOnes*(kitty::count_ones( funcs[iFn] & _s_masks[m] )-numOnes)/numEdgeTotal;
+                numOnes = kitty::count_ones( ~funcs[iFn] & _s_func & _s_masks[m] );
+                numEdge += numOnes*(kitty::count_ones( ~funcs[iFn] & _s_masks[m] )-numOnes)/numEdgeTotal;
+              }
+            }
+
+            As.push_back(v1);
+            Bs.push_back(v2);
+            Tts.push_back(funcs[iFn]);
+            Gates.push_back(gates[iFn]);
+            Costs.push_back(numEdge);
+            
+            //printf("num %f\n", numEdge );
+
+            if( numEdge < minEdge ) minEdge = numEdge;
+            if( numEdge > maxEdge ) maxEdge = numEdge;
+          }
+        }
+      }
+
+      //printf("min %f max %f \n", minEdge, maxEdge);
+
+      double beta{100};
+      for( uint32_t i{1}; i<Costs.size(); ++i )
+      {
+        if( USED.find(i) == USED.end() )
+        {
+          Costs[i] = Costs[i-1] + exp(-beta*(Costs[i]-minEdge)/(maxEdge-minEdge));
+        }
+        else
+          Costs[i] = Costs[i-1];
+      }
+      double sum = Costs[Costs.size()-1];
+//
+      std::uniform_real_distribution<> distrib(0, 1);
+      double rnd = distrib(RNGSPFD);
+      int v = -1;
+      //printf("%f:\n", rnd );
+      for( uint32_t i{1}; i<Costs.size(); ++i )
+      {
+        //printf("%f ", Costs[i]);
+        if( rnd <= Costs[i]/sum )
+        {
+          v = i;
+          break;
+        }
+      }
+
+      if(v<0)
+        return std::nullopt;
+      uint32_t a = As[v];
+      uint32_t b = Bs[v];
+      best_t gate = Gates[v];
+      kitty::static_truth_table<5u> tt = Tts[v];
+      USED.insert(v);
+      
+      switch (gate)
+      {
+      case PA00:
+        newDivs.emplace_back( tt, index_list.add_and( divs[a].lit | 0x1, divs[b].lit | 0x1 ) );
+        numGates+=1;
+        break;
+      case PA01:
+        newDivs.emplace_back( tt, index_list.add_and( divs[a].lit | 0x1, divs[b].lit ) );
+        numGates+=1;
+        break;
+      case PA10:
+        newDivs.emplace_back( tt, index_list.add_and( divs[a].lit, divs[b].lit | 0x1) );
+        numGates+=1;
+        break;
+      case PA11:
+        newDivs.emplace_back( tt, index_list.add_and( divs[a].lit, divs[b].lit ) );
+        numGates+=1;
+        break;
+      case EXOR:
+        newDivs.emplace_back( tt, index_list.add_xor( divs[a].lit, divs[b].lit ) );
+        numGates += 1 ;
+        break;
+      case BUF_:
+        newDivs.emplace_back( tt, divs[a].lit );
+        buffer_counter++;
+        break;
+      default:
+        return std::nullopt;
+        //printf("HERE\n");
+        assert(0);
+        break;
+      }
+      if( numGates > max_num_gates )//NEW
+        return std::nullopt;//NEW
+
+      update_masks_s( tt );
+    }
+    /* termination options */
+    if( (numGates == 0) && (newDivs.size() == divs.size()))
+    {
+      printf("[w] no gates added\n");
+      return std::nullopt;
+    }
+    return std::make_pair(numGates, newDivs);
+  }
+
+
+  inline void update_masks( TT const& tt )
+  {
+    for( uint32_t iMask{0}; iMask < _nMasks; ++iMask )
+    {
+      if( _killed[iMask] )
+      {
+        _killed[_nMasks+iMask] = true;
+        _nKilled++;
+      }
+      else
+      {
+        _killed[_nMasks+iMask] = false;
+        _masks[_nMasks+iMask] = _masks[iMask] & tt;
+        _masks[iMask] = _masks[iMask] & ~tt;
+
+        if( kitty::count_ones( on_off_sets[1] & _masks[_nMasks+iMask] ) == 0 )
+        {
+          _killed[_nMasks+iMask] = true;
+          _nKilled++;
+        }
+        else if( kitty::equal( on_off_sets[1] & _masks[_nMasks+iMask], _masks[_nMasks+iMask] ) )
+        {
+          _killed[_nMasks+iMask] = true;
+          _nKilled++;
+        }
+
+        if( kitty::count_ones( on_off_sets[1] & _masks[iMask] ) == 0 )
+        {
+          _killed[iMask] = true;
+          _nKilled++;
+        }
+        else if( kitty::equal( on_off_sets[1] & _masks[iMask], _masks[iMask] ) )
+        {
+          _killed[iMask] = true;
+          _nKilled++;
+        }
+      }
+    }
+    _nMasks=_nMasks*2;
+  }
+
+
+  void update_masks_s( kitty::static_truth_table<5u> tt )
+  {
+    for( uint32_t iMask{0}; iMask < _s_nMasks; ++iMask )
+    {
+      if( _s_killed[iMask] )
+      {
+        _s_killed[_s_nMasks+iMask] = true;
+        _s_nKilled++;
+      }
+      else
+      {
+        _s_killed[_s_nMasks+iMask] = false;
+        _s_masks[_s_nMasks+iMask] = _s_masks[iMask] & tt;
+        _s_masks[iMask] = _s_masks[iMask] & ~tt;
+
+        if( kitty::count_ones( _s_func & _s_masks[_s_nMasks+iMask] ) == 0 )
+        {
+          _s_killed[_s_nMasks+iMask] = true;
+          _s_nKilled++;
+        }
+        else if( kitty::equal( _s_func & _s_masks[_s_nMasks+iMask], _s_masks[_s_nMasks+iMask] ) )
+        {
+          _s_killed[_s_nMasks+iMask] = true;
+          _s_nKilled++;
+        }
+
+        if( kitty::count_ones( _s_func & _s_masks[iMask] ) == 0 )
+        {
+          _s_killed[iMask] = true;
+          _s_nKilled++;
+        }
+        else if( kitty::equal( _s_func & _s_masks[iMask], _s_masks[iMask] ) )
+        {
+          _s_killed[iMask] = true;
+          _s_nKilled++;
+        }
+      }
+    }
+    _s_nMasks=_s_nMasks*2;
+  }
+
+
+
+  void reset_masks()
+  {
+    _masks[0] = _care;
+    _nMasks = 1u;
+    _killed[0] = false;
+    _nKilled = 0;
+  }
+
+  void reset_masks_s()
+  {
+    _s_masks[0] = _s_care;
+    _s_nMasks = 1u;
+    _s_killed[0] = false;
+    _s_nKilled = 0;
+  }
+
+  inline TT const& get_div( uint32_t idx ) const
+  {
+    if constexpr ( static_params::copy_tts )
+    {
+      return divisors[idx];
+    }
+    else
+    {
+      return ( *ptts )[divisors[idx]];
+    }
+  }
+
+private:
+  std::array<TT, 2> on_off_sets;
+  std::array<uint32_t, 2> num_bits; /* number of bits in on-set and off-set */
+
+  TT _care;
+  std::array<TT, 128> _masks;
+  std::array<bool, 128> _killed;
+  uint64_t _nMasks{1};
+  uint32_t _nKilled{0};
+
+  std::array<kitty::static_truth_table<5u>, 5> _s_xs;
+  kitty::static_truth_table<5u> _s_care;
+  kitty::static_truth_table<5u> _s_func;
+  std::array<kitty::static_truth_table<5u>,128> _s_masks;
+  std::array<bool, 128> _s_killed;
+  uint64_t _s_nMasks{1};
+  uint32_t _s_nKilled{0};
+
+
+  const typename static_params::truth_table_storage_type* ptts;
+  std::vector<std::conditional_t<static_params::copy_tts, TT, typename static_params::node_type>> divisors;
+
+  index_list_t index_list;
+
+  /* positive unate: not overlapping with off-set
+     negative unate: not overlapping with on-set */
+  std::vector<unate_lit> pos_unate_lits, neg_unate_lits;
+  std::vector<uint32_t> binate_divs;
+  std::vector<fanin_pair> pos_unate_pairs, neg_unate_pairs;
+
+  stats& st;
+}; /* xag_resyn_spfd */
+
+
 } /* namespace mockturtle */
+
+
+
+
+//     adder & $   892$& $  0.04$& $\mathbf{\color{forestgreen}   769}$&  $ . $& $   767$& $  0.14$ \\ 
+//       bar & $  2968$& $  0.74$& $\mathbf{\color{forestgreen}  2930}$&  $ . $& $  2915$& $  0.75$ \\ 
+//       div & $ 38957$& $123.10$& $\mathbf{\color{forestgreen} 38624}$&  $ . $& $ 38606$& $ 86.94$ \\ 
+//       hyp & $205331$& $121.83$& $\mathbf{\color{forestgreen}186878}$&  $ . $& $186410$& $718.69$ \\ 
+//      log2 & $ 29436$& $ 82.98$& $\mathbf{\color{forestgreen} 27302}$&  $ . $& $ 27109$& $ 68.66$ \\ 
+//       max & $  2862$& $  0.20$&                               $2862$&  $ . $& $  2862$& $  0.32$ \\ 
+//multiplier & $ 25412$& $  7.01$& $\mathbf{\color{forestgreen} 21404}$&  $ . $& $ 21343$& $ 17.14$ \\ 
+//       sin & $  4930$& $ 17.61$& $\mathbf{\color{forestgreen}  4796}$&  $ . $& $  4730$& $  3.27$ \\ 
+//      sqrt & $ 18448$& $ 23.52$& $\mathbf{\color{forestgreen} 16543}$&  $ . $& $ 16921$& $ 24.45$ \\ 
+//    square & $ 16212$& $  4.04$& $\mathbf{\color{forestgreen} 15223}$&  $ . $& $ 15056$& $  4.94$ \\ 
+//   arbiter & $ 11839$& $  0.90$&                             $ 11839$&  $ . $& $ 11839$& $  1.03$ \\ 
+//     cavlc & $   616$& $  3.02$& $\mathbf{\color{forestgreen}   615}$&  $ . $& $   615$& $  0.34$ \\ 
+//      ctrl & $    87$& $  0.11$&                             $    87$&  $ . $& $    87$& $  0.02$ \\ 
+//       dec & $   304$& $  0.01$&                             $   304$&  $ . $& $   304$& $  0.15$ \\ 
+//       i2c & $  1114$& $  1.11$&                             $  1114$&  $ . $& $  1114$& $  0.17$ \\ 
+// int2float & $   211$& $  1.51$&                             $   211$&  $ . $& $   211$& $  0.05$ \\ 
+//  mem\_ctrl &$ 24846$& $143.35$& $\mathbf{\color{forestgreen} 24678}$&  $ . $& $ 24607$& $  5.43$ \\ 
+//  priority & $   684$& $  0.30$&  $\mathbf{\color{forestgreen}   683}$& $ . $& $   683$& $  0.08$ \\ 
+//    router & $   243$& $  0.06$&  $\mathbf{\color{forestgreen}   222}$& $ . $& $   222$& $  0.04$ \\ 
+//     voter & $  7340$& $  6.28$&  $\mathbf{\color{forestgreen}  7075}$& $ . $& $  7009$& $  2.24$ \\ 
+
+
+
+
+  
