@@ -1094,7 +1094,7 @@ struct exact_library_params
   float delay_inverter{ 0.0f };
 
   /* classify in NP instead of NPN */
-  bool np_classification{ true };
+  bool np_classification{ false };
   /* Compute DC classes for matching with  don't cares */
   bool compute_dc_classes{ false };
   /* verbose */

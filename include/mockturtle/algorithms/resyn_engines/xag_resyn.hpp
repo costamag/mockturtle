@@ -99,12 +99,13 @@ struct xag_resyn_static_params
 
   static constexpr uint32_t max_resynthesis_attempts{ 100u };
 
-  static constexpr uint32_t max_support_attempts{ 3u };
+  static constexpr uint32_t max_support_attempts{ 10u };
 
   /* FOR BOOLEAN MATCHING RESUBSTITUTION */
   /*! \brief recursively decompose */
   static constexpr bool use_recursive_decomposition{ false };
   static constexpr bool use_1_resub{ false };
+
 
 
   using truth_table_storage_type = void;
@@ -1908,12 +1909,11 @@ private:
 
 public:
   explicit xag_resyn_bmatch( stats& st ) noexcept
-      : st( st )
+      : st( st ), _lib(_resyn, {})
   {
     static_assert( std::is_same_v<typename static_params::base_type, xag_resyn_static_params>, "Invalid static_params type" );
     static_assert( !( static_params::uniform_div_cost && static_params::preserve_depth ), "If depth is to be preserved, divisor depth cost must be provided (usually not uniform)" );
     divisors.reserve( static_params::reserve );
-  
   }
 
   /*! \brief Perform XAG resynthesis.
@@ -2204,11 +2204,6 @@ private:
    */
   std::optional<uint32_t> find_bmatch_from_spfds( uint32_t num_inserts )
   {
-    xag_npn_resynthesis<xag_network, xag_network, xag_npn_db_kind::xag_incomplete> resyn;
-    exact_library_params eps;
-    eps.np_classification = false;
-    exact_library<xag_network, xag_npn_resynthesis<xag_network, xag_network, xag_npn_db_kind::xag_incomplete>> lib(resyn,eps);
-
     std::array<uint32_t, 4u> leaves;
     std::array<uint8_t, 4u> permutation;
 
@@ -2233,10 +2228,9 @@ private:
         auto neg = std::get<1>( specs_npn );
         auto perm = std::get<2>( specs_npn );
         auto const dc_npn = apply_npn_transformation( ~specs.second, neg & ~( 1 << 4u ), perm );
-        auto const structures = lib.get_supergates( tt_npn, dc_npn, neg, perm );
+        auto const structures = _lib.get_supergates( tt_npn, dc_npn, neg, perm );
         if ( structures == nullptr )
         {
-          printf("[w] no structure founnd\n");
           continue;
         }
         uint32_t negation = 0;
@@ -2268,7 +2262,7 @@ private:
         }
 
         std::unordered_map<uint64_t, uint32_t> existing_nodes; // AND a<b XOR a>b 
-        xag_network& db = lib.get_database();
+        xag_network& db = _lib.get_database();
         db.incr_trav_id();
 
         auto res = create_index_list( db, db.get_node(structures->at(0).root), leaves, existing_nodes );
@@ -2883,11 +2877,13 @@ private:
   }
 
 private:
+  xag_npn_resynthesis<xag_network, xag_network, xag_npn_db_kind::xag_incomplete> _resyn;
+  exact_library<xag_network, xag_npn_resynthesis<xag_network, xag_network, xag_npn_db_kind::xag_incomplete>> _lib;
+
   std::array<TT, 2> on_off_sets;
   std::array<uint32_t, 2> num_bits; /* number of bits in on-set and off-set */
 
   /* for support selection */
-
 
   TT _care;
   std::array<TT, 32> _masks;
