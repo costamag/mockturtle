@@ -56,6 +56,7 @@ int main()
 
     // ps.pattern_filename = "1024sa1/" + benchmark + ".pat";
     ps.max_inserts = 20;
+    ps.use_dont_cares = true;
     ps.max_pis = 8;
     ps.max_divisors = std::numeric_limits<uint32_t>::max();
 
