@@ -46,8 +46,14 @@ int main()
   for ( auto const& benchmark : iscas_benchmarks() )
   {
     fmt::print( "[i] processing {}\n", benchmark );
-    xag_network xag;
-    if ( lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( xag ) ) != lorina::return_code::success )
+    xag_network xagA;
+    if ( lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( xagA ) ) != lorina::return_code::success )
+    {
+      continue;
+    }
+
+    xag_network xagB;
+    if ( lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( xagB ) ) != lorina::return_code::success )
     {
       continue;
     }
@@ -62,46 +68,43 @@ int main()
     ps.progress = true;
     ps.max_divisors = std::numeric_limits<uint32_t>::max();
 
-    const uint32_t size_before = xag.num_gates();
+    const uint32_t size_before = xagA.num_gates();
 
     /* urs x infinite */
-    uint32_t size_new = xag.num_gates();
+    uint32_t size_new = xagA.num_gates();
     uint32_t size_old = std::numeric_limits<uint32_t>::max();
 
     std::clock_t start_simresub;
     double duration_simresub;
     start_simresub = std::clock();
 
-    while( size_new < size_old )
-    {
-      sim_resubstitution( xag, ps, &ust );
-      xag = cleanup_dangling( xag );
-      size_old = size_new;
-      size_new = xag.num_gates();
-    }
+    sim_resubstitution( xagA, ps, &ust );
+    xagA = cleanup_dangling( xagA );
 
     duration_simresub = ( std::clock() - start_simresub ) / (double) CLOCKS_PER_SEC;
 
-    double size_urs = xag.num_gates();
-    printf("urs=%d\n", xag.num_gates());
-    const auto cecu = benchmark == "hyp" ? true : abc_cec( xag, benchmark );
+    double size_urs = xagA.num_gates();
+    printf("urs=%d\n", xagA.num_gates());
+    const auto cecu = benchmark == "hyp" ? true : abc_cec( xagA, benchmark );
     
     /* irs x 1 */
 
     std::clock_t start_spfdresub;
     double duration_spfdresub;
     start_spfdresub = std::clock();
-
-    spfd_resubstitution( xag, ps, &ist );
-    xag = cleanup_dangling( xag );
-
+    //int it{10};
+    //while(it-->0)
+    //{
+    bmatch_resubstitution( xagB, ps, &ist );
+    xagB = cleanup_dangling( xagB );
+    //}
     duration_spfdresub = ( std::clock() - start_spfdresub ) / (double) CLOCKS_PER_SEC;
 
-    double size_irs = xag.num_gates();
+    double size_irs = xagB.num_gates();
 
-    const auto ceci = benchmark == "hyp" ? true : abc_cec( xag, benchmark );
+    const auto ceci = benchmark == "hyp" ? true : abc_cec( xagB, benchmark );
     double gain = 100*(size_irs-size_urs)/size_urs;
-    printf("irs=%d --> %f%\n", xag.num_gates(), gain );
+    printf("irs=%d --> %f%\n", xagB.num_gates(), gain );
 
     exp( benchmark, size_before, (uint32_t)size_urs, duration_simresub, (uint32_t)size_irs, gain, duration_spfdresub, cecu, ceci );
   }
@@ -111,8 +114,3 @@ int main()
 
   return 0;
 }
-
-
-
-
-

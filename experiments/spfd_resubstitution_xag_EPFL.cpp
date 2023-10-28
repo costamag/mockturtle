@@ -41,9 +41,9 @@ int main()
   using namespace experiments;
   using namespace mockturtle;
 
-  experiment<std::string, uint32_t, uint32_t, float, uint32_t, double, float, bool, bool> exp( "spfd_resubstitution_xag_infinite_ISCAS", "benchmark", "size", "u-size", "u-runtime", "i-size", "i-gain",  "i-runtime", "u-equivalent" , "i-equivalent" );
+  experiment<std::string, uint32_t, uint32_t, float, uint32_t, double, float, bool, bool> exp( "spfd_resubstitution_xag_infinite_EPFL", "benchmark", "size", "u-size", "u-runtime", "i-size", "i-gain",  "i-runtime", "u-equivalent" , "i-equivalent" );
 
-  for ( auto const& benchmark : iscas_benchmarks() )
+  for ( auto const& benchmark : epfl_benchmarks() )
   {
     fmt::print( "[i] processing {}\n", benchmark );
     xag_network xag;
@@ -60,6 +60,7 @@ int main()
     ps.max_inserts = 20;
     ps.max_pis = 8;
     ps.progress = true;
+    ps.max_trials = 100;
     ps.max_divisors = std::numeric_limits<uint32_t>::max();
 
     const uint32_t size_before = xag.num_gates();
@@ -72,13 +73,8 @@ int main()
     double duration_simresub;
     start_simresub = std::clock();
 
-    while( size_new < size_old )
-    {
-      sim_resubstitution( xag, ps, &ust );
-      xag = cleanup_dangling( xag );
-      size_old = size_new;
-      size_new = xag.num_gates();
-    }
+    sim_resubstitution( xag, ps, &ust );
+    xag = cleanup_dangling( xag );
 
     duration_simresub = ( std::clock() - start_simresub ) / (double) CLOCKS_PER_SEC;
 
@@ -92,16 +88,22 @@ int main()
     double duration_spfdresub;
     start_spfdresub = std::clock();
 
-    spfd_resubstitution( xag, ps, &ist );
-    xag = cleanup_dangling( xag );
+    xag_network xagA;
+    if ( lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( xagA ) ) != lorina::return_code::success )
+    {
+      continue;
+    }
+
+    spfd_resubstitution( xagA, ps, &ist );
+    xagA = cleanup_dangling( xagA );
 
     duration_spfdresub = ( std::clock() - start_spfdresub ) / (double) CLOCKS_PER_SEC;
 
-    double size_irs = xag.num_gates();
+    double size_irs = xagA.num_gates();
 
-    const auto ceci = benchmark == "hyp" ? true : abc_cec( xag, benchmark );
+    const auto ceci = benchmark == "hyp" ? true : abc_cec( xagA, benchmark );
     double gain = 100*(size_irs-size_urs)/size_urs;
-    printf("irs=%d --> %f%\n", xag.num_gates(), gain );
+    printf("irs=%d --> %f%\n", xagA.num_gates(), gain );
 
     exp( benchmark, size_before, (uint32_t)size_urs, duration_simresub, (uint32_t)size_irs, gain, duration_spfdresub, cecu, ceci );
   }
@@ -111,8 +113,3 @@ int main()
 
   return 0;
 }
-
-
-
-
-

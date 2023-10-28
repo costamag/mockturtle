@@ -58,9 +58,9 @@ int main()
 
     // ps.pattern_filename = "1024sa1/" + benchmark + ".pat";
     ps.max_inserts = 20;
-    ps.max_pis = 10;
+    ps.max_pis = 8;
     ps.progress = true;
-    ps.max_trials = 1;
+    ps.max_trials = 100;
     ps.max_divisors = std::numeric_limits<uint32_t>::max();
 
     const uint32_t size_before = xag.num_gates();

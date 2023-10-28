@@ -223,5 +223,230 @@
       }
     ],
     "version": "f950b93b"
+  },
+  {
+    "entries": [
+      {
+        "benchmark": "adder",
+        "i-equivalent": true,
+        "i-gain": -27.91479820627803,
+        "i-runtime": 0.16073200106620789,
+        "i-size": 643,
+        "size": 1020,
+        "u-equivalent": true,
+        "u-runtime": 0.03956799954175949,
+        "u-size": 892
+      },
+      {
+        "benchmark": "bar",
+        "i-equivalent": true,
+        "i-gain": -1.482479784366577,
+        "i-runtime": 4.291983127593994,
+        "i-size": 2924,
+        "size": 3336,
+        "u-equivalent": true,
+        "u-runtime": 0.5764700174331665,
+        "u-size": 2968
+      },
+      {
+        "benchmark": "div",
+        "i-equivalent": true,
+        "i-gain": -15.140465307380206,
+        "i-runtime": 20.744766235351563,
+        "i-size": 33046,
+        "size": 57247,
+        "u-equivalent": true,
+        "u-runtime": 35.78691482543945,
+        "u-size": 38942
+      },
+      {
+        "benchmark": "hyp",
+        "i-equivalent": true,
+        "i-gain": -17.332670981692797,
+        "i-runtime": 181.5974578857422,
+        "i-size": 169740,
+        "size": 214335,
+        "u-equivalent": true,
+        "u-runtime": 91.32763671875,
+        "u-size": 205329
+      },
+      {
+        "benchmark": "log2",
+        "i-equivalent": true,
+        "i-gain": -14.913235794487921,
+        "i-runtime": 124.32325744628906,
+        "i-size": 25007,
+        "size": 32060,
+        "u-equivalent": true,
+        "u-runtime": 75.21038055419922,
+        "u-size": 29390
+      },
+      {
+        "benchmark": "max",
+        "i-equivalent": true,
+        "i-gain": 0.0,
+        "i-runtime": 4.511022090911865,
+        "i-size": 2862,
+        "size": 2865,
+        "u-equivalent": true,
+        "u-runtime": 0.1820649951696396,
+        "u-size": 2862
+      },
+      {
+        "benchmark": "multiplier",
+        "i-equivalent": true,
+        "i-gain": -23.63500373971578,
+        "i-runtime": 33.27537536621094,
+        "i-size": 19399,
+        "size": 27062,
+        "u-equivalent": true,
+        "u-runtime": 6.2050018310546875,
+        "u-size": 25403
+      },
+      {
+        "benchmark": "sin",
+        "i-equivalent": true,
+        "i-gain": -9.636843173057414,
+        "i-runtime": 16.247596740722656,
+        "i-size": 4454,
+        "size": 5416,
+        "u-equivalent": true,
+        "u-runtime": 10.816926002502441,
+        "u-size": 4929
+      },
+      {
+        "benchmark": "sqrt",
+        "i-equivalent": true,
+        "i-gain": -13.620596205962059,
+        "i-runtime": 11.471626281738281,
+        "i-size": 15937,
+        "size": 24618,
+        "u-equivalent": true,
+        "u-runtime": 34.08717346191406,
+        "u-size": 18450
+      },
+      {
+        "benchmark": "square",
+        "i-equivalent": true,
+        "i-gain": -16.241743317488734,
+        "i-runtime": 10.396040916442871,
+        "i-size": 13568,
+        "size": 18484,
+        "u-equivalent": true,
+        "u-runtime": 3.342782974243164,
+        "u-size": 16199
+      },
+      {
+        "benchmark": "arbiter",
+        "i-equivalent": true,
+        "i-gain": 0.0,
+        "i-runtime": 17.962209701538086,
+        "i-size": 11839,
+        "size": 11839,
+        "u-equivalent": true,
+        "u-runtime": 1.514389991760254,
+        "u-size": 11839
+      },
+      {
+        "benchmark": "cavlc",
+        "i-equivalent": true,
+        "i-gain": -0.1692047377326565,
+        "i-runtime": 2.188188076019287,
+        "i-size": 590,
+        "size": 693,
+        "u-equivalent": true,
+        "u-runtime": 3.7521450519561768,
+        "u-size": 591
+      },
+      {
+        "benchmark": "ctrl",
+        "i-equivalent": true,
+        "i-gain": 0.0,
+        "i-runtime": 0.06260400265455246,
+        "i-size": 85,
+        "size": 174,
+        "u-equivalent": true,
+        "u-runtime": 0.15903499722480774,
+        "u-size": 85
+      },
+      {
+        "benchmark": "dec",
+        "i-equivalent": true,
+        "i-gain": 0.0,
+        "i-runtime": 0.015496999956667423,
+        "i-size": 304,
+        "size": 304,
+        "u-equivalent": true,
+        "u-runtime": 0.01806199923157692,
+        "u-size": 304
+      },
+      {
+        "benchmark": "i2c",
+        "i-equivalent": true,
+        "i-gain": -0.5212858384013901,
+        "i-runtime": 4.4737749099731445,
+        "i-size": 1145,
+        "size": 1342,
+        "u-equivalent": true,
+        "u-runtime": 0.7387440204620361,
+        "u-size": 1151
+      },
+      {
+        "benchmark": "int2float",
+        "i-equivalent": true,
+        "i-gain": -0.49019607843137253,
+        "i-runtime": 0.6252269744873047,
+        "i-size": 203,
+        "size": 260,
+        "u-equivalent": true,
+        "u-runtime": 3.9045650959014893,
+        "u-size": 204
+      },
+      {
+        "benchmark": "mem_ctrl",
+        "i-equivalent": true,
+        "i-gain": -2.736829566097859,
+        "i-runtime": 407.1523742675781,
+        "i-size": 32660,
+        "size": 46836,
+        "u-equivalent": true,
+        "u-runtime": 122.06340026855469,
+        "u-size": 33579
+      },
+      {
+        "benchmark": "priority",
+        "i-equivalent": true,
+        "i-gain": 0.0,
+        "i-runtime": 0.4627020061016083,
+        "i-size": 484,
+        "size": 978,
+        "u-equivalent": true,
+        "u-runtime": 0.36569398641586304,
+        "u-size": 484
+      },
+      {
+        "benchmark": "router",
+        "i-equivalent": true,
+        "i-gain": -13.658536585365853,
+        "i-runtime": 0.41062501072883606,
+        "i-size": 177,
+        "size": 257,
+        "u-equivalent": true,
+        "u-runtime": 0.1406790018081665,
+        "u-size": 205
+      },
+      {
+        "benchmark": "voter",
+        "i-equivalent": true,
+        "i-gain": -9.8839590443686,
+        "i-runtime": 6.3549041748046875,
+        "i-size": 6601,
+        "size": 13758,
+        "u-equivalent": true,
+        "u-runtime": 6.6590728759765625,
+        "u-size": 7325
+      }
+    ],
+    "version": "270cb6f0"
   }
 ]

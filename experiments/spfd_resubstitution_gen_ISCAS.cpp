@@ -72,13 +72,8 @@ int main()
     double duration_simresub;
     start_simresub = std::clock();
 
-    while( size_new < size_old )
-    {
-      sim_resubstitution( xag, ps, &ust );
-      xag = cleanup_dangling( xag );
-      size_old = size_new;
-      size_new = xag.num_gates();
-    }
+    sim_resubstitution( xag, ps, &ust );
+    xag = cleanup_dangling( xag );
 
     duration_simresub = ( std::clock() - start_simresub ) / (double) CLOCKS_PER_SEC;
 
@@ -92,16 +87,23 @@ int main()
     double duration_spfdresub;
     start_spfdresub = std::clock();
 
-    spfd_resubstitution( xag, ps, &ist );
-    xag = cleanup_dangling( xag );
+
+    xag_network xagA;
+    if ( lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( xagA ) ) != lorina::return_code::success )
+    {
+      continue;
+    }
+
+    gen_resubstitution( xagA, ps, &ist );
+    xagA = cleanup_dangling( xagA );
 
     duration_spfdresub = ( std::clock() - start_spfdresub ) / (double) CLOCKS_PER_SEC;
 
-    double size_irs = xag.num_gates();
+    double size_irs = xagA.num_gates();
 
-    const auto ceci = benchmark == "hyp" ? true : abc_cec( xag, benchmark );
+    const auto ceci = benchmark == "hyp" ? true : abc_cec( xagA, benchmark );
     double gain = 100*(size_irs-size_urs)/size_urs;
-    printf("irs=%d --> %f%\n", xag.num_gates(), gain );
+    printf("irs=%d --> %f%\n", xagA.num_gates(), gain );
 
     exp( benchmark, size_before, (uint32_t)size_urs, duration_simresub, (uint32_t)size_irs, gain, duration_spfdresub, cecu, ceci );
   }
@@ -113,6 +115,15 @@ int main()
 }
 
 
-
-
-
+//| benchmark | size | u-size | u-runtime | i-size | i-gain | i-runtime | u-equivalent | i-equivalent |
+//|       c17 |    6 |      6 |      0.00 |      6 |   0.00 |      0.00 |         true |         true |
+//|      c432 |  208 |    167 |      0.01 |    168 |   0.60 |      0.09 |         true |         true |
+//|      c499 |  398 |    388 |      0.01 |    353 |  -9.02 |      6.44 |         true |         true |
+//|      c880 |  325 |    296 |      0.01 |    279 |  -5.74 |      1.18 |         true |         true |
+//|     c1355 |  502 |    420 |      0.02 |    408 |  -2.86 |      6.14 |         true |         true |
+//|     c1908 |  341 |    283 |      0.01 |    221 | -21.91 |      2.67 |         true |         true |
+//|     c2670 |  716 |    542 |      0.02 |    586 |   8.12 |      3.64 |         true |         true |
+//|     c3540 | 1024 |    810 |      0.10 |    876 |   8.15 |      7.78 |         true |         true |
+//|     c5315 | 1776 |   1309 |      0.11 |   1515 |  15.74 |      8.96 |         true |         true |
+//|     c6288 | 2337 |   1886 |      0.15 |   2294 |  21.63 |    120.59 |         true |         true |
+//|     c7552 | 1469 |   1322 |      0.07 |   1256 |  -4.99 |      7.10 |         true |         true |
