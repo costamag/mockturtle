@@ -56,43 +56,87 @@ namespace mockturtle
 namespace spfd
 {
 
-std::mt19937 RNG( 336 );
+std::mt19937 RNG( 5 );
 
-template<class TT>
+enum gate_t
+{
+  PA00,
+  PA01,
+  PA10,
+  PA11,
+  IA00,
+  IA01,
+  IA10,
+  IA11,
+  INV_,
+  BUF_,
+  EXOR,
+  NONE
+};
+
+//template<class DTT>
+//struct two_inputs_gate_t
+//{
+//  gate_t type;
+//  uint32_t nInputs;
+//
+//  DTT (*pFn)( DTT const&, DTT const& );
+//
+//  two_inputs_gate_t( gate_t type, uint32_t nInputs, DTT (*pFn)( DTT const&, DTT const& ) ) : type(type), nInputs(nInputs), pFn(pFn){}
+//  DTT compute( DTT const& a, DTT const& b ){ return pFn( a, b ); };
+//};
+//
+//template<class DTT> DTT hpcompute_buf_( DTT const& a, DTT const& b ){ return a; }
+//template<class DTT> DTT hpcompute_pa00( DTT const& a, DTT const& b ){ return ~a & ~b; }
+//template<class DTT> DTT hpcompute_pa01( DTT const& a, DTT const& b ){ return ~a &  b; }
+//template<class DTT> DTT hpcompute_pa10( DTT const& a, DTT const& b ){ return  a & ~b; }
+//template<class DTT> DTT hpcompute_pa11( DTT const& a, DTT const& b ){ return  a &  b; }
+//template<class DTT> DTT hpcompute_exor( DTT const& a, DTT const& b ){ return  a ^  b; }
+//
+//template<class DTT>
+//struct xaig_library_t
+//{
+//  xaig_library_t(){
+//    gates[0] = two_inputs_gate_t<DTT>{ BUF_, 1, &hpcompute_buf_<DTT> }; 
+//    gates[1] = two_inputs_gate_t<DTT>{ PA00, 2, &hpcompute_pa00<DTT> }; 
+//    gates[2] = two_inputs_gate_t<DTT>{ PA01, 2, &hpcompute_pa01<DTT> }; 
+//    gates[3] = two_inputs_gate_t<DTT>{ PA10, 2, &hpcompute_pa10<DTT> }; 
+//    gates[4] = two_inputs_gate_t<DTT>{ PA11, 2, &hpcompute_pa11<DTT> }; 
+//    gates[5] = two_inputs_gate_t<DTT>{ EXOR, 2, &hpcompute_exor<DTT> };
+//  }
+//
+//  std::array<two_inputs_gate_t<DTT>, 6u> gates;
+//};
+
+
+template<class STT, uint32_t CAP>
 struct spfd_manager_t
 {
-
   spfd_manager_t(){}
 
-  spfd_manager_t( uint32_t nCap, TT careset, TT func ) : care( careset ), onset( func & careset ), offset( ~func & care )
+  spfd_manager_t( STT careset, STT func ) : care( careset ), onset( func & careset ), offset( ~func & care )
   {
-    masks.reserve(nCap);
-    killed.reserve(nCap);
     reset();
   }
 
-  void init( uint32_t nCap, TT careset, TT func )
+  void init( STT careset, STT func )
   {
     care = careset;
     onset = func & care;
     offset = ~func & care; 
-    masks.reserve(nCap);
-    killed.reserve(nCap);
     reset();
   }
 
   void reset()
   {
-    masks.clear();
-    killed.clear();
-    masks.push_back(care);
-    killed.push_back(false);
+    masks[0]=care;
+    killed[0]=false;
     nMasks = 1u;
     nEdges = kitty::count_ones( onset ) * kitty::count_ones( offset );
     nKilled = nEdges > 0 ? 0u : 1u;
   }
 
-  void update( TT const& tt )
+  void update( STT const& tt )
   {
     nEdges = 0;
 
@@ -100,14 +144,14 @@ struct spfd_manager_t
     {
       if( killed[iMask] )
       {
-        killed.push_back( true );
-        masks.push_back( masks[iMask] );
+        killed[nMasks+iMask] = true;
+        masks[nMasks+iMask] = masks[iMask];
         nKilled++;
       }
       else
       {
-        masks.push_back( masks[iMask] & tt );
-        killed.push_back( false );
+        masks[nMasks+iMask] = masks[iMask] & tt;
+        killed[nMasks+iMask] = false;
 
         if( ( kitty::count_ones( onset & masks[nMasks+iMask] ) == 0 ) || ( kitty::count_ones( offset & masks[nMasks+iMask] ) == 0 ) )
         {
@@ -134,7 +178,7 @@ struct spfd_manager_t
     nMasks=nMasks*2;
   }
 
-  double evaluate( TT const& tt )
+  double evaluate( STT const& tt )
   {
     double res = 0;
     for( auto m = 0; m < nMasks; ++m )
@@ -154,12 +198,12 @@ struct spfd_manager_t
   }
 
   /*! \brief original careset */
-  TT care;
-  TT onset;
-  TT offset;
+  STT care;
+  STT onset;
+  STT offset;
 
-  std::vector<TT> masks;
-  std::vector<bool> killed;
+  std::array<STT, CAP> masks;
+  std::array<bool, CAP> killed;
   uint32_t nMasks{1};
   uint32_t nKilled{0};
   double nEdges{1};
@@ -170,26 +214,11 @@ struct divisor_t
 {
   divisor_t( TT func, uint32_t lit ) : func(func), lit(lit) {}
   divisor_t( TT func ) : func(func) {}
-  divisor_t( uint32_t idx )
-  {
-    kitty::create_nth_var( func, idx );
-  }
+  divisor_t(){}
   
   TT func;
   uint32_t lit;
 };
-
-template<class TT> 
-std::optional<std::vector<uint32_t>> find_support( spfd_manager_t<TT>&, std::vector<divisor_t<TT>> const&, uint32_t, double );
-
-template<class TT> 
-std::optional<std::vector<uint32_t>> find_support_greedy( spfd_manager_t<TT>&, std::vector<divisor_t<TT>> const&, uint32_t, double );
-
-template<class STT, class TT>
-std::pair<STT, STT> extract_local_functionality( std::vector<TT*> const&, TT const& );
-
-template<class STT, class TT, class RESYN>
-std::pair<STT, STT> extract_local_functionality( RESYN * , std::vector<uint32_t> const& );
 
 struct xag_resyn_static_params
 {
@@ -226,17 +255,22 @@ struct xag_resyn_static_params
   static constexpr uint32_t depth_cost_of_xor{ 1u };
 
   /*! \brief Maximum support size */
-  static constexpr uint32_t max_support_size{ 4u };
+  static constexpr uint32_t max_support_size{ 7u };
+  static constexpr uint32_t max_num_spfds{ 10u };
+
 
   /* FOR BOOLEAN MATCHING RESUBSTITUTION */
   /*! \brief recursively decompose */
-  static constexpr uint32_t max_support_attempts{ 1u };
-  static constexpr uint32_t max_resynthesis_attempts{ 1u };
+  static constexpr uint32_t max_support_attempts{ 10u };
+  static constexpr uint32_t max_resynthesis_attempts{ 100u };
   static constexpr bool try_0resub{ true };
-  static constexpr bool try_1resub{ true };
-  static constexpr bool try_unateness_decomposition{ true };
+  static constexpr bool try_1resub{ false };
+  static constexpr bool try_unateness_decomposition{ false };
   static constexpr bool use_boolean_matching{ false };
-  static constexpr double beta_support{ 1000 };
+  static constexpr double beta_support{ 100 };
+  static constexpr double beta_synthesis{ 100 };
+  static constexpr bool use_greedy_support_selection{false};
+  static constexpr gate_t node_funcs[1] = { BUF_ };
 
   using truth_table_storage_type = void;
   using node_type = void;
@@ -260,6 +294,9 @@ struct xag_resyn_static_params_for_sim_resub : public xag_resyn_static_params
 {
   using truth_table_storage_type = incomplete_node_map<kitty::partial_truth_table, Ntk>;
   using node_type = typename Ntk::node;
+  static constexpr uint32_t max_num_spfds = max_support_size + 2 ;
+  static constexpr gate_t node_funcs[5] = { PA00, PA01, PA10, PA11, EXOR };
+
 };
 
 template<class Ntk>
@@ -393,6 +430,9 @@ public:
     static_assert( std::is_same_v<typename static_params::base_type, xag_resyn_static_params>, "Invalid static_params type" );
     static_assert( !( static_params::uniform_div_cost && static_params::preserve_depth ), "If depth is to be preserved, divisor depth cost must be provided (usually not uniform)" );
     divisors.reserve( static_params::reserve );
+    
+    for( uint32_t i{0}; i<static_params::max_support_size; ++i )
+      kitty::create_nth_var(_xs[i], i );
   }
 
   /*! \brief Perform XAG resynthesis.
@@ -417,7 +457,7 @@ public:
     on_off_sets[0] = ~target & care;
     on_off_sets[1] = target & care;
 
-    _spfd_manager.init( 1u << static_params::max_support_size, care, target );
+    _gSPFD.init( care, target );
 
     divisors.resize( 1 ); /* clear previous data and reserve 1 dummy node for constant */
     
@@ -433,9 +473,6 @@ public:
       }
       ++begin;
     }
-
-    for( uint32_t i{0}; i<static_params::max_support_size; ++i )
-      small_divisors.emplace_back( i );
 
     return compute_function( max_size );
   }
@@ -697,13 +734,13 @@ private:
       for( auto i{0u}; i < static_params::max_support_attempts; ++i )
       {
         RNG.seed(i);
-        auto supp = find_support_greedy( this, _spfd_manager, static_params::max_support_size, static_params::beta_support );
+        auto supp = static_params::use_greedy_support_selection ? find_support_greedy() : find_support();
                 
-        if( supp && (explored_supports.find(*supp)==explored_supports.end()) )
+        if( supp && ( explored_supports.find(*supp)==explored_supports.end() ) )
         { 
           if( static_params::use_boolean_matching )
           {
-            auto const res = bmatch_resynthesis( );//*supp, num_inserts );
+            auto const res = bmatch_resynthesis(  );//*supp, num_inserts );
             if( res )
             {
               return *res;
@@ -726,38 +763,316 @@ private:
 
    std::optional<uint32_t> spfd_resynthesis( std::vector<uint32_t> const& supp, uint32_t& max_num_gates )
    {
-      auto [func, care] = extract_local_functionality<small_truth_table_t, truth_table_t>( this, supp );
-      spfd_manager_t spfd_manager_local( 1u << (static_params::max_support_size+2), func, care );
+      extract_local_functionality( supp );
 
       index_list_t index_list_copy = index_list;
-
-      for( uint32_t i{0}; i<supp.size(); ++i )
-        small_divisors[i].lit = supp[i] << 1u;
       std::vector<divisor_t<small_truth_table_t>> divs;
-      uint32_t nCut, nGates{0};
-      
+
       for( uint32_t iIter{0}; iIter < static_params::max_resynthesis_attempts; ++iIter )
       {
         index_list = index_list_copy;
-        divs = small_divisors;
+        divs.clear();
+        for( uint32_t i{0}; i<supp.size(); ++i )
+          divs.emplace_back( _xs[i], supp[i] << 1u );
+
         while( divs.size() > 1 && index_list.num_gates() < max_num_gates )
         {
-          return std::nullopt;
-          //auto lit = update_divisors( divs, max_num_gates );
-          //if( lit )
-          //{
-          //  return *lit;
-          //}
+          auto newDivs = update_divisors( divs, max_num_gates );
+          if( newDivs )
+          {
+            divs = *newDivs;
+          }
+          else  
+            break;
+        }
+        if( divs.size() == 1 )
+        {
+          if( kitty::equal( divs[0].func & _lSPFD.care, _lSPFD.onset & _lSPFD.care ) )
+          {
+            return divs[0].lit;
+          }
+          else if( kitty::equal( divs[0].func & _lSPFD.care, _lSPFD.offset ) )
+          {
+            return divs[0].lit ^ 0x1;
+          }
+          else
+          {
+            printf("[w]: One divisor not matching\n");
+          }
         }
       }
       return std::nullopt;
    }
 
-   std::optional<uint32_t> bmatch_resynthesis( )
+   std::optional<uint32_t> bmatch_resynthesis()
    {
       return std::nullopt;
    }
 
+std::optional<std::vector<uint32_t>> find_support_greedy()
+{
+  _gSPFD.reset();
+  std::vector<uint32_t> supp;
+  std::vector<uint32_t> candidates;
+  double cost, minCost = std::numeric_limits<double>::max();
+
+  while( !_gSPFD.is_covered() && ( supp.size() < static_params::max_support_size ) ) 
+  {
+    for( auto v = 0u; v < divisors.size(); ++v )
+    {
+      cost = _gSPFD.evaluate( get_div(v) );
+      if( cost < minCost ) 
+      {
+        minCost = cost;
+        candidates = {v};
+      }
+      else if( cost == minCost )
+      {
+        candidates.push_back( v );
+      }
+    }
+
+    std::uniform_int_distribution<> distrib(0, candidates.size()-1);
+    double rnd = distrib(RNG);
+    supp.push_back( candidates[rnd] );
+    _gSPFD.update( get_div(candidates[rnd]) );
+  }
+
+  if( _gSPFD.is_covered() )
+  {
+    std::sort(supp.begin(), supp.end());
+    return supp;
+  }
+  return std::nullopt;
+}
+
+std::optional<std::vector<uint32_t>> find_support()
+{
+  _gSPFD.reset();
+  std::vector<uint32_t> supp;
+
+  double cost;
+  double minCost = std::numeric_limits<double>::max();
+  double maxCost = std::numeric_limits<double>::min();
+  std::vector<double> costs;
+
+  while( !_gSPFD.is_covered() && ( supp.size() < static_params::max_support_size ) ) 
+  {
+    costs.clear();
+    for( auto v = 0u; v < divisors.size(); ++v )
+    {
+      cost = _gSPFD.evaluate( get_div(v) );
+      costs.push_back( cost );
+      if( cost < minCost ) minCost = cost;
+      if( cost > maxCost ) maxCost = cost;
+    }
+
+    for( uint32_t i{0}; i<costs.size(); ++i )
+      costs[i] = exp(-static_params::beta_support*(costs[i]-minCost)/(maxCost-minCost));
+    for( auto v : supp )
+      costs[v]=0;
+    for( uint32_t i{1}; i<costs.size(); ++i )
+    {
+      costs[i] += costs[i-1];
+    }
+    
+    std::uniform_real_distribution<> distrib(0, 1);
+    double rnd = distrib(RNG);
+
+    for( uint32_t i{0}; i<costs.size(); ++i )
+    {
+      if( std::isnan( costs[i] ) )
+      {
+        printf("[w]: NAN\n");
+        return std::nullopt;
+      }
+      if( rnd*costs.back() <= costs[i] )
+      {
+        supp.push_back(i);
+        _gSPFD.update( get_div(i) );
+        break;
+      }
+    }
+  }
+
+  if( _gSPFD.is_covered() )
+  {
+    std::sort(supp.begin(), supp.end());
+    return supp;
+  }
+  return std::nullopt;
+}
+
+void extract_local_functionality( std::vector<uint32_t> const& supp )
+{
+  small_truth_table_t func;
+  small_truth_table_t care;
+  TT jolly = on_off_sets[1];
+
+  for( uint32_t m{0}; m < (1u << static_params::max_support_size); ++m )
+  {
+    if( m < ( 1u << supp.size() ) )
+    {
+      jolly = jolly | ~jolly;
+      for( uint32_t v{0}; v < supp.size(); ++v )
+      {
+        if( ( m >> v ) & 1u == 1u )
+          jolly &= get_div(supp[v]);
+        else
+          jolly &= ~get_div(supp[v]);
+      }
+      
+      if( kitty::count_ones( jolly ) > 0 )
+      {
+        kitty::set_bit( care, m );
+        if( kitty::count_ones( jolly & on_off_sets[1] ) > 0 )
+        {
+          kitty::set_bit( func, m );
+        }
+        else
+        {
+          kitty::clear_bit( func, m );
+        }
+      }
+      else
+      {
+        kitty::clear_bit( care, m );
+      }
+    }
+    else
+      break;
+  }
+  _lSPFD.init( care, func );
+}
+
+std::optional<std::vector<divisor_t<small_truth_table_t>>> update_divisors( std::vector<divisor_t<small_truth_table_t>> const& divs, uint32_t max_num_gates )
+{
+  _lSPFD.reset();
+  uint32_t nBuffers{0};
+  std::vector<divisor_t<small_truth_table_t>> res;
+
+  double cost;
+  double minCost = std::numeric_limits<uint32_t>::max();
+  double maxCost = std::numeric_limits<uint32_t>::min();
+  std::vector<uint32_t> vA;
+  std::vector<uint32_t> vB;
+  std::vector<gate_t> gates;
+  std::vector<double> costs;
+  std::set<uint32_t> USED;
+  std::array<small_truth_table_t,5u> vFuncs;
+
+  uint32_t idFn;
+  while( !_lSPFD.is_covered() && res.size() < static_params::max_num_spfds )
+  {
+    if( nBuffers < divs.size()-1 )
+    {
+      for( auto v = 0; v<divs.size(); ++v )
+      {
+        cost = _lSPFD.evaluate(divs[v].func);
+        vA.push_back(v);
+        vB.push_back(v);
+        gates.push_back(BUF_);
+        costs.push_back(cost);
+        if( cost < minCost ) minCost = cost;
+        if( cost > maxCost ) maxCost = cost;
+      }
+    }
+
+    for( auto v1 = 0; v1<divs.size()-1; ++v1 )
+    {
+      for( auto v2 = v1+1; v2<divs.size(); ++v2 )
+      {
+        vFuncs[0] = ~divs[v1].func & ~divs[v2].func;
+        vFuncs[1] = ~divs[v1].func &  divs[v2].func; 
+        vFuncs[2] =  divs[v1].func & ~divs[v2].func;
+        vFuncs[3] =  divs[v1].func &  divs[v2].func;
+        vFuncs[4] =  divs[v1].func ^  divs[v2].func;
+
+        for( uint32_t iFn{0}; iFn < 5u; ++iFn )
+        {
+          cost = _lSPFD.evaluate( vFuncs[iFn] );
+          costs.push_back( cost );
+          vA.push_back(v1);
+          vB.push_back(v2);
+          gates.push_back(static_params::node_funcs[iFn]);
+          
+          if( cost < minCost ) minCost = cost;
+          if( cost > maxCost ) maxCost = cost;
+        }
+      }
+    }
+
+    for( uint32_t i{1}; i<costs.size(); ++i )
+    {
+      if( USED.find(i) == USED.end() )
+      {
+        costs[i] = costs[i-1] + exp(-static_params::beta_synthesis*(costs[i]-minCost)/(maxCost-minCost));
+      }
+      else
+        costs[i] = costs[i-1];
+    }
+    double sum = costs[costs.size()-1];
+    std::uniform_real_distribution<> distrib(0, 1);
+    double rnd = distrib(RNG);
+    int v = -1;
+    for( uint32_t i{1}; i<costs.size(); ++i )
+    {
+      if( rnd <= costs[i]/sum )
+      {
+        v = i;
+        break;
+      }
+    }
+
+    if(v<0)
+      return std::nullopt;
+    uint32_t a = vA[v];
+    uint32_t b = vB[v];
+    gate_t gate = gates[v];
+    USED.insert(v);
+    small_truth_table_t tt;
+    
+    switch (gate)
+    {
+      case PA00:
+        tt = ~divs[a].func & ~divs[b].func;
+        res.emplace_back( tt, index_list.add_and( divs[a].lit ^ 0x1, divs[b].lit ^ 0x1 ) );
+        break;
+      case PA01:
+        tt = ~divs[a].func &  divs[b].func;
+        res.emplace_back( tt, index_list.add_and( divs[a].lit ^ 0x1, divs[b].lit ) );
+        break;
+      case PA10:
+        tt = divs[a].func & ~divs[b].func;
+        res.emplace_back(  tt, index_list.add_and( divs[a].lit, divs[b].lit ^ 0x1) );
+        break;
+      case PA11:
+        tt = divs[a].func &  divs[b].func;
+        res.emplace_back(  tt, index_list.add_and( divs[a].lit, divs[b].lit ) );
+        break;
+      case EXOR:
+        tt = divs[a].func ^ divs[b].func;
+        res.emplace_back(  tt, index_list.add_xor( divs[a].lit, divs[b].lit ) );
+        break;
+      case BUF_:
+        tt = divs[a].func;
+        res.emplace_back( tt, divs[a].lit );
+        nBuffers++;
+        break;
+      default:
+        return std::nullopt;
+    }
+    if( index_list.num_gates() > max_num_gates+1 )//NEW
+      return std::nullopt;
+
+    _lSPFD.update( tt );    
+  }
+
+  if( _lSPFD.is_covered() )
+    return res;
+  return std::nullopt;
+
+}
 
   /* See if there is a constant or divisor covering all on-set bits or all off-set bits.
      1. Check constant-resub
@@ -1124,26 +1439,29 @@ public:
 
   inline TT const& get_onset() const
   {
-    return _spfd_manager.onset;
+    return _gSPFD.onset;
   }
 
   inline TT const& get_care() const
   {
-    return _spfd_manager.care;
+    return _gSPFD.care;
   }
+
+public:
+  index_list_t index_list;
 
 private:
   std::array<TT, 2> on_off_sets;
   std::array<uint32_t, 2> num_bits; /* number of bits in on-set and off-set */
-  spfd_manager_t<TT> _spfd_manager;
+  spfd_manager_t<truth_table_t, 1u << static_params::max_num_spfds> _gSPFD;
+  spfd_manager_t<small_truth_table_t, 1u << static_params::max_num_spfds> _lSPFD;
   
-  std::vector<divisor_t<small_truth_table_t>> small_divisors;
+  std::array<small_truth_table_t, static_params::max_support_size> _xs;
 
   const typename static_params::truth_table_storage_type* ptts;
   std::vector<std::conditional_t<static_params::copy_tts, TT, typename static_params::node_type>> divisors;
   std::vector<divisor_t<TT>> _divisors;
 
-  index_list_t index_list;
 
   /* positive unate: not overlapping with off-set
      negative unate: not overlapping with on-set */
@@ -1155,248 +1473,6 @@ private:
 }; /* xag_resyn */
 
 #pragma endregion XAG_resyn
-
-template<class TT>
-std::optional<std::vector<uint32_t>> find_support( spfd_manager_t<TT>& spfd_manager, std::vector<divisor_t<TT>> const& candidates, uint32_t nMaxSupp, double beta )
-{
-  spfd_manager.reset();
-  std::vector<uint32_t> supp;
-
-  double cost;
-  double minCost = std::numeric_limits<double>::max();
-  double maxCost = std::numeric_limits<double>::min();
-  std::vector<double> costs;
-
-  while( !spfd_manager.is_covered() && ( supp.size() < nMaxSupp ) ) 
-  {
-    costs.clear();
-    for( auto v = 0u; v < candidates.size(); ++v )
-    {
-      cost = spfd_manager.evaluate( candidates[v].func );
-      costs.push_back( cost );
-      if( cost < minCost ) minCost = cost;
-      if( cost > maxCost ) maxCost = cost;
-    }
-
-    for( uint32_t i{0}; i<costs.size(); ++i )
-      costs[i] = exp(-beta*(costs[i]-minCost)/(maxCost-minCost));
-    for( auto v : supp )
-      costs[v]=0;
-    for( uint32_t i{1}; i<costs.size(); ++i )
-    {
-      costs[i] += costs[i-1];
-    }
-    
-    std::uniform_real_distribution<> distrib(0, 1);
-    double rnd = distrib(RNG);
-
-    for( uint32_t i{0}; i<costs.size(); ++i )
-    {
-      if( std::isnan( costs[i] ) )
-      {
-        printf("[w]: NAN\n");
-        return std::nullopt;
-      }
-      if( rnd*costs.back() <= costs[i] )
-      {
-        supp.push_back(i);
-        spfd_manager.update( candidates[i].func );
-        break;
-      }
-    }
-  }
-
-  if( spfd_manager.is_covered() )
-  {
-    std::sort(supp.begin(), supp.end());
-    return supp;
-  }
-  return std::nullopt;
-}
-
-template<class RESYN, class TT>
-std::optional<std::vector<uint32_t>> find_support( RESYN * pResyn, spfd_manager_t<TT>& spfd_manager, uint32_t nMaxSupp, double beta )
-{
-  spfd_manager.reset();
-  std::vector<uint32_t> supp;
-
-  double cost;
-  double minCost = std::numeric_limits<double>::max();
-  double maxCost = std::numeric_limits<double>::min();
-  std::vector<double> costs;
-
-  while( !spfd_manager.is_covered() && ( supp.size() < nMaxSupp ) ) 
-  {
-    costs.clear();
-    for( auto v = 0u; v < pResyn->num_divisors(); ++v )
-    {
-      cost = spfd_manager.evaluate( pResyn->get_div(v) );
-      costs.push_back( cost );
-      if( cost < minCost ) minCost = cost;
-      if( cost > maxCost ) maxCost = cost;
-    }
-
-    for( uint32_t i{0}; i<costs.size(); ++i )
-      costs[i] = exp(-beta*(costs[i]-minCost)/(maxCost-minCost));
-    for( auto v : supp )
-      costs[v]=0;
-    for( uint32_t i{1}; i<costs.size(); ++i )
-    {
-      costs[i] += costs[i-1];
-    }
-    
-    std::uniform_real_distribution<> distrib(0, 1);
-    double rnd = distrib(RNG);
-
-    for( uint32_t i{0}; i<costs.size(); ++i )
-    {
-      if( std::isnan( costs[i] ) )
-      {
-        printf("[w]: NAN\n");
-        return std::nullopt;
-      }
-      if( rnd*costs.back() <= costs[i] )
-      {
-        supp.push_back(i);
-        spfd_manager.update( pResyn->get_div(i) );
-        break;
-      }
-    }
-  }
-
-  if( spfd_manager.is_covered() )
-  {
-    std::sort(supp.begin(), supp.end());
-    return supp;
-  }
-  return std::nullopt;
-}
-
-template<class TT>
-std::optional<std::vector<uint32_t>> find_support_greedy( spfd_manager_t<TT>& spfd_manager, std::vector<divisor_t<TT>> const& candidates, uint32_t nMaxSupp, double beta )
-{
-  spfd_manager.reset();
-  std::vector<uint32_t> supp;
-  std::vector<uint32_t> vDivs;
-  double cost;
-  double minCost = std::numeric_limits<double>::max();
-  std::vector<double> costs;
-
-  while( !spfd_manager.is_covered() && ( supp.size() < nMaxSupp ) ) 
-  {
-    costs.clear();
-    for( auto v = 0u; v < candidates.size(); ++v )
-    {
-      cost = spfd_manager.evaluate( candidates[v].func );
-      if( cost < minCost ) 
-      {
-        minCost = cost;
-        vDivs = {v};
-      }
-      else if( cost == minCost )
-      {
-        vDivs.push_back( v );
-      }
-    }
-
-    std::uniform_int_distribution<> distrib(0, vDivs.size()-1);
-    double rnd = distrib(RNG);
-    supp.push_back( vDivs[rnd] );
-    spfd_manager.update( candidates[vDivs[rnd]].func );
-  }
-
-  assert(0);
-  if( spfd_manager.is_covered() )
-  {
-    std::sort(supp.begin(), supp.end());
-    return supp;
-  }
-  return std::nullopt;
-}
-
-template<class RESYN, class TT>
-std::optional<std::vector<uint32_t>> find_support_greedy( RESYN * pResyn, spfd_manager_t<TT>& spfd_manager, uint32_t nMaxSupp, double beta )
-{
-  spfd_manager.reset();
-  std::vector<uint32_t> supp;
-  std::vector<uint32_t> vDivs;
-  double cost;
-  double minCost = std::numeric_limits<double>::max();
-  std::vector<double> costs;
-
-  while( !spfd_manager.is_covered() && ( supp.size() < nMaxSupp ) ) 
-  {
-    costs.clear();
-    for( auto v = 0u; v < pResyn->num_divisors(); ++v )
-    {
-      cost = spfd_manager.evaluate( pResyn->get_div(v) );
-      if( cost < minCost ) 
-      {
-        minCost = cost;
-        vDivs = {v};
-      }
-      else if( cost == minCost )
-      {
-        vDivs.push_back( v );
-      }
-    }
-
-    std::uniform_int_distribution<> distrib(0, vDivs.size()-1);
-    double rnd = distrib(RNG);
-    supp.push_back( vDivs[rnd] );
-    spfd_manager.update( pResyn->get_div(vDivs[rnd]) );
-  }
-
-  if( spfd_manager.is_covered() )
-  {
-    std::sort(supp.begin(), supp.end());
-    return supp;
-  }
-  return std::nullopt;
-}
-
-template<class STT, class TT, class RESYN>
-std::pair<STT, STT> extract_local_functionality( RESYN * pResyn, std::vector<uint32_t> const& supp )
-{
-  STT func;
-  STT care;
-  TT jolly = pResyn->get_onset();
-
-  for( uint32_t m{0}; m < (1u << func.num_vars()); ++m )
-  {
-    if( m < ( 1u << supp.size() ) )
-    {
-      jolly = jolly | ~jolly;
-      for( uint32_t v{0}; v < supp.size(); ++v )
-      {
-        if( ( m >> v ) & 1u == 1u )
-          jolly &= pResyn->get_div(supp[v]);
-        else
-          jolly &= ~pResyn->get_div(supp[v]);
-      }
-      
-      if( kitty::count_ones( jolly ) > 0 )
-      {
-        kitty::set_bit( care, m );
-        if( kitty::count_ones( jolly & pResyn->get_onset() ) > 0 )
-        {
-          kitty::set_bit( func, m );
-        }
-        else
-        {
-          kitty::clear_bit( func, m );
-        }
-      }
-      else
-      {
-        kitty::clear_bit( care, m );
-      }
-    }
-    else
-      break;
-  }
-  return std::make_pair( func, care );
-}
 
 
 } /* namespace spfd */
