@@ -413,7 +413,7 @@ void sim_resubstitution( Ntk& ntk, resubstitution_params const& ps = {}, resubst
 }
 
 
-template<class Ntk>
+template<uint32_t K, uint32_t S, uint32_t I, class Ntk>
 void spfd_resubstitution( Ntk& ntk, resubstitution_params const& ps = {}, resubstitution_stats* pst = nullptr )
 {
   static_assert( std::is_same_v<typename Ntk::base_type, aig_network> || std::is_same_v<typename Ntk::base_type, xag_network>, "Currently only supports AIG and XAG" );
@@ -424,7 +424,7 @@ void spfd_resubstitution( Ntk& ntk, resubstitution_params const& ps = {}, resubs
 
   if constexpr ( std::is_same_v<typename Ntk::base_type, aig_network> )
   {
-    using resyn_engine_t = spfd::xag_resyn<kitty::partial_truth_table, spfd::aig_resyn_static_params_for_sim_resub<resub_view_t>>;
+    using resyn_engine_t = spfd::xag_resyn<kitty::partial_truth_table, spfd::aig_resyn_static_params_for_sim_resub<resub_view_t, K, S, I>>;
 
     if ( ps.odc_levels != 0 )
     {
@@ -441,7 +441,7 @@ void spfd_resubstitution( Ntk& ntk, resubstitution_params const& ps = {}, resubs
   }
   else //if constexpr ( std::is_same_v<typename Ntk::base_type, xag_network> )
   {
-    using resyn_engine_t = spfd::xag_resyn<kitty::partial_truth_table, spfd::xag_resyn_static_params_for_sim_resub<resub_view_t>>;
+    using resyn_engine_t = spfd::xag_resyn<kitty::partial_truth_table, spfd::xag_resyn_static_params_for_sim_resub<resub_view_t, K, S, I>>;
 
     if ( ps.odc_levels != 0 )
     {

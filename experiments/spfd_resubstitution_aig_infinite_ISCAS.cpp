@@ -31,7 +31,7 @@
 #include <mockturtle/algorithms/cleanup.hpp>
 #include <mockturtle/algorithms/sim_resub.hpp>
 #include <mockturtle/io/aiger_reader.hpp>
-#include <mockturtle/networks/xag.hpp>
+#include <mockturtle/networks/aig.hpp>
 #include <ctime>
 
 #include <experiments.hpp>
@@ -108,7 +108,7 @@ int main()
   using namespace experiments;
   using namespace mockturtle;
 
-  experiment<std::string, uint32_t, uint32_t, float, uint32_t, double, float, uint32_t, double, float, bool, bool, bool> exp( "spfd_resubstitution_xag_infinite_ISCAS", "benchmark", "size", "size(u)", "time(u)", "size(4,1,1)", "gain(4,1,1)", "time(4,1,1)", "size(7,10,10)", "gain(7,10,10)", "time(7,10,10)", "cec(u)", "cec(4)", "cec(7)" );
+  experiment<std::string, uint32_t, uint32_t, float, uint32_t, double, float, uint32_t, double, float, bool, bool, bool> exp( "spfd_resubstitution_aig_infinite_ISCAS", "benchmark", "size", "size(u)", "time(u)", "size(4,1,1)", "gain(4,1,1)", "time(4,1,1)", "size(7,10,10)", "gain(7,10,10)", "time(7,10,10)", "cec(u)", "cec(4)", "cec(7)" );
 
   double gain1{0};
   double gain2{0};
@@ -120,31 +120,31 @@ int main()
 
     /* low effort K=4 S=1 I=1 */
 
-    xag_network xag1;
-    if ( lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( xag1 ) ) != lorina::return_code::success )
+    aig_network aig1;
+    if ( lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( aig1 ) ) != lorina::return_code::success )
     {
       continue;
     }
-    auto size0 = xag1.num_gates();
+    auto size0 = aig1.num_gates();
 
     experiments_stats_t stU;
-    infinite_sim_resub( benchmark, xag1, stU );
+    infinite_sim_resub( benchmark, aig1, stU );
 
     experiments_stats_t st1;
-    spfd_resub<4u,1u,1u>( benchmark, xag1, st1 );
+    spfd_resub<4u,1u,1u>( benchmark, aig1, st1 );
     
     /* high effort K=7 S=10 I=10 */
 
-    xag_network xag2;
-    if ( lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( xag2 ) ) != lorina::return_code::success )
+    aig_network aig2;
+    if ( lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( aig2 ) ) != lorina::return_code::success )
     {
       continue;
     }
 
-    infinite_sim_resub( benchmark, xag2, stU );
+    infinite_sim_resub( benchmark, aig2, stU );
 
     experiments_stats_t st2;
-    spfd_resub<7u,10u,10u>( benchmark, xag2, st2 );
+    spfd_resub<7u,10u,10u>( benchmark, aig2, st2 );
 
     exp( benchmark, size0, stU.num_gates, stU.time, st1.num_gates, st1.gain, st1.time, st2.num_gates, st2.gain, st2.time, stU.cec, st1.cec, st2.cec );
 
@@ -161,3 +161,5 @@ int main()
 
   return 0;
 }
+
+

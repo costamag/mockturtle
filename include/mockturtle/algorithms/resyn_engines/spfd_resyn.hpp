@@ -74,39 +74,21 @@ enum gate_t
   NONE
 };
 
-//template<class DTT>
-//struct two_inputs_gate_t
-//{
-//  gate_t type;
-//  uint32_t nInputs;
-//
-//  DTT (*pFn)( DTT const&, DTT const& );
-//
-//  two_inputs_gate_t( gate_t type, uint32_t nInputs, DTT (*pFn)( DTT const&, DTT const& ) ) : type(type), nInputs(nInputs), pFn(pFn){}
-//  DTT compute( DTT const& a, DTT const& b ){ return pFn( a, b ); };
-//};
-//
-//template<class DTT> DTT hpcompute_buf_( DTT const& a, DTT const& b ){ return a; }
-//template<class DTT> DTT hpcompute_pa00( DTT const& a, DTT const& b ){ return ~a & ~b; }
-//template<class DTT> DTT hpcompute_pa01( DTT const& a, DTT const& b ){ return ~a &  b; }
-//template<class DTT> DTT hpcompute_pa10( DTT const& a, DTT const& b ){ return  a & ~b; }
-//template<class DTT> DTT hpcompute_pa11( DTT const& a, DTT const& b ){ return  a &  b; }
-//template<class DTT> DTT hpcompute_exor( DTT const& a, DTT const& b ){ return  a ^  b; }
-//
-//template<class DTT>
-//struct xaig_library_t
-//{
-//  xaig_library_t(){
-//    gates[0] = two_inputs_gate_t<DTT>{ BUF_, 1, &hpcompute_buf_<DTT> }; 
-//    gates[1] = two_inputs_gate_t<DTT>{ PA00, 2, &hpcompute_pa00<DTT> }; 
-//    gates[2] = two_inputs_gate_t<DTT>{ PA01, 2, &hpcompute_pa01<DTT> }; 
-//    gates[3] = two_inputs_gate_t<DTT>{ PA10, 2, &hpcompute_pa10<DTT> }; 
-//    gates[4] = two_inputs_gate_t<DTT>{ PA11, 2, &hpcompute_pa11<DTT> }; 
-//    gates[5] = two_inputs_gate_t<DTT>{ EXOR, 2, &hpcompute_exor<DTT> };
-//  }
-//
-//  std::array<two_inputs_gate_t<DTT>, 6u> gates;
-//};
+
+template<class DTT> DTT hpcompute_buf_( DTT const& a, DTT const& b ){ return  a; }
+template<class DTT> DTT hpcompute_pa00( DTT const& a, DTT const& b ){ return ~a & ~b; }
+template<class DTT> DTT hpcompute_pa01( DTT const& a, DTT const& b ){ return ~a &  b; }
+template<class DTT> DTT hpcompute_pa10( DTT const& a, DTT const& b ){ return  a & ~b; }
+template<class DTT> DTT hpcompute_pa11( DTT const& a, DTT const& b ){ return  a &  b; }
+template<class DTT> DTT hpcompute_exor( DTT const& a, DTT const& b ){ return  a ^  b; }
+
+
+template<class LIST> uint32_t add_buf__to_index_list_( LIST& list, uint32_t lit1, uint32_t lit2 ){ return  lit1; }
+template<class LIST> uint32_t add_pa00_to_index_list_( LIST& list, uint32_t lit1, uint32_t lit2 ){ return list.add_and( lit1 ^ 0x1, lit2 ^ 0x1 ); }
+template<class LIST> uint32_t add_pa01_to_index_list_( LIST& list, uint32_t lit1, uint32_t lit2 ){ return list.add_and( lit1 ^ 0x1, lit2 ); }
+template<class LIST> uint32_t add_pa10_to_index_list_( LIST& list, uint32_t lit1, uint32_t lit2 ){ return list.add_and( lit1, lit2 ^ 0x1 ); }
+template<class LIST> uint32_t add_pa11_to_index_list_( LIST& list, uint32_t lit1, uint32_t lit2 ){ return list.add_and( lit1, lit2 ); }
+template<class LIST> uint32_t add_exor_to_index_list_( LIST& list, uint32_t lit1, uint32_t lit2 ){ return list.add_xor( lit1, lit2 ); }
 
 
 template<class STT, uint32_t CAP>
@@ -262,7 +244,7 @@ struct xag_resyn_static_params
   /* FOR BOOLEAN MATCHING RESUBSTITUTION */
   /*! \brief recursively decompose */
   static constexpr uint32_t max_support_attempts{ 10u };
-  static constexpr uint32_t max_resynthesis_attempts{ 100u };
+  static constexpr uint32_t max_resynthesis_attempts{ 10u };
   static constexpr bool try_0resub{ true };
   static constexpr bool try_1resub{ false };
   static constexpr bool try_unateness_decomposition{ false };
@@ -270,7 +252,6 @@ struct xag_resyn_static_params
   static constexpr double beta_support{ 100 };
   static constexpr double beta_synthesis{ 100 };
   static constexpr bool use_greedy_support_selection{false};
-  static constexpr gate_t node_funcs[1] = { BUF_ };
 
   using truth_table_storage_type = void;
   using node_type = void;
@@ -289,18 +270,19 @@ struct aig_resyn_static_params_default : public xag_resyn_static_params_default<
   static constexpr bool use_xor = false;
 };
 
-template<class Ntk>
+template<class Ntk, uint32_t K, uint32_t S, uint32_t I>
 struct xag_resyn_static_params_for_sim_resub : public xag_resyn_static_params
 {
   using truth_table_storage_type = incomplete_node_map<kitty::partial_truth_table, Ntk>;
   using node_type = typename Ntk::node;
+  static constexpr uint32_t max_support_size = K;
+  static constexpr uint32_t max_support_attempts = S;
+  static constexpr uint32_t max_resynthesis_attempts = I;
   static constexpr uint32_t max_num_spfds = max_support_size + 2 ;
-  static constexpr gate_t node_funcs[5] = { PA00, PA01, PA10, PA11, EXOR };
-
 };
 
-template<class Ntk>
-struct aig_resyn_static_params_for_sim_resub : public xag_resyn_static_params_for_sim_resub<Ntk>
+template<class Ntk, uint32_t K, uint32_t S, uint32_t I>
+struct aig_resyn_static_params_for_sim_resub : public xag_resyn_static_params_for_sim_resub<Ntk, K, S, I>
 {
   static constexpr bool use_xor = false;
 };
@@ -421,6 +403,76 @@ private:
 
     uint32_t lit1, lit2;
     uint32_t score{ 0 };
+  };
+
+  struct xaig_gate_t
+  {
+    gate_t type;
+    uint32_t nInputs;
+    small_truth_table_t (*pF)( small_truth_table_t const&, small_truth_table_t const& );
+    uint32_t (*pG)( index_list_t&, uint32_t, uint32_t );
+
+    xaig_gate_t( gate_t type, uint32_t nInputs, small_truth_table_t (*pF)( small_truth_table_t const&, small_truth_table_t const& ), uint32_t (*pG)( index_list_t&, uint32_t, uint32_t ) ) : type(type), nInputs(nInputs), pF(pF), pG(pG){}
+    xaig_gate_t(){}
+
+    small_truth_table_t compute( small_truth_table_t const& a, small_truth_table_t const& b ){ return pF( a, b ); };
+    small_truth_table_t compute( small_truth_table_t const& a ){ return pF( a, a ); };
+
+    uint32_t add_to_list( index_list_t& list, uint32_t lit1, uint32_t lit2 ){ return pG( list, lit1, lit2 ); };
+    uint32_t add_to_list( index_list_t& list, uint32_t lit1 ){ return pG( list, lit1, lit1 ); };
+  };
+
+  struct xaig_library_t
+  {
+    xaig_library_t(){
+      gates1[0] = xaig_gate_t{ BUF_, 1, &hpcompute_buf_<small_truth_table_t>, &add_buf__to_index_list_<index_list_t> }; 
+      gates2[0] = xaig_gate_t{ PA00, 2, &hpcompute_pa00<small_truth_table_t>, &add_pa00_to_index_list_<index_list_t> }; 
+      gates2[1] = xaig_gate_t{ PA01, 2, &hpcompute_pa01<small_truth_table_t>, &add_pa01_to_index_list_<index_list_t> }; 
+      gates2[2] = xaig_gate_t{ PA10, 2, &hpcompute_pa10<small_truth_table_t>, &add_pa10_to_index_list_<index_list_t> }; 
+      gates2[3] = xaig_gate_t{ PA11, 2, &hpcompute_pa11<small_truth_table_t>, &add_pa11_to_index_list_<index_list_t> }; 
+      gates2[4] = xaig_gate_t{ EXOR, 2, &hpcompute_exor<small_truth_table_t>, &add_exor_to_index_list_<index_list_t> };
+    }
+
+    std::array<xaig_gate_t, 1u> gates1;
+    std::array<xaig_gate_t, 5u> gates2;
+  };
+
+  struct xaig_candidate_t
+  {
+    xaig_gate_t gate;
+    double cost;
+    gate_t type;
+    //uint32_t a;
+    //uint32_t b;
+
+    divisor_t<small_truth_table_t> * pa;
+    divisor_t<small_truth_table_t> * pb;
+    uint32_t id;
+
+    xaig_candidate_t(){}
+    //xaig_candidate_t( uint32_t id, xaig_gate_t gate, double cost, uint32_t a, uint32_t b ) : id(id), gate(gate), type(gate.type), cost(cost), a(a), b(b){}
+    //xaig_candidate_t( uint32_t id, xaig_gate_t gate, double cost, uint32_t a ) : id(id), gate(gate), type(gate.type), cost(cost), a(a), b(a){}
+    xaig_candidate_t( uint32_t id, xaig_gate_t gate, double cost, divisor_t<small_truth_table_t> * a, divisor_t<small_truth_table_t> * b ) : id(id), gate(gate), type(gate.type), cost(cost), pa(a), pb(b){}
+    xaig_candidate_t( uint32_t id, xaig_gate_t gate, double cost, divisor_t<small_truth_table_t> * a ) : id(id), gate(gate), type(gate.type), cost(cost), pa(a), pb(a){}
+
+    uint32_t add_to_list( index_list_t& list, uint32_t lit1, uint32_t lit2 ){ return gate.add_to_list(list, lit1, lit2);};
+    uint32_t add_to_list( index_list_t& list ){ return gate.add_to_list(list, pa->lit, pb->lit);};
+    small_truth_table_t compute( small_truth_table_t const& tta, small_truth_table_t const& ttb ){ return gate.compute(tta, ttb);};
+    small_truth_table_t compute(){ return gate.compute(pa->func, pb->func);};
+
+    double update_cost( double const& costPrevious, double const& minCost, double const& maxCost, bool isNew )
+    {
+      if( isNew )
+      {
+        cost = costPrevious + exp(-static_params::beta_synthesis*(cost-minCost)/(maxCost-minCost));
+      }
+      else
+      {
+        cost = costPrevious;
+      }
+      return cost;
+    }
+
   };
 
 public:
@@ -787,7 +839,7 @@ private:
         }
         if( divs.size() == 1 )
         {
-          if( kitty::equal( divs[0].func & _lSPFD.care, _lSPFD.onset & _lSPFD.care ) )
+          if( kitty::equal( divs[0].func & _lSPFD.care, _lSPFD.onset ) )
           {
             return divs[0].lit;
           }
@@ -945,7 +997,7 @@ void extract_local_functionality( std::vector<uint32_t> const& supp )
   _lSPFD.init( care, func );
 }
 
-std::optional<std::vector<divisor_t<small_truth_table_t>>> update_divisors( std::vector<divisor_t<small_truth_table_t>> const& divs, uint32_t max_num_gates )
+std::optional<std::vector<divisor_t<small_truth_table_t>>> update_divisors( std::vector<divisor_t<small_truth_table_t>> & divs, uint32_t max_num_gates )
 {
   _lSPFD.reset();
   uint32_t nBuffers{0};
@@ -954,118 +1006,63 @@ std::optional<std::vector<divisor_t<small_truth_table_t>>> update_divisors( std:
   double cost;
   double minCost = std::numeric_limits<uint32_t>::max();
   double maxCost = std::numeric_limits<uint32_t>::min();
-  std::vector<uint32_t> vA;
-  std::vector<uint32_t> vB;
-  std::vector<gate_t> gates;
-  std::vector<double> costs;
-  std::set<uint32_t> USED;
-  std::array<small_truth_table_t,5u> vFuncs;
 
-  uint32_t idFn;
+  std::vector<xaig_candidate_t> candidates;
+
+  std::set<uint32_t> USED;
+  uint32_t idx{0};
+
   while( !_lSPFD.is_covered() && res.size() < static_params::max_num_spfds )
   {
-    if( nBuffers < divs.size()-1 )
+    for( auto v1 = 0; v1 < divs.size(); ++v1 )
     {
-      for( auto v = 0; v<divs.size(); ++v )
+      for( auto gate : _lib.gates1 )
       {
-        cost = _lSPFD.evaluate(divs[v].func);
-        vA.push_back(v);
-        vB.push_back(v);
-        gates.push_back(BUF_);
-        costs.push_back(cost);
+        if( nBuffers >= divs.size()-1 )  continue;
+
+        cost = _lSPFD.evaluate( gate.compute( divs[v1].func ) );
+        candidates.emplace_back( idx++, gate, cost, &(divs[v1]) );
         if( cost < minCost ) minCost = cost;
         if( cost > maxCost ) maxCost = cost;
       }
-    }
 
-    for( auto v1 = 0; v1<divs.size()-1; ++v1 )
-    {
-      for( auto v2 = v1+1; v2<divs.size(); ++v2 )
+      for( auto v2 = v1+1; v2 < divs.size(); ++v2 )
       {
-        vFuncs[0] = ~divs[v1].func & ~divs[v2].func;
-        vFuncs[1] = ~divs[v1].func &  divs[v2].func; 
-        vFuncs[2] =  divs[v1].func & ~divs[v2].func;
-        vFuncs[3] =  divs[v1].func &  divs[v2].func;
-        vFuncs[4] =  divs[v1].func ^  divs[v2].func;
-
-        for( uint32_t iFn{0}; iFn < 5u; ++iFn )
+        for( auto gate : _lib.gates2 )
         {
-          cost = _lSPFD.evaluate( vFuncs[iFn] );
-          costs.push_back( cost );
-          vA.push_back(v1);
-          vB.push_back(v2);
-          gates.push_back(static_params::node_funcs[iFn]);
-          
+          cost = _lSPFD.evaluate( gate.compute( divs[v1].func, divs[v2].func ) );
+          candidates.emplace_back( idx++, gate, cost, &(divs[v1]), &(divs[v2]) );
           if( cost < minCost ) minCost = cost;
           if( cost > maxCost ) maxCost = cost;
         }
       }
     }
 
-    for( uint32_t i{1}; i<costs.size(); ++i )
+    double costPrevious{0};
+    for( auto & cand : candidates )
     {
-      if( USED.find(i) == USED.end() )
-      {
-        costs[i] = costs[i-1] + exp(-static_params::beta_synthesis*(costs[i]-minCost)/(maxCost-minCost));
-      }
-      else
-        costs[i] = costs[i-1];
+      costPrevious = cand.update_cost( costPrevious, minCost, maxCost, USED.find(cand.id) == USED.end() );
     }
-    double sum = costs[costs.size()-1];
+
+    double sum = candidates[idx-1].cost;
     std::uniform_real_distribution<> distrib(0, 1);
     double rnd = distrib(RNG);
-    int v = -1;
-    for( uint32_t i{1}; i<costs.size(); ++i )
+
+    for( auto & cand : candidates )
     {
-      if( rnd <= costs[i]/sum )
+      if( rnd <= cand.cost/sum )
       {
-        v = i;
+        USED.insert(cand.id);
+        if( cand.type == BUF_ )  nBuffers++;
+
+        small_truth_table_t tt = cand.compute();
+        res.emplace_back( tt, cand.add_to_list( index_list ) );
+        _lSPFD.update( tt );  
         break;
       }
     }
-
-    if(v<0)
+    if( index_list.num_gates() > max_num_gates )//+1 )//NEW
       return std::nullopt;
-    uint32_t a = vA[v];
-    uint32_t b = vB[v];
-    gate_t gate = gates[v];
-    USED.insert(v);
-    small_truth_table_t tt;
-    
-    switch (gate)
-    {
-      case PA00:
-        tt = ~divs[a].func & ~divs[b].func;
-        res.emplace_back( tt, index_list.add_and( divs[a].lit ^ 0x1, divs[b].lit ^ 0x1 ) );
-        break;
-      case PA01:
-        tt = ~divs[a].func &  divs[b].func;
-        res.emplace_back( tt, index_list.add_and( divs[a].lit ^ 0x1, divs[b].lit ) );
-        break;
-      case PA10:
-        tt = divs[a].func & ~divs[b].func;
-        res.emplace_back(  tt, index_list.add_and( divs[a].lit, divs[b].lit ^ 0x1) );
-        break;
-      case PA11:
-        tt = divs[a].func &  divs[b].func;
-        res.emplace_back(  tt, index_list.add_and( divs[a].lit, divs[b].lit ) );
-        break;
-      case EXOR:
-        tt = divs[a].func ^ divs[b].func;
-        res.emplace_back(  tt, index_list.add_xor( divs[a].lit, divs[b].lit ) );
-        break;
-      case BUF_:
-        tt = divs[a].func;
-        res.emplace_back( tt, divs[a].lit );
-        nBuffers++;
-        break;
-      default:
-        return std::nullopt;
-    }
-    if( index_list.num_gates() > max_num_gates+1 )//NEW
-      return std::nullopt;
-
-    _lSPFD.update( tt );    
   }
 
   if( _lSPFD.is_covered() )
@@ -1457,6 +1454,7 @@ private:
   spfd_manager_t<small_truth_table_t, 1u << static_params::max_num_spfds> _lSPFD;
   
   std::array<small_truth_table_t, static_params::max_support_size> _xs;
+  xaig_library_t _lib{};
 
   const typename static_params::truth_table_storage_type* ptts;
   std::vector<std::conditional_t<static_params::copy_tts, TT, typename static_params::node_type>> divisors;
@@ -1480,3 +1478,19 @@ private:
 } /* namespace mockturtle */
 
 
+
+
+
+
+//|       c17 |    6 |      6 |      0.00 |      6 |   0.00 |      0.00 |         true |         true |
+//|      c432 |  208 |    166 |      0.02 |    166 |   0.00 |      0.01 |         true |         true |
+//|      c499 |  398 |    388 |      0.02 |    246 | -36.60 |      0.03 |         true |         true |
+//|      c880 |  325 |    296 |      0.02 |    269 |  -9.12 |      0.02 |         true |         true |
+//|     c1355 |  502 |    420 |      0.03 |    263 | -37.38 |      0.03 |         true |         true |
+//|     c1908 |  341 |    280 |      0.04 |    181 | -35.36 |      0.02 |         true |         true |
+//|     c2670 |  716 |    532 |      0.06 |    484 |  -9.02 |      0.04 |         true |         true |
+//|     c3540 | 1024 |    787 |      0.33 |    750 |  -4.70 |      0.08 |         true |         true |
+//|     c5315 | 1776 |   1277 |      0.15 |   1211 |  -5.17 |      0.10 |         true |         true |
+//|     c6288 | 2337 |   1480 |      0.25 |   1426 |  -3.65 |      0.07 |         true |         true |
+//|     c7552 | 1469 |   1291 |      0.20 |   1146 | -11.23 |      0.10 |         true |         true |
+//  [ 0.00,    0.00,  -36.60,   -9.12,  -37.38,  -35.36,   -9.02,   -4.70,   -5.17,   -3.65,  -11.23 ]
