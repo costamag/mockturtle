@@ -108,7 +108,18 @@ int main()
   using namespace experiments;
   using namespace mockturtle;
 
-  experiment<std::string, uint32_t, uint32_t, float, uint32_t, double, float, uint32_t, double, float, bool, bool, bool> exp( "spfd_resubstitution_xag_infinite_ISCAS", "benchmark", "size", "size(u)", "time(u)", "size(4,1,1)", "gain(4,1,1)", "time(4,1,1)", "size(7,10,10)", "gain(7,10,10)", "time(7,10,10)", "cec(u)", "cec(4)", "cec(7)" );
+  static constexpr uint32_t K1 = 4u;
+  static constexpr uint32_t S1 = 1u;
+  static constexpr uint32_t I1 = 1u;
+
+  static constexpr uint32_t K2 = 7u;
+  static constexpr uint32_t S2 = 10u;
+  static constexpr uint32_t I2 = 10u;
+
+  std::string e1 = "(" + std::to_string(K1) + "," + std::to_string(S1) + "," + std::to_string(I1) + ")";
+  std::string e2 = "(" + std::to_string(K2) + "," + std::to_string(S2) + "," + std::to_string(I2) + ")";
+
+  experiment<std::string, uint32_t, uint32_t, float, uint32_t, double, float, uint32_t, double, float, bool, bool, bool> exp( "spfd_resubstitution_xag_infinite_ISCAS", "benchmark", "size", "size(u)", "time(u)", "i-size"+e1, "gain"+e1, "time"+e1, "size"+e2, "gain"+e2, "time"+e2, "cec(u)", "cec"+e1, "cec"+e2 );
 
   double gain1{0};
   double gain2{0};
@@ -131,7 +142,9 @@ int main()
     infinite_sim_resub( benchmark, xag1, stU );
 
     experiments_stats_t st1;
-    spfd_resub<4u,1u,1u>( benchmark, xag1, st1 );
+
+
+    spfd_resub<K1,S1,I1>( benchmark, xag1, st1 );
     
     /* high effort K=7 S=10 I=10 */
 
@@ -144,7 +157,8 @@ int main()
     infinite_sim_resub( benchmark, xag2, stU );
 
     experiments_stats_t st2;
-    spfd_resub<7u,10u,10u>( benchmark, xag2, st2 );
+
+    spfd_resub<K2,S2,I2>( benchmark, xag2, st2 );
 
     exp( benchmark, size0, stU.num_gates, stU.time, st1.num_gates, st1.gain, st1.time, st2.num_gates, st2.gain, st2.time, stU.cec, st1.cec, st2.cec );
 
@@ -156,8 +170,10 @@ int main()
   exp.save();
   exp.table();
 
-  printf("[4,1,1]=%f [7,10,10]=%f\n", gain1/cnt, gain2/cnt );
+  printf("[%d,%d,%d]=%f [%d,%d,%d]=%f\n", K1, S1, I1, gain1/cnt, K2, S2, I2, gain2/cnt );
 
 
   return 0;
 }
+
+

@@ -118,6 +118,7 @@ struct resubstitution_params
   /* k-resub engine specific */
   /*! \brief Maximum number of divisors to consider in k-resub engine. Only used by `abc_resub_functor` with simulation-based resub engine. */
   uint32_t max_divisors_k{ 50 };
+
 };
 
 /*! \brief Statistics for resubstitution.

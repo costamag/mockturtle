@@ -36,6 +36,7 @@
 #include "../io/write_patterns.hpp"
 #include "../networks/aig.hpp"
 #include "../networks/xag.hpp"
+#include "../networks/mig.hpp"
 #include "../networks/klut.hpp"
 #include "../utils/progress_bar.hpp"
 #include "../utils/stopwatch.hpp"
@@ -45,6 +46,7 @@
 #include "resyn_engines/xag_resyn.hpp"
 #include "resyn_engines/gen_resyn.hpp"
 #include "resyn_engines/spfd_resyn.hpp"
+#include "resyn_engines/bmatch_resyn.hpp"
 #include "simulation.hpp"
 
 #include <bill/bill.hpp>
@@ -416,7 +418,9 @@ void sim_resubstitution( Ntk& ntk, resubstitution_params const& ps = {}, resubst
 template<uint32_t K, uint32_t S, uint32_t I, class Ntk>
 void spfd_resubstitution( Ntk& ntk, resubstitution_params const& ps = {}, resubstitution_stats* pst = nullptr )
 {
-  static_assert( std::is_same_v<typename Ntk::base_type, aig_network> || std::is_same_v<typename Ntk::base_type, xag_network>, "Currently only supports AIG and XAG" );
+  static_assert(  std::is_same_v<typename Ntk::base_type, aig_network> || 
+                  std::is_same_v<typename Ntk::base_type, xag_network> ||
+                  std::is_same_v<typename Ntk::base_type, mig_network> , "Currently only supports AIG and XAG" );
 
   using resub_view_t = fanout_view<depth_view<Ntk>>;
   depth_view<Ntk> depth_view{ ntk };
@@ -439,7 +443,7 @@ void spfd_resubstitution( Ntk& ntk, resubstitution_params const& ps = {}, resubs
       detail::sim_resubstitution_run<resub_view_t, resub_impl_t>( resub_view, ps, pst );
     }
   }
-  else //if constexpr ( std::is_same_v<typename Ntk::base_type, xag_network> )
+  else if constexpr ( std::is_same_v<typename Ntk::base_type, xag_network> )
   {
     using resyn_engine_t = spfd::xag_resyn<kitty::partial_truth_table, spfd::xag_resyn_static_params_for_sim_resub<resub_view_t, K, S, I>>;
 
@@ -456,14 +460,29 @@ void spfd_resubstitution( Ntk& ntk, resubstitution_params const& ps = {}, resubs
       detail::sim_resubstitution_run<resub_view_t, resub_impl_t>( resub_view, ps, pst );
     }
   }
+  else if constexpr ( std::is_same_v<typename Ntk::base_type, mig_network> )
+  {
+    using resyn_engine_t = spfd::mig_resyn<kitty::partial_truth_table, spfd::mig_resyn_static_params_for_sim_resub<resub_view_t, K, S, I>>;
+
+    if ( ps.odc_levels != 0 )
+    {
+      using validator_t = circuit_validator<resub_view_t, bill::solvers::bsat2, false, true, true>;
+      using resub_impl_t = typename detail::resubstitution_impl<resub_view_t, typename detail::simulation_based_resub_engine<resub_view_t, validator_t, resyn_engine_t>>;
+      detail::sim_resubstitution_run<resub_view_t, resub_impl_t>( resub_view, ps, pst );
+    }
+    else
+    {
+      using validator_t = circuit_validator<resub_view_t, bill::solvers::bsat2, false, true, false>;
+      using resub_impl_t = typename detail::resubstitution_impl<resub_view_t, typename detail::simulation_based_resub_engine<resub_view_t, validator_t, resyn_engine_t>>;
+      detail::sim_resubstitution_run<resub_view_t, resub_impl_t>( resub_view, ps, pst );
+    }
+  }
 }
 
-template<class Ntk>
+template<uint32_t K, uint32_t S, uint32_t I, class Ntk>
 void bmatch_resubstitution( Ntk& ntk, resubstitution_params const& ps = {}, resubstitution_stats* pst = nullptr )
 {
-  static_assert( std::is_same_v<typename Ntk::base_type, aig_network> || 
-                std::is_same_v<typename Ntk::base_type, xag_network> || 
-                std::is_same_v<typename Ntk::base_type, klut_network>, "Currently only supports AIG and XAG. kLUT is a work in progress" );
+  static_assert( std::is_same_v<typename Ntk::base_type, aig_network> || std::is_same_v<typename Ntk::base_type, xag_network>, "Currently only supports AIG and XAG" );
 
   using resub_view_t = fanout_view<depth_view<Ntk>>;
   depth_view<Ntk> depth_view{ ntk };
@@ -471,7 +490,7 @@ void bmatch_resubstitution( Ntk& ntk, resubstitution_params const& ps = {}, resu
 
   if constexpr ( std::is_same_v<typename Ntk::base_type, aig_network> )
   {
-    using resyn_engine_t = xag_resyn_bmatch<kitty::partial_truth_table, aig_resyn_static_params_for_sim_resub<resub_view_t>>;
+    using resyn_engine_t = bmatch::xag_resyn<kitty::partial_truth_table, bmatch::bmatch_aig_resyn_static_params_for_sim_resub<resub_view_t, K, S, I>>;
 
     if ( ps.odc_levels != 0 )
     {
@@ -488,7 +507,7 @@ void bmatch_resubstitution( Ntk& ntk, resubstitution_params const& ps = {}, resu
   }
   else //if constexpr ( std::is_same_v<typename Ntk::base_type, xag_network> )
   {
-    using resyn_engine_t = xag_resyn_bmatch<kitty::partial_truth_table, xag_resyn_static_params_for_sim_resub<resub_view_t>>;
+    using resyn_engine_t = bmatch::xag_resyn<kitty::partial_truth_table, bmatch::bmatch_xag_resyn_static_params_for_sim_resub<resub_view_t, K, S, I>>;
 
     if ( ps.odc_levels != 0 )
     {
@@ -503,27 +522,6 @@ void bmatch_resubstitution( Ntk& ntk, resubstitution_params const& ps = {}, resu
       detail::sim_resubstitution_run<resub_view_t, resub_impl_t>( resub_view, ps, pst );
     }
   }
-  /*else if constexpr ( std::is_same_v<typename Ntk::base_type, klut_network> )
-  {
-    using resyn_engine_t = klut_resyn_bmatch<kitty::partial_truth_table, klut_resyn_static_params_for_sim_resub<resub_view_t>>;
-
-    if ( ps.odc_levels != 0 )
-    {
-      using validator_t = circuit_validator<resub_view_t, bill::solvers::bsat2, false, true, true>;
-      using resub_impl_t = typename detail::resubstitution_impl<resub_view_t, typename detail::simulation_based_resub_engine<resub_view_t, validator_t, resyn_engine_t>>;
-      detail::sim_resubstitution_run<resub_view_t, resub_impl_t>( resub_view, ps, pst );
-    }
-    else
-    {
-      using validator_t = circuit_validator<resub_view_t, bill::solvers::bsat2, false, true, false>;
-      using resub_impl_t = typename detail::resubstitution_impl<resub_view_t, typename detail::simulation_based_resub_engine<resub_view_t, validator_t, resyn_engine_t>>;
-      detail::sim_resubstitution_run<resub_view_t, resub_impl_t>( resub_view, ps, pst );
-    }
-  }
-  else
-  {
-    std::cerr << "[e] network type not supported" << std::endl;
-  }*/
 }
 
 template<class Ntk>
