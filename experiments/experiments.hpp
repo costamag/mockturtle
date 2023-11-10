@@ -489,6 +489,28 @@ std::vector<std::string> iscas_benchmarks( uint64_t selection = iscas )
   return result;
 }
 
+std::vector<std::string> resub_benchmarks( uint64_t selection = iscas )
+{
+  std::vector<std::string> result;
+
+  for ( uint32_t i = 47u; i < 58u; ++i )
+  {
+    if ( ( selection >> i ) & 1 )
+    {
+      result.push_back( benchmarks[i] );
+    }
+  }
+  for ( uint32_t i = 0u; i < 20u; ++i )
+  {
+    if ( ( selection >> i ) & 1 )
+    {
+      result.push_back( benchmarks[i] );
+    }
+  }
+  return result;
+}
+
+
 std::vector<std::string> all_benchmarks( uint64_t selection = all )
 {
   std::vector<std::string> result;
