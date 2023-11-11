@@ -31,7 +31,7 @@
 #include <mockturtle/algorithms/cleanup.hpp>
 #include <mockturtle/algorithms/sim_resub.hpp>
 #include <mockturtle/io/aiger_reader.hpp>
-#include <mockturtle/networks/aig.hpp>
+#include <mockturtle/networks/xag.hpp>
 
 #include <experiments.hpp>
 
@@ -40,9 +40,13 @@ int main()
   using namespace experiments;
   using namespace mockturtle;
 
-  experiment<std::string, uint32_t, uint32_t, uint32_t, float, float, bool, bool> exp( "spfd_aig", "benchmark", "size", "gain(SOA)", "gain(SPFD)", "time(SOA)", "time(SPFD)", "eq(SOA)", "eq(SPFD)" );
+  uint32_t gain_soa{0};
+  uint32_t gain_spfd{0};
+  uint32_t cnt{0};
 
-  for ( auto const& benchmark : resub_benchmarks( iscas | epfl ) )
+  experiment<std::string, uint32_t, uint32_t, uint32_t, float, float, bool, bool> exp( "spfd_xag", "benchmark", "size", "gain(SOA)", "gain(SPFD)", "time(SOA)", "time(SPFD)", "eq(SOA)", "eq(SPFD)" );
+
+  for ( auto const& benchmark : resub_benchmarks( epfl | iscas) )
   {
     fmt::print( "[i] processing {}\n", benchmark );
 
@@ -86,15 +90,28 @@ int main()
     ps_spfd.max_pis = 8;
     ps_spfd.max_divisors = std::numeric_limits<uint32_t>::max();
 
-    sim_resubstitution_spfd<4u>( xag_spfd, ps_spfd, &st_spfd );
+    static constexpr uint32_t K = 4u;
+    static constexpr uint32_t S = 1u;
+    static constexpr uint32_t I = 1u;
+    static constexpr bool use_bmatch = false;
+    static constexpr bool use_greedy = false;
+    static constexpr bool use_lsearch = true;
+
+    sim_resubstitution_spfd<K, S, I, use_bmatch, use_greedy, use_lsearch>( xag_spfd, ps_spfd, &st_spfd );
     xag_spfd = cleanup_dangling( xag_spfd );
 
     const auto cec_spfd = benchmark == "hyp" ? true : abc_cec( xag_spfd, benchmark );
     
     #pragma endregion SPFD
 
+    cnt++;
+    gain_soa += size_before - xag_soa.num_gates();
+    gain_spfd += size_before - xag_spfd.num_gates();
+    printf( "gain(SOA)=%d gain(SPFD)=%d\n", size_before - xag_soa.num_gates(), size_before - xag_spfd.num_gates() );
+
     exp( benchmark, size_before, size_before - xag_soa.num_gates(), size_before - xag_spfd.num_gates(), to_seconds( st_soa.time_total ), to_seconds( st_spfd.time_total ), cec_soa, cec_spfd );
   }
+
 
   exp.save();
   exp.table();

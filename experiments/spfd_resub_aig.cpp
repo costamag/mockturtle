@@ -46,7 +46,7 @@ int main()
 
   experiment<std::string, uint32_t, uint32_t, uint32_t, float, float, bool, bool> exp( "spfd_aig", "benchmark", "size", "gain(SOA)", "gain(SPFD)", "time(SOA)", "time(SPFD)", "eq(SOA)", "eq(SPFD)" );
 
-  for ( auto const& benchmark : resub_benchmarks( iscas ) )
+  for ( auto const& benchmark : resub_benchmarks( iscas) )
   {
     fmt::print( "[i] processing {}\n", benchmark );
 
@@ -90,7 +90,14 @@ int main()
     ps_spfd.max_pis = 8;
     ps_spfd.max_divisors = std::numeric_limits<uint32_t>::max();
 
-    sim_resubstitution_spfd<4u>( aig_spfd, ps_spfd, &st_spfd );
+    static constexpr uint32_t K = 6u;
+    static constexpr uint32_t S = 4u;
+    static constexpr uint32_t I = 1u;
+    static constexpr bool use_bmatch = true;
+    static constexpr bool use_greedy = false;
+    static constexpr bool use_lsearch = true;
+
+    sim_resubstitution_spfd<K, S, I, use_bmatch, use_greedy, use_lsearch>( aig_spfd, ps_spfd, &st_spfd );
     aig_spfd = cleanup_dangling( aig_spfd );
 
     const auto cec_spfd = benchmark == "hyp" ? true : abc_cec( aig_spfd, benchmark );

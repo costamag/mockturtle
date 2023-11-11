@@ -1,0 +1,317 @@
+[
+  {
+    "entries": [
+      {
+        "benchmark": "c17",
+        "eq(SOA)": true,
+        "eq(SPFD)": true,
+        "gain(SOA)": 0,
+        "gain(SPFD)": 0,
+        "size": 6,
+        "time(SOA)": 0.0023366170935332775,
+        "time(SPFD)": 0.13002909719944
+      },
+      {
+        "benchmark": "c432",
+        "eq(SOA)": true,
+        "eq(SPFD)": true,
+        "gain(SOA)": 41,
+        "gain(SPFD)": 40,
+        "size": 208,
+        "time(SOA)": 0.0015278439968824387,
+        "time(SPFD)": 0.13258276879787445
+      },
+      {
+        "benchmark": "c499",
+        "eq(SOA)": true,
+        "eq(SPFD)": true,
+        "gain(SOA)": 10,
+        "gain(SPFD)": 158,
+        "size": 398,
+        "time(SOA)": 0.003554634051397443,
+        "time(SPFD)": 0.1424495279788971
+      },
+      {
+        "benchmark": "c880",
+        "eq(SOA)": true,
+        "eq(SPFD)": true,
+        "gain(SOA)": 29,
+        "gain(SPFD)": 51,
+        "size": 325,
+        "time(SOA)": 0.0027924280147999525,
+        "time(SPFD)": 0.13600708544254303
+      },
+      {
+        "benchmark": "c1355",
+        "eq(SOA)": true,
+        "eq(SPFD)": true,
+        "gain(SOA)": 82,
+        "gain(SPFD)": 233,
+        "size": 502,
+        "time(SOA)": 0.006024299189448357,
+        "time(SPFD)": 0.13785283267498016
+      },
+      {
+        "benchmark": "c1908",
+        "eq(SOA)": true,
+        "eq(SPFD)": true,
+        "gain(SOA)": 58,
+        "gain(SPFD)": 154,
+        "size": 341,
+        "time(SOA)": 0.003217160003259778,
+        "time(SPFD)": 0.13472391664981842
+      },
+      {
+        "benchmark": "c2670",
+        "eq(SOA)": true,
+        "eq(SPFD)": true,
+        "gain(SOA)": 171,
+        "gain(SPFD)": 211,
+        "size": 716,
+        "time(SOA)": 0.007472398225218058,
+        "time(SPFD)": 0.14510850608348846
+      },
+      {
+        "benchmark": "c3540",
+        "eq(SOA)": true,
+        "eq(SPFD)": true,
+        "gain(SOA)": 206,
+        "gain(SPFD)": 222,
+        "size": 1024,
+        "time(SOA)": 0.02874840795993805,
+        "time(SPFD)": 0.1641162633895874
+      },
+      {
+        "benchmark": "c5315",
+        "eq(SOA)": true,
+        "eq(SPFD)": true,
+        "gain(SOA)": 459,
+        "gain(SPFD)": 339,
+        "size": 1776,
+        "time(SOA)": 0.03014843352138996,
+        "time(SPFD)": 0.176132470369339
+      },
+      {
+        "benchmark": "c6288",
+        "eq(SOA)": true,
+        "eq(SPFD)": true,
+        "gain(SOA)": 451,
+        "gain(SPFD)": 766,
+        "size": 2337,
+        "time(SOA)": 0.07218661904335022,
+        "time(SPFD)": 0.20201066136360168
+      },
+      {
+        "benchmark": "c7552",
+        "eq(SOA)": true,
+        "eq(SPFD)": true,
+        "gain(SOA)": 154,
+        "gain(SPFD)": 250,
+        "size": 1469,
+        "time(SOA)": 0.019144438207149506,
+        "time(SPFD)": 0.17115530371665955
+      },
+      {
+        "benchmark": "adder",
+        "eq(SOA)": true,
+        "eq(SPFD)": true,
+        "gain(SOA)": 128,
+        "gain(SPFD)": 242,
+        "size": 1020,
+        "time(SOA)": 0.008487501181662083,
+        "time(SPFD)": 0.15497224032878876
+      },
+      {
+        "benchmark": "bar",
+        "eq(SOA)": true,
+        "eq(SPFD)": true,
+        "gain(SOA)": 245,
+        "gain(SPFD)": 46,
+        "size": 3336,
+        "time(SOA)": 0.04483511671423912,
+        "time(SPFD)": 0.26091277599334717
+      },
+      {
+        "benchmark": "div",
+        "eq(SOA)": true,
+        "eq(SPFD)": true,
+        "gain(SOA)": 14377,
+        "gain(SPFD)": 19270,
+        "size": 57247,
+        "time(SOA)": 4.697190761566162,
+        "time(SPFD)": 6.245395660400391
+      },
+      {
+        "benchmark": "hyp",
+        "eq(SOA)": true,
+        "eq(SPFD)": true,
+        "gain(SOA)": 8506,
+        "gain(SPFD)": 38128,
+        "size": 214335,
+        "time(SOA)": 26.21112632751465,
+        "time(SPFD)": 89.80333709716797
+      },
+      {
+        "benchmark": "log2",
+        "eq(SOA)": true,
+        "eq(SPFD)": true,
+        "gain(SOA)": 2130,
+        "gain(SPFD)": 5940,
+        "size": 32060,
+        "time(SOA)": 14.528008460998535,
+        "time(SPFD)": 26.2823486328125
+      },
+      {
+        "benchmark": "max",
+        "eq(SOA)": true,
+        "eq(SPFD)": true,
+        "gain(SOA)": 3,
+        "gain(SPFD)": 3,
+        "size": 2865,
+        "time(SOA)": 0.059290170669555664,
+        "time(SPFD)": 0.1985141783952713
+      },
+      {
+        "benchmark": "multiplier",
+        "eq(SOA)": true,
+        "eq(SPFD)": true,
+        "gain(SOA)": 1219,
+        "gain(SPFD)": 6358,
+        "size": 27062,
+        "time(SOA)": 1.3697785139083862,
+        "time(SPFD)": 3.570422410964966
+      },
+      {
+        "benchmark": "sin",
+        "eq(SOA)": true,
+        "eq(SPFD)": true,
+        "gain(SOA)": 362,
+        "gain(SPFD)": 723,
+        "size": 5416,
+        "time(SOA)": 1.6491708755493164,
+        "time(SPFD)": 1.6877893209457397
+      },
+      {
+        "benchmark": "sqrt",
+        "eq(SOA)": true,
+        "eq(SPFD)": true,
+        "gain(SOA)": 5462,
+        "gain(SPFD)": 7311,
+        "size": 24618,
+        "time(SOA)": 5.4861741065979,
+        "time(SPFD)": 6.469852924346924
+      },
+      {
+        "benchmark": "square",
+        "eq(SOA)": true,
+        "eq(SPFD)": true,
+        "gain(SOA)": 1853,
+        "gain(SPFD)": 4488,
+        "size": 18484,
+        "time(SOA)": 0.8302170634269714,
+        "time(SPFD)": 1.390157699584961
+      },
+      {
+        "benchmark": "arbiter",
+        "eq(SOA)": true,
+        "eq(SPFD)": true,
+        "gain(SOA)": 0,
+        "gain(SPFD)": 1,
+        "size": 11839,
+        "time(SOA)": 0.388497918844223,
+        "time(SPFD)": 0.4556001126766205
+      },
+      {
+        "benchmark": "cavlc",
+        "eq(SOA)": true,
+        "eq(SPFD)": true,
+        "gain(SOA)": 81,
+        "gain(SPFD)": 31,
+        "size": 693,
+        "time(SOA)": 0.10429935157299042,
+        "time(SPFD)": 0.2110716700553894
+      },
+      {
+        "benchmark": "ctrl",
+        "eq(SOA)": true,
+        "eq(SPFD)": true,
+        "gain(SOA)": 77,
+        "gain(SPFD)": 62,
+        "size": 174,
+        "time(SOA)": 0.012299139983952045,
+        "time(SPFD)": 0.1390167474746704
+      },
+      {
+        "benchmark": "dec",
+        "eq(SOA)": true,
+        "eq(SPFD)": true,
+        "gain(SOA)": 0,
+        "gain(SPFD)": 0,
+        "size": 304,
+        "time(SOA)": 0.003085738979279995,
+        "time(SPFD)": 0.13346870243549347
+      },
+      {
+        "benchmark": "i2c",
+        "eq(SOA)": true,
+        "eq(SPFD)": true,
+        "gain(SOA)": 149,
+        "gain(SPFD)": 96,
+        "size": 1342,
+        "time(SOA)": 0.03900647908449173,
+        "time(SPFD)": 0.17803438007831573
+      },
+      {
+        "benchmark": "int2float",
+        "eq(SOA)": true,
+        "eq(SPFD)": true,
+        "gain(SOA)": 46,
+        "gain(SPFD)": 25,
+        "size": 260,
+        "time(SOA)": 0.06644505262374878,
+        "time(SPFD)": 0.14142854511737823
+      },
+      {
+        "benchmark": "mem_ctrl",
+        "eq(SOA)": true,
+        "eq(SPFD)": true,
+        "gain(SOA)": 8858,
+        "gain(SPFD)": 4628,
+        "size": 46836,
+        "time(SOA)": 2.5643086433410645,
+        "time(SPFD)": 3.544919490814209
+      },
+      {
+        "benchmark": "priority",
+        "eq(SOA)": true,
+        "eq(SPFD)": true,
+        "gain(SOA)": 485,
+        "gain(SPFD)": 197,
+        "size": 978,
+        "time(SOA)": 0.02394155226647854,
+        "time(SPFD)": 0.16476188600063324
+      },
+      {
+        "benchmark": "router",
+        "eq(SOA)": true,
+        "eq(SPFD)": true,
+        "gain(SOA)": 35,
+        "gain(SPFD)": 48,
+        "size": 257,
+        "time(SOA)": 0.01645183004438877,
+        "time(SPFD)": 0.14061924815177917
+      },
+      {
+        "benchmark": "voter",
+        "eq(SOA)": true,
+        "eq(SPFD)": true,
+        "gain(SOA)": 5535,
+        "gain(SPFD)": 5111,
+        "size": 13758,
+        "time(SOA)": 1.3136792182922363,
+        "time(SPFD)": 1.8109616041183472
+      }
+    ],
+    "version": "f0a37898"
+  }
+]

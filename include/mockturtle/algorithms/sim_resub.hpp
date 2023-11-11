@@ -412,7 +412,7 @@ void sim_resubstitution( Ntk& ntk, resubstitution_params const& ps = {}, resubst
   }
 }
 
-template<uint32_t K, uint32_t S = 1, class Ntk>
+template<uint32_t K, uint32_t S = 1, uint32_t I = 1, bool IS_BMATCH = false, bool IS_GREEDY = false, bool IS_LSEARCH = false, class Ntk>
 void sim_resubstitution_spfd( Ntk& ntk, resubstitution_params const& ps = {}, resubstitution_stats* pst = nullptr )
 {
   static_assert(  std::is_same_v<typename Ntk::base_type, aig_network> ||
@@ -425,7 +425,7 @@ void sim_resubstitution_spfd( Ntk& ntk, resubstitution_params const& ps = {}, re
 
   if constexpr ( std::is_same_v<typename Ntk::base_type, aig_network> )
   {
-    using resyn_engine_t = spfd::aig_resyn<kitty::partial_truth_table, spfd::aig_resyn_static_params_for_sim_resub<resub_view_t, K, S>>;
+    using resyn_engine_t = spfd::aig::aig_resyn<kitty::partial_truth_table, spfd::aig::aig_resyn_static_params_for_sim_resub<resub_view_t, K, S, I, IS_BMATCH, IS_GREEDY, IS_LSEARCH>>;
 
     if ( ps.odc_levels != 0 )
     {
@@ -442,7 +442,7 @@ void sim_resubstitution_spfd( Ntk& ntk, resubstitution_params const& ps = {}, re
   }
   else if constexpr ( std::is_same_v<typename Ntk::base_type, xag_network> )
   {
-    using resyn_engine_t = spfd::xag_resyn<kitty::partial_truth_table, spfd::xag_resyn_static_params_for_sim_resub<resub_view_t, K>>;
+    using resyn_engine_t = spfd::xag_resyn<kitty::partial_truth_table, spfd::xag_resyn_static_params_for_sim_resub<resub_view_t, K, S, I, IS_BMATCH, IS_GREEDY, IS_LSEARCH>>;
 
     if ( ps.odc_levels != 0 )
     {
