@@ -92,12 +92,12 @@ int main()
     ps_spfd.max_trials = 100;
     ps_spfd.max_divisors = std::numeric_limits<uint32_t>::max();
 
-    static constexpr uint32_t K = 8u;
-    static constexpr uint32_t S = 100u;
-    static constexpr uint32_t I = 10u;
-    static constexpr bool use_bmatch = false;
+    static constexpr uint32_t K = 4u;
+    static constexpr uint32_t S = 10u;
+    static constexpr uint32_t I = 1u;
+    static constexpr bool use_bmatch = true;
     static constexpr bool use_greedy = false;
-    static constexpr bool use_lsearch = true;
+    static constexpr bool use_lsearch = false;
 
     sim_resubstitution_spfd<K, S, I, use_bmatch, use_greedy, use_lsearch>( aig_spfd, ps_spfd, &st_spfd );
     aig_spfd = cleanup_dangling( aig_spfd );
@@ -120,3 +120,4 @@ int main()
 
   return 0;
 }
+

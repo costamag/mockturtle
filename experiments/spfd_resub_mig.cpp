@@ -41,9 +41,9 @@ int main()
   using namespace experiments;
   using namespace mockturtle;
 
-  experiment<std::string, uint32_t, uint32_t, uint32_t, float, float, bool, bool> exp( "spfd_aig", "benchmark", "size", "gain(SOA)", "gain(SPFD)", "time(SOA)", "time(SPFD)", "eq(SOA)", "eq(SPFD)" );
+  experiment<std::string, uint32_t, uint32_t, uint32_t, float, float, bool, bool> exp( "spfd_aig", "benchmark", "size", "gates(SOA)", "gates(SPFD)", "time(SOA)", "time(SPFD)", "eq(SOA)", "eq(SPFD)" );
 
-  for ( auto const& benchmark : resub_benchmarks( iscas | epfl ) )
+  for ( auto const& benchmark : resub_benchmarks( iscas ) )
   {
     fmt::print( "[i] processing {}\n", benchmark );
 
@@ -91,14 +91,22 @@ int main()
     ps_spfd.max_pis = 8;
     ps_spfd.max_divisors = std::numeric_limits<uint32_t>::max();
 
-    sim_resubstitution_spfd<4u>( mig_spfd, ps_spfd, &st_spfd );
+    static constexpr uint32_t K = 4u;
+    static constexpr uint32_t S = 10u;
+    static constexpr uint32_t I = 100u;
+    static constexpr bool use_bmatch = false;
+    static constexpr bool use_greedy = false;
+    static constexpr bool use_lsearch = false;
+
+    sim_resubstitution_spfd<K, S, I, use_bmatch, use_greedy, use_lsearch>( mig_spfd, ps_spfd, &st_spfd );
     mig_spfd = cleanup_dangling( mig_spfd );
 
     const auto cec_spfd = benchmark == "hyp" ? true : abc_cec( mig_spfd, benchmark );
     
     #pragma endregion SPFD
+    printf( "gates(SOA)=%d gates(SPFD)=%d\n", mig_soa.num_gates(), mig_spfd.num_gates() );
 
-    exp( benchmark, size_before, size_before - mig_soa.num_gates(), size_before - mig_spfd.num_gates(), to_seconds( st_soa.time_total ), to_seconds( st_spfd.time_total ), cec_soa, cec_spfd );
+    exp( benchmark, size_before, mig_soa.num_gates(), mig_spfd.num_gates(), to_seconds( st_soa.time_total ), to_seconds( st_spfd.time_total ), cec_soa, cec_spfd );
   }
 
   exp.save();

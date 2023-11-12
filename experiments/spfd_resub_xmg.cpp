@@ -30,6 +30,7 @@
 #include <lorina/aiger.hpp>
 #include <mockturtle/algorithms/cleanup.hpp>
 #include <mockturtle/algorithms/sim_resub.hpp>
+#include <mockturtle/algorithms/xmg_resub.hpp>
 #include <mockturtle/io/aiger_reader.hpp>
 #include <mockturtle/networks/aig.hpp>
 
@@ -40,20 +41,16 @@ int main()
   using namespace experiments;
   using namespace mockturtle;
 
-  uint32_t gain_soa{0};
-  uint32_t gain_spfd{0};
-  uint32_t cnt{0};
-
   experiment<std::string, uint32_t, uint32_t, uint32_t, float, float, bool, bool> exp( "spfd_aig", "benchmark", "size", "gates(SOA)", "gates(SPFD)", "time(SOA)", "time(SPFD)", "eq(SOA)", "eq(SPFD)" );
 
-  for ( auto const& benchmark : resub_benchmarks( ))//experiments::c499 ) )
+  for ( auto const& benchmark : resub_benchmarks( iscas ) )
   {
     fmt::print( "[i] processing {}\n", benchmark );
 
     #pragma region SOA
     
-    aig_network aig_soa;
-    if ( lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( aig_soa ) ) != lorina::return_code::success )
+    xmg_network xmg_soa;
+    if ( lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( xmg_soa ) ) != lorina::return_code::success )
     {
       continue;
     }
@@ -63,22 +60,25 @@ int main()
 
     // ps.pattern_filename = "1024sa1/" + benchmark + ".pat";
     ps_soa.max_inserts = 20;
-    ps_soa.max_pis = 8;
-    ps_soa.max_trials = 100;
-    ps_soa.max_divisors = std::numeric_limits<uint32_t>::max();
 
-    const uint32_t size_before = aig_soa.num_gates();
-    sim_resubstitution( aig_soa, ps_soa, &st_soa );
-    aig_soa = cleanup_dangling( aig_soa );
+    const uint32_t size_before = xmg_soa.num_gates();
 
-    const auto cec_soa = benchmark == "hyp" ? true : abc_cec( aig_soa, benchmark );
+    using view_t = depth_view<fanout_view<xmg_network>>;
+    fanout_view<xmg_network> fanout_view{ xmg_soa };
+    view_t resub_view{ fanout_view };
+
+    xmg_resubstitution( resub_view, ps_soa, &st_soa );
+    xmg_soa = cleanup_dangling( xmg_soa );
+
+
+    const auto cec_soa = benchmark == "hyp" ? true : abc_cec( xmg_soa, benchmark );
     
     #pragma endregion SOA
 
     #pragma region SPFD
     
-    aig_network aig_spfd;
-    if ( lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( aig_spfd ) ) != lorina::return_code::success )
+    xmg_network xmg_spfd;
+    if ( lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( xmg_spfd ) ) != lorina::return_code::success )
     {
       continue;
     }
@@ -89,31 +89,25 @@ int main()
     // ps.pattern_filename = "1024sa1/" + benchmark + ".pat";
     ps_spfd.max_inserts = 20;
     ps_spfd.max_pis = 8;
-    ps_spfd.max_trials = 100;
     ps_spfd.max_divisors = std::numeric_limits<uint32_t>::max();
 
-    static constexpr uint32_t K = 8u;
-    static constexpr uint32_t S = 100u;
-    static constexpr uint32_t I = 10u;
+    static constexpr uint32_t K = 4u;
+    static constexpr uint32_t S = 1u;
+    static constexpr uint32_t I = 1u;
     static constexpr bool use_bmatch = false;
     static constexpr bool use_greedy = false;
     static constexpr bool use_lsearch = true;
 
-    sim_resubstitution_spfd<K, S, I, use_bmatch, use_greedy, use_lsearch>( aig_spfd, ps_spfd, &st_spfd );
-    aig_spfd = cleanup_dangling( aig_spfd );
+    sim_resubstitution_spfd<K, S, I, use_bmatch, use_greedy, use_lsearch>( xmg_spfd, ps_spfd, &st_spfd );
+    xmg_spfd = cleanup_dangling( xmg_spfd );
 
-    const auto cec_spfd = benchmark == "hyp" ? true : abc_cec( aig_spfd, benchmark );
+    const auto cec_spfd = benchmark == "hyp" ? true : abc_cec( xmg_spfd, benchmark );
     
     #pragma endregion SPFD
+    printf( "gates(SOA)=%d gates(SPFD)=%d\n", xmg_soa.num_gates(), xmg_spfd.num_gates() );
 
-    cnt++;
-    gain_soa += size_before - aig_soa.num_gates();
-    gain_spfd += size_before - aig_spfd.num_gates();
-    printf( "gain(SOA)=%d gain(SPFD)=%d\n", size_before - aig_soa.num_gates(), size_before - aig_spfd.num_gates() );
-
-    exp( benchmark, size_before, aig_soa.num_gates(), aig_spfd.num_gates(), to_seconds( st_soa.time_total ), to_seconds( st_spfd.time_total ), cec_soa, cec_spfd );
+    exp( benchmark, size_before, xmg_soa.num_gates(), xmg_spfd.num_gates(), to_seconds( st_soa.time_total ), to_seconds( st_spfd.time_total ), cec_soa, cec_spfd );
   }
-
 
   exp.save();
   exp.table();

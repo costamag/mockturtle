@@ -24,8 +24,8 @@
  */
 
 /*!
-  \file aig_resyn.hpp
-  \brief Resynthesis by recursive decomposition for AIGs or aigs.
+  \file xmg_resyn.hpp
+  \brief Resynthesis by recursive decomposition for AIGs or xmgs.
   (based on ABC's implementation in `giaResub.c` by Alan Mishchenko)
 
   \author Siang-Yun Lee
@@ -37,7 +37,7 @@
 #include "../../../utils/node_map.hpp"
 #include "../../../utils/stopwatch.hpp"
 #include "../../../utils/tech_library.hpp"
-#include "../../node_resynthesis/xag_npn.hpp"
+#include "../../node_resynthesis/xmg3_npn.hpp"
 
 #include <abcresub/abcresub.hpp>
 #include <fmt/format.h>
@@ -58,53 +58,29 @@ namespace mockturtle
 namespace spfd
 {
 
-namespace aig
+namespace xmg
 {
-
-template<class TT>
-void print_tt_with_dcs( TT tt, TT mk )
-{
-  for( auto m = tt.num_bits()-1; m >= 0; --m )
-  {
-    if( kitty::get_bit( mk, m ) == 1 )
-    {
-      if( kitty::get_bit( tt, m ) == 1 )
-      {
-        printf("1");
-      }
-      else
-      {
-        printf("0");
-      }
-    }
-    else
-    {
-      printf("*");
-    }
-  }
-  printf("\n");
-}
 
 std::mt19937 RNG(5);
 
-template<class TT> TT compute_buff( TT const& tt1, TT const& tt2 ){ return tt1; }
-template<class TT> TT compute_pa00( TT const& tt1, TT const& tt2 ){ return ~tt1 & ~tt2; }
-template<class TT> TT compute_pa01( TT const& tt1, TT const& tt2 ){ return ~tt1 &  tt2; }
-template<class TT> TT compute_pa10( TT const& tt1, TT const& tt2 ){ return  tt1 & ~tt2; }
-template<class TT> TT compute_pa11( TT const& tt1, TT const& tt2 ){ return  tt1 &  tt2; }
-template<class TT> TT compute_exor( TT const& tt1, TT const& tt2 ){ return  tt1 ^  tt2; }
+template<class TT> TT compute_buff( TT const& tt1, TT const& tt2, TT const& tt3 ){ return tt1; }
+template<class TT> TT compute_m111( TT const& tt1, TT const& tt2, TT const& tt3 ){ return ( tt1 & tt2 ) | ( tt1 & tt3 ) | ( tt2 & tt3 ); }
+template<class TT> TT compute_m110( TT const& tt1, TT const& tt2, TT const& tt3 ){ return ( tt1 & tt2 ) | ( tt1 &~tt3 ) | ( tt2 &~tt3 ); }
+template<class TT> TT compute_m101( TT const& tt1, TT const& tt2, TT const& tt3 ){ return ( tt1 &~tt2 ) | ( tt1 & tt3 ) | (~tt2 & tt3 ); }
+template<class TT> TT compute_m011( TT const& tt1, TT const& tt2, TT const& tt3 ){ return (~tt1 & tt2 ) | (~tt1 & tt3 ) | ( tt2 & tt3 ); }
+template<class TT> TT compute_xor3( TT const& tt1, TT const& tt2, TT const& tt3 ){ return tt1 ^ tt2 ^ tt3 ; }
 
-template<class LIST> uint32_t add_buff_to_list( LIST& list, uint32_t lit1, uint32_t lit2 ){ return lit1; }
-template<class LIST> uint32_t add_pa00_to_list( LIST& list, uint32_t lit1, uint32_t lit2 ){ return list.add_and( lit1 ^ 0x1, lit2 ^ 0x1 ); }
-template<class LIST> uint32_t add_pa01_to_list( LIST& list, uint32_t lit1, uint32_t lit2 ){ return list.add_and( lit1 ^ 0x1, lit2 ); }
-template<class LIST> uint32_t add_pa10_to_list( LIST& list, uint32_t lit1, uint32_t lit2 ){ return list.add_and( lit1, lit2 ^ 0x1 ); }
-template<class LIST> uint32_t add_pa11_to_list( LIST& list, uint32_t lit1, uint32_t lit2 ){ return list.add_and( lit1, lit2 ); }
-template<class LIST> uint32_t add_exor_to_list( LIST& list, uint32_t lit1, uint32_t lit2 ){ return list.add_xor( lit1, lit2 ); }
+template<class LIST> uint32_t add_buff_to_list( LIST& list, uint32_t lit1, uint32_t lit2, uint32_t lit3 ){ return lit1; }
+template<class LIST> uint32_t add_m111_to_list( LIST& list, uint32_t lit1, uint32_t lit2, uint32_t lit3 ){ return list.add_maj( lit1, lit2, lit3 ); }
+template<class LIST> uint32_t add_m110_to_list( LIST& list, uint32_t lit1, uint32_t lit2, uint32_t lit3 ){ return list.add_maj( lit1, lit2, lit3 ^ 0x1 ); }
+template<class LIST> uint32_t add_m101_to_list( LIST& list, uint32_t lit1, uint32_t lit2, uint32_t lit3 ){ return list.add_maj( lit1, lit2 ^ 0x1, lit3 ); }
+template<class LIST> uint32_t add_m011_to_list( LIST& list, uint32_t lit1, uint32_t lit2, uint32_t lit3 ){ return list.add_maj( lit1 ^ 0x1, lit2, lit3 ); }
+template<class LIST> uint32_t add_xor3_to_list( LIST& list, uint32_t lit1, uint32_t lit2, uint32_t lit3 ){ return list.add_xor3( lit1, lit2, lit3 ); }
 
 
-struct aig_resyn_static_params
+struct xmg_resyn_static_params
 {
-  using base_type = aig_resyn_static_params;
+  using base_type = xmg_resyn_static_params;
 
   /*! \brief Maximum number of binate divisors to be considered. */
   static constexpr uint32_t max_binates{ 50u };
@@ -112,7 +88,7 @@ struct aig_resyn_static_params
   /*! \brief Reserved capacity for divisor truth tables (number of divisors). */
   static constexpr uint32_t reserve{ 200u };
 
-  /*! \brief Whether to consider single XOR gates (i.e., using aigs instead of AIGs). */
+  /*! \brief Whether to consider single XOR gates (i.e., using xmgs instead of AIGs). */
   static constexpr bool use_xor{ true };
 
   /*! \brief Whether to copy truth tables. */
@@ -153,7 +129,7 @@ struct aig_resyn_static_params
 };
 
 template<class TT>
-struct aig_resyn_static_params_default : public aig_resyn_static_params
+struct xmg_resyn_static_params_default : public xmg_resyn_static_params
 {
   using truth_table_storage_type = std::vector<TT>;
   using node_type = uint32_t;
@@ -161,7 +137,7 @@ struct aig_resyn_static_params_default : public aig_resyn_static_params
 };
 
 template<class Ntk, uint32_t SUPP_SIZE, uint32_t N_SAMPL, uint32_t N_RESYN, bool IS_BMATCH, bool IS_GREEDY, bool IS_LSEARCH>
-struct aig_resyn_static_params_for_sim_resub : public aig_resyn_static_params
+struct xmg_resyn_static_params_for_sim_resub : public xmg_resyn_static_params
 {
   using truth_table_storage_type = incomplete_node_map<kitty::partial_truth_table, Ntk>;
   using node_type = typename Ntk::node;
@@ -175,7 +151,7 @@ struct aig_resyn_static_params_for_sim_resub : public aig_resyn_static_params
 
 };
 
-struct aig_resyn_stats
+struct xmg_resyn_stats
 {
   /*! \brief Time for finding 0-resub and collecting unate literals. */
   stopwatch<>::duration time_unate{ 0 };
@@ -191,13 +167,13 @@ struct aig_resyn_stats
 
   void report() const
   {
-    fmt::print( "[i]         <aig_resyn>\n" );
+    fmt::print( "[i]         <xmg_resyn>\n" );
     fmt::print( "[i]             0-resub      : {:5d} {:>5.2f} secs\n", num_0resub, to_seconds( time_unate ) );
     fmt::print( "[i]             sort         : {:>5.2f} secs\n", to_seconds( time_sort ) );
   }
 };
 
-/*! \brief Logic resynthesis engine for AIGs or aigs.
+/*! \brief Logic resynthesis engine for AIGs or xmgs.
  *
  * The algorithm is based on ABC's implementation in `giaResub.c` by Alan Mishchenko.
  *
@@ -218,20 +194,20 @@ struct aig_resyn_stats
    .. code-block:: c++
 
       using TT = kitty::static_truth_table<6>;
-      const std::vector<aig_network::node> divisors = ...;
-      const node_map<TT, aig_network> tts = ...;
+      const std::vector<xmg_network::node> divisors = ...;
+      const node_map<TT, xmg_network> tts = ...;
       const TT target = ..., care = ...;
-      aig_resyn_stats st;
-      aig_resyn<TT, node_map<TT, aig_network>, false, false, aig_network::node> resyn( st );
+      xmg_resyn_stats st;
+      xmg_resyn<TT, node_map<TT, xmg_network>, false, false, xmg_network::node> resyn( st );
       auto result = resyn( target, care, divisors.begin(), divisors.end(), tts );
    \endverbatim
  */
-template<class TT, class static_params = aig_resyn_static_params_default<TT>>
-class aig_resyn
+template<class TT, class static_params = xmg_resyn_static_params_default<TT>>
+class xmg_resyn
 {
 public:
-  using stats = aig_resyn_stats;
-  using index_list_t = large_xag_index_list;
+  using stats = xmg_resyn_stats;
+  using index_list_t = xmg_index_list;
   using truth_table_t = TT;
   using truth_table4_t = kitty::static_truth_table<4u>;
   using truth_tableK_t = kitty::static_truth_table<static_params::max_support_size>;
@@ -248,58 +224,38 @@ private:
   struct gate_t
   {
     gate_t(){};
-    gate_t( uint32_t id, truth_tableK_t (*pF)( truth_tableK_t const&, truth_tableK_t const& ), uint32_t (*pG)( index_list_t&, uint32_t, uint32_t ) ) : id(id), pF(pF), pG(pG){}
+    gate_t( uint32_t specs, truth_tableK_t (*pF)( truth_tableK_t const&, truth_tableK_t const&, truth_tableK_t const& ), uint32_t (*pG)( index_list_t&, uint32_t, uint32_t, uint32_t ) ) : specs(specs), pF(pF), pG(pG){}
 
-    truth_tableK_t compute( truth_tableK_t const& tt1, truth_tableK_t const& tt2 ){ return pF( tt1, tt2 ); };
-    truth_tableK_t compute( truth_tableK_t const& tt1 ){ return pF( tt1, tt1 ); };
+    truth_tableK_t compute( truth_tableK_t const& tt1, truth_tableK_t const& tt2, truth_tableK_t const& tt3 ){ return pF( tt1, tt2, tt3 ); };
+    truth_tableK_t compute( truth_tableK_t const& tt1 ){ return pF( tt1, tt1, tt1 ); };
 
-    uint32_t add_to_list( index_list_t& list, uint32_t lit1, uint32_t lit2 ){ return pG( list, lit1, lit2 ); }
-    uint32_t add_to_list( index_list_t& list, uint32_t lit1 ){ return pG( list, lit1, lit1 ); }
+    uint32_t add_to_list( index_list_t& list, uint32_t lit1, uint32_t lit2, uint32_t lit3 ){ return pG( list, lit1, lit2, lit3 ); }
+    uint32_t add_to_list( index_list_t& list, uint32_t lit1 ){ return pG( list, lit1, lit1, lit1 ); }
 
     bool is_buffer()
     {
-      return id == 0x0;
+      return specs & 0x1 == 0x1;
     }
 
-    bool is_pa00()
-    {
-      return id == 0x1;
-    }
-
-    bool is_pa01()
-    {
-      return id == 0x2;
-    }
-
-    bool is_pa10()
-    {
-      return id == 0x4;
-    }
-
-    bool is_pa11()
-    {
-      return id == 0x8;
-    }
-
-    uint32_t id;
-    truth_tableK_t (*pF)( truth_tableK_t const&, truth_tableK_t const& );
-    uint32_t (*pG)( index_list_t&, uint32_t, uint32_t );
+    uint32_t specs;
+    truth_tableK_t (*pF)( truth_tableK_t const&, truth_tableK_t const&, truth_tableK_t const& );
+    uint32_t (*pG)( index_list_t&, uint32_t, uint32_t, uint32_t );
   };
 
   struct functional_library_t
   {
     functional_library_t()
     {
-      gates1[0] = gate_t{ 0x0, &compute_buff<truth_tableK_t>, &add_buff_to_list<index_list_t> };
-      gates2[0] = gate_t{ 0x1, &compute_pa00<truth_tableK_t>, &add_pa00_to_list<index_list_t> };
-      gates2[1] = gate_t{ 0x2, &compute_pa01<truth_tableK_t>, &add_pa01_to_list<index_list_t> };
-      gates2[2] = gate_t{ 0x4, &compute_pa10<truth_tableK_t>, &add_pa10_to_list<index_list_t> };
-      gates2[3] = gate_t{ 0x8, &compute_pa11<truth_tableK_t>, &add_pa11_to_list<index_list_t> };
-      //gates2[4] = gate_t{ 0x2, &compute_exor<truth_tableK_t>, &add_exor_to_list<index_list_t> };
+      gates1[0] = gate_t{ 0x1, &compute_buff<truth_tableK_t>, &add_buff_to_list<index_list_t> };
+      gates3[0] = gate_t{ 0x0, &compute_m111<truth_tableK_t>, &add_m111_to_list<index_list_t> };
+      gates3[1] = gate_t{ 0x0, &compute_m110<truth_tableK_t>, &add_m110_to_list<index_list_t> };
+      gates3[2] = gate_t{ 0x0, &compute_m101<truth_tableK_t>, &add_m101_to_list<index_list_t> };
+      gates3[3] = gate_t{ 0x0, &compute_m011<truth_tableK_t>, &add_m011_to_list<index_list_t> };
+      gates3[4] = gate_t{ 0x0, &compute_xor3<truth_tableK_t>, &add_xor3_to_list<index_list_t> };
     }
 
     std::array<gate_t, 1u> gates1;
-    std::array<gate_t, 4u> gates2;
+    std::array<gate_t, 5u> gates3;
   };
 
   struct scored_lit
@@ -329,7 +285,12 @@ private:
 
   struct divisors_t
   {
-    divisors_t(){}
+    divisors_t()
+    {
+      truth_tableK_t fun0;
+      uint32_t lit0 = 0;
+      divs.emplace_back( fun0, lit0 );
+    }
 
     void emplace_back( truth_tableK_t func, uint32_t lit )
     {
@@ -354,7 +315,7 @@ private:
     void set_support( std::vector<uint32_t> const& supp, std::array<truth_tableK_t,static_params::max_support_size> const& funcs )
     {
       divs.clear();
-
+      divs.emplace_back( funcs[0].construct(), 0x0 );
       for( auto i{0}; i<supp.size(); ++i )
       {
         divs.emplace_back( funcs[i], supp[i] << 1u );
@@ -366,10 +327,10 @@ private:
       spfd.init( func, care );
     }
 
-    bool update( index_list_t & list, functional_library_t const& functional_library, uint32_t max_num_gates )
+    bool update( index_list_t & list, functional_library_t const& functional_library )
     {
       uint32_t num_buffers{0};
-      std::vector<divisor_t> new_divs;
+      std::vector<divisor_t> new_divs = {divs[0]};
 
       std::vector<candidate_t> candidates;
       uint32_t cand_id{0};
@@ -377,14 +338,18 @@ private:
       {
         for( auto gate : functional_library.gates1 )
         {
+          if( v1 == 0 ) continue;
           candidates.emplace_back( cand_id++, gate, divs[v1] );
         }
 
         for( uint32_t v2 = v1 + 1; v2 < divs.size(); ++v2 )
         {
-          for( auto gate : functional_library.gates2 )
+          for( uint32_t v3 = v2 + 1; v3 < divs.size(); ++v3 )
           {
-            candidates.emplace_back( cand_id++, gate, divs[v1], divs[v2] );
+            for( auto gate : functional_library.gates3 )
+            {
+              candidates.emplace_back( cand_id++, gate, divs[v1], divs[v2], divs[v3] );
+            }
           }
         }
       }
@@ -397,7 +362,7 @@ private:
 
       spfd.reset();
 
-      while( !spfd.is_covered() && new_divs.size() < static_params::max_support_size )
+      while( !spfd.is_covered() && new_divs.size()-1 < static_params::max_support_size )
       {
         for( auto & cand : candidates )
         {
@@ -412,8 +377,7 @@ private:
         for( auto & cand : candidates )
         {
           copy_previous = set_used.find(cand.id) != set_used.end();
-          copy_previous |= (cand.gate.is_buffer() && ( num_buffers >= divs.size()-1 ));
-          //copy_previous |= (cand.gate.is_xor()) && (list.num_gates() + 3 > max_num_gates);
+          copy_previous |= (cand.gate.is_buffer() && ( num_buffers >= divs.size()-2 ));
           Z = cand.update_cost( Z, min_cost, max_cost, copy_previous );
         }
 
@@ -426,7 +390,6 @@ private:
           {
             set_used.insert( cand.id );
             if( cand.gate.is_buffer() ) num_buffers++;
-            //if( cand.gate.is_xor() ) max_num_gates -= 2;
 
             truth_tableK_t tt = cand.compute();
             new_divs.emplace_back( tt, cand.add_to_list( list ) );
@@ -554,12 +517,12 @@ private:
   struct candidate_t
   {
     candidate_t(){}
-    candidate_t( uint32_t id, gate_t gate, divisor_t const& div1 ) : id(id), gate(gate), div1(div1), div2(div1){}
-    candidate_t( uint32_t id, gate_t gate, divisor_t const& div1, divisor_t const& div2 ) : id(id), gate(gate), div1(div1), div2(div2){}
+    candidate_t( uint32_t id, gate_t gate, divisor_t const& div1 ) : id(id), gate(gate), div1(div1), div2(div1), div3(div1){}
+    candidate_t( uint32_t id, gate_t gate, divisor_t const& div1, divisor_t const& div2, divisor_t const& div3 ) : id(id), gate(gate), div1(div1), div2(div2), div3(div3){}
 
-    uint32_t add_to_list( index_list_t & list ){ return gate.add_to_list( list, div1.lit, div2.lit ); }
+    uint32_t add_to_list( index_list_t & list ){ return gate.add_to_list( list, div1.lit, div2.lit, div3.lit ); }
 
-    truth_tableK_t compute(){ return gate.compute( div1.func, div2.func ); }
+    truth_tableK_t compute(){ return gate.compute( div1.func, div2.func, div3.func ); }
 
     double update_cost( double const& cost_previous, double const& min_cost, double const& max_cost, bool copy_previous )
     {
@@ -579,20 +542,21 @@ private:
     double cost;
     divisor_t const& div1;
     divisor_t const& div2;
+    divisor_t const& div3;
   };
 
 public:
-  explicit aig_resyn( stats& st ) noexcept
+  explicit xmg_resyn( stats& st ) noexcept
       : st( st ), _database(_resyn, {})
   {
-    static_assert( std::is_same_v<typename static_params::base_type, aig_resyn_static_params>, "Invalid static_params type" );
+    static_assert( std::is_same_v<typename static_params::base_type, xmg_resyn_static_params>, "Invalid static_params type" );
     static_assert( !( static_params::uniform_div_cost && static_params::preserve_depth ), "If depth is to be preserved, divisor depth cost must be provided (usually not uniform)" );
     divisors.reserve( static_params::reserve );
     lits.reserve( static_params::reserve );
     _costs.reserve( static_params::reserve );
   }
 
-  /*! \brief Perform aig resynthesis.
+  /*! \brief Perform xmg resynthesis.
    *
    * `tts[*begin]` must be of type `TT`.
    * Moreover, if `static_params::copy_tts = false`, `*begin` must be of type `static_params::node_type`.
@@ -664,14 +628,12 @@ private:
     {
       assert( index_list.num_gates() <= num_inserts );
       index_list.add_output( *lit );
-    //  std::cout << to_index_list_string( index_list ) << std::endl; 
-
       return index_list;
     }
     return std::nullopt;
   }
 
-  std::optional<uint32_t> compute_function_rec( uint32_t & num_inserts )
+  std::optional<uint32_t> compute_function_rec( uint32_t num_inserts )
   {
 
     /* try 0-resub and collect unate literals */
@@ -711,12 +673,8 @@ private:
     {
       RNG.seed(i++);
       const auto supp = find_support();
-
       if( supp )
       {
-      //  for( auto s : *supp )
-      //    printf("%d ", s);
-      //  printf(" [%d] \n", max_num_gates );
         a = true;
 
         if( static_params::try_boolean_matching )
@@ -729,10 +687,7 @@ private:
           }
 
           auto [func4, care4] = extract_functionality4_from_signatures( *supp );
-          //print_tt_with_dcs( func4, care4 );
           const auto res =  find_boolean_matching( *supp, func4, care4, max_num_gates ); 
-
-          
           if( res )
           {
             return *res;
@@ -742,10 +697,7 @@ private:
         {
           if( supp->size() == 0u )  return std::nullopt;
 
-
           auto [funcK, careK] = extract_functionalityK_from_signatures( *supp );
-          //print_tt_with_dcs( funcK, careK );
-
           const auto res = find_spfd_resynthesis( *supp, funcK, careK, max_num_gates );
           if( res )
           {
@@ -1004,14 +956,11 @@ private:
 
         if( kitty::count_ones( temp & _gSPFD.care ) > 0 ) // care value
         {
-            care4 |= temp4;
-            //kitty::set_bit( care4, m );
-
+          care4 |= temp4;
 
           if( kitty::count_ones( temp & _gSPFD.func[1] ) > 0 )
           {
             func4 |= temp4;
-            //kitty::set_bit( func4, m );
           }
         }
       }
@@ -1073,6 +1022,7 @@ private:
 
   std::optional<uint32_t> find_boolean_matching( std::vector<uint32_t> const& supp, truth_table4_t const& func4, truth_table4_t const& care4, uint32_t max_num_gates )
   {
+
     std::array<uint32_t, 4> lits4;
     uint32_t sum{0};
     for( auto i{0}; i<supp.size(); ++i )
@@ -1084,67 +1034,31 @@ private:
       lits4[i++] = 0;
 
     std::array<uint32_t, 4> leaves = {0};
-    
-  //  printf("PRE :"); print_tt_with_dcs(func4, care4);
+    std::array<uint8_t, 4> permutations = {0};
 
     auto [func_npn, neg, perm] = exact_npn_canonization( func4 );
-  //  for( auto iBit=0; iBit<4; iBit++ )
-  //  {
-  //    printf("[%d %d]", perm[iBit], neg >> iBit & 0x1 );
-  //  }
-
-  //  printf(":%d<-%d\n", neg >> 4 & 0x1, neg & 0xF0 );
-  //  printf(":%d\n", neg >> 4 & 0x1 );
-
-    auto const dc_npn = apply_npn_transformation( ~care4, neg & ~( 1 << 4u ), perm );
-    
-  //  printf("POST:"); print_tt_with_dcs(func_npn, ~dc_npn);
-    auto const structures = _database.get_supergates( func_npn, dc_npn, neg, perm );
-  //  for( auto iBit=0; iBit<4; iBit++ )
-  //    printf("[%d %d]", perm[iBit], neg >> iBit & 0x1 );
-
+    auto const care_npn = apply_npn_transformation( care4, neg & 0xF, perm );
+    auto const structures = _database.get_supergates( func_npn, ~care_npn, neg, perm );
     if( structures == nullptr )
     {
       return std::nullopt;
     }
-
-    std::array<uint8_t, 4> permutation = {0};
-    uint32_t negation = 0;
-    for ( auto j = 0u; j < 4; ++j )
+    uint32_t negation;
+    for( auto i{0}; i<4u; ++i )
     {
-      permutation[perm[j]] = j;
-      negation |= ( ( neg >> perm[j] ) & 1 ) << j;
+      permutations[perm[i]] = i;
+      negation |= ( ( neg >> perm[i] ) & 1u ) << i;
+    }
+    bool phase = ( ( neg >> 4u ) & 0x1 == 0x1 ) ? true : false;
+    i=0;
+    for( auto const lit : lits4 )
+    {
+      if( ( negation >> i ) & 1u )
+        leaves[permutations[i++]] = lit ^ 0x1;
+      else
+        leaves[permutations[i++]] = lit;
     }
 
-    bool phase = ( neg >> 4 == 1 ) ? true : false;
-
-    {
-      auto j = 0u;
-      for ( auto const lit : lits4 )
-      {
-        leaves[permutation[j++]] = lit;
-      }
-      while ( j < 4 )
-        leaves[permutation[j++]] = 0;
-    }
-
-  //  printf("ready ");
-  // for( auto iBit=0; iBit<4; iBit++ )
-  //  {
-  //    printf("[%d %d]", permutation[iBit], negation >> iBit & 0x1 );
-  //  }
-
-    for ( auto j = 0u; j < 4; ++j )
-    {
-      if ( ( negation >> j ) & 1 )
-      {
-        leaves[j] = leaves[j] ^ 0x1;
-      }
-    }
-
-
-  //  printf("\n");
-    
     auto & db = _database.get_database();
     db.incr_trav_id();
 
@@ -1156,11 +1070,9 @@ private:
 
     if( res )
     {
-    //  std::cout << to_index_list_string( index_list ) << std::endl; 
-    //  printf("-------------------------------> %d <= %d\n", index_list.num_gates(), max_num_gates );
       if( index_list.num_gates() <= max_num_gates )
       {
-        return phase ? *res ^ 0x1 : *res;//create_index
+        return phase ? *res ^ 0x1 : *res;
       }
     }
     else
@@ -1169,7 +1081,7 @@ private:
     return std::nullopt;
   }
 
-  std::optional<uint32_t> create_index_list( node<aig_network> const& n, std::array<uint32_t, 4u> const& leaves, std::unordered_map<uint64_t, uint32_t> & existing_nodes )
+  std::optional<uint32_t> create_index_list( node<xmg_network> const& n, std::array<uint32_t, 4u> const& leaves, std::unordered_map<uint64_t, uint32_t> & existing_nodes )
   {
     auto & db = _database.get_database();
     db.incr_trav_id();
@@ -1177,7 +1089,7 @@ private:
     return create_index_list_rec( n, leaves, existing_nodes );
   }
 
-  std::optional<uint32_t> create_index_list_rec( node<aig_network> const& n, std::array<uint32_t, 4u> const& leaves, std::unordered_map<uint64_t, uint32_t> & existing_nodes )
+  std::optional<uint32_t> create_index_list_rec( node<xmg_network> const& n, std::array<uint32_t, 4u> const& leaves, std::unordered_map<uint64_t, uint32_t> & existing_nodes )
   {
     auto& db = _database.get_database();
     if( db.is_pi( n ) || db.is_constant( n ) )
@@ -1192,13 +1104,12 @@ private:
     int i{0};
     db.foreach_fanin( n, [&]( auto const& f, auto i ) 
     {
-      node<aig_network> g = db.get_node( f );
+      node<xmg_network> g = db.get_node( f );
       if( db.is_pi( g ) )
       {
         node_data[i] = db.is_complemented( f ) ? leaves[f.index-1] ^ 0x1 : leaves[f.index-1];
-      //  printf("leaf[%d] %d ", f.index-1, leaves[f.index-1]);
       }
-      else if( db.is_and( g ) )
+      else if( db.is_maj(g) )
       {
         auto res = create_index_list_rec( g, leaves, existing_nodes );
 
@@ -1206,46 +1117,56 @@ private:
         {
           node_data[i] = db.is_complemented( f ) ? (*res) ^ 0x1 : *res;
         }
+        else
+          return std::nullopt;
+      }
+      else if( db.is_constant( g ) )
+      {
+        node_data[i] = db.is_complemented( f ) ? 0x1 : 0x0;
       }
     } );
 
-    if( node_data[0] == 1 && node_data[1] > 1 )
-    {
-      return node_data[1];
-    }
-    else if( node_data[1] == 1 && node_data[0] > 1 )
-    {
-      return node_data[0];
-    }
-    else if( node_data[1] == 0 || node_data[0] == 0 )
-    {
-      return 0;
-    }
-    else if( db.is_and( n ) )
+    if( db.is_maj( n ) )
     {
       uint32_t new_lit;
       uint64_t key0 = node_data[0];
       uint64_t key1 = node_data[1];
+      uint64_t key2 = node_data[2];
 
-      if( key0 < key1 )
+
+      if( key0 < key1 && key1 < key2 ) // 0 1 2 
       {
-        key0 = ( key0 << 32u ) | key1;
+        key0 = ( key0 << 40u ) | ( key1 << 20u ) | key2;
       }
-      else
+      else if( key0 < key2 && key2 < key1 ) // 0 2 1
       {
-        key0 = key0 | ( key1 << 32 );
+        key0 = ( key0 << 40u ) | ( key2 << 20u ) | key1;
+      }
+      else if( key1 < key0 && key0 < key2 ) // 1 0 2
+      {
+        key0 = ( key1 << 40u ) | ( key0 << 20u ) | key2;
+      }
+      else if( key1 < key2 && key2 < key0 ) // 1 2 0
+      {
+        key0 = ( key1 << 40u ) | ( key2 << 20u ) | key0;
+      }
+      else if( key2 < key0 && key0 < key1 ) // 2 0 1
+      {
+        key0 = ( key2 << 40u ) | ( key0 << 20u ) | key1;
+      }
+      else if( key2 < key1 && key1 < key0 ) // 2 1 0
+      {
+        key0 = ( key2 << 40u ) | ( key1 << 20u ) | key0;
       }
 
       if( auto search = existing_nodes.find( key0 ); search != existing_nodes.end() )
       {
         new_lit = search->second;
-      //  printf("%d=and(%d,%d)* ", new_lit, node_data[0], node_data[1]);
-
       }
       else
       {
-        new_lit = index_list.add_and( node_data[0], node_data[1] );
-      //  printf("%d=and(%d,%d) ", new_lit, node_data[0], node_data[1]);
+
+        new_lit = index_list.add_maj( node_data[0], node_data[1], node_data[2] );
         
         existing_nodes[key0] = new_lit;
       }
@@ -1263,29 +1184,25 @@ private:
   std::optional<uint32_t> find_spfd_resynthesis( std::vector<uint32_t> const& supp, truth_tableK_t const& funcK, truth_tableK_t const& careK, uint32_t max_num_gates )
   {
     index_list_t index_list_copy = index_list;
-    uint32_t max_num_gates_copy = max_num_gates;
     _divsK.set_target( funcK, careK );
 
     for( auto iTry{0}; iTry<static_params::max_resyn_attempts; ++iTry )
     {
       index_list = index_list_copy;
-      max_num_gates = max_num_gates_copy;
-
       _divsK.set_support( supp, _xsK );
-      while( _divsK.size() > 1 && index_list.num_gates() <= max_num_gates )
+      while( _divsK.size() > 2 && index_list.num_gates() <= max_num_gates )
       {
-        if( !_divsK.update( index_list, _functional_library, max_num_gates ) )  break;
+        if( !_divsK.update( index_list, _functional_library ) )  break;
       }
-      if( _divsK.spfd.is_covered() && _divsK.size() == 1 )
+      if( _divsK.spfd.is_covered() && _divsK.size() == 2 )
       {
-      //  printf("%d <= %d\n", index_list.num_gates(), max_num_gates );
-        if( kitty::equal( _divsK.get_div(0) & _divsK.spfd.care, _divsK.spfd.func[1] ) )
+        if( kitty::equal( _divsK.get_div(1) & _divsK.spfd.care, _divsK.spfd.func[1] ) )
         {
-          return _divsK[0].lit;
+          return _divsK[1].lit;
         }
-        else if( kitty::equal( _divsK.get_div(0) & _divsK.spfd.care, _divsK.spfd.func[0] ) )
+        else if( kitty::equal( _divsK.get_div(1) & _divsK.spfd.care, _divsK.spfd.func[0] ) )
         {
-          return _divsK[0].lit ^ 0x1;
+          return _divsK[1].lit ^ 0x1;
         }
         else
         {
@@ -1330,43 +1247,14 @@ private:
 
   functional_library_t _functional_library;
 
-  xag_npn_resynthesis<aig_network, aig_network, xag_npn_db_kind::aig_complete> _resyn;
-  exact_library<aig_network, xag_npn_resynthesis<aig_network, aig_network, xag_npn_db_kind::aig_complete>> _database;
-
+  xmg3_npn_resynthesis<xmg_network> _resyn;
+  exact_library<xmg_network, xmg3_npn_resynthesis<xmg_network>> _database;
 
   stats& st;
-}; /* aig_resyn */ 
+}; /* xmg_resyn */ 
 
-} /* namespace aig */
+} /* xmg */
 
 } /* namespace spfd */
 
 } /* namespace mockturtle */
-
-
-//./experiments/bmatch_resub_aig
-//| benchmark | size | gates(SOA) | gates(SPFD) | time(SOA) | time(SPFD) | eq(SOA) | eq(SPFD) |
-//|       c17 |    6 |          6 |           6 |      0.00 |       0.16 |    true |     true |
-//|      c432 |  208 |        167 |         169 |      0.00 |       0.13 |    true |     true |
-//|      c499 |  398 |        392 |         398 |      0.00 |       0.14 |    true |     true |
-//|      c880 |  325 |        306 |         320 |      0.00 |       0.14 |    true |     true |
-//|     c1355 |  502 |        456 |         502 |      0.00 |       0.16 |    true |     true |
-//|     c1908 |  341 |        287 |         302 |      0.00 |       0.14 |    true |     true |
-//|     c2670 |  716 |        567 |         634 |      0.01 |       0.16 |    true |     true |
-//|     c3540 | 1024 |        841 |         904 |      0.02 |       0.19 |    true |     true |
-//|     c5315 | 1776 |       1380 |        1616 |      0.03 |       0.27 |    true |     true |
-//|     c6288 | 2337 |       1887 |        2334 |      0.05 |       0.43 |    true |     true |
-//|     c7552 | 1469 |       1381 |        1435 |      0.01 |       0.20 |    true |     true |
-//
-//| benchmark | size | gates(SOA) | gates(SPFD) | time(SOA) | time(SPFD) | eq(SOA) | eq(SPFD) |
-//|       c17 |    6 |          6 |           6 |      0.00 |       0.13 |    true |     true |
-//|      c432 |  208 |        167 |         169 |      0.00 |       0.13 |    true |     true |
-//|      c499 |  398 |        392 |         394 |      0.00 |       0.14 |    true |     true |
-//|      c880 |  325 |        306 |         315 |      0.00 |       0.14 |    true |     true |
-//|     c1355 |  502 |        456 |         462 |      0.00 |       0.14 |    true |     true |
-//|     c1908 |  341 |        287 |         292 |      0.00 |       0.14 |    true |     true |
-//|     c2670 |  716 |        567 |         586 |      0.01 |       0.15 |    true |     true |
-//|     c3540 | 1024 |        841 |         858 |      0.02 |       0.17 |    true |     true |
-//|     c5315 | 1776 |       1380 |        1470 |      0.03 |       0.19 |    true |     true |
-//|     c6288 | 2337 |       1887 |        2313 |      0.05 |       0.16 |    true |     true |
-//|     c7552 | 1469 |       1381 |        1423 |      0.01 |       0.17 |    true |     true |

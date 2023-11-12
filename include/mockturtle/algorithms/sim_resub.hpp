@@ -37,6 +37,7 @@
 #include "../networks/aig.hpp"
 #include "../networks/xag.hpp"
 #include "../networks/mig.hpp"
+#include "../networks/xmg.hpp"
 #include "../utils/progress_bar.hpp"
 #include "../utils/stopwatch.hpp"
 #include "circuit_validator.hpp"
@@ -46,6 +47,7 @@
 #include "resyn_engines/spfd/aig_resyn.hpp"
 #include "resyn_engines/spfd/xag_resyn.hpp"
 #include "resyn_engines/spfd/mig_resyn.hpp"
+#include "resyn_engines/spfd/xmg_resyn.hpp"
 #include "simulation.hpp"
 
 #include <bill/bill.hpp>
@@ -267,6 +269,7 @@ public:
         {
           if ( *valid )
           {
+            //printf("Y\n");
             ++st.num_resub;
             signal out_sig;
             call_with_stopwatch( st.time_interface, [&]() {
@@ -282,6 +285,7 @@ public:
           }
           else
           {
+            //printf("N\n");
             found_cex();
             continue;
           }
@@ -417,7 +421,8 @@ void sim_resubstitution_spfd( Ntk& ntk, resubstitution_params const& ps = {}, re
 {
   static_assert(  std::is_same_v<typename Ntk::base_type, aig_network> ||
                   std::is_same_v<typename Ntk::base_type, xag_network> ||
-                  std::is_same_v<typename Ntk::base_type, mig_network> , "Currently only supports AIG and XAG" );
+                  std::is_same_v<typename Ntk::base_type, mig_network> ||
+                  std::is_same_v<typename Ntk::base_type, xmg_network> , "Currently only supports AIG and XAG" );
 
   using resub_view_t = fanout_view<depth_view<Ntk>>;
   depth_view<Ntk> depth_view{ ntk };
@@ -459,7 +464,24 @@ void sim_resubstitution_spfd( Ntk& ntk, resubstitution_params const& ps = {}, re
   }
   else if constexpr ( std::is_same_v<typename Ntk::base_type, mig_network> )
   {
-    using resyn_engine_t = spfd::mig_resyn<kitty::partial_truth_table, spfd::mig_resyn_static_params_for_sim_resub<resub_view_t, K>>;
+    using resyn_engine_t = spfd::mig::mig_resyn<kitty::partial_truth_table, spfd::mig::mig_resyn_static_params_for_sim_resub<resub_view_t, K, S, I, IS_BMATCH, IS_GREEDY, IS_LSEARCH>>;
+
+    if ( ps.odc_levels != 0 )
+    {
+      using validator_t = circuit_validator<resub_view_t, bill::solvers::bsat2, false, true, true>;
+      using resub_impl_t = typename detail::resubstitution_impl<resub_view_t, typename detail::simulation_based_resub_engine<resub_view_t, validator_t, resyn_engine_t>>;
+      detail::sim_resubstitution_run<resub_view_t, resub_impl_t>( resub_view, ps, pst );
+    }
+    else
+    {
+      using validator_t = circuit_validator<resub_view_t, bill::solvers::bsat2, false, true, false>;
+      using resub_impl_t = typename detail::resubstitution_impl<resub_view_t, typename detail::simulation_based_resub_engine<resub_view_t, validator_t, resyn_engine_t>>;
+      detail::sim_resubstitution_run<resub_view_t, resub_impl_t>( resub_view, ps, pst );
+    }
+  }
+  else if constexpr ( std::is_same_v<typename Ntk::base_type, xmg_network> )
+  {
+    using resyn_engine_t = spfd::xmg::xmg_resyn<kitty::partial_truth_table, spfd::xmg::xmg_resyn_static_params_for_sim_resub<resub_view_t, K, S, I, IS_BMATCH, IS_GREEDY, IS_LSEARCH>>;
 
     if ( ps.odc_levels != 0 )
     {
