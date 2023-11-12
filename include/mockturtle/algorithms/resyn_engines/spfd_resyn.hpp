@@ -75,6 +75,7 @@ enum gate_t
   INV_,
   BUF_,
   EXOR,
+  XOR3,
   NONE
 };
 
@@ -87,6 +88,7 @@ template<class DTT> DTT hpcompute_pa11( DTT const& a, DTT const& b ){ return  a 
 template<class DTT> DTT hpcompute_exor( DTT const& a, DTT const& b ){ return  a ^  b; }
 
 template<class DTT> DTT hpcompute_buf3( DTT const& a, DTT const& b, DTT const& c ){ return  a; }
+template<class DTT> DTT hpcompute_xor3( DTT const& a, DTT const& b, DTT const& c ){ return  a ^ b ^ c; }
 template<class DTT> DTT hpcompute_m111( DTT const& a, DTT const& b, DTT const& c ){ return  (a & b) | (b&c) | (a&c); }
 template<class DTT> DTT hpcompute_m011( DTT const& a, DTT const& b, DTT const& c ){ return  (~a & b) | (b&c) | (~a&c); }
 template<class DTT> DTT hpcompute_m101( DTT const& a, DTT const& b, DTT const& c ){ return  (a & ~b) | (~b&c) | (a&c); }
@@ -101,6 +103,7 @@ template<class LIST> uint32_t add_pa11_to_index_list_( LIST& list, uint32_t lit1
 template<class LIST> uint32_t add_exor_to_index_list_( LIST& list, uint32_t lit1, uint32_t lit2 ){ return list.add_xor( lit1, lit2 ); }
 
 template<class LIST> uint32_t add_buf3_to_index_list_( LIST& list, uint32_t lit1, uint32_t lit2, uint32_t lit3 ){ return  lit1; }
+template<class LIST> uint32_t add_xor3_to_index_list_( LIST& list, uint32_t lit1, uint32_t lit2, uint32_t lit3 ){ return list.add_xor3( lit1, lit2, lit3 ); }
 template<class LIST> uint32_t add_m111_to_index_list_( LIST& list, uint32_t lit1, uint32_t lit2, uint32_t lit3 ){ return list.add_maj( lit1, lit2, lit3 ); }
 template<class LIST> uint32_t add_m011_to_index_list_( LIST& list, uint32_t lit1, uint32_t lit2, uint32_t lit3 ){ return list.add_maj( lit1 ^ 0x1, lit2, lit3 ); }
 template<class LIST> uint32_t add_m101_to_index_list_( LIST& list, uint32_t lit1, uint32_t lit2, uint32_t lit3 ){ return list.add_maj( lit1, lit2 ^ 0x1, lit3 ); }
@@ -1008,7 +1011,7 @@ void extract_local_functionality( DIVS * pDivs, SPFDB & managerB, SPFDA const& m
 
   for( uint32_t m{0}; m < (1u << func.num_vars()); ++m )
   {
-    if( m < ( 1u << supp.size() ) )
+    //if( m < ( 1u << supp.size() ) )
     {
       jolly = jolly | ~jolly;
       for( uint32_t v{0}; v < supp.size(); ++v )
@@ -1036,8 +1039,8 @@ void extract_local_functionality( DIVS * pDivs, SPFDB & managerB, SPFDA const& m
         kitty::clear_bit( care, m );
       }
     }
-    else
-      break;
+    //else
+    //  break;
   }
 
 //  auto mk0 = managerB.care.construct();
@@ -1554,7 +1557,1261 @@ private:
 
 #pragma endregion XAG_resyn
 
-#pragma region MIG resyn
+#pragma region AIG_resyn
+
+struct aig_resyn_stats
+{
+  /*! \brief Time for finding 0-resub and collecting unate literals. */
+  stopwatch<>::duration time_unate{ 0 };
+
+  /*! \brief Time for finding 1-resub. */
+  stopwatch<>::duration time_resub1{ 0 };
+
+  /*! \brief Time for finding 2-resub. */
+  stopwatch<>::duration time_resub2{ 0 };
+
+  /*! \brief Time for finding 3-resub. */
+  stopwatch<>::duration time_resub3{ 0 };
+
+  /*! \brief Time for sorting unate literals and unate pairs. */
+  stopwatch<>::duration time_sort{ 0 };
+
+  /*! \brief Time for collecting unate pairs. */
+  stopwatch<>::duration time_collect_pairs{ 0 };
+
+  /*! \brief Time for dividing the target and recursive call. */
+  stopwatch<>::duration time_divide{ 0 };
+  stopwatch<>::duration time_boolean_matching{ 0 };
+  stopwatch<>::duration time_spfd_synthesis{ 0 };
+
+
+  void report() const
+  {
+    fmt::print( "[i]         <aig_resyn>\n" );
+    fmt::print( "[i]             0-resub      : {:>5.2f} secs\n", to_seconds( time_unate ) );
+    fmt::print( "[i]             1-resub      : {:>5.2f} secs\n", to_seconds( time_resub1 ) );
+    fmt::print( "[i]             2-resub      : {:>5.2f} secs\n", to_seconds( time_resub2 ) );
+    fmt::print( "[i]             3-resub      : {:>5.2f} secs\n", to_seconds( time_resub3 ) );
+    fmt::print( "[i]             sort         : {:>5.2f} secs\n", to_seconds( time_sort ) );
+    fmt::print( "[i]             collect pairs: {:>5.2f} secs\n", to_seconds( time_collect_pairs ) );
+    fmt::print( "[i]             dividing     : {:>5.2f} secs\n", to_seconds( time_divide ) );
+  }
+};
+
+/*! \brief Logic resynthesis engine for AIGs or XAGs.
+ *
+ * The algorithm is based on ABC's implementation in `giaResub.c` by Alan Mishchenko.
+ *
+ * Divisors are classified as positive unate (not overlapping with target offset),
+ * negative unate (not overlapping with target onset), or binate (overlapping with
+ * both onset and offset). Furthermore, pairs of binate divisors are combined with
+ * an AND operation and considering all possible input polarities and again classified
+ * as positive unate, negative unate or binate. Simple solutions of zero cost
+ * (one unate divisor), one node (two unate divisors), two nodes (one unate divisor +
+ * one unate pair), and three nodes (two unate pairs) are exhaustively examined.
+ * When no simple solutions can be found, the algorithm heuristically chooses an unate
+ * divisor or an unate pair to divide the target function with and recursively calls
+ * itself to decompose the remainder function.
+   \verbatim embed:rst
+
+   Example
+
+   .. code-block:: c++
+
+      using TT = kitty::static_truth_table<6>;
+      const std::vector<aig_network::node> divisors = ...;
+      const node_map<TT, aig_network> tts = ...;
+      const TT target = ..., care = ...;
+      aig_resyn_stats st;
+      aig_resyn<TT, node_map<TT, aig_network>, false, false, aig_network::node> resyn( st );
+      auto result = resyn( target, care, divisors.begin(), divisors.end(), tts );
+   \endverbatim
+ */
+
+template<class TT, class static_params = aig_resyn_static_params_default<TT>>
+class aig_resyn
+{
+public:
+  using stats = aig_resyn_stats;
+  using index_list_t = large_xag_index_list;
+  using truth_table_t = TT;
+  using small_truth_table_t = kitty::static_truth_table<static_params::max_support_size>;
+
+private:
+  struct unate_lit
+  {
+    unate_lit( uint32_t l )
+        : lit( l )
+    {}
+
+    bool operator==( unate_lit const& other ) const
+    {
+      return lit == other.lit;
+    }
+
+    uint32_t lit;
+    uint32_t score{ 0 };
+  };
+
+  struct scored_lit
+  {
+    scored_lit( uint32_t l )
+        : lit( l )
+    {}
+
+    bool operator==( scored_lit const& other ) const
+    {
+      return lit == other.lit;
+    }
+
+    uint32_t lit;
+    uint32_t score{ 0 };
+  };
+
+  struct fanin_pair
+  {
+    fanin_pair( uint32_t l1, uint32_t l2 )
+        : lit1( l1 < l2 ? l1 : l2 ), lit2( l1 < l2 ? l2 : l1 )
+    {}
+
+    fanin_pair( uint32_t l1, uint32_t l2, bool is_xor )
+        : lit1( l1 > l2 ? l1 : l2 ), lit2( l1 > l2 ? l2 : l1 )
+    {
+      (void)is_xor;
+    }
+
+    bool operator==( fanin_pair const& other ) const
+    {
+      return lit1 == other.lit1 && lit2 == other.lit2;
+    }
+
+    uint32_t lit1, lit2;
+    uint32_t score{ 0 };
+  };
+
+  struct aig_gate_t
+  {
+    gate_t type;
+    uint32_t nInputs;
+
+    small_truth_table_t (*pF)( small_truth_table_t const&, small_truth_table_t const& );
+    uint32_t (*pG)( index_list_t&, uint32_t, uint32_t );
+
+    aig_gate_t( gate_t type, uint32_t nInputs, small_truth_table_t (*pF)( small_truth_table_t const&, small_truth_table_t const& ), uint32_t (*pG)( index_list_t&, uint32_t, uint32_t ) ) : type(type), nInputs(nInputs), pF(pF), pG(pG){}
+    aig_gate_t(){}
+
+    small_truth_table_t compute( small_truth_table_t const& a, small_truth_table_t const& b ){ return pF( a, b ); };
+    small_truth_table_t compute( small_truth_table_t const& a ){ return pF( a, a ); };
+
+    uint32_t add_to_list( index_list_t& list, uint32_t lit1, uint32_t lit2 ){ return pG( list, lit1, lit2 ); };
+    uint32_t add_to_list( index_list_t& list, uint32_t lit1 ){ return pG( list, lit1, lit1 ); };
+  };
+
+
+  struct aig_library_t
+  {
+    aig_library_t(){
+      gates1[0] = aig_gate_t{ BUF_, 1, &hpcompute_buf_<small_truth_table_t>, &add_buf__to_index_list_<index_list_t> }; 
+      gates2[0] = aig_gate_t{ PA00, 2, &hpcompute_pa00<small_truth_table_t>, &add_pa00_to_index_list_<index_list_t> }; 
+      gates2[1] = aig_gate_t{ PA01, 2, &hpcompute_pa01<small_truth_table_t>, &add_pa01_to_index_list_<index_list_t> }; 
+      gates2[2] = aig_gate_t{ PA10, 2, &hpcompute_pa10<small_truth_table_t>, &add_pa10_to_index_list_<index_list_t> }; 
+      gates2[3] = aig_gate_t{ PA11, 2, &hpcompute_pa11<small_truth_table_t>, &add_pa11_to_index_list_<index_list_t> }; 
+    }
+
+    std::array<aig_gate_t, 1u> gates1;
+    std::array<aig_gate_t, 4u> gates2;
+  };
+
+  template<class LTT>
+  struct aig_candidate_t
+  {
+    aig_gate_t gate;
+    double cost;
+    gate_t type;
+
+    divisor_t<LTT> const& a;
+    divisor_t<LTT> const& b;
+    uint32_t id;
+
+    aig_candidate_t(){}
+    aig_candidate_t( uint32_t id, aig_gate_t gate, double cost, divisor_t<LTT> const& a, divisor_t<LTT> const& b ) : id(id), gate(gate), type(gate.type), cost(cost), a(a), b(b){}
+    aig_candidate_t( uint32_t id, aig_gate_t gate, double cost, divisor_t<LTT> const& a ) : id(id), gate(gate), type(gate.type), cost(cost), a(a), b(a){}
+
+    uint32_t add_to_list( index_list_t& list, uint32_t lit1, uint32_t lit2 ){ return gate.add_to_list(list, lit1, lit2);};
+    uint32_t add_to_list( index_list_t& list ){ return gate.add_to_list(list, a.lit, b.lit);};
+    LTT compute( LTT const& tta, LTT const& ttb ){ return gate.compute(tta, ttb);};
+    LTT compute(){ return gate.compute(a.func, b.func);};
+
+    double update_cost( double const& costPrevious, double const& minCost, double const& maxCost, bool isNew )
+    {
+      if( isNew )
+      {
+        cost = costPrevious + exp(-static_params::beta_synthesis*(cost-minCost)/(maxCost-minCost));
+      }
+      else
+      {
+        cost = costPrevious;
+      }
+      return cost;
+    }
+
+  };
+
+public:
+  explicit aig_resyn( stats& st ) noexcept
+      : st( st )
+  {
+    static_assert( std::is_same_v<typename static_params::base_type, xag_resyn_static_params>, "Invalid static_params type" );
+    static_assert( !( static_params::uniform_div_cost && static_params::preserve_depth ), "If depth is to be preserved, divisor depth cost must be provided (usually not uniform)" );
+    divisors.reserve( static_params::reserve );
+    
+    for( uint32_t i{0}; i<static_params::max_support_size; ++i )
+      kitty::create_nth_var(_xs[i], i );
+
+    //db = _database.get_database();
+  }
+
+  /*! \brief Perform XAG resynthesis.
+   *
+   * `tts[*begin]` must be of type `TT`.
+   * Moreover, if `static_params::copy_tts = false`, `*begin` must be of type `static_params::node_type`.
+   *
+   * \param target Truth table of the target function.
+   * \param care Truth table of the care set.
+   * \param begin Begin iterator to divisor nodes.
+   * \param end End iterator to divisor nodes.
+   * \param tts A data structure (e.g. std::vector<TT>) that stores the truth tables of the divisor functions.
+   * \param max_size Maximum number of nodes allowed in the dependency circuit.
+   */
+  template<class iterator_type,
+           bool enabled = static_params::uniform_div_cost && !static_params::preserve_depth, typename = std::enable_if_t<enabled>>
+  std::optional<index_list_t> operator()( TT const& target, TT const& care, iterator_type begin, iterator_type end, typename static_params::truth_table_storage_type const& tts, uint32_t max_size = std::numeric_limits<uint32_t>::max() )
+  {
+    static_assert( static_params::copy_tts || std::is_same_v<typename std::iterator_traits<iterator_type>::value_type, typename static_params::node_type>, "iterator_type does not dereference to static_params::node_type" );
+
+    ptts = &tts;
+    on_off_sets[0] = ~target & care;
+    on_off_sets[1] = target & care;
+
+    _gSPFD.init( care, target );
+
+    divisors.resize( 1 ); /* clear previous data and reserve 1 dummy node for constant */
+    
+    while ( begin != end )
+    {
+      if constexpr ( static_params::copy_tts )
+      {
+        divisors.emplace_back( ( *ptts )[*begin] );
+      }
+      else
+      {
+        divisors.emplace_back( *begin );
+      }
+      ++begin;
+    }
+
+    return compute_function( max_size );
+  }
+
+  template<class iterator_type, class Fn,
+           bool enabled = !static_params::uniform_div_cost && !static_params::preserve_depth, typename = std::enable_if_t<enabled>>
+  std::optional<index_list_t> operator()( TT const& target, TT const& care, iterator_type begin, iterator_type end, typename static_params::truth_table_storage_type const& tts, Fn&& size_cost, uint32_t max_size = std::numeric_limits<uint32_t>::max() )
+  {}
+
+  template<class iterator_type, class Fn,
+           bool enabled = !static_params::uniform_div_cost && static_params::preserve_depth, typename = std::enable_if_t<enabled>>
+  std::optional<index_list_t> operator()( TT const& target, TT const& care, iterator_type begin, iterator_type end, typename static_params::truth_table_storage_type const& tts, Fn&& size_cost, Fn&& depth_cost, uint32_t max_size = std::numeric_limits<uint32_t>::max(), uint32_t max_depth = std::numeric_limits<uint32_t>::max() )
+  {}
+
+private:
+  std::optional<index_list_t> compute_function( uint32_t num_inserts )
+  {
+    index_list.clear();
+    index_list.add_inputs( divisors.size() - 1 );
+    auto const lit = compute_function_rec( num_inserts );
+    if ( lit )
+    {
+      assert( index_list.num_gates() <= num_inserts );
+      index_list.add_output( *lit );
+      return index_list;
+    }
+    return std::nullopt;
+  }
+
+  std::optional<uint32_t> compute_function_rec( uint32_t num_inserts )
+  {
+    scored_lits.clear();
+    pos_unate_lits.clear();
+    neg_unate_lits.clear();
+    binate_divs.clear();
+    pos_unate_pairs.clear();
+    neg_unate_pairs.clear();
+
+    /* try 0-resub and collect unate literals */
+    if( static_params::try_0resub )
+    {
+      auto const res0 = call_with_stopwatch( st.time_unate, [&]() {
+        return find_one_unate();
+      } );
+      if ( res0 )
+      {
+        return *res0;
+      }
+      if ( num_inserts <= 0u )
+      {
+        return std::nullopt;
+      }
+    }
+
+    /* sort unate literals and try 1-resub */
+    if( static_params::try_1resub )
+    {
+      call_with_stopwatch( st.time_sort, [&]() {
+        sort_unate_lits( pos_unate_lits, 1 );
+        sort_unate_lits( neg_unate_lits, 0 );
+      } );
+      auto const res1or = call_with_stopwatch( st.time_resub1, [&]() {
+        return find_div_div( pos_unate_lits, 1 );
+      } );
+      if ( res1or )
+      {
+        return *res1or;
+      }
+      auto const res1and = call_with_stopwatch( st.time_resub1, [&]() {
+        return find_div_div( neg_unate_lits, 0 );
+      } );
+      if ( res1and )
+      {
+        return *res1and;
+      }
+  
+      if ( binate_divs.size() > static_params::max_binates )
+      {
+        binate_divs.resize( static_params::max_binates );
+      }
+  
+      if constexpr ( static_params::use_xor )
+      {
+        /* collect XOR-type unate pairs and try 1-resub with XOR */
+        auto const res1xor = find_xor();
+        if ( res1xor )
+        {
+          return *res1xor;
+        }
+      }
+    //  if ( num_inserts == 1u )
+    //  {
+    //    return std::nullopt;
+    //  }
+    }
+    
+    /* SPFD-based synthesis */
+    auto const resi = call_with_stopwatch( st.time_boolean_matching, [&]() {
+      sort_scored_lits();
+      return find_spfd_resynthesis( num_inserts );
+    } );
+    if ( resi )
+    {
+      return *resi;
+    }
+
+    /* collect AND-type unate pairs and sort (both types), then try 2- and 3-resub */
+    if( static_params::try_unateness_decomposition )
+    {
+      call_with_stopwatch( st.time_collect_pairs, [&]() {
+        collect_unate_pairs();
+      } );
+      call_with_stopwatch( st.time_sort, [&]() {
+        sort_unate_pairs( pos_unate_pairs, 1 );
+        sort_unate_pairs( neg_unate_pairs, 0 );
+      } );
+      auto const res2or = call_with_stopwatch( st.time_resub2, [&]() {
+        return find_div_pair( pos_unate_lits, pos_unate_pairs, 1 );
+      } );
+      if ( res2or )
+      {
+        return *res2or;
+      }
+      auto const res2and = call_with_stopwatch( st.time_resub2, [&]() {
+        return find_div_pair( neg_unate_lits, neg_unate_pairs, 0 );
+      } );
+      if ( res2and )
+      {
+        return *res2and;
+      }
+  
+      if ( num_inserts >= 3u )
+      {
+        auto const res3or = call_with_stopwatch( st.time_resub3, [&]() {
+          return find_pair_pair( pos_unate_pairs, 1 );
+        } );
+        if ( res3or )
+        {
+          return *res3or;
+        }
+        auto const res3and = call_with_stopwatch( st.time_resub3, [&]() {
+          return find_pair_pair( neg_unate_pairs, 0 );
+        } );
+        if ( res3and )
+        {
+          return *res3and;
+        }
+      }
+  
+      /* choose something to divide and recursive call on the remainder */
+      /* Note: dividing = AND the on-set (if using positive unate) or the off-set (if using negative unate)
+                          with the *negation* of the divisor/pair (subtracting) */
+      uint32_t on_off_div, on_off_pair;
+      uint32_t score_div = 0, score_pair = 0;
+  
+      call_with_stopwatch( st.time_divide, [&]() {
+        if ( pos_unate_lits.size() > 0 )
+        {
+          on_off_div = 1; /* use pos_lit */
+          score_div = pos_unate_lits[0].score;
+          if ( neg_unate_lits.size() > 0 && neg_unate_lits[0].score > pos_unate_lits[0].score )
+          {
+            on_off_div = 0; /* use neg_lit */
+            score_div = neg_unate_lits[0].score;
+          }
+        }
+        else if ( neg_unate_lits.size() > 0 )
+        {
+          on_off_div = 0; /* use neg_lit */
+          score_div = neg_unate_lits[0].score;
+        }
+  
+        if ( num_inserts > 3u )
+        {
+          if ( pos_unate_pairs.size() > 0 )
+          {
+            on_off_pair = 1; /* use pos_pair */
+            score_pair = pos_unate_pairs[0].score;
+            if ( neg_unate_pairs.size() > 0 && neg_unate_pairs[0].score > pos_unate_pairs[0].score )
+            {
+              on_off_pair = 0; /* use neg_pair */
+              score_pair = neg_unate_pairs[0].score;
+            }
+          }
+          else if ( neg_unate_pairs.size() > 0 )
+          {
+            on_off_pair = 0; /* use neg_pair */
+            score_pair = neg_unate_pairs[0].score;
+          }
+        }
+      } );
+  
+      if ( score_div > score_pair / 2 ) /* divide with a divisor */
+      {
+        /* if using pos_lit (on_off_div = 1), modify on-set and use an OR gate on top;
+           if using neg_lit (on_off_div = 0), modify off-set and use an AND gate on top
+         */ 
+        uint32_t const lit = on_off_div ? pos_unate_lits[0].lit : neg_unate_lits[0].lit;
+        call_with_stopwatch( st.time_divide, [&]() {
+          on_off_sets[on_off_div] &= lit & 0x1 ? get_sign(lit >> 1) : ~get_sign( lit >> 1 );
+        } );
+  
+        auto const res_remain_div = compute_function_rec( num_inserts - 1 );
+        if ( res_remain_div )
+        {
+          auto const new_lit = index_list.add_and( ( lit ^ 0x1 ), *res_remain_div ^ on_off_div );
+          return new_lit + on_off_div;
+        }
+      }
+      else if ( score_pair > 0 ) /* divide with a pair */
+      {
+        fanin_pair const pair = on_off_pair ? pos_unate_pairs[0] : neg_unate_pairs[0];
+        call_with_stopwatch( st.time_divide, [&]() {
+          if constexpr ( static_params::use_xor )
+          {
+            if ( pair.lit1 > pair.lit2 ) /* XOR pair: ~(lit1 ^ lit2) = ~lit1 ^ lit2 */
+            {
+              on_off_sets[on_off_pair] &= ( pair.lit1 & 0x1 ? get_sign( pair.lit1 >> 1 ) : ~get_sign( pair.lit1 >> 1 ) ) ^ ( pair.lit2 & 0x1 ? ~get_sign( pair.lit2 >> 1 ) : get_sign( pair.lit2 >> 1 ) );
+            }
+            else /* AND pair: ~(lit1 & lit2) = ~lit1 | ~lit2 */
+            {
+              on_off_sets[on_off_pair] &= ( pair.lit1 & 0x1 ? get_sign( pair.lit1 >> 1 ) : ~get_sign( pair.lit1 >> 1 ) ) | ( pair.lit2 & 0x1 ? get_sign( pair.lit2 >> 1 ) : ~get_sign( pair.lit2 >> 1 ) );
+            }
+          }
+          else /* AND pair: ~(lit1 & lit2) = ~lit1 | ~lit2 */
+          {
+            on_off_sets[on_off_pair] &= ( pair.lit1 & 0x1 ? get_sign( pair.lit1 >> 1 ) : ~get_sign( pair.lit1 >> 1 ) ) | ( pair.lit2 & 0x1 ? get_sign( pair.lit2 >> 1 ) : ~get_sign( pair.lit2 >> 1 ) );
+          }
+        } );
+  
+        auto const res_remain_pair = compute_function_rec( num_inserts - 2 );
+        if ( res_remain_pair )
+        {
+          uint32_t new_lit1;
+          if constexpr ( static_params::use_xor )
+          {
+            new_lit1 = ( pair.lit1 > pair.lit2 ) ? index_list.add_xor( pair.lit1, pair.lit2 ) : index_list.add_and( pair.lit1, pair.lit2 );
+          }
+          else
+          {
+            new_lit1 = index_list.add_and( pair.lit1, pair.lit2 );
+          }
+          auto const new_lit2 = index_list.add_and( new_lit1 ^ 0x1, *res_remain_pair ^ on_off_pair );
+          return new_lit2 + on_off_pair;
+        }
+      }
+    }
+
+    return std::nullopt;
+  }
+
+  void sort_scored_lits( )
+  {
+    uint32_t nBits = on_off_sets[1].num_bits();
+    for ( auto& l : scored_lits )
+    {
+      uint32_t n1 = kitty::count_ones( get_sign( l.lit >> 1 ) & on_off_sets[1] );
+      l.score = n1*(nBits-n1);
+      n1 = kitty::count_ones( ~get_sign( l.lit >> 1 ) & on_off_sets[1] );
+      l.score += n1*(nBits-n1);
+    }
+    std::sort( scored_lits.begin(), scored_lits.end(), [&]( scored_lit const& l1, scored_lit const& l2 ) {
+      return l1.score > l2.score; // descending order
+    } );
+  }
+
+  /* Perform SPFD-based resynthesis ( iterative )
+     1. Sample a support
+     2. Perform resynthesis using the support divisors
+   */
+   std::optional<uint32_t> find_spfd_resynthesis( uint32_t num_inserts )
+   {
+      std::set<std::vector<uint32_t>> explored_supports;      
+      index_list_t index_list_copy = index_list;
+
+      for( auto i{0u}; i < static_params::max_support_attempts; ++i )
+      {
+        RNG.seed(i);
+        auto supp = static_params::use_greedy_support_selection ? find_support_greedy() : find_support();
+        
+        if( supp && ( explored_supports.find(*supp)==explored_supports.end() ) )
+        { 
+          for( auto x : *supp )
+            printf(" %d ", x);
+          printf("\n");
+
+          auto const res = spfd_resynthesis( *supp, num_inserts );
+          if( res )
+          {
+            printf("find_spfd_resynthesis %d <= %d ", index_list.num_gates() <= num_inserts );
+            return *res;
+          }
+          explored_supports.insert( *supp );
+        }
+        index_list = index_list_copy;
+      }
+      return std::nullopt;
+   }
+
+   std::optional<uint32_t> spfd_resynthesis( std::vector<uint32_t> & supp, uint32_t& max_num_gates )
+   {
+      extract_local_functionality( this, _lSPFD, _gSPFD, supp );
+      if( supp.size() == 0 )
+        return std::nullopt;
+      //printf(" %d ", supp.size());
+      //kitty::print_binary(_lSPFD.onset);
+      //printf(" f|c ");
+      //kitty::print_binary(_lSPFD.care);
+      //printf(": ");
+
+      index_list_t index_list_copy = index_list;
+      divisors_t<small_truth_table_t> divs;
+
+      for( uint32_t iIter{0}; iIter < static_params::max_resynthesis_attempts; ++iIter )
+      {
+        index_list = index_list_copy;
+        divs.clear();
+        for( uint32_t i{0}; i<supp.size(); ++i )
+          divs.emplace_back( _xs[i], supp[i] << 1u );
+
+        while( divs.size() > 1 && index_list.num_gates() <= max_num_gates )
+        {
+          auto newDivs = update_divisors( _lSPFD, divs, max_num_gates );
+          if( newDivs )
+          {
+            divs = *newDivs;
+          }
+          else  
+            break;
+        }
+        printf("spfd_resynthesis %d<=%d\n", index_list.num_gates(), max_num_gates);
+
+        if( divs.size() == 1 )
+        {
+          if( kitty::equal( divs[0].func & _lSPFD.care, _lSPFD.onset ) )
+          {
+            return divs[0].lit;
+          }
+          else if( kitty::equal( divs[0].func & _lSPFD.care, _lSPFD.offset ) )
+          {
+            return divs[0].lit ^ 0x1;
+          }
+          else
+          {
+            printf("[w]: One divisor not matching\n");
+          }
+        }
+      }
+      return std::nullopt;
+   }
+
+
+std::optional<std::vector<uint32_t>> find_support_greedy()
+{
+  _gSPFD.reset();
+  std::vector<uint32_t> supp;
+  std::vector<uint32_t> candidates;
+  double cost, minCost = std::numeric_limits<double>::max();
+
+  while( !_gSPFD.is_covered() && ( supp.size() < static_params::max_support_size ) ) 
+  {
+    for( auto v = 0u; v < divisors.size(); ++v )
+    {
+      cost = _gSPFD.evaluate( get_sign(v) );
+      if( cost < minCost ) 
+      {
+        minCost = cost;
+        candidates = {v};
+      }
+      else if( cost == minCost )
+      {
+        candidates.push_back( v );
+      }
+    }
+
+    std::uniform_int_distribution<> distrib(0, candidates.size()-1);
+    double rnd = distrib(RNG);
+    supp.push_back( candidates[rnd] );
+    _gSPFD.update( get_sign(candidates[rnd]) );
+  }
+
+  if( _gSPFD.is_covered() )
+  {
+    std::sort(supp.begin(), supp.end());
+    return supp;
+  }
+  return std::nullopt;
+}
+
+std::optional<std::vector<uint32_t>> find_support()
+{
+  _gSPFD.reset();
+  std::vector<uint32_t> supp;
+
+  double cost;
+  double minCost = std::numeric_limits<double>::max();
+  double maxCost = std::numeric_limits<double>::min();
+  std::vector<double> costs;
+
+  while( !_gSPFD.is_covered() && ( supp.size() < static_params::max_support_size ) ) 
+  {
+    costs.clear();
+    for( auto v = 0u; v < divisors.size(); ++v )
+    {
+      cost = _gSPFD.evaluate( get_sign(v) );
+      costs.push_back( cost );
+      if( cost < minCost ) minCost = cost;
+      if( cost > maxCost ) maxCost = cost;
+    }
+
+    for( uint32_t i{0}; i<costs.size(); ++i )
+      costs[i] = exp(-static_params::beta_support*(costs[i]-minCost)/(maxCost-minCost));
+    for( auto v : supp )
+      costs[v]=0;
+    for( uint32_t i{1}; i<costs.size(); ++i )
+    {
+      costs[i] += costs[i-1];
+    }
+    
+    std::uniform_real_distribution<> distrib(0, 1);
+    double rnd = distrib(RNG);
+
+    for( uint32_t i{0}; i<costs.size(); ++i )
+    {
+      if( std::isnan( costs[i] ) )
+      {
+        printf("[w]: NAN\n");
+        return std::nullopt;
+      }
+      if( rnd*costs.back() <= costs[i] )
+      {
+        supp.push_back(i);
+        _gSPFD.update( get_sign(i) );
+        break;
+      }
+    }
+  }
+
+  if( _gSPFD.is_covered() )
+  {
+    std::sort(supp.begin(), supp.end());
+    return supp;
+  }
+  return std::nullopt;
+}
+
+template<class DIVS, class SPFDA, class SPFDB>
+void extract_local_functionality( DIVS * pDivs, SPFDB & managerB, SPFDA const& managerA, std::vector<uint32_t> & supp )
+{
+  auto func = managerB.onset.construct();
+  auto care = managerB.care.construct();
+  auto jolly = managerA.onset.construct();
+
+  for( uint32_t m{0}; m < (1u << func.num_vars()); ++m )
+  {
+    if( m < ( 1u << supp.size() ) )
+    {
+      jolly = jolly | ~jolly;
+      for( uint32_t v{0}; v < supp.size(); ++v )
+      {
+        if( ( m >> v ) & 1u == 1u )
+          jolly &= pDivs->get_sign(supp[v]);
+        else
+          jolly &= ~pDivs->get_sign(supp[v]);
+      }
+      
+      if( kitty::count_ones( jolly & managerA.care ) > 0 )
+      {
+        kitty::set_bit( care, m );
+        if( kitty::count_ones( jolly & managerA.onset & managerA.care ) > 0 )
+        {
+          kitty::set_bit( func, m );
+        }
+        else
+        {
+          kitty::clear_bit( func, m );
+        }
+      }
+      else
+      {
+        kitty::clear_bit( care, m );
+      }
+    }
+    else
+      break;
+  }
+
+//  auto mk0 = managerB.care.construct();
+//  auto mk1 = managerB.care.construct();
+//  auto tt0 = managerB.care.construct();
+//  auto tt1 = managerB.care.construct();
+//  auto var = managerB.care.construct();
+//
+//  for( int i{supp.size()-1}; i>=0; --i )
+//  {
+//    mk0 = kitty::cofactor0(care, i);
+//    mk1 = kitty::cofactor1(care, i);
+//    tt0 = kitty::cofactor0(func, i);
+//    tt1 = kitty::cofactor1(func, i);
+//
+//    if( kitty::equal(mk0&mk1&tt0, mk0&mk1&tt1) )
+//    {
+//      //printf("erase %d\n", i);
+//      care = mk0 | mk1;
+//      kitty::create_nth_var(var,i);
+//      care &= var;
+//      func = mk0&tt0 | mk1&tt1;
+//    }
+//  }
+
+  managerB.init( care, func );
+}
+
+
+template<class LTT, class SPFD>
+std::optional<divisors_t<LTT>> update_divisors( SPFD& manager, divisors_t<LTT> & divs, uint32_t max_num_gates )
+{
+  manager.reset();
+  uint32_t nBuffers{0};
+  divisors_t<LTT> res;
+
+  double cost;
+  double minCost = std::numeric_limits<uint32_t>::max();
+  double maxCost = std::numeric_limits<uint32_t>::min();
+
+  std::vector<aig_candidate_t<LTT>> candidates;
+
+  std::set<uint32_t> USED;
+  uint32_t idx{0};
+
+  while( !manager.is_covered() && res.size() < static_params::max_num_spfds )
+  {
+    for( auto v1 = 0; v1 < divs.size(); ++v1 )
+    {
+      for( auto gate : _lib.gates1 )
+      {
+        if( nBuffers >= divs.size()-1 )  continue;
+
+        cost = manager.evaluate( gate.compute( divs.get_sign(v1) ) );
+        candidates.emplace_back( idx++, gate, cost, divs[v1] );
+        if( cost < minCost ) minCost = cost;
+        if( cost > maxCost ) maxCost = cost;
+      }
+
+      for( auto v2 = v1+1; v2 < divs.size(); ++v2 )
+      {
+        for( auto gate : _lib.gates2 )
+        {
+          cost = manager.evaluate( gate.compute( divs.get_sign(v1), divs.get_sign(v2) ) );
+          candidates.emplace_back( idx++, gate, cost, divs[v1], divs[v2] );
+          if( cost < minCost ) minCost = cost;
+          if( cost > maxCost ) maxCost = cost;
+        }
+      }
+    }
+
+    double costPrevious{0};
+    for( auto & cand : candidates )
+    {
+      costPrevious = cand.update_cost( costPrevious, minCost, maxCost, USED.find(cand.id) == USED.end() );
+    }
+
+    double sum = candidates[idx-1].cost;
+    std::uniform_real_distribution<> distrib(0, 1);
+    double rnd = distrib(RNG);
+    bool isUpd{false};
+
+    for( auto & cand : candidates )
+    {
+      if( rnd <= cand.cost/sum )
+      {
+        USED.insert(cand.id);
+        if( cand.type == BUF_ )  nBuffers++;
+
+        LTT tt = cand.compute();
+        res.emplace_back( tt, cand.add_to_list( index_list ) );
+        manager.update( tt );  
+        isUpd=true;
+        break;
+      }
+    }
+    if( !isUpd || index_list.num_gates() > max_num_gates )//+1 )//NEW
+      return std::nullopt;
+  }
+
+  if( manager.is_covered() )
+    return res;
+  return std::nullopt;
+
+}
+
+  /* See if there is a constant or divisor covering all on-set bits or all off-set bits.
+     1. Check constant-resub
+     2. Collect unate literals
+     3. Find 0-resub (both positive unate and negative unate) and collect binate (neither pos nor neg unate) divisors
+   */
+  std::optional<uint32_t> find_one_unate()
+  {
+    num_bits[0] = kitty::count_ones( on_off_sets[0] ); /* off-set */
+    num_bits[1] = kitty::count_ones( on_off_sets[1] ); /* on-set */
+    if ( num_bits[0] == 0 )
+    {
+      return 1;
+    }
+    if ( num_bits[1] == 0 )
+    {
+      return 0;
+    }
+
+    for ( auto v = 1u; v < divisors.size(); ++v )
+    {
+      bool unateness[4] = { false, false, false, false };
+      /* check intersection with off-set */
+      if ( kitty::intersection_is_empty<TT, 1, 1>( get_sign( v ), on_off_sets[0] ) )
+      {
+        pos_unate_lits.emplace_back( v << 1 );
+        unateness[0] = true;
+      }
+      else if ( kitty::intersection_is_empty<TT, 0, 1>( get_sign( v ), on_off_sets[0] ) )
+      {
+        pos_unate_lits.emplace_back( v << 1 | 0x1 );
+        unateness[1] = true;
+      }
+
+      /* check intersection with on-set */
+      if ( kitty::intersection_is_empty<TT, 1, 1>( get_sign( v ), on_off_sets[1] ) )
+      {
+        neg_unate_lits.emplace_back( v << 1 );
+        unateness[2] = true;
+      }
+      else if ( kitty::intersection_is_empty<TT, 0, 1>( get_sign( v ), on_off_sets[1] ) )
+      {
+        neg_unate_lits.emplace_back( v << 1 | 0x1 );
+        unateness[3] = true;
+      }
+
+      /* 0-resub */
+      if ( unateness[0] && unateness[3] )
+      {
+        return ( v << 1 );
+      }
+      if ( unateness[1] && unateness[2] )
+      {
+        return ( v << 1 ) + 1;
+      }
+      /* useless unate literal */
+      if ( ( unateness[0] && unateness[2] ) || ( unateness[1] && unateness[3] ) )
+      {
+        pos_unate_lits.pop_back();
+        neg_unate_lits.pop_back();
+      }
+      /* binate divisor */
+      else if ( !unateness[0] && !unateness[1] && !unateness[2] && !unateness[3] )
+      {
+        binate_divs.emplace_back( v );
+      }
+    }
+    return std::nullopt;
+  }
+
+  /* Sort the unate literals by the number of minterms in the intersection.
+     - For `pos_unate_lits`, `on_off` = 1, sort by intersection with on-set;
+     - For `neg_unate_lits`, `on_off` = 0, sort by intersection with off-set
+   */
+  void sort_unate_lits( std::vector<unate_lit>& unate_lits, uint32_t on_off )
+  {
+    for ( auto& l : unate_lits )
+    {
+      l.score = kitty::count_ones( ( l.lit & 0x1 ? ~get_sign( l.lit >> 1 ) : get_sign( l.lit >> 1 ) ) & on_off_sets[on_off] );
+    }
+    std::sort( unate_lits.begin(), unate_lits.end(), [&]( unate_lit const& l1, unate_lit const& l2 ) {
+      return l1.score > l2.score; // descending order
+    } );
+  }
+
+  void sort_unate_pairs( std::vector<fanin_pair>& unate_pairs, uint32_t on_off )
+  {
+    for ( auto& p : unate_pairs )
+    {
+      if constexpr ( static_params::use_xor )
+      {
+        p.score = ( p.lit1 > p.lit2 ) ? kitty::count_ones( ( ( p.lit1 & 0x1 ? ~get_sign( p.lit1 >> 1 ) : get_sign( p.lit1 >> 1 ) ) ^ ( p.lit2 & 0x1 ? ~get_sign( p.lit2 >> 1 ) : get_sign( p.lit2 >> 1 ) ) ) & on_off_sets[on_off] )
+                                      : kitty::count_ones( ( p.lit1 & 0x1 ? ~get_sign( p.lit1 >> 1 ) : get_sign( p.lit1 >> 1 ) ) & ( p.lit2 & 0x1 ? ~get_sign( p.lit2 >> 1 ) : get_sign( p.lit2 >> 1 ) ) & on_off_sets[on_off] );
+      }
+      else
+      {
+        p.score = kitty::count_ones( ( p.lit1 & 0x1 ? ~get_sign( p.lit1 >> 1 ) : get_sign( p.lit1 >> 1 ) ) & ( p.lit2 & 0x1 ? ~get_sign( p.lit2 >> 1 ) : get_sign( p.lit2 >> 1 ) ) & on_off_sets[on_off] );
+      }
+    }
+    std::sort( unate_pairs.begin(), unate_pairs.end(), [&]( fanin_pair const& p1, fanin_pair const& p2 ) {
+      return p1.score > p2.score; // descending order
+    } );
+  }
+
+  /* See if there are two unate divisors covering all on-set bits or all off-set bits.
+     - For `pos_unate_lits`, `on_off` = 1, try covering all on-set bits by combining two with an OR gate;
+     - For `neg_unate_lits`, `on_off` = 0, try covering all off-set bits by combining two with an AND gate
+   */
+  std::optional<uint32_t> find_div_div( std::vector<unate_lit>& unate_lits, uint32_t on_off )
+  {
+    for ( auto i = 0u; i < unate_lits.size(); ++i )
+    {
+      uint32_t const& lit1 = unate_lits[i].lit;
+      if ( unate_lits[i].score * 2 < num_bits[on_off] )
+      {
+        break;
+      }
+      for ( auto j = i + 1; j < unate_lits.size(); ++j )
+      {
+        uint32_t const& lit2 = unate_lits[j].lit;
+        if ( unate_lits[i].score + unate_lits[j].score < num_bits[on_off] )
+        {
+          break;
+        }
+        auto const ntt1 = lit1 & 0x1 ? get_sign( lit1 >> 1 ) : ~get_sign( lit1 >> 1 );
+        auto const ntt2 = lit2 & 0x1 ? get_sign( lit2 >> 1 ) : ~get_sign( lit2 >> 1 );
+        if ( kitty::intersection_is_empty( ntt1, ntt2, on_off_sets[on_off] ) )
+        {
+          auto const new_lit = index_list.add_and( ( lit1 ^ 0x1 ), ( lit2 ^ 0x1 ) );
+          return new_lit + on_off;
+        }
+      }
+    }
+    return std::nullopt;
+  }
+
+  std::optional<uint32_t> find_div_pair( std::vector<unate_lit>& unate_lits, std::vector<fanin_pair>& unate_pairs, uint32_t on_off )
+  {
+    for ( auto i = 0u; i < unate_lits.size(); ++i )
+    {
+      uint32_t const& lit1 = unate_lits[i].lit;
+      for ( auto j = 0u; j < unate_pairs.size(); ++j )
+      {
+        fanin_pair const& pair2 = unate_pairs[j];
+        if ( unate_lits[i].score + pair2.score < num_bits[on_off] )
+        {
+          break;
+        }
+        auto const ntt1 = lit1 & 0x1 ? get_sign( lit1 >> 1 ) : ~get_sign( lit1 >> 1 );
+        TT ntt2;
+        if constexpr ( static_params::use_xor )
+        {
+          if ( pair2.lit1 > pair2.lit2 )
+          {
+            ntt2 = ( pair2.lit1 & 0x1 ? get_sign( pair2.lit1 >> 1 ) : ~get_sign( pair2.lit1 >> 1 ) ) ^ ( pair2.lit2 & 0x1 ? ~get_sign( pair2.lit2 >> 1 ) : get_sign( pair2.lit2 >> 1 ) );
+          }
+          else
+          {
+            ntt2 = ( pair2.lit1 & 0x1 ? get_sign( pair2.lit1 >> 1 ) : ~get_sign( pair2.lit1 >> 1 ) ) | ( pair2.lit2 & 0x1 ? get_sign( pair2.lit2 >> 1 ) : ~get_sign( pair2.lit2 >> 1 ) );
+          }
+        }
+        else
+        {
+          ntt2 = ( pair2.lit1 & 0x1 ? get_sign( pair2.lit1 >> 1 ) : ~get_sign( pair2.lit1 >> 1 ) ) | ( pair2.lit2 & 0x1 ? get_sign( pair2.lit2 >> 1 ) : ~get_sign( pair2.lit2 >> 1 ) );
+        }
+
+        if ( kitty::intersection_is_empty( ntt1, ntt2, on_off_sets[on_off] ) )
+        {
+          uint32_t new_lit1;
+          if constexpr ( static_params::use_xor )
+          {
+            if ( pair2.lit1 > pair2.lit2 )
+            {
+              new_lit1 = index_list.add_xor( pair2.lit1, pair2.lit2 );
+            }
+            else
+            {
+              new_lit1 = index_list.add_and( pair2.lit1, pair2.lit2 );
+            }
+          }
+          else
+          {
+            new_lit1 = index_list.add_and( pair2.lit1, pair2.lit2 );
+          }
+          auto const new_lit2 = index_list.add_and( ( lit1 ^ 0x1 ), new_lit1 ^ 0x1 );
+          return new_lit2 + on_off;
+        }
+      }
+    }
+    return std::nullopt;
+  }
+
+  std::optional<uint32_t> find_pair_pair( std::vector<fanin_pair>& unate_pairs, uint32_t on_off )
+  {
+    for ( auto i = 0u; i < unate_pairs.size(); ++i )
+    {
+      fanin_pair const& pair1 = unate_pairs[i];
+      if ( pair1.score * 2 < num_bits[on_off] )
+      {
+        break;
+      }
+      for ( auto j = i + 1; j < unate_pairs.size(); ++j )
+      {
+        fanin_pair const& pair2 = unate_pairs[j];
+        if ( pair1.score + pair2.score < num_bits[on_off] )
+        {
+          break;
+        }
+        TT ntt1, ntt2;
+        if constexpr ( static_params::use_xor )
+        {
+          if ( pair1.lit1 > pair1.lit2 )
+          {
+            ntt1 = ( pair1.lit1 & 0x1 ? get_sign( pair1.lit1 >> 1 ) : ~get_sign( pair1.lit1 >> 1 ) ) ^ ( pair1.lit2 & 0x1 ? ~get_sign( pair1.lit2 >> 1 ) : get_sign( pair1.lit2 >> 1 ) );
+          }
+          else
+          {
+            ntt1 = ( pair1.lit1 & 0x1 ? get_sign( pair1.lit1 >> 1 ) : ~get_sign( pair1.lit1 >> 1 ) ) | ( pair1.lit2 & 0x1 ? get_sign( pair1.lit2 >> 1 ) : ~get_sign( pair1.lit2 >> 1 ) );
+          }
+          if ( pair2.lit1 > pair2.lit2 )
+          {
+            ntt2 = ( pair2.lit1 & 0x1 ? get_sign( pair2.lit1 >> 1 ) : ~get_sign( pair2.lit1 >> 1 ) ) ^ ( pair2.lit2 & 0x1 ? ~get_sign( pair2.lit2 >> 1 ) : get_sign( pair2.lit2 >> 1 ) );
+          }
+          else
+          {
+            ntt2 = ( pair2.lit1 & 0x1 ? get_sign( pair2.lit1 >> 1 ) : ~get_sign( pair2.lit1 >> 1 ) ) | ( pair2.lit2 & 0x1 ? get_sign( pair2.lit2 >> 1 ) : ~get_sign( pair2.lit2 >> 1 ) );
+          }
+        }
+        else
+        {
+          ntt1 = ( pair1.lit1 & 0x1 ? get_sign( pair1.lit1 >> 1 ) : ~get_sign( pair1.lit1 >> 1 ) ) | ( pair1.lit2 & 0x1 ? get_sign( pair1.lit2 >> 1 ) : ~get_sign( pair1.lit2 >> 1 ) );
+          ntt2 = ( pair2.lit1 & 0x1 ? get_sign( pair2.lit1 >> 1 ) : ~get_sign( pair2.lit1 >> 1 ) ) | ( pair2.lit2 & 0x1 ? get_sign( pair2.lit2 >> 1 ) : ~get_sign( pair2.lit2 >> 1 ) );
+        }
+
+        if ( kitty::intersection_is_empty( ntt1, ntt2, on_off_sets[on_off] ) )
+        {
+          uint32_t fanin_lit1, fanin_lit2;
+          if constexpr ( static_params::use_xor )
+          {
+            if ( pair1.lit1 > pair1.lit2 )
+            {
+              fanin_lit1 = index_list.add_xor( pair1.lit1, pair1.lit2 );
+            }
+            else
+            {
+              fanin_lit1 = index_list.add_and( pair1.lit1, pair1.lit2 );
+            }
+            if ( pair2.lit1 > pair2.lit2 )
+            {
+              fanin_lit2 = index_list.add_xor( pair2.lit1, pair2.lit2 );
+            }
+            else
+            {
+              fanin_lit2 = index_list.add_and( pair2.lit1, pair2.lit2 );
+            }
+          }
+          else
+          {
+            fanin_lit1 = index_list.add_and( pair1.lit1, pair1.lit2 );
+            fanin_lit2 = index_list.add_and( pair2.lit1, pair2.lit2 );
+          }
+          uint32_t const output_lit = index_list.add_and( fanin_lit1 ^ 0x1, fanin_lit2 ^ 0x1 );
+          return output_lit + on_off;
+        }
+      }
+    }
+    return std::nullopt;
+  }
+
+  std::optional<uint32_t> find_xor()
+  {
+    /* collect XOR-type pairs (d1 ^ d2) & off = 0 or ~(d1 ^ d2) & on = 0, selecting d1, d2 from binate_divs */
+    for ( auto i = 0u; i < binate_divs.size(); ++i )
+    {
+      for ( auto j = i + 1; j < binate_divs.size(); ++j )
+      {
+        auto const tt_xor = get_sign( binate_divs[i] ) ^ get_sign( binate_divs[j] );
+        bool unateness[4] = { false, false, false, false };
+        /* check intersection with off-set; additionally check intersection with on-set is not empty (otherwise it's useless) */
+        if ( kitty::intersection_is_empty<TT, 1, 1>( tt_xor, on_off_sets[0] ) && !kitty::intersection_is_empty<TT, 1, 1>( tt_xor, on_off_sets[1] ) )
+        {
+          pos_unate_pairs.emplace_back( binate_divs[i] << 1, binate_divs[j] << 1, true );
+          unateness[0] = true;
+        }
+        if ( kitty::intersection_is_empty<TT, 0, 1>( tt_xor, on_off_sets[0] ) && !kitty::intersection_is_empty<TT, 0, 1>( tt_xor, on_off_sets[1] ) )
+        {
+          pos_unate_pairs.emplace_back( ( binate_divs[i] << 1 ) + 1, binate_divs[j] << 1, true );
+          unateness[1] = true;
+        }
+
+        /* check intersection with on-set; additionally check intersection with off-set is not empty (otherwise it's useless) */
+        if ( kitty::intersection_is_empty<TT, 1, 1>( tt_xor, on_off_sets[1] ) && !kitty::intersection_is_empty<TT, 1, 1>( tt_xor, on_off_sets[0] ) )
+        {
+          neg_unate_pairs.emplace_back( binate_divs[i] << 1, binate_divs[j] << 1, true );
+          unateness[2] = true;
+        }
+        if ( kitty::intersection_is_empty<TT, 0, 1>( tt_xor, on_off_sets[1] ) && !kitty::intersection_is_empty<TT, 0, 1>( tt_xor, on_off_sets[0] ) )
+        {
+          neg_unate_pairs.emplace_back( ( binate_divs[i] << 1 ) + 1, binate_divs[j] << 1, true );
+          unateness[3] = true;
+        }
+
+        if ( unateness[0] && unateness[2] )
+        {
+          return index_list.add_xor( ( binate_divs[i] << 1 ), ( binate_divs[j] << 1 ) );
+        }
+        if ( unateness[1] && unateness[3] )
+        {
+          return index_list.add_xor( ( binate_divs[i] << 1 ) + 1, ( binate_divs[j] << 1 ) );
+        }
+      }
+    }
+
+    return std::nullopt;
+  }
+
+  /* collect AND-type pairs (d1 & d2) & off = 0 or ~(d1 & d2) & on = 0, selecting d1, d2 from binate_divs */
+  void collect_unate_pairs()
+  {
+    for ( auto i = 0u; i < binate_divs.size(); ++i )
+    {
+      for ( auto j = i + 1; j < binate_divs.size(); ++j )
+      {
+        collect_unate_pairs_detail<1, 1>( binate_divs[i], binate_divs[j] );
+        collect_unate_pairs_detail<0, 1>( binate_divs[i], binate_divs[j] );
+        collect_unate_pairs_detail<1, 0>( binate_divs[i], binate_divs[j] );
+        collect_unate_pairs_detail<0, 0>( binate_divs[i], binate_divs[j] );
+      }
+    }
+  }
+
+  template<bool pol1, bool pol2>
+  void collect_unate_pairs_detail( uint32_t div1, uint32_t div2 )
+  {
+    /* check intersection with off-set; additionally check intersection with on-set is not empty (otherwise it's useless) */
+    if ( kitty::intersection_is_empty<TT, pol1, pol2>( get_sign( div1 ), get_sign( div2 ), on_off_sets[0] ) && !kitty::intersection_is_empty<TT, pol1, pol2>( get_sign( div1 ), get_sign( div2 ), on_off_sets[1] ) )
+    {
+      pos_unate_pairs.emplace_back( ( div1 << 1 ) + (uint32_t)( !pol1 ), ( div2 << 1 ) + (uint32_t)( !pol2 ) );
+    }
+    /* check intersection with on-set; additionally check intersection with off-set is not empty (otherwise it's useless) */
+    else if ( kitty::intersection_is_empty<TT, pol1, pol2>( get_sign( div1 ), get_sign( div2 ), on_off_sets[1] ) && !kitty::intersection_is_empty<TT, pol1, pol2>( get_sign( div1 ), get_sign( div2 ), on_off_sets[0] ) )
+    {
+      neg_unate_pairs.emplace_back( ( div1 << 1 ) + (uint32_t)( !pol1 ), ( div2 << 1 ) + (uint32_t)( !pol2 ) );
+    }
+  }
+
+public:
+
+  inline TT const& operator[](uint32_t idx ) const
+  {
+      return get_sign( idx );
+  }
+
+  inline TT const& get_sign( uint32_t idx ) const
+  {
+    if constexpr ( static_params::copy_tts )
+    {
+      return divisors[idx];
+    }
+    else
+    {
+      return ( *ptts )[divisors[idx]];
+    }
+  }
+
+  uint32_t num_divisors()
+  {
+    return divisors.size();
+  }
+
+  inline TT const& get_onset() const
+  {
+    return _gSPFD.onset;
+  }
+
+  inline TT const& get_care() const
+  {
+    return _gSPFD.care;
+  }
+
+public:
+  index_list_t index_list;
+
+private:
+  std::array<TT, 2> on_off_sets;
+  std::array<uint32_t, 2> num_bits; /* number of bits in on-set and off-set */
+  spfd_manager_t<truth_table_t, 1u << static_params::max_num_spfds> _gSPFD;
+  spfd_manager_t<small_truth_table_t, 1u << static_params::max_num_spfds> _lSPFD;
+  
+  std::array<small_truth_table_t, static_params::max_support_size> _xs;
+  aig_library_t _lib{};
+
+
+  //xag_network db;
+
+  const typename static_params::truth_table_storage_type* ptts;
+  std::vector<std::conditional_t<static_params::copy_tts, TT, typename static_params::node_type>> divisors;
+  divisors_t<TT> _divisors;
+
+
+  /* positive unate: not overlapping with off-set
+     negative unate: not overlapping with on-set */
+  std::vector<unate_lit> pos_unate_lits, neg_unate_lits;
+  std::vector<scored_lit> scored_lits;
+  std::vector<uint32_t> binate_divs;
+  std::vector<fanin_pair> pos_unate_pairs, neg_unate_pairs;
+
+  stats& st;
+}; /* xag_resyn */
+
+#pragma endregion AIG_resyn
+
+#pragma region MIG_resyn
 
 struct mig_resyn_static_params
 {
@@ -1627,11 +2884,9 @@ struct mig_resyn_static_params_for_sim_resub : public mig_resyn_static_params
   static constexpr uint32_t max_support_size = K;
   static constexpr uint32_t max_support_attempts = S;
   static constexpr uint32_t max_resynthesis_attempts = I;
-  static constexpr uint32_t max_num_spfds = max_support_size + 2 ;
+  static constexpr uint32_t max_num_spfds = max_support_size + 4 ;
 };
 
-
-#pragma region XAG_resyn
 
 struct mig_resyn_stats
 {
@@ -2445,7 +3700,904 @@ private:
   stats& st;
 
 };
-#pragma endregion MIG resyn
+
+#pragma endregion MIG_resyn
+
+#pragma region XMG_resyn
+
+struct xmg_resyn_static_params
+{
+  using base_type = xmg_resyn_static_params;
+
+  /*! \brief Maximum number of binate divisors to be considered. */
+  static constexpr uint32_t max_binates{ 50u };
+
+  /*! \brief Reserved capacity for divisor truth tables (number of divisors). */
+  static constexpr uint32_t reserve{ 200u };
+
+  /*! \brief Whether to consider single XOR gates (i.e., using XAGs instead of AIGs). */
+  static constexpr bool use_xor{ true };
+
+  /*! \brief Whether to copy truth tables. */
+  static constexpr bool copy_tts{ false };
+
+  /*! \brief Whether to preserve depth. */
+  static constexpr bool preserve_depth{ false };
+
+  /*! \brief Whether the divisors have uniform costs (size and depth, whenever relevant). */
+  static constexpr bool uniform_div_cost{ true };
+
+  /*! \brief Size cost of each AND gate. */
+  static constexpr uint32_t size_cost_of_and{ 1u };
+
+  /*! \brief Size cost of each XOR gate (only relevant when `use_xor = true`). */
+  static constexpr uint32_t size_cost_of_xor{ 1u };
+
+  /*! \brief Depth cost of each AND gate (only relevant when `preserve_depth = true`). */
+  static constexpr uint32_t depth_cost_of_and{ 1u };
+
+  /*! \brief Depth cost of each XOR gate (only relevant when `preserve_depth = true` and `use_xor = true`). */
+  static constexpr uint32_t depth_cost_of_xor{ 1u };
+
+  /*! \brief Maximum support size */
+  static constexpr uint32_t max_support_size{ 7u };
+  static constexpr uint32_t max_num_spfds{ 10u };
+
+
+  /* FOR BOOLEAN MATCHING RESUBSTITUTION */
+  /*! \brief recursively decompose */
+  static constexpr uint32_t max_support_attempts{ 10u };
+  static constexpr uint32_t max_resynthesis_attempts{ 10u };
+  static constexpr bool try_0resub{ true };
+  static constexpr bool try_1resub{ false };
+  static constexpr bool try_unateness_decomposition{ false };
+  static constexpr bool use_boolean_matching{ false };
+  static constexpr double beta_support{ 100 };
+  static constexpr double beta_synthesis{ 100 };
+  static constexpr bool use_greedy_support_selection{false};
+
+  using truth_table_storage_type = void;
+  using node_type = void;
+};
+
+template<class TT>
+struct xmg_resyn_static_params_default : public xmg_resyn_static_params
+{
+  using truth_table_storage_type = std::vector<TT>;
+  using node_type = uint32_t;
+};
+
+
+template<class Ntk, uint32_t K, uint32_t S, uint32_t I>
+struct xmg_resyn_static_params_for_sim_resub : public xmg_resyn_static_params
+{
+  using truth_table_storage_type = incomplete_node_map<kitty::partial_truth_table, Ntk>;
+  using node_type = typename Ntk::node;
+  static constexpr uint32_t max_support_size = K;
+  static constexpr uint32_t max_support_attempts = S;
+  static constexpr uint32_t max_resynthesis_attempts = I;
+  static constexpr uint32_t max_num_spfds = max_support_size + 2 ;
+};
+
+
+struct xmg_resyn_stats
+{
+  /*! \brief Time for finding 0-resub and collecting unate literals. */
+  stopwatch<>::duration time_unate{ 0 };
+
+  /*! \brief Time for finding 1-resub. */
+  stopwatch<>::duration time_resub1{ 0 };
+
+  /*! \brief Time for finding 2-resub. */
+  stopwatch<>::duration time_resub2{ 0 };
+
+  /*! \brief Time for finding 3-resub. */
+  stopwatch<>::duration time_resub3{ 0 };
+
+  /*! \brief Time for sorting unate literals and unate pairs. */
+  stopwatch<>::duration time_sort{ 0 };
+
+  /*! \brief Time for collecting unate pairs. */
+  stopwatch<>::duration time_collect_pairs{ 0 };
+
+  /*! \brief Time for dividing the target and recursive call. */
+  stopwatch<>::duration time_divide{ 0 };
+  stopwatch<>::duration time_boolean_matching{ 0 };
+  stopwatch<>::duration time_spfd_synthesis{ 0 };
+
+
+  void report() const
+  {
+    fmt::print( "[i]         <xag_resyn>\n" );
+    fmt::print( "[i]             0-resub      : {:>5.2f} secs\n", to_seconds( time_unate ) );
+    fmt::print( "[i]             1-resub      : {:>5.2f} secs\n", to_seconds( time_resub1 ) );
+    fmt::print( "[i]             2-resub      : {:>5.2f} secs\n", to_seconds( time_resub2 ) );
+    fmt::print( "[i]             3-resub      : {:>5.2f} secs\n", to_seconds( time_resub3 ) );
+    fmt::print( "[i]             sort         : {:>5.2f} secs\n", to_seconds( time_sort ) );
+    fmt::print( "[i]             collect pairs: {:>5.2f} secs\n", to_seconds( time_collect_pairs ) );
+    fmt::print( "[i]             dividing     : {:>5.2f} secs\n", to_seconds( time_divide ) );
+  }
+};
+
+/*! \brief Logic resynthesis engine for AIGs or XAGs.
+ *
+ * The algorithm is based on ABC's implementation in `giaResub.c` by Alan Mishchenko.
+ *
+ * Divisors are classified as positive unate (not overlapping with target offset),
+ * negative unate (not overlapping with target onset), or binate (overlapping with
+ * both onset and offset). Furthermore, pairs of binate divisors are combined with
+ * an AND operation and considering all possible input polarities and again classified
+ * as positive unate, negative unate or binate. Simple solutions of zero cost
+ * (one unate divisor), one node (two unate divisors), two nodes (one unate divisor +
+ * one unate pair), and three nodes (two unate pairs) are exhaustively examined.
+ * When no simple solutions can be found, the algorithm heuristically chooses an unate
+ * divisor or an unate pair to divide the target function with and recursively calls
+ * itself to decompose the remainder function.
+   \verbatim embed:rst
+
+   Example
+
+   .. code-block:: c++
+
+      using TT = kitty::static_truth_table<6>;
+      const std::vector<aig_network::node> divisors = ...;
+      const node_map<TT, aig_network> tts = ...;
+      const TT target = ..., care = ...;
+      xag_resyn_stats st;
+      xag_resyn<TT, node_map<TT, aig_network>, false, false, aig_network::node> resyn( st );
+      auto result = resyn( target, care, divisors.begin(), divisors.end(), tts );
+   \endverbatim
+ */
+
+template<class TT, class static_params = xmg_resyn_static_params_default<TT>>
+class xmg_resyn
+{
+public:
+  using stats = xmg_resyn_stats;
+  using index_list_t = xmg_index_list;
+  using truth_table_t = TT;
+  using small_truth_table_t = kitty::static_truth_table<static_params::max_support_size>;
+
+private:
+  struct unate_lit
+  {
+    unate_lit( uint32_t l )
+        : lit( l )
+    {}
+
+    bool operator==( unate_lit const& other ) const
+    {
+      return lit == other.lit;
+    }
+
+    uint32_t lit;
+    uint32_t score{ 0 };
+  };
+
+  struct fanin_pair
+  {
+    fanin_pair( uint32_t l1, uint32_t l2 )
+        : lit1( l1 < l2 ? l1 : l2 ), lit2( l1 < l2 ? l2 : l1 )
+    {}
+
+    fanin_pair( uint32_t l1, uint32_t l2, bool is_xor )
+        : lit1( l1 > l2 ? l1 : l2 ), lit2( l1 > l2 ? l2 : l1 )
+    {
+      (void)is_xor;
+    }
+
+    bool operator==( fanin_pair const& other ) const
+    {
+      return lit1 == other.lit1 && lit2 == other.lit2;
+    }
+
+    uint32_t lit1, lit2;
+    uint32_t score{ 0 };
+  };
+
+
+  struct xmg_gate_t
+  {
+    gate_t type;
+    uint32_t nInputs;
+
+    small_truth_table_t (*pF)( small_truth_table_t const&, small_truth_table_t const&, small_truth_table_t const& );
+    uint32_t (*pG)( index_list_t&, uint32_t, uint32_t, uint32_t );
+
+    xmg_gate_t( gate_t type, uint32_t nInputs, small_truth_table_t (*pF)( small_truth_table_t const&, small_truth_table_t const&, small_truth_table_t const& ), uint32_t (*pG)( index_list_t&, uint32_t, uint32_t, uint32_t ) ) : type(type), nInputs(nInputs), pF(pF), pG(pG){}
+    xmg_gate_t(){}
+
+    small_truth_table_t compute( small_truth_table_t const& a, small_truth_table_t const& b, small_truth_table_t const& c ){ return pF( a, b, c ); };
+    small_truth_table_t compute( small_truth_table_t const& a ){ return pF( a, a, a ); };
+
+    uint32_t add_to_list( index_list_t& list, uint32_t lit1, uint32_t lit2, uint32_t lit3 ){ return pG( list, lit1, lit2, lit3 ); };
+    uint32_t add_to_list( index_list_t& list, uint32_t lit1 ){ return pG( list, lit1, lit1, lit1 ); };
+  };
+
+
+  struct xmg_library_t
+  {
+    xmg_library_t(){
+      gates1[0] = xmg_gate_t{ BUF_, 1, &hpcompute_buf3<small_truth_table_t>, &add_buf3_to_index_list_<index_list_t> }; 
+      gates3[0] = xmg_gate_t{ M111, 3, &hpcompute_m111<small_truth_table_t>, &add_m111_to_index_list_<index_list_t> }; 
+      gates3[1] = xmg_gate_t{ M011, 3, &hpcompute_m011<small_truth_table_t>, &add_m011_to_index_list_<index_list_t> }; 
+      gates3[2] = xmg_gate_t{ M101, 3, &hpcompute_m101<small_truth_table_t>, &add_m101_to_index_list_<index_list_t> }; 
+      gates3[3] = xmg_gate_t{ M110, 3, &hpcompute_m110<small_truth_table_t>, &add_m110_to_index_list_<index_list_t> }; 
+      gates3[4] = xmg_gate_t{ XOR3, 3, &hpcompute_xor3<small_truth_table_t>, &add_xor3_to_index_list_<index_list_t> }; 
+    }
+
+    std::array<xmg_gate_t, 1u> gates1;
+    std::array<xmg_gate_t, 5u> gates3;
+  };
+
+  template<class LTT>
+  struct xmg_candidate_t
+  {
+    xmg_gate_t gate;
+    double cost;
+    gate_t type;
+
+    divisor_t<LTT> const& a;
+    divisor_t<LTT> const& b;
+    divisor_t<LTT> const& c;
+    uint32_t id;
+
+    xmg_candidate_t(){}
+    xmg_candidate_t( uint32_t id, xmg_gate_t gate, double cost, divisor_t<LTT> const& a, divisor_t<LTT> const& b, divisor_t<LTT> const& c ) : id(id), gate(gate), type(gate.type), cost(cost), a(a), b(b), c(c){}
+    xmg_candidate_t( uint32_t id, xmg_gate_t gate, double cost, divisor_t<LTT> const& a, divisor_t<LTT> const& b ) : id(id), gate(gate), type(gate.type), cost(cost), a(a), b(b), c(b){}
+    xmg_candidate_t( uint32_t id, xmg_gate_t gate, double cost, divisor_t<LTT> const& a ) : id(id), gate(gate), type(gate.type), cost(cost), a(a), b(a), c(a){}
+
+    uint32_t add_to_list( index_list_t& list, uint32_t lit1, uint32_t lit2, uint32_t lit3 ){ return gate.add_to_list(list, lit1, lit2, lit3);};
+    uint32_t add_to_list( index_list_t& list ){ return gate.add_to_list(list, a.lit, b.lit, c.lit);};
+    LTT compute( LTT const& tta, LTT const& ttb, LTT const& ttc ){ return gate.compute(tta, ttb, ttc);};
+    LTT compute(){ return gate.compute(a.func, b.func, c.func);};
+
+    double update_cost( double const& costPrevious, double const& minCost, double const& maxCost, bool isNew )
+    {
+      if( isNew )
+      {
+        cost = costPrevious + exp(-static_params::beta_synthesis*(cost-minCost)/(maxCost-minCost));
+      }
+      else
+      {
+        cost = costPrevious;
+      }
+      return cost;
+    }
+
+  };
+
+
+private:
+
+
+public:
+  explicit xmg_resyn( stats& st ) noexcept
+      : st( st )
+  {
+    static_assert( std::is_same_v<typename static_params::base_type, xmg_resyn_static_params>, "Invalid static_params type" );
+    static_assert( !( static_params::uniform_div_cost && static_params::preserve_depth ), "If depth is to be preserved, divisor depth cost must be provided (usually not uniform)" );
+    divisors.reserve( static_params::reserve );
+    
+    for( uint32_t i{0}; i<static_params::max_support_size; ++i )
+      kitty::create_nth_var(_xs[i], i );
+
+    //db = _database.get_database();
+  }
+
+  /*! \brief Perform XAG resynthesis.
+   *
+   * `tts[*begin]` must be of type `TT`.
+   * Moreover, if `static_params::copy_tts = false`, `*begin` must be of type `static_params::node_type`.
+   *
+   * \param target Truth table of the target function.
+   * \param care Truth table of the care set.
+   * \param begin Begin iterator to divisor nodes.
+   * \param end End iterator to divisor nodes.
+   * \param tts A data structure (e.g. std::vector<TT>) that stores the truth tables of the divisor functions.
+   * \param max_size Maximum number of nodes allowed in the dependency circuit.
+   */
+  template<class iterator_type,
+           bool enabled = static_params::uniform_div_cost && !static_params::preserve_depth, typename = std::enable_if_t<enabled>>
+  std::optional<index_list_t> operator()( TT const& target, TT const& care, iterator_type begin, iterator_type end, typename static_params::truth_table_storage_type const& tts, uint32_t max_size = std::numeric_limits<uint32_t>::max() )
+  {
+    static_assert( static_params::copy_tts || std::is_same_v<typename std::iterator_traits<iterator_type>::value_type, typename static_params::node_type>, "iterator_type does not dereference to static_params::node_type" );
+
+    ptts = &tts;
+    on_off_sets[0] = ~target & care;
+    on_off_sets[1] = target & care;
+
+    _gSPFD.init( care, target );
+
+    divisors.resize( 1 ); /* clear previous data and reserve 1 dummy node for constant */
+    
+    while ( begin != end )
+    {
+      if constexpr ( static_params::copy_tts )
+      {
+        divisors.emplace_back( ( *ptts )[*begin] );
+      }
+      else
+      {
+        divisors.emplace_back( *begin );
+      }
+      ++begin;
+    }
+
+    return compute_function( max_size );
+  }
+
+  template<class iterator_type, class Fn,
+           bool enabled = !static_params::uniform_div_cost && !static_params::preserve_depth, typename = std::enable_if_t<enabled>>
+  std::optional<index_list_t> operator()( TT const& target, TT const& care, iterator_type begin, iterator_type end, typename static_params::truth_table_storage_type const& tts, Fn&& size_cost, uint32_t max_size = std::numeric_limits<uint32_t>::max() )
+  {}
+
+  template<class iterator_type, class Fn,
+           bool enabled = !static_params::uniform_div_cost && static_params::preserve_depth, typename = std::enable_if_t<enabled>>
+  std::optional<index_list_t> operator()( TT const& target, TT const& care, iterator_type begin, iterator_type end, typename static_params::truth_table_storage_type const& tts, Fn&& size_cost, Fn&& depth_cost, uint32_t max_size = std::numeric_limits<uint32_t>::max(), uint32_t max_depth = std::numeric_limits<uint32_t>::max() )
+  {}
+
+private:
+  std::optional<index_list_t> compute_function( uint32_t num_inserts )
+  {
+    index_list.clear();
+    index_list.add_inputs( divisors.size() - 1 );
+    auto const lit = compute_function_rec( num_inserts );
+    if ( lit )
+    {
+      assert( index_list.num_gates() <= num_inserts );
+      index_list.add_output( *lit );
+      return index_list;
+    }
+    return std::nullopt;
+  }
+
+  std::optional<uint32_t> compute_function_rec( uint32_t num_inserts )
+  {
+    pos_unate_lits.clear();
+    neg_unate_lits.clear();
+    binate_divs.clear();
+    pos_unate_pairs.clear();
+    neg_unate_pairs.clear();
+
+    /* try 0-resub and collect unate literals */
+    if( static_params::try_0resub )
+    {
+      auto const res0 = call_with_stopwatch( st.time_unate, [&]() {
+        return find_one_unate();
+      } );
+      if ( res0 )
+      {
+        return *res0;
+      }
+      if ( num_inserts <= 0u )
+      {
+        return std::nullopt;
+      }
+    }
+
+    /* SPFD-based synthesis */
+    auto const resi = call_with_stopwatch( st.time_boolean_matching, [&]() {
+      return find_spfd_resynthesis( num_inserts );
+    } );
+    if ( resi )
+    {
+      return *resi;
+    }
+
+
+    return std::nullopt;
+  }
+
+  /* Perform SPFD-based resynthesis ( iterative )
+     1. Sample a support
+     2. Perform resynthesis using the support divisors
+   */
+   std::optional<uint32_t> find_spfd_resynthesis( uint32_t num_inserts )
+   {
+      std::set<std::vector<uint32_t>> explored_supports;      
+      index_list_t index_list_copy = index_list;
+  
+      for( auto i{0u}; i < static_params::max_support_attempts; ++i )
+      {
+        RNG.seed(i);
+        auto supp = static_params::use_greedy_support_selection ? find_support_greedy() : find_support();
+                
+        if( supp && ( explored_supports.find(*supp)==explored_supports.end() ) )
+        { 
+          auto const res = spfd_resynthesis( *supp, num_inserts );
+          if( res )
+          {
+            return *res;
+          }
+          explored_supports.insert( *supp );
+        }
+        index_list = index_list_copy;
+      }
+      return std::nullopt;
+   }
+
+   std::optional<uint32_t> spfd_resynthesis( std::vector<uint32_t> const& supp, uint32_t& max_num_gates )
+   {
+      extract_local_functionality( this, _lSPFD, _gSPFD, supp );
+
+      //printf(" %d ", supp.size());
+      //kitty::print_binary(_lSPFD.onset);
+      //printf(" f|c ");
+      //kitty::print_binary(_lSPFD.care);
+      //printf("\n");
+
+
+      index_list_t index_list_copy = index_list;
+
+      divisors_t<small_truth_table_t> divs;
+
+      for( uint32_t iIter{0}; iIter < static_params::max_resynthesis_attempts; ++iIter )
+      {
+        index_list = index_list_copy;
+        divs.clear();
+        
+        divs.emplace_back(_xs[0].construct(), 0);
+        for( uint32_t i{0}; i<supp.size(); ++i )
+          divs.emplace_back( _xs[i], supp[i] << 1u );
+
+        while( divs.size() > 2 && index_list.num_gates() <= max_num_gates )
+        {
+          auto newDivs = update_divisors( _lSPFD, divs, max_num_gates );
+          if( newDivs )
+          {
+            divs = *newDivs;
+          }
+          else  
+            break;
+        }
+        //printf("%d<=%d\n", index_list.num_gates(), max_num_gates);
+
+        if( divs.size() == 2 )
+        {
+          if( kitty::equal( divs[1].func & _lSPFD.care, _lSPFD.onset ) )
+          {
+            return divs[1].lit;
+          }
+          else if( kitty::equal( divs[1].func & _lSPFD.care, _lSPFD.offset ) )
+          {
+            return divs[1].lit ^ 0x1;
+          }
+          else
+          {
+            printf("[w]: One divisor not matching\n");
+          }
+        }
+      }
+      return std::nullopt;
+   }
+
+std::optional<std::vector<uint32_t>> find_support_greedy()
+{
+  _gSPFD.reset();
+  std::vector<uint32_t> supp;
+  std::vector<uint32_t> candidates;
+  double cost, minCost = std::numeric_limits<double>::max();
+
+  while( !_gSPFD.is_covered() && ( supp.size() < static_params::max_support_size ) ) 
+  {
+    for( auto v = 0u; v < divisors.size(); ++v )
+    {
+      cost = _gSPFD.evaluate( get_sign(v) );
+      if( cost < minCost ) 
+      {
+        minCost = cost;
+        candidates = {v};
+      }
+      else if( cost == minCost )
+      {
+        candidates.push_back( v );
+      }
+    }
+
+    std::uniform_int_distribution<> distrib(0, candidates.size()-1);
+    double rnd = distrib(RNG);
+    supp.push_back( candidates[rnd] );
+    _gSPFD.update( get_sign(candidates[rnd]) );
+  }
+
+  if( _gSPFD.is_covered() )
+  {
+    std::sort(supp.begin(), supp.end());
+    return supp;
+  }
+  return std::nullopt;
+}
+
+std::optional<std::vector<uint32_t>> find_support()
+{
+  _gSPFD.reset();
+  std::vector<uint32_t> supp;
+
+  double cost;
+  double minCost = std::numeric_limits<double>::max();
+  double maxCost = std::numeric_limits<double>::min();
+  std::vector<double> costs;
+
+  while( !_gSPFD.is_covered() && ( supp.size() < static_params::max_support_size ) ) 
+  {
+    costs.clear();
+    for( auto v = 0u; v < divisors.size(); ++v )
+    {
+      cost = _gSPFD.evaluate( get_sign(v) );
+      costs.push_back( cost );
+      if( cost < minCost ) minCost = cost;
+      if( cost > maxCost ) maxCost = cost;
+    }
+
+    for( uint32_t i{0}; i<costs.size(); ++i )
+      costs[i] = exp(-static_params::beta_support*(costs[i]-minCost)/(maxCost-minCost));
+    for( auto v : supp )
+      costs[v]=0;
+    for( uint32_t i{1}; i<costs.size(); ++i )
+    {
+      costs[i] += costs[i-1];
+    }
+    
+    std::uniform_real_distribution<> distrib(0, 1);
+    double rnd = distrib(RNG);
+
+    for( uint32_t i{0}; i<costs.size(); ++i )
+    {
+      if( std::isnan( costs[i] ) )
+      {
+        printf("[w]: NAN\n");
+        return std::nullopt;
+      }
+      if( rnd*costs.back() <= costs[i] )
+      {
+        supp.push_back(i);
+        _gSPFD.update( get_sign(i) );
+        break;
+      }
+    }
+  }
+
+  if( _gSPFD.is_covered() )
+  {
+    std::sort(supp.begin(), supp.end());
+    return supp;
+  }
+  return std::nullopt;
+}
+//
+template<class DIVS, class SPFDA, class SPFDB>
+void extract_local_functionality( DIVS * pDivs, SPFDB & managerB, SPFDA const& managerA, std::vector<uint32_t> const& supp )
+{
+  auto func = managerB.onset.construct();
+  auto care = managerB.care.construct();
+  auto jolly = managerA.onset.construct();
+
+  for( uint32_t m{0}; m < (1u << func.num_vars()); ++m )
+  {
+    if( m < ( 1u << supp.size() ) )
+    {
+      jolly = jolly | ~jolly;
+      for( uint32_t v{0}; v < supp.size(); ++v )
+      {
+        if( ( m >> v ) & 1u == 1u )
+          jolly &= pDivs->get_sign(supp[v]);
+        else
+          jolly &= ~pDivs->get_sign(supp[v]);
+      }
+      
+      if( kitty::count_ones( jolly & managerA.care ) > 0 )
+      {
+        kitty::set_bit( care, m );
+        if( kitty::count_ones( jolly & managerA.onset & managerA.care ) > 0 )
+        {
+          kitty::set_bit( func, m );
+        }
+        else
+        {
+          kitty::clear_bit( func, m );
+        }
+      }
+      else
+      {
+        kitty::clear_bit( care, m );
+      }
+    }
+    else
+      break;
+  }
+
+  managerB.init( care, func );
+}
+
+
+template<class LTT, class SPFD>
+std::optional<divisors_t<LTT>> update_divisors( SPFD& manager, divisors_t<LTT> & divs, uint32_t max_num_gates )
+{
+  manager.reset();
+  uint32_t nBuffers{0};
+  divisors_t<LTT> res;
+  res.emplace_back( divs[0].func, 0 );
+
+  double cost;
+  double minCost = std::numeric_limits<uint32_t>::max();
+  double maxCost = std::numeric_limits<uint32_t>::min();
+
+  std::vector<xmg_candidate_t<LTT>> candidates;
+
+  std::set<uint32_t> USED;
+  uint32_t idx{0};
+
+  while( !manager.is_covered() && res.size() < static_params::max_num_spfds+1 )
+  {
+    for( auto v1 = 0; v1 < divs.size(); ++v1 )
+    {
+      for( auto gate : _lib.gates1 )
+      {
+        if( v1 == 0 ) continue;
+        if( nBuffers >= divs.size()-1 )  continue;
+
+        cost = manager.evaluate( gate.compute( divs.get_sign(v1) ) );
+        candidates.emplace_back( idx++, gate, cost, divs[v1] );
+        if( cost < minCost ) minCost = cost;
+        if( cost > maxCost ) maxCost = cost;
+      }
+
+      for( auto v2 = v1+1; v2 < divs.size(); ++v2 )
+      {
+        for( auto v3 = v2+1; v3 < divs.size(); ++v3 )
+        {
+          for( auto gate : _lib.gates3 )
+          {
+            cost = manager.evaluate( gate.compute( divs.get_sign(v1), divs.get_sign(v2), divs.get_sign(v3) ) );
+            candidates.emplace_back( idx++, gate, cost, divs[v1], divs[v2], divs[v3] );
+            if( cost < minCost ) minCost = cost;
+            if( cost > maxCost ) maxCost = cost;
+          }
+        }
+      }
+    }
+
+    double costPrevious{0};
+    for( auto & cand : candidates )
+    {
+      costPrevious = cand.update_cost( costPrevious, minCost, maxCost, USED.find(cand.id) == USED.end() );
+    }
+
+    double sum = candidates[idx-1].cost;
+    std::uniform_real_distribution<> distrib(0, 1);
+    double rnd = distrib(RNG);
+    bool isUpd{false};
+
+    for( auto & cand : candidates )
+    {
+      if( rnd <= cand.cost/sum )
+      {
+        USED.insert(cand.id);
+        if( cand.type == BUF_ )  nBuffers++;
+
+        LTT tt = cand.compute();
+        res.emplace_back( tt, cand.add_to_list( index_list ) );
+        manager.update( tt );  
+        isUpd=true;
+        break;
+      }
+    }
+    if( !isUpd || index_list.num_gates() > max_num_gates )//+1 )//NEW
+      return std::nullopt;
+  }
+
+  if( manager.is_covered() )
+    return res;
+  return std::nullopt;
+
+}
+//
+  /* See if there is a constant or divisor covering all on-set bits or all off-set bits.
+     1. Check constant-resub
+     2. Collect unate literals
+     3. Find 0-resub (both positive unate and negative unate) and collect binate (neither pos nor neg unate) divisors
+   */
+  std::optional<uint32_t> find_one_unate()
+  {
+    num_bits[0] = kitty::count_ones( on_off_sets[0] ); /* off-set */
+    num_bits[1] = kitty::count_ones( on_off_sets[1] ); /* on-set */
+    if ( num_bits[0] == 0 )
+    {
+      return 1;
+    }
+    if ( num_bits[1] == 0 )
+    {
+      return 0;
+    }
+
+    for ( auto v = 1u; v < divisors.size(); ++v )
+    {
+      bool unateness[4] = { false, false, false, false };
+      /* check intersection with off-set */
+      if ( kitty::intersection_is_empty<TT, 1, 1>( get_sign( v ), on_off_sets[0] ) )
+      {
+        pos_unate_lits.emplace_back( v << 1 );
+        unateness[0] = true;
+      }
+      else if ( kitty::intersection_is_empty<TT, 0, 1>( get_sign( v ), on_off_sets[0] ) )
+      {
+        pos_unate_lits.emplace_back( v << 1 | 0x1 );
+        unateness[1] = true;
+      }
+
+      /* check intersection with on-set */
+      if ( kitty::intersection_is_empty<TT, 1, 1>( get_sign( v ), on_off_sets[1] ) )
+      {
+        neg_unate_lits.emplace_back( v << 1 );
+        unateness[2] = true;
+      }
+      else if ( kitty::intersection_is_empty<TT, 0, 1>( get_sign( v ), on_off_sets[1] ) )
+      {
+        neg_unate_lits.emplace_back( v << 1 | 0x1 );
+        unateness[3] = true;
+      }
+
+      /* 0-resub */
+      if ( unateness[0] && unateness[3] )
+      {
+        return ( v << 1 );
+      }
+      if ( unateness[1] && unateness[2] )
+      {
+        return ( v << 1 ) + 1;
+      }
+      /* useless unate literal */
+      if ( ( unateness[0] && unateness[2] ) || ( unateness[1] && unateness[3] ) )
+      {
+        pos_unate_lits.pop_back();
+        neg_unate_lits.pop_back();
+      }
+      /* binate divisor */
+      else if ( !unateness[0] && !unateness[1] && !unateness[2] && !unateness[3] )
+      {
+        binate_divs.emplace_back( v );
+      }
+    }
+
+    return std::nullopt;
+  }
+
+  /* Sort the unate literals by the number of minterms in the intersection.
+     - For `pos_unate_lits`, `on_off` = 1, sort by intersection with on-set;
+     - For `neg_unate_lits`, `on_off` = 0, sort by intersection with off-set
+   */
+  void sort_unate_lits( std::vector<unate_lit>& unate_lits, uint32_t on_off )
+  {
+    for ( auto& l : unate_lits )
+    {
+      l.score = kitty::count_ones( ( l.lit & 0x1 ? ~get_sign( l.lit >> 1 ) : get_sign( l.lit >> 1 ) ) & on_off_sets[on_off] );
+    }
+    std::sort( unate_lits.begin(), unate_lits.end(), [&]( unate_lit const& l1, unate_lit const& l2 ) {
+      return l1.score > l2.score; // descending order
+    } );
+  }
+
+  void sort_unate_pairs( std::vector<fanin_pair>& unate_pairs, uint32_t on_off )
+  {
+    for ( auto& p : unate_pairs )
+    {
+      if constexpr ( static_params::use_xor )
+      {
+        p.score = ( p.lit1 > p.lit2 ) ? kitty::count_ones( ( ( p.lit1 & 0x1 ? ~get_sign( p.lit1 >> 1 ) : get_sign( p.lit1 >> 1 ) ) ^ ( p.lit2 & 0x1 ? ~get_sign( p.lit2 >> 1 ) : get_sign( p.lit2 >> 1 ) ) ) & on_off_sets[on_off] )
+                                      : kitty::count_ones( ( p.lit1 & 0x1 ? ~get_sign( p.lit1 >> 1 ) : get_sign( p.lit1 >> 1 ) ) & ( p.lit2 & 0x1 ? ~get_sign( p.lit2 >> 1 ) : get_sign( p.lit2 >> 1 ) ) & on_off_sets[on_off] );
+      }
+      else
+      {
+        p.score = kitty::count_ones( ( p.lit1 & 0x1 ? ~get_sign( p.lit1 >> 1 ) : get_sign( p.lit1 >> 1 ) ) & ( p.lit2 & 0x1 ? ~get_sign( p.lit2 >> 1 ) : get_sign( p.lit2 >> 1 ) ) & on_off_sets[on_off] );
+      }
+    }
+    std::sort( unate_pairs.begin(), unate_pairs.end(), [&]( fanin_pair const& p1, fanin_pair const& p2 ) {
+      return p1.score > p2.score; // descending order
+    } );
+  }
+
+  /* See if there are two unate divisors covering all on-set bits or all off-set bits.
+     - For `pos_unate_lits`, `on_off` = 1, try covering all on-set bits by combining two with an OR gate;
+     - For `neg_unate_lits`, `on_off` = 0, try covering all off-set bits by combining two with an AND gate
+   */
+
+  /* collect AND-type pairs (d1 & d2) & off = 0 or ~(d1 & d2) & on = 0, selecting d1, d2 from binate_divs */
+  void collect_unate_pairs()
+  {
+    for ( auto i = 0u; i < binate_divs.size(); ++i )
+    {
+      for ( auto j = i + 1; j < binate_divs.size(); ++j )
+      {
+        collect_unate_pairs_detail<1, 1>( binate_divs[i], binate_divs[j] );
+        collect_unate_pairs_detail<0, 1>( binate_divs[i], binate_divs[j] );
+        collect_unate_pairs_detail<1, 0>( binate_divs[i], binate_divs[j] );
+        collect_unate_pairs_detail<0, 0>( binate_divs[i], binate_divs[j] );
+      }
+    }
+  }
+
+  template<bool pol1, bool pol2>
+  void collect_unate_pairs_detail( uint32_t div1, uint32_t div2 )
+  {
+    /* check intersection with off-set; additionally check intersection with on-set is not empty (otherwise it's useless) */
+    if ( kitty::intersection_is_empty<TT, pol1, pol2>( get_sign( div1 ), get_sign( div2 ), on_off_sets[0] ) && !kitty::intersection_is_empty<TT, pol1, pol2>( get_sign( div1 ), get_sign( div2 ), on_off_sets[1] ) )
+    {
+      pos_unate_pairs.emplace_back( ( div1 << 1 ) + (uint32_t)( !pol1 ), ( div2 << 1 ) + (uint32_t)( !pol2 ) );
+    }
+    /* check intersection with on-set; additionally check intersection with off-set is not empty (otherwise it's useless) */
+    else if ( kitty::intersection_is_empty<TT, pol1, pol2>( get_sign( div1 ), get_sign( div2 ), on_off_sets[1] ) && !kitty::intersection_is_empty<TT, pol1, pol2>( get_sign( div1 ), get_sign( div2 ), on_off_sets[0] ) )
+    {
+      neg_unate_pairs.emplace_back( ( div1 << 1 ) + (uint32_t)( !pol1 ), ( div2 << 1 ) + (uint32_t)( !pol2 ) );
+    }
+  }
+
+public:
+
+  inline TT const& operator[](uint32_t idx ) const
+  {
+      return get_sign( idx );
+  }
+
+  inline TT const& get_sign( uint32_t idx ) const
+  {
+    if constexpr ( static_params::copy_tts )
+    {
+      return divisors[idx];
+    }
+    else
+    {
+      return ( *ptts )[divisors[idx]];
+    }
+  }
+
+  uint32_t num_divisors()
+  {
+    return divisors.size();
+  }
+
+  inline TT const& get_onset() const
+  {
+    return _gSPFD.onset;
+  }
+
+  inline TT const& get_care() const
+  {
+    return _gSPFD.care;
+  }
+
+public:
+  index_list_t index_list;
+
+private:
+  std::array<TT, 2> on_off_sets;
+  std::array<uint32_t, 2> num_bits; /* number of bits in on-set and off-set */
+  spfd_manager_t<truth_table_t, 1u << static_params::max_num_spfds> _gSPFD;
+  spfd_manager_t<small_truth_table_t, 1u << static_params::max_num_spfds> _lSPFD;
+  
+  std::array<small_truth_table_t, static_params::max_support_size> _xs;
+  xmg_library_t _lib{};
+
+
+  //xag_network db;
+
+  const typename static_params::truth_table_storage_type* ptts;
+  std::vector<std::conditional_t<static_params::copy_tts, TT, typename static_params::node_type>> divisors;
+  divisors_t<TT> _divisors;
+
+
+  /* positive unate: not overlapping with off-set
+     negative unate: not overlapping with on-set */
+  std::vector<unate_lit> pos_unate_lits, neg_unate_lits;
+  std::vector<uint32_t> binate_divs;
+  std::vector<fanin_pair> pos_unate_pairs, neg_unate_pairs;
+
+  stats& st;
+
+};
+
+#pragma endregion XMG_resyn
+
 
 
 } /* namespace spfd */

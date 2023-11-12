@@ -134,13 +134,13 @@ int main()
   using namespace experiments;
   using namespace mockturtle;
 
-  static constexpr uint32_t K1 = 4u;
+  static constexpr uint32_t K1 = 5u;
   static constexpr uint32_t S1 = 10u;
   static constexpr uint32_t I1 = 10u;
 
-  static constexpr uint32_t K2 = 4u;
+  static constexpr uint32_t K2 = 8u;
   static constexpr uint32_t S2 = 10u;
-  static constexpr uint32_t I2 = 1u;
+  static constexpr uint32_t I2 = 100u;
 
   std::string e1 = "(" + std::to_string(K1) + "," + std::to_string(S1) + "," + std::to_string(I1) + ")";
   std::string e2 = "(" + std::to_string(K2) + "," + std::to_string(S2) + "," + std::to_string(I2) + ")";

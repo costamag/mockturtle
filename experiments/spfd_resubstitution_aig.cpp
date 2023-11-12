@@ -30,46 +30,154 @@
 #include <lorina/aiger.hpp>
 #include <mockturtle/algorithms/cleanup.hpp>
 #include <mockturtle/algorithms/sim_resub.hpp>
+#include <mockturtle/algorithms/aig_resub.hpp>
 #include <mockturtle/io/aiger_reader.hpp>
 #include <mockturtle/networks/aig.hpp>
+#include <mockturtle/views/fanout_view.hpp>
+#include <mockturtle/views/depth_view.hpp>
+#include <ctime>
 
 #include <experiments.hpp>
+
+struct experiments_stats_t
+{
+  uint32_t num_gates{0};
+  double time{0};
+  double gain{0};
+  bool cec{false};
+};
+
+template<uint32_t K, uint32_t S, uint32_t I, class Ntk> void spfd_resub( std::string const& benchmark, Ntk& ntk, experiments_stats_t& stats )
+{
+  using namespace mockturtle;
+  using namespace experiments;
+
+  double size0 = ntk.num_gates();
+
+  resubstitution_params ps;
+  resubstitution_stats st;
+
+  ps.max_inserts = 20;
+  ps.max_pis = 8;
+  ps.progress = true;
+  ps.max_divisors = std::numeric_limits<uint32_t>::max();
+
+  std::clock_t start = std::clock();
+
+  spfd_resubstitution<K,S,I>( ntk, ps, &st );
+  ntk = cleanup_dangling( ntk );
+
+  stats.num_gates = ntk.num_gates();
+  stats.time = ( std::clock() - start ) / (double) CLOCKS_PER_SEC;
+  stats.gain = 100*( (double)ntk.num_gates()-size0 )/size0;
+  stats.cec = benchmark == "hyp" ? true : abc_cec( ntk, benchmark );
+}
+
+template<class Ntk>
+void sim_resub( std::string const& benchmark, Ntk& ntk, experiments_stats_t & stats )
+{
+  using namespace mockturtle;
+  using namespace experiments;
+
+    using view_t = depth_view<fanout_view<Ntk>>;
+
+
+  resubstitution_params ps;
+  resubstitution_stats st;
+
+  ps.max_inserts = 20;
+  ps.max_pis = 8;
+  ps.progress = true;
+  ps.max_divisors = std::numeric_limits<uint32_t>::max();
+
+  uint32_t size_old = ntk.num_gates();
+  uint32_t size_new;
+
+  std::clock_t start = std::clock();
+
+
+  sim_resubstitution( ntk, ps, &st );
+  ntk = cleanup_dangling( ntk );
+  size_new = ntk.num_gates();
+
+  stats.num_gates = ntk.num_gates();
+  stats.time = ( std::clock() - start ) / (double) CLOCKS_PER_SEC;
+  stats.gain = 100*(((double)size_new)/((double)size_old) - 1);
+  stats.cec = benchmark == "hyp" ? true : abc_cec( ntk, benchmark );
+}
+
 
 int main()
 {
   using namespace experiments;
   using namespace mockturtle;
 
-  experiment<std::string, uint32_t, uint32_t, float, bool> exp( "spfd_resubstitution_aig", "benchmark", "size", "gain", "runtime", "equivalent" );
+  static constexpr uint32_t K1 = 6u;
+  static constexpr uint32_t S1 = 1u;
+  static constexpr uint32_t I1 = 1u;
 
-  for ( auto const& benchmark : iscas_benchmarks() )
+  static constexpr uint32_t K2 = 4u;
+  static constexpr uint32_t S2 = 1u;
+  static constexpr uint32_t I2 = 1u;
+
+  std::string e1 = "(SOA)";
+  std::string e2 = "(" + std::to_string(K2) + "," + std::to_string(S2) + "," + std::to_string(I2) + ")";
+
+  experiment<std::string, uint32_t, uint32_t, float, uint32_t, double, float, uint32_t, double, float, bool, bool> exp( "spfd_resubstitution_aig_infinite_ISCAS", "benchmark", "size", "size(SOA)", "time(SOA)", "i-size"+e1, "gain"+e1, "time"+e1, "size"+e2, "gain"+e2, "time"+e2, "cec(SOA)", "cec"+e2 );
+
+  double gain1{0};
+  double gain2{0};
+  uint32_t cnt{0};
+
+  for ( auto const& benchmark : resub_benchmarks( iscas ) )
   {
     fmt::print( "[i] processing {}\n", benchmark );
-    aig_network aig;
-    if ( lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( aig ) ) != lorina::return_code::success )
+
+    /* low effort K=4 S=1 I=1 */
+
+    aig_network aig1;
+
+    if ( lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( aig1 ) ) != lorina::return_code::success )
     {
       continue;
     }
 
-    resubstitution_params ps;
-    resubstitution_stats st;
+    auto size0 = aig1.num_gates();
 
-    // ps.pattern_filename = "1024sa1/" + benchmark + ".pat";
-    ps.max_inserts = 20;
-    ps.max_pis = 8;
-    ps.max_divisors = std::numeric_limits<uint32_t>::max();
+    experiments_stats_t stU;
+    sim_resub( benchmark, aig1, stU );
 
-    const uint32_t size_before = aig.num_gates();
-    spfd_resubstitution( aig, ps, &st );
-    aig = cleanup_dangling( aig );
+    experiments_stats_t st1;
 
-    const auto cec = benchmark == "hyp" ? true : abc_cec( aig, benchmark );
 
-    exp( benchmark, size_before, size_before - aig.num_gates(), to_seconds( st.time_total ), cec );
+    aig_network aig2;
+    
+    if ( lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( aig2 ) ) != lorina::return_code::success )
+    {
+      continue;
+    }
+
+    experiments_stats_t st2;
+
+    spfd_resub<K2,S2,I2>( benchmark, aig2, st2 );
+
+  printf("[SOA]=%f [%d,%d,%d]=%f\n", stU.gain, K2, S2, I2, st2.gain );
+
+
+    exp( benchmark, size0, stU.num_gates, stU.time, stU.num_gates, stU.gain, stU.time, st2.num_gates, st2.gain, st2.time, stU.cec, st2.cec );
+
+    gain1 += stU.gain;
+    gain2 += st2.gain;
+    cnt++;
   }
 
   exp.save();
   exp.table();
 
+  printf("[SOA]=%f [%d,%d,%d]=%f\n", gain1/cnt, K2, S2, I2, gain2/cnt );
+
+
   return 0;
 }
+
+

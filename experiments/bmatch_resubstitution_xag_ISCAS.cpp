@@ -30,9 +30,7 @@
 #include <lorina/aiger.hpp>
 #include <mockturtle/algorithms/cleanup.hpp>
 #include <mockturtle/algorithms/sim_resub.hpp>
-#include <mockturtle/algorithms/aig_resub.hpp>
 #include <mockturtle/io/aiger_reader.hpp>
-#include <mockturtle/networks/aig.hpp>
 #include <mockturtle/networks/xag.hpp>
 #include <mockturtle/views/fanout_view.hpp>
 #include <mockturtle/views/depth_view.hpp>
@@ -48,7 +46,7 @@ struct experiments_stats_t
   bool cec{false};
 };
 
-template<uint32_t K, uint32_t S, uint32_t I, class Ntk> void spfd_resub( std::string const& benchmark, Ntk& ntk, experiments_stats_t& stats )
+template<uint32_t K, uint32_t S, uint32_t I, class Ntk> void bmatch_resub( std::string const& benchmark, Ntk& ntk, experiments_stats_t& stats )
 {
   using namespace mockturtle;
   using namespace experiments;
@@ -65,7 +63,7 @@ template<uint32_t K, uint32_t S, uint32_t I, class Ntk> void spfd_resub( std::st
 
   std::clock_t start = std::clock();
 
-  spfd_resubstitution<K,S,I>( ntk, ps, &st );
+  bmatch_resubstitution<K,S,I>( ntk, ps, &st );
   ntk = cleanup_dangling( ntk );
 
   stats.num_gates = ntk.num_gates();
@@ -75,7 +73,7 @@ template<uint32_t K, uint32_t S, uint32_t I, class Ntk> void spfd_resub( std::st
 }
 
 template<class Ntk>
-void sim_resub( std::string const& benchmark, Ntk& ntk, experiments_stats_t & stats )
+void infinite_sim_resub( std::string const& benchmark, Ntk& ntk, experiments_stats_t & stats )
 {
   using namespace mockturtle;
   using namespace experiments;
@@ -96,11 +94,12 @@ void sim_resub( std::string const& benchmark, Ntk& ntk, experiments_stats_t & st
 
   std::clock_t start = std::clock();
 
-
-  sim_resubstitution( ntk, ps, &st );
-  ntk = cleanup_dangling( ntk );
-  size_new = ntk.num_gates();
-
+  //while( size_new < size_old )
+  {
+    sim_resubstitution( ntk, ps, &st );
+    ntk = cleanup_dangling( ntk );
+    size_new = ntk.num_gates();
+  }
   stats.num_gates = ntk.num_gates();
   stats.time = ( std::clock() - start ) / (double) CLOCKS_PER_SEC;
   stats.gain = 100*(((double)size_new)/((double)size_old) - 1);
@@ -119,18 +118,18 @@ int main()
 
   static constexpr uint32_t K2 = 7u;
   static constexpr uint32_t S2 = 10u;
-  static constexpr uint32_t I2 = 100u;
+  static constexpr uint32_t I2 = 1u;
 
   std::string e1 = "(SOA)";
   std::string e2 = "(" + std::to_string(K2) + "," + std::to_string(S2) + "," + std::to_string(I2) + ")";
 
-  experiment<std::string, uint32_t, uint32_t, float, uint32_t, double, float, uint32_t, double, float, bool, bool, bool> exp( "spfd_resubstitution_xag", "benchmark", "size", "size(u)", "time(u)", "i-size"+e1, "gain"+e1, "time"+e1, "size"+e2, "gain"+e2, "time"+e2, "cec(u)", "cec"+e1, "cec"+e2 );
+  experiment<std::string, uint32_t, uint32_t, float, uint32_t, double, float, uint32_t, double, float, bool, bool> exp( "bmatch_resubstitution_xag_infinite_ISCAS", "benchmark", "size", "size(u)", "time(u)", "i-size"+e1, "gain"+e1, "time"+e1, "size"+e2, "gain"+e2, "time"+e2, "cec(u)", "cec"+e2 );
 
   double gain1{0};
   double gain2{0};
   uint32_t cnt{0};
 
-  for ( auto const& benchmark : resub_benchmarks( iscas | epfl ) )
+  for ( auto const& benchmark : resub_benchmarks( iscas  ) )
   {
     fmt::print( "[i] processing {}\n", benchmark );
 
@@ -147,10 +146,14 @@ int main()
     auto size0 = xag1.num_gates();
 
     experiments_stats_t stU;
-    sim_resub( benchmark, xag1, stU );
+    infinite_sim_resub( benchmark, xag1, stU );
 
     experiments_stats_t st1;
 
+
+    //bmatch_resub<K1,S1,I1>( benchmark, xag1, st1 );
+    
+    /* high effort K=7 S=10 I=10 */
 
     xag_network xag2;
     
@@ -159,14 +162,14 @@ int main()
       continue;
     }
 
+    //infinite_sim_resub( benchmark, xag2, stU );
+
     experiments_stats_t st2;
 
-    spfd_resub<K2,S2,I2>( benchmark, xag2, st2 );
+    bmatch_resub<K2,S2,I2>( benchmark, xag2, st2 );
 
-  printf("[SOA]=%f [%d,%d,%d]=%f\n",  stU.gain, K2, S2, I2, st2.gain );
-
-
-    exp( benchmark, size0, stU.num_gates, stU.time, stU.num_gates, stU.gain, stU.time, st2.num_gates, st2.gain, st2.time, stU.cec, st1.cec, st2.cec );
+    exp( benchmark, size0, stU.num_gates, stU.time, stU.num_gates, stU.gain, stU.time, st2.num_gates, st2.gain, st2.time, stU.cec, st2.cec );
+    printf("[SOA]=%f [%d,%d,%d]=%f\n",  stU.gain, K2, S2, I2, st2.gain );
 
     gain1 += stU.gain;
     gain2 += st2.gain;
@@ -176,7 +179,7 @@ int main()
   exp.save();
   exp.table();
 
-  printf("[SOA]=%f [%d,%d,%d]=%f\n", gain1/cnt, K2, S2, I2, gain2/cnt );
+  printf("[SOA]=%f [%d,%d,%d]=%f\n",  gain1/cnt, K2, S2, I2, gain2/cnt );
 
 
   return 0;
