@@ -46,7 +46,7 @@ int main()
 
   experiment<std::string, uint32_t, uint32_t, uint32_t, float, float, bool, bool> exp( "spfd_aig", "benchmark", "size", "gates(SOA)", "gates(SPFD)", "time(SOA)", "time(SPFD)", "eq(SOA)", "eq(SPFD)" );
 
-  for ( auto const& benchmark : resub_benchmarks( ))//experiments::c499 ) )
+  for ( auto const& benchmark : resub_benchmarks( iscas | epfl ) )//experiments::c499
   {
     fmt::print( "[i] processing {}\n", benchmark );
 
@@ -89,15 +89,15 @@ int main()
     // ps.pattern_filename = "1024sa1/" + benchmark + ".pat";
     ps_spfd.max_inserts = 20;
     ps_spfd.max_pis = 8;
-    ps_spfd.max_trials = 100;
+    ps_spfd.max_trials = 2;
     ps_spfd.max_divisors = std::numeric_limits<uint32_t>::max();
 
     static constexpr uint32_t K = 4u;
-    static constexpr uint32_t S = 10u;
+    static constexpr uint32_t S = 20u;
     static constexpr uint32_t I = 1u;
     static constexpr bool use_bmatch = true;
-    static constexpr bool use_greedy = false;
-    static constexpr bool use_lsearch = false;
+    static constexpr bool use_greedy = true;
+    static constexpr bool use_lsearch = true;
 
     sim_resubstitution_spfd<K, S, I, use_bmatch, use_greedy, use_lsearch>( aig_spfd, ps_spfd, &st_spfd );
     aig_spfd = cleanup_dangling( aig_spfd );

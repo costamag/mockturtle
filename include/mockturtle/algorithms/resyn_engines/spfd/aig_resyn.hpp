@@ -61,6 +61,8 @@ namespace spfd
 namespace aig
 {
 
+bool VERBOSE{false};
+
 template<class TT>
 void print_tt_with_dcs( TT tt, TT mk )
 {
@@ -714,9 +716,13 @@ private:
 
       if( supp )
       {
-      //  for( auto s : *supp )
-      //    printf("%d ", s);
-      //  printf(" [%d] \n", max_num_gates );
+        if(VERBOSE)
+        {
+          for( auto s : *supp )
+            printf("%d ", s);
+          printf(" [%d] \n", max_num_gates );
+        }
+
         a = true;
 
         if( static_params::try_boolean_matching )
@@ -729,7 +735,6 @@ private:
           }
 
           auto [func4, care4] = extract_functionality4_from_signatures( *supp );
-          //print_tt_with_dcs( func4, care4 );
           const auto res =  find_boolean_matching( *supp, func4, care4, max_num_gates ); 
 
           
@@ -1073,78 +1078,72 @@ private:
 
   std::optional<uint32_t> find_boolean_matching( std::vector<uint32_t> const& supp, truth_table4_t const& func4, truth_table4_t const& care4, uint32_t max_num_gates )
   {
-    std::array<uint32_t, 4> lits4;
-    uint32_t sum{0};
-    for( auto i{0}; i<supp.size(); ++i )
+    if(VERBOSE)
     {
-      lits4[i] = supp[i] << 1u;
+      printf("TT(0):"); print_tt_with_dcs(func4, care4);
     }
-    auto i{supp.size()};
-    while( i < 4 )
-      lits4[i++] = 0;
-
-    std::array<uint32_t, 4> leaves = {0};
-    
-  //  printf("PRE :"); print_tt_with_dcs(func4, care4);
 
     auto [func_npn, neg, perm] = exact_npn_canonization( func4 );
-  //  for( auto iBit=0; iBit<4; iBit++ )
-  //  {
-  //    printf("[%d %d]", perm[iBit], neg >> iBit & 0x1 );
-  //  }
+    if(VERBOSE)
+    {
+      printf("neg  = ");
+      for( auto iBit=3; iBit>=0; iBit-- )
+        printf("%d", (neg >> iBit) & 0x1);
 
-  //  printf(":%d<-%d\n", neg >> 4 & 0x1, neg & 0xF0 );
-  //  printf(":%d\n", neg >> 4 & 0x1 );
-
-    auto const dc_npn = apply_npn_transformation( ~care4, neg & ~( 1 << 4u ), perm );
+      printf(" | perm  =");
+      for( auto iBit=0; iBit<4; iBit++ )
+        printf("%d ", perm[iBit]);
+      printf("\n");
+      
+      for( auto iBit=0; iBit<4; iBit++ )
+      {
+        if( neg >> iBit & 0x1 == 0x1 )
+          printf("%2d : ~X[%d] <= X[%d]  <<  X[%d] <= P[%d]\n", (supp[iBit] << 1) ^ 0x1, iBit, iBit, perm[iBit], iBit );
+        else
+          printf("%2d :  X[%d] <= X[%d]  <<  X[%d] <= P[%d]\n", (supp[iBit] << 1), iBit, iBit, perm[iBit], iBit );
+      }
+    }
     
-  //  printf("POST:"); print_tt_with_dcs(func_npn, ~dc_npn);
-    auto const structures = _database.get_supergates( func_npn, dc_npn, neg, perm );
-  //  for( auto iBit=0; iBit<4; iBit++ )
-  //    printf("[%d %d]", perm[iBit], neg >> iBit & 0x1 );
+    auto const care_npn = apply_npn_transformation( care4, neg & ~( 1 << 4u ), perm );
+    if(VERBOSE)
+    {
+      printf("npn(TT)"); print_tt_with_dcs(func_npn, care_npn);
+    }
 
+    auto const structures = _database.get_supergates( func_npn, ~care_npn, neg, perm );
     if( structures == nullptr )
     {
       return std::nullopt;
     }
-
-    std::array<uint8_t, 4> permutation = {0};
-    uint32_t negation = 0;
-    for ( auto j = 0u; j < 4; ++j )
+    if(VERBOSE)
     {
-      permutation[perm[j]] = j;
-      negation |= ( ( neg >> perm[j] ) & 1 ) << j;
-    }
+      printf("neg* = ");
+      for( auto iBit=3; iBit>=0; iBit-- )
+        printf("%d", (neg >> iBit) & 0x1);
 
+      printf(" | perm* =");
+      for( auto iBit=0; iBit<4; iBit++ )
+        printf("%d ", perm[iBit]);
+      printf("\n");
+    }
     bool phase = ( neg >> 4 == 1 ) ? true : false;
 
+    std::array<uint32_t, 4> lits {0};
+
+    for( auto i{0}; i<supp.size(); ++i )
     {
-      auto j = 0u;
-      for ( auto const lit : lits4 )
-      {
-        leaves[permutation[j++]] = lit;
-      }
-      while ( j < 4 )
-        leaves[permutation[j++]] = 0;
+      lits[i] = supp[i] << 1u;
+      if( ( neg >> i ) & 0x1 == 0x1 )
+        lits[i] ^= 0x1;
     }
 
-  //  printf("ready ");
-  // for( auto iBit=0; iBit<4; iBit++ )
-  //  {
-  //    printf("[%d %d]", permutation[iBit], negation >> iBit & 0x1 );
-  //  }
+    std::array<uint32_t, 4> leaves {0};
 
-    for ( auto j = 0u; j < 4; ++j )
+    for( auto i{0}; i<4; ++i )
     {
-      if ( ( negation >> j ) & 1 )
-      {
-        leaves[j] = leaves[j] ^ 0x1;
-      }
+      leaves[i] = lits[perm[i]];
     }
 
-
-  //  printf("\n");
-    
     auto & db = _database.get_database();
     db.incr_trav_id();
 
@@ -1156,8 +1155,10 @@ private:
 
     if( res )
     {
-    //  std::cout << to_index_list_string( index_list ) << std::endl; 
-    //  printf("-------------------------------> %d <= %d\n", index_list.num_gates(), max_num_gates );
+      if(VERBOSE)
+      {
+        printf(" || --> [%d <?= %d]\n", index_list.num_gates(), max_num_gates );
+      }
       if( index_list.num_gates() <= max_num_gates )
       {
         return phase ? *res ^ 0x1 : *res;//create_index
@@ -1196,7 +1197,6 @@ private:
       if( db.is_pi( g ) )
       {
         node_data[i] = db.is_complemented( f ) ? leaves[f.index-1] ^ 0x1 : leaves[f.index-1];
-      //  printf("leaf[%d] %d ", f.index-1, leaves[f.index-1]);
       }
       else if( db.is_and( g ) )
       {
@@ -1239,14 +1239,18 @@ private:
       if( auto search = existing_nodes.find( key0 ); search != existing_nodes.end() )
       {
         new_lit = search->second;
-      //  printf("%d=and(%d,%d)* ", new_lit, node_data[0], node_data[1]);
-
+        if(VERBOSE)
+        {
+          printf("%d=and(%d,%d)* ", new_lit, node_data[0], node_data[1]);
+        }
       }
       else
       {
         new_lit = index_list.add_and( node_data[0], node_data[1] );
-      //  printf("%d=and(%d,%d) ", new_lit, node_data[0], node_data[1]);
-        
+        if(VERBOSE)
+        {
+          printf("%d=and(%d,%d) ", new_lit, node_data[0], node_data[1]);
+        }
         existing_nodes[key0] = new_lit;
       }
       return new_lit;
@@ -1278,7 +1282,8 @@ private:
       }
       if( _divsK.spfd.is_covered() && _divsK.size() == 1 )
       {
-      //  printf("%d <= %d\n", index_list.num_gates(), max_num_gates );
+        //printf("%d <= %d\n", index_list.num_gates(), max_num_gates );
+
         if( kitty::equal( _divsK.get_div(0) & _divsK.spfd.care, _divsK.spfd.func[1] ) )
         {
           return _divsK[0].lit;

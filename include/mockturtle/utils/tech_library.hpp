@@ -1096,7 +1096,7 @@ struct exact_library_params
   /* classify in NP instead of NPN */
   bool np_classification{ false };
   /* Compute DC classes for matching with  don't cares */
-  bool compute_dc_classes{ false };
+  bool compute_dc_classes{ true };
   /* verbose */
   bool verbose{ false };
 };

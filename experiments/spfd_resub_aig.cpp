@@ -46,7 +46,7 @@ int main()
 
   experiment<std::string, uint32_t, uint32_t, uint32_t, float, float, bool, bool> exp( "spfd_aig", "benchmark", "size", "gates(SOA)", "gates(SPFD)", "time(SOA)", "time(SPFD)", "eq(SOA)", "eq(SPFD)" );
 
-  for ( auto const& benchmark : resub_benchmarks( ))//experiments::c499 ) )
+  for ( auto const& benchmark : resub_benchmarks( iscas | epfl ) )//experiments::c499
   {
     fmt::print( "[i] processing {}\n", benchmark );
 
@@ -89,11 +89,11 @@ int main()
     // ps.pattern_filename = "1024sa1/" + benchmark + ".pat";
     ps_spfd.max_inserts = 20;
     ps_spfd.max_pis = 8;
-    ps_spfd.max_trials = 100;
+    ps_spfd.max_trials = 2;
     ps_spfd.max_divisors = std::numeric_limits<uint32_t>::max();
 
     static constexpr uint32_t K = 8u;
-    static constexpr uint32_t S = 100u;
+    static constexpr uint32_t S = 10u;
     static constexpr uint32_t I = 10u;
     static constexpr bool use_bmatch = false;
     static constexpr bool use_greedy = false;

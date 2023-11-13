@@ -269,7 +269,7 @@ public:
         {
           if ( *valid )
           {
-            //printf("Y\n");
+            //printf("EQUIVALENT: RESYNTHESIS ACCEPTED\n");
             ++st.num_resub;
             signal out_sig;
             call_with_stopwatch( st.time_interface, [&]() {
@@ -285,7 +285,7 @@ public:
           }
           else
           {
-            //printf("N\n");
+            //printf("NOT EQUIVALENT: RESYNTHESIS REJECTED\n");
             found_cex();
             continue;
           }
