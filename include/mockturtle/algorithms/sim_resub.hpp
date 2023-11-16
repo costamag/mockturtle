@@ -63,6 +63,12 @@ namespace mockturtle
 namespace detail
 {
 
+//bool VERBOSE{true};
+//bool AN_FIRST{false};
+//bool AN_SECOND{false};
+//bool AN_SECOND2{false};
+//bool AN_SECOND3{true};
+
 template<typename ResynSt>
 struct sim_resub_stats
 {
@@ -156,6 +162,108 @@ struct sim_resub_stats
 template<class Ntk, typename validator_t = circuit_validator<Ntk, bill::solvers::bsat2, false, true, false>, class ResynEngine = xag_resyn_decompose<kitty::partial_truth_table, xag_resyn_static_params_for_sim_resub<Ntk>>, typename MffcRes = uint32_t>
 class simulation_based_resub_engine
 {
+
+  // start remove 1
+  template<class LTT, uint32_t CAP>
+  struct spfd_manager_t
+  {
+    spfd_manager_t(){}
+    
+    void init( LTT const& target, LTT const& careset )
+    {
+      care = careset;
+      func[1] =  target & careset;
+      func[0] = ~target & careset;
+      reset();
+    }
+
+    void reset()
+    {
+      masks[0] = care;
+      nMasks = 1;
+      nEdges = kitty::count_ones( func[1] ) * kitty::count_ones( func[0] );  
+      killed[0] = nEdges > 0 ? false : true;
+      nKills = nEdges > 0 ? 0 : 1;
+    }
+
+    bool update( LTT const& tt )
+    {
+      nEdges = 0;
+      for( uint32_t iMask{0}; iMask < nMasks; ++iMask )
+      {
+        if( killed[iMask] )
+        {
+          killed[nMasks+iMask] = true;
+          nKills++;
+        }
+        else
+        {
+          masks[nMasks+iMask] = masks[iMask] & tt;
+          masks[iMask] &= ~tt;
+
+          if( ( kitty::count_ones( masks[nMasks+iMask] & func[1] ) == 0 ) || ( kitty::count_ones( masks[nMasks+iMask] & func[0] ) == 0 ) )
+          {
+            killed[nMasks+iMask] = true;
+            nKills++;
+          }
+          else
+          {
+            killed[nMasks+iMask] = false;
+            nEdges += kitty::count_ones( func[1] & masks[nMasks+iMask] ) * kitty::count_ones( func[0] & masks[nMasks+iMask] );  
+          }
+
+          if( kitty::count_ones( masks[iMask] & func[1] ) == 0 || kitty::count_ones( masks[iMask] & func[0] ) == 0 )
+          {
+            killed[iMask] = true;
+            nKills++;
+          }
+          else
+          {
+            killed[iMask] = false;
+            nEdges += kitty::count_ones( func[1] & masks[iMask] ) * kitty::count_ones( func[0] & masks[iMask] );  
+          }
+        }
+      }
+      nMasks = nMasks * 2;
+      return true;
+    }
+
+    uint32_t evaluate( LTT const& tt )
+    {
+      uint32_t res=0;
+      for( auto iMask{0}; iMask<nMasks; ++iMask )
+      {
+        if( !killed[iMask] )
+        {
+          res+= kitty::count_ones( func[1] & masks[iMask] &  tt ) * kitty::count_ones( func[0] & masks[iMask] & tt );  
+          res+= kitty::count_ones( func[1] & masks[iMask] & ~tt ) * kitty::count_ones( func[0] & masks[iMask] & ~tt );  
+        }
+      }
+      return res;
+    } 
+
+    bool is_covered()
+    {
+      return nMasks <= nKills;
+    }
+
+    bool is_saturated()
+    {
+      return nMasks >= CAP;
+    }
+
+    std::array<LTT, CAP> masks;
+    std::array<bool, CAP> killed;
+    uint32_t nMasks;
+    uint32_t nKills;
+    uint32_t nEdges;
+    LTT care;
+    std::array<LTT, 2u> func;
+  };
+
+  // end remove 1
+
+
 public:
   static constexpr bool require_leaves_and_mffc = false;
   using stats = sim_resub_stats<typename ResynEngine::stats>;
@@ -242,6 +350,7 @@ public:
   {
     for ( auto j = 0u; j < ps.max_trials; ++j )
     {
+  
       check_tts( n );
       for ( auto const& d : divs )
       {
@@ -269,7 +378,6 @@ public:
         {
           if ( *valid )
           {
-            //printf("EQUIVALENT: RESYNTHESIS ACCEPTED\n");
             ++st.num_resub;
             signal out_sig;
             call_with_stopwatch( st.time_interface, [&]() {
@@ -285,7 +393,7 @@ public:
           }
           else
           {
-            //printf("NOT EQUIVALENT: RESYNTHESIS REJECTED\n");
+            //printf("REJECTED\n");
             found_cex();
             continue;
           }
@@ -330,6 +438,8 @@ public:
   }
 
 private:
+  spfd_manager_t<kitty::partial_truth_table, 10u> spfd_manager;
+
   Ntk& ntk;
   resubstitution_params const& ps;
   stats& st;
@@ -447,7 +557,7 @@ void sim_resubstitution_spfd( Ntk& ntk, resubstitution_params const& ps = {}, re
   }
   else if constexpr ( std::is_same_v<typename Ntk::base_type, xag_network> )
   {
-    using resyn_engine_t = spfd::xag_resyn<kitty::partial_truth_table, spfd::xag_resyn_static_params_for_sim_resub<resub_view_t, K, S, I, IS_BMATCH, IS_GREEDY, IS_LSEARCH>>;
+    using resyn_engine_t = spfd::xag::xag_resyn<kitty::partial_truth_table, spfd::xag::xag_resyn_static_params_for_sim_resub<resub_view_t, K, S, I, IS_BMATCH, IS_GREEDY, IS_LSEARCH>>;
 
     if ( ps.odc_levels != 0 )
     {

@@ -43,7 +43,11 @@ int main()
 
   experiment<std::string, uint32_t, uint32_t, uint32_t, float, float, bool, bool> exp( "spfd_aig", "benchmark", "size", "gates(SOA)", "gates(SPFD)", "time(SOA)", "time(SPFD)", "eq(SOA)", "eq(SPFD)" );
 
-  for ( auto const& benchmark : resub_benchmarks( iscas ) )
+  double cnt=0;
+  double gain_soa{0};
+  double gain_spfd{0};
+
+  for ( auto const& benchmark : resub_benchmarks( ))//experiments::c880 ) )
   {
     fmt::print( "[i] processing {}\n", benchmark );
 
@@ -60,6 +64,8 @@ int main()
 
     // ps.pattern_filename = "1024sa1/" + benchmark + ".pat";
     ps_soa.max_inserts = 20;
+    ps_soa.max_pis = 10;
+    //ps_soa.max_divisors = std::numeric_limits<uint32_t>::max();
 
     const uint32_t size_before = mig_soa.num_gates();
 
@@ -88,15 +94,15 @@ int main()
 
     // ps.pattern_filename = "1024sa1/" + benchmark + ".pat";
     ps_spfd.max_inserts = 20;
-    ps_spfd.max_pis = 8;
+    ps_spfd.max_pis = 10;
     ps_spfd.max_divisors = std::numeric_limits<uint32_t>::max();
 
     static constexpr uint32_t K = 4u;
-    static constexpr uint32_t S = 10u;
+    static constexpr uint32_t S = 1u;
     static constexpr uint32_t I = 100u;
     static constexpr bool use_bmatch = false;
-    static constexpr bool use_greedy = false;
-    static constexpr bool use_lsearch = false;
+    static constexpr bool use_greedy = true;
+    static constexpr bool use_lsearch = true;
 
     sim_resubstitution_spfd<K, S, I, use_bmatch, use_greedy, use_lsearch>( mig_spfd, ps_spfd, &st_spfd );
     mig_spfd = cleanup_dangling( mig_spfd );
@@ -106,8 +112,15 @@ int main()
     #pragma endregion SPFD
     printf( "gates(SOA)=%d gates(SPFD)=%d\n", mig_soa.num_gates(), mig_spfd.num_gates() );
 
+    gain_soa += 100*( (double)(size_before - mig_soa.num_gates()) )/((double)size_before);
+    gain_spfd += 100*( (double)(size_before - mig_spfd.num_gates()) )/((double)size_before);
+
     exp( benchmark, size_before, mig_soa.num_gates(), mig_spfd.num_gates(), to_seconds( st_soa.time_total ), to_seconds( st_spfd.time_total ), cec_soa, cec_spfd );
+  
+    cnt+=1;
   }
+
+  printf("<gain(SOA)>=%.2f <gain(SPFD)>=%.2f\n", gain_soa/cnt, gain_spfd/cnt );
 
   exp.save();
   exp.table();

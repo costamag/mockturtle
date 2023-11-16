@@ -37,7 +37,7 @@
 #include "../../../utils/node_map.hpp"
 #include "../../../utils/stopwatch.hpp"
 #include "../../../utils/tech_library.hpp"
-#include "../../node_resynthesis/xmg3_npn.hpp"
+#include "../../node_resynthesis/xmg_npn.hpp"
 
 #include <abcresub/abcresub.hpp>
 #include <fmt/format.h>
@@ -61,6 +61,32 @@ namespace spfd
 namespace xmg
 {
 
+bool VERBOSE{false};
+
+template<class TT>
+void print_tt_with_dcs( TT tt, TT mk )
+{
+  for( auto m = tt.num_bits()-1; m >= 0; --m )
+  {
+    if( kitty::get_bit( mk, m ) == 1 )
+    {
+      if( kitty::get_bit( tt, m ) == 1 )
+      {
+        printf("1");
+      }
+      else
+      {
+        printf("0");
+      }
+    }
+    else
+    {
+      printf("*");
+    }
+  }
+  printf("\n");
+}
+
 std::mt19937 RNG(5);
 
 template<class TT> TT compute_buff( TT const& tt1, TT const& tt2, TT const& tt3 ){ return tt1; }
@@ -68,7 +94,7 @@ template<class TT> TT compute_m111( TT const& tt1, TT const& tt2, TT const& tt3 
 template<class TT> TT compute_m110( TT const& tt1, TT const& tt2, TT const& tt3 ){ return ( tt1 & tt2 ) | ( tt1 &~tt3 ) | ( tt2 &~tt3 ); }
 template<class TT> TT compute_m101( TT const& tt1, TT const& tt2, TT const& tt3 ){ return ( tt1 &~tt2 ) | ( tt1 & tt3 ) | (~tt2 & tt3 ); }
 template<class TT> TT compute_m011( TT const& tt1, TT const& tt2, TT const& tt3 ){ return (~tt1 & tt2 ) | (~tt1 & tt3 ) | ( tt2 & tt3 ); }
-template<class TT> TT compute_xor3( TT const& tt1, TT const& tt2, TT const& tt3 ){ return tt1 ^ tt2 ^ tt3 ; }
+template<class TT> TT compute_xor3( TT const& tt1, TT const& tt2, TT const& tt3 ){ return tt1 ^ tt2 ^ tt3; }
 
 template<class LIST> uint32_t add_buff_to_list( LIST& list, uint32_t lit1, uint32_t lit2, uint32_t lit3 ){ return lit1; }
 template<class LIST> uint32_t add_m111_to_list( LIST& list, uint32_t lit1, uint32_t lit2, uint32_t lit3 ){ return list.add_maj( lit1, lit2, lit3 ); }
@@ -118,7 +144,7 @@ struct xmg_resyn_static_params
   static constexpr uint32_t max_num_support_samplings{ 20u };
   static constexpr uint32_t max_resyn_attempts{ 1 };
   static constexpr double beta_support{100};
-  static constexpr double beta_synthesis{100};
+  static constexpr double beta_synthesis{10000};
 
   static constexpr bool try_boolean_matching{false};
   static constexpr bool use_greedy_support{ false };
@@ -246,12 +272,12 @@ private:
   {
     functional_library_t()
     {
-      gates1[0] = gate_t{ 0x1, &compute_buff<truth_tableK_t>, &add_buff_to_list<index_list_t> };
-      gates3[0] = gate_t{ 0x0, &compute_m111<truth_tableK_t>, &add_m111_to_list<index_list_t> };
-      gates3[1] = gate_t{ 0x0, &compute_m110<truth_tableK_t>, &add_m110_to_list<index_list_t> };
-      gates3[2] = gate_t{ 0x0, &compute_m101<truth_tableK_t>, &add_m101_to_list<index_list_t> };
-      gates3[3] = gate_t{ 0x0, &compute_m011<truth_tableK_t>, &add_m011_to_list<index_list_t> };
-      gates3[4] = gate_t{ 0x0, &compute_xor3<truth_tableK_t>, &add_xor3_to_list<index_list_t> };
+      gates1[0] = gate_t{ 0x0, &compute_buff<truth_tableK_t>, &add_buff_to_list<index_list_t> };
+      gates3[0] = gate_t{ 0x7, &compute_m111<truth_tableK_t>, &add_m111_to_list<index_list_t> };
+      gates3[1] = gate_t{ 0x6, &compute_m110<truth_tableK_t>, &add_m110_to_list<index_list_t> };
+      gates3[2] = gate_t{ 0x5, &compute_m101<truth_tableK_t>, &add_m101_to_list<index_list_t> };
+      gates3[3] = gate_t{ 0x3, &compute_m011<truth_tableK_t>, &add_m011_to_list<index_list_t> };
+      gates3[4] = gate_t{ 0x8, &compute_xor3<truth_tableK_t>, &add_xor3_to_list<index_list_t> };
     }
 
     std::array<gate_t, 1u> gates1;
@@ -285,12 +311,7 @@ private:
 
   struct divisors_t
   {
-    divisors_t()
-    {
-      truth_tableK_t fun0;
-      uint32_t lit0 = 0;
-      divs.emplace_back( fun0, lit0 );
-    }
+    divisors_t(){}
 
     void emplace_back( truth_tableK_t func, uint32_t lit )
     {
@@ -315,7 +336,8 @@ private:
     void set_support( std::vector<uint32_t> const& supp, std::array<truth_tableK_t,static_params::max_support_size> const& funcs )
     {
       divs.clear();
-      divs.emplace_back( funcs[0].construct(), 0x0 );
+      divs.emplace_back( funcs[0].construct(), 0 );
+
       for( auto i{0}; i<supp.size(); ++i )
       {
         divs.emplace_back( funcs[i], supp[i] << 1u );
@@ -327,7 +349,13 @@ private:
       spfd.init( func, care );
     }
 
-    bool update( index_list_t & list, functional_library_t const& functional_library )
+    void clear()
+    {
+      divs.clear();
+      spfd.reset();
+    }
+
+    bool update( index_list_t & list, functional_library_t const& functional_library, uint32_t max_num_gates )
     {
       uint32_t num_buffers{0};
       std::vector<divisor_t> new_divs = {divs[0]};
@@ -362,7 +390,7 @@ private:
 
       spfd.reset();
 
-      while( !spfd.is_covered() && new_divs.size()-1 < static_params::max_support_size )
+      while( !spfd.is_covered() && new_divs.size() < static_params::max_support_size+1 )
       {
         for( auto & cand : candidates )
         {
@@ -659,7 +687,6 @@ private:
 
     return std::nullopt;
   }
-
   /* See if there is a Boolean cut and a candidate resynthesis function
      1. Perform iterative greedy support selection
      2. Extract the local functionality
@@ -673,31 +700,58 @@ private:
     {
       RNG.seed(i++);
       const auto supp = find_support();
+
       if( supp )
       {
+        if(VERBOSE)
+        {
+          for( auto s : *supp )
+            printf("%d ", s);
+          printf(" [%d]\n", max_num_gates );
+        }
+
         a = true;
 
         if( static_params::try_boolean_matching )
         {
-
-          if( supp->size() > 4u || supp->size() == 0u )
+          if( supp->size() > 4u )
           {
-            // in the future we will put a remapping
-            return std::nullopt;
+            index_list_t index_list_copy;
+            for( int iTry{0}; iTry<static_params::max_resyn_attempts; ++iTry )
+            {
+              index_list_copy=index_list;
+              auto [funcK, careK] = extract_functionalityK_from_signatures( *supp );
+              if( find_spfd_remapping( *supp, funcK, careK, max_num_gates ) )
+              {
+                auto [lits4, func4, care4] = extract_functionality4_from_Kdivs( funcK, careK );
+                const auto res = find_boolean_matching( lits4, func4, care4, max_num_gates ); 
+                if( res )
+                {
+                  return *res;
+                }
+              }
+            }
           }
-
-          auto [func4, care4] = extract_functionality4_from_signatures( *supp );
-          const auto res =  find_boolean_matching( *supp, func4, care4, max_num_gates ); 
-          if( res )
+          else
           {
-            return *res;
+            auto [func4, care4] = extract_functionality4_from_signatures( *supp );
+            std::array<uint32_t, 4> lits = compute_literals( *supp );
+            const auto res =  find_boolean_matching( lits, func4, care4, max_num_gates ); 
+            if( res )
+            {
+              return *res;
+            }
           }
+          return std::nullopt;
         }
         else       
         {
           if( supp->size() == 0u )  return std::nullopt;
 
+
           auto [funcK, careK] = extract_functionalityK_from_signatures( *supp );
+          //print_tt_with_dcs( funcK, careK );
+
           const auto res = find_spfd_resynthesis( *supp, funcK, careK, max_num_gates );
           if( res )
           {
@@ -707,6 +761,82 @@ private:
       }
     }
     return std::nullopt;
+  }
+
+  bool find_spfd_remapping( std::vector<uint32_t> supp, truth_tableK_t const& funcK, truth_tableK_t const& careK, uint32_t max_num_gates )
+  {
+    _divsK.clear();
+    _divsK.set_target( funcK, careK );
+    _divsK.set_support( supp, _xsK );
+
+    while( _divsK.size() > 5 && index_list.num_gates() <= max_num_gates )
+    {
+      if( !_divsK.update( index_list, _functional_library, max_num_gates ) )  return false;
+    }
+    return _divsK.size() <= 5 ;
+    
+  }
+
+  std::tuple<std::array<uint32_t, 4>, truth_table4_t, truth_table4_t> extract_functionality4_from_Kdivs( truth_tableK_t const& funcK, truth_tableK_t const& careK )
+  {
+    if( _divsK.size() > 5 ) printf("[w] divisors size exceeds the limit \n");
+    if( _divsK[0].lit != 0 ) printf("[w] first divisor should be zero \n");
+
+    std::array<uint32_t, 4> lits {0};
+    for( int i{1}; i<_divsK.size(); ++i )
+      lits[i-1] = _divsK[i].lit;
+    
+    truth_table4_t func4;
+    truth_table4_t care4;
+    truth_table4_t temp4;
+    truth_tableK_t temp = _divsK[0].func.construct();
+
+    for( uint32_t m{0u}; m < 16u; ++m )
+    {
+      if( m < ( 1 << (_divsK.size()-1) ) )
+      {
+        temp = temp | ~temp;
+        temp4 = temp4 | ~temp4;
+
+        for( uint32_t l{0u}; l < (_divsK.size()-1); ++l )
+        {
+          if( ( m >> l ) & 0x1 == 0x1 )
+          {
+            temp &= _divsK[l+1].func;
+            temp4 &= _xs4[l];
+          }
+          else
+          {
+            temp &= ~_divsK[l+1].func;
+            temp4 &= ~_xs4[l];
+          }
+        }
+
+        if( kitty::count_ones( temp & careK ) > 0 ) // care value
+        {
+          care4 |= temp4;
+
+          if( kitty::count_ones( temp & funcK ) > 0 )
+          {
+            func4 |= temp4;
+          }
+        }
+      }
+      else
+        kitty::clear_bit( care4, m );
+    }
+
+    return std::make_tuple( lits, func4, care4 );
+  }
+
+  std::array<uint32_t, 4> compute_literals( std::vector<uint32_t> supp )
+  {
+    std::array<uint32_t, 4> lits {0};
+    for( int i{0}; i<supp.size(); ++i )
+    {
+      lits[i] = supp[i] << 1u;
+    }
+    return lits;
   }
 
   /* See if there is a constant or divisor covering all on-set bits or all off-set bits.
@@ -1020,44 +1150,73 @@ private:
 
   #pragma region boolean_matching_resynthesis
 
-  std::optional<uint32_t> find_boolean_matching( std::vector<uint32_t> const& supp, truth_table4_t const& func4, truth_table4_t const& care4, uint32_t max_num_gates )
+  std::optional<uint32_t> find_boolean_matching( std::array<uint32_t, 4> lits, truth_table4_t const& func4, truth_table4_t const& care4, uint32_t max_num_gates )
   {
-
-    std::array<uint32_t, 4> lits4;
-    uint32_t sum{0};
-    for( auto i{0}; i<supp.size(); ++i )
+    if(VERBOSE)
     {
-      lits4[i] = supp[i] << 1u;
+      printf("TT(0):"); print_tt_with_dcs(func4, care4);
     }
-    auto i{supp.size()};
-    while( i < 4 )
-      lits4[i++] = 0;
-
-    std::array<uint32_t, 4> leaves = {0};
-    std::array<uint8_t, 4> permutations = {0};
 
     auto [func_npn, neg, perm] = exact_npn_canonization( func4 );
-    auto const care_npn = apply_npn_transformation( care4, neg & 0xF, perm );
+    if(VERBOSE)
+    {
+      printf("neg  = ");
+      for( auto iBit=3; iBit>=0; iBit-- )
+        printf("%d", (neg >> iBit) & 0x1);
+
+      printf(" | perm  =");
+      for( auto iBit=0; iBit<4; iBit++ )
+        printf("%d ", perm[iBit]);
+      printf("\n");
+      
+      for( auto iBit=0; iBit<4; iBit++ )
+      {
+        if( neg >> iBit & 0x1 == 0x1 )
+          printf("%2d : ~X[%d] <= X[%d]  <<  X[%d] <= P[%d]\n", lits[iBit] ^ 0x1, iBit, iBit, perm[iBit], iBit );
+        else
+          printf("%2d :  X[%d] <= X[%d]  <<  X[%d] <= P[%d]\n", lits[iBit], iBit, iBit, perm[iBit], iBit );
+      }
+    }
+    
+    auto const care_npn = apply_npn_transformation( care4, neg & ~( 1 << 4u ), perm );
+    if(VERBOSE)
+    {
+      printf("npn(TT)"); print_tt_with_dcs(func_npn, care_npn);
+    }
+
+
     auto const structures = _database.get_supergates( func_npn, ~care_npn, neg, perm );
     if( structures == nullptr )
     {
+      printf("[w] no structure ");
       return std::nullopt;
     }
-    uint32_t negation;
-    for( auto i{0}; i<4u; ++i )
+    if(VERBOSE)
     {
-      permutations[perm[i]] = i;
-      negation |= ( ( neg >> perm[i] ) & 1u ) << i;
+      printf("neg* = ");
+      for( auto iBit=3; iBit>=0; iBit-- )
+        printf("%d", (neg >> iBit) & 0x1);
+
+      printf(" | perm* =");
+      for( auto iBit=0; iBit<4; iBit++ )
+        printf("%d ", perm[iBit]);
+      printf("\n");
     }
-    bool phase = ( ( neg >> 4u ) & 0x1 == 0x1 ) ? true : false;
-    i=0;
-    for( auto const lit : lits4 )
+    bool phase = ( neg >> 4 == 1 ) ? true : false;
+
+    for( auto i{0}; i<lits.size(); ++i )
     {
-      if( ( negation >> i ) & 1u )
-        leaves[permutations[i++]] = lit ^ 0x1;
-      else
-        leaves[permutations[i++]] = lit;
+      if( ( neg >> i ) & 0x1 == 0x1 )
+        lits[i] ^= 0x1;
     }
+
+    std::array<uint32_t, 4> leaves {0};
+
+    for( auto i{0}; i<4; ++i )
+    {
+      leaves[i] = lits[perm[i]];
+    }
+
 
     auto & db = _database.get_database();
     db.incr_trav_id();
@@ -1068,40 +1227,122 @@ private:
 
     auto res = create_index_list( db.get_node( structures->at(0).root ), leaves, existing_nodes );
 
-    if( res )
+    //if( res )
     {
+      if(VERBOSE)
+      {
+        printf(" || --> [%d <?= %d]\n", index_list.num_gates(), max_num_gates );
+      }
+      //printf("%d ", index_list.num_gates() );
+
       if( index_list.num_gates() <= max_num_gates )
       {
-        return phase ? *res ^ 0x1 : *res;
+        return phase ? res ^ 0x1 : res;//create_index
       }
+      else
+        index_list = index_list_copy;
     }
-    else
-      index_list = index_list_copy;
 
     return std::nullopt;
   }
 
-  std::optional<uint32_t> create_index_list( node<xmg_network> const& n, std::array<uint32_t, 4u> const& leaves, std::unordered_map<uint64_t, uint32_t> & existing_nodes )
+  uint32_t create_index_list( node<xmg_network> const& n, std::array<uint32_t, 4u> const& leaves, std::unordered_map<uint64_t, uint32_t> & existing_nodes )
   {
-    auto & db = _database.get_database();
-    db.incr_trav_id();
-    
-    return create_index_list_rec( n, leaves, existing_nodes );
+    auto new_lit = create_index_list_rec( n, leaves, existing_nodes );
+
+    //if( new_lit )
+    {
+      return new_lit;
+    }
+    //return std::nullopt;
   }
 
-  std::optional<uint32_t> create_index_list_rec( node<xmg_network> const& n, std::array<uint32_t, 4u> const& leaves, std::unordered_map<uint64_t, uint32_t> & existing_nodes )
+  uint32_t create_index_list_rec( node<xmg_network> const& n, std::array<uint32_t, 4u> const& leaves, std::unordered_map<uint64_t, uint32_t> & existing_nodes )
   {
     auto& db = _database.get_database();
-    if( db.is_pi( n ) || db.is_constant( n ) )
-      return std::nullopt;
-    if( db.visited( n ) == db.trav_id() )
-      return std::nullopt;
 
-    db.set_visited( n, db.trav_id() );
- 
-    std::array<uint32_t, 2u> node_data;
+    std::array<uint32_t, 3> node_data;
+    db.foreach_fanin( n, [&]( auto const& f, auto i ) 
+    {
+      node<xmg_network> g = db.get_node( f );
+      if( db.is_pi( g ) )
+      {
+        node_data[i] = db.is_complemented( f ) ? leaves[f.index-1] ^ 0x1 : leaves[f.index-1];
+        return;
+      }
+      else if( db.is_constant(g) )
+      {
+        node_data[i] = db.is_complemented( f ) ? 0x1 : 0x0;
+        return;
+      }
+      else if( db.is_maj( g ) )
+      {
+        auto res = create_index_list_rec( g, leaves, existing_nodes );
+        node_data[i] = db.is_complemented( f ) ? res ^ 0x1 : res;
+      }
+      else if( db.is_xor3( g ) )
+      {
+        auto res = create_index_list_rec( g, leaves, existing_nodes );
+        node_data[i] = db.is_complemented( f ) ? res ^ 0x1 : res;
+      }
+    });
 
-    int i{0};
+    if( db.is_maj(n) )
+    {
+      uint64_t key = get_key( node_data );
+      uint32_t new_lit;
+      if( auto search = existing_nodes.find( key ); search != existing_nodes.end() )
+      {
+        new_lit = search->second;
+      }
+      else
+      {
+        new_lit = index_list.add_maj( node_data[0], node_data[1], node_data[2] );
+        existing_nodes[key] = new_lit;
+      }
+      return new_lit;
+    }
+    else if( db.is_xor3(n) )
+    {
+      uint64_t key = get_key_xor( node_data );
+      uint32_t new_lit;
+      if( auto search = existing_nodes.find( key ); search != existing_nodes.end() )
+      {
+        new_lit = search->second;
+      }
+      else
+      {
+        new_lit = index_list.add_xor3( node_data[0], node_data[1], node_data[2] );
+        existing_nodes[key] = new_lit;
+      }
+      return new_lit;
+    }
+    else
+    {
+      printf("unknown recursion node\n");
+      return 0;
+    }
+  }
+
+  uint64_t get_key( std::array<uint32_t, 3> node_data )
+  {
+    std::vector<uint64_t> keys = { (uint64_t)node_data[0], (uint64_t)node_data[1], (uint64_t)node_data[2] };
+    std::sort( keys.begin(), keys.end() );
+
+    return keys[0] | ( keys[1] << 20u ) | ( keys[2] << 40u );
+  }
+
+  uint64_t get_key_xor( std::array<uint32_t, 3> node_data )
+  {
+    return get_key( node_data ) | ( 1u << 60u );
+  }
+
+  std::optional<uint32_t> create_index_list_rec_old( node<xmg_network> const& n, std::array<uint32_t, 4u> const& leaves, std::unordered_map<uint64_t, uint32_t> & existing_nodes )
+  {
+    auto& db = _database.get_database();
+
+    std::array<uint32_t, 3u> node_data{0};
+
     db.foreach_fanin( n, [&]( auto const& f, auto i ) 
     {
       node<xmg_network> g = db.get_node( f );
@@ -1165,9 +1406,7 @@ private:
       }
       else
       {
-
         new_lit = index_list.add_maj( node_data[0], node_data[1], node_data[2] );
-        
         existing_nodes[key0] = new_lit;
       }
       return new_lit;
@@ -1184,15 +1423,18 @@ private:
   std::optional<uint32_t> find_spfd_resynthesis( std::vector<uint32_t> const& supp, truth_tableK_t const& funcK, truth_tableK_t const& careK, uint32_t max_num_gates )
   {
     index_list_t index_list_copy = index_list;
+    uint32_t max_num_gates_copy = max_num_gates;
     _divsK.set_target( funcK, careK );
 
     for( auto iTry{0}; iTry<static_params::max_resyn_attempts; ++iTry )
     {
       index_list = index_list_copy;
+      max_num_gates = max_num_gates_copy;
+
       _divsK.set_support( supp, _xsK );
       while( _divsK.size() > 2 && index_list.num_gates() <= max_num_gates )
       {
-        if( !_divsK.update( index_list, _functional_library ) )  break;
+        if( !_divsK.update( index_list, _functional_library, max_num_gates ) )  break;
       }
       if( _divsK.spfd.is_covered() && _divsK.size() == 2 )
       {
@@ -1247,8 +1489,9 @@ private:
 
   functional_library_t _functional_library;
 
-  xmg3_npn_resynthesis<xmg_network> _resyn;
-  exact_library<xmg_network, xmg3_npn_resynthesis<xmg_network>> _database;
+  xmg_npn_resynthesis _resyn;
+  exact_library<xmg_network, xmg_npn_resynthesis> _database;
+
 
   stats& st;
 }; /* xmg_resyn */ 

@@ -1251,7 +1251,8 @@ public:
     values.push_back( lit );
   }
 
-private:
+
+public:
   std::vector<element_type> values;
 };
 

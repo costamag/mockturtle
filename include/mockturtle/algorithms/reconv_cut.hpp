@@ -132,8 +132,7 @@ public:
     }
 
     /* compute the cut */
-    while ( construct_cut() )
-      ;
+    while ( construct_cut() );
     assert( leaves.size() <= ps.max_leaves );
 
     /* update statistics */

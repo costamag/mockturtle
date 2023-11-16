@@ -28,7 +28,7 @@
   \brief Resynthesis by recursive decomposition for AIGs or aigs.
   (based on ABC's implementation in `giaResub.c` by Alan Mishchenko)
 
-  \author Siang-Yun Lee
+  \author Andrea Costamagna
 */
 
 #pragma once
@@ -62,6 +62,7 @@ namespace aig
 {
 
 bool VERBOSE{false};
+bool VERBOSE1{false};
 
 template<class TT>
 void print_tt_with_dcs( TT tt, TT mk )
@@ -144,11 +145,12 @@ struct aig_resyn_static_params
   static constexpr uint32_t max_num_support_samplings{ 20u };
   static constexpr uint32_t max_resyn_attempts{ 1 };
   static constexpr double beta_support{100};
-  static constexpr double beta_synthesis{100};
+  static constexpr double beta_synthesis{10};
 
-  static constexpr bool try_boolean_matching{false};
+  static constexpr bool try_boolean_matching{ false };
   static constexpr bool use_greedy_support{ false };
-  static constexpr bool use_local_search{ true };
+  static constexpr bool use_local_search{ false };
+  static constexpr bool high_effort{ true };
 
   using truth_table_storage_type = void;
   using node_type = void;
@@ -283,6 +285,11 @@ private:
       return id == 0x8;
     }
 
+    bool is_exor()
+    {
+      return id == 0x6;
+    }
+
     uint32_t id;
     truth_tableK_t (*pF)( truth_tableK_t const&, truth_tableK_t const& );
     uint32_t (*pG)( index_list_t&, uint32_t, uint32_t );
@@ -297,26 +304,43 @@ private:
       gates2[1] = gate_t{ 0x2, &compute_pa01<truth_tableK_t>, &add_pa01_to_list<index_list_t> };
       gates2[2] = gate_t{ 0x4, &compute_pa10<truth_tableK_t>, &add_pa10_to_list<index_list_t> };
       gates2[3] = gate_t{ 0x8, &compute_pa11<truth_tableK_t>, &add_pa11_to_list<index_list_t> };
-      //gates2[4] = gate_t{ 0x2, &compute_exor<truth_tableK_t>, &add_exor_to_list<index_list_t> };
+      //gates2[4] = gate_t{ 0x6, &compute_exor<truth_tableK_t>, &add_exor_to_list<index_list_t> };
     }
 
     std::array<gate_t, 1u> gates1;
     std::array<gate_t, 4u> gates2;
   };
 
-  struct scored_lit
+  struct costd_divisor_t
   {
-    scored_lit( uint32_t l, uint32_t s )
-        : lit( l ), score( s )
+    costd_divisor_t( uint32_t d, uint32_t c )
+        : div( d ), cost( c )
     {}
 
-    bool operator==( scored_lit const& other ) const
+    bool operator==( costd_divisor_t const& other ) const
     {
-      return lit == other.lit;
+      return div == other.div;
     }
 
-    uint32_t lit;
-    uint32_t score;
+    bool operator<( costd_divisor_t const& other ) const
+    {
+      return cost < other.cost;
+    }
+
+    uint32_t div;
+    uint32_t cost;
+  };
+
+  struct costd_divisors_t
+  {
+    costd_divisors_t(){};
+
+    void emplace_back( uint32_t div, uint32_t cost )
+    {
+      divs.emplace_back( div, cost );
+    } 
+
+    std::vector<costd_divisor_t> divs;
   };
 
   struct divisor_t
@@ -368,6 +392,12 @@ private:
       spfd.init( func, care );
     }
 
+    void clear()
+    {
+      divs.clear();
+      spfd.reset();
+    }
+
     bool update( index_list_t & list, functional_library_t const& functional_library, uint32_t max_num_gates )
     {
       uint32_t num_buffers{0};
@@ -386,6 +416,7 @@ private:
         {
           for( auto gate : functional_library.gates2 )
           {
+            //if( gate.is_exor() && ( ( list.num_gates() + 3 > max_num_gates ) || ( divs.size() != 2 ) ) ) continue;
             candidates.emplace_back( cand_id++, gate, divs[v1], divs[v2] );
           }
         }
@@ -415,7 +446,6 @@ private:
         {
           copy_previous = set_used.find(cand.id) != set_used.end();
           copy_previous |= (cand.gate.is_buffer() && ( num_buffers >= divs.size()-1 ));
-          //copy_previous |= (cand.gate.is_xor()) && (list.num_gates() + 3 > max_num_gates);
           Z = cand.update_cost( Z, min_cost, max_cost, copy_previous );
         }
 
@@ -428,7 +458,6 @@ private:
           {
             set_used.insert( cand.id );
             if( cand.gate.is_buffer() ) num_buffers++;
-            //if( cand.gate.is_xor() ) max_num_gates -= 2;
 
             truth_tableK_t tt = cand.compute();
             new_divs.emplace_back( tt, cand.add_to_list( list ) );
@@ -534,6 +563,22 @@ private:
       return res;
     } 
 
+    double evaluate( LTT const& tt1, LTT const& tt2 )
+    {
+      double res=0;
+      for( auto iMask{0}; iMask<nMasks; ++iMask )
+      {
+        if( !killed[iMask] )
+        {
+          res+= kitty::count_ones( func[1] & masks[iMask] &  tt1 & tt2 ) * kitty::count_ones( func[0] & masks[iMask] & tt1 & tt2 )/nEdges;  
+          res+= kitty::count_ones( func[1] & masks[iMask] & ~tt1 & tt2 ) * kitty::count_ones( func[0] & masks[iMask] & ~tt1 & tt2 )/nEdges;  
+          res+= kitty::count_ones( func[1] & masks[iMask] & ~tt1 &~tt2 ) * kitty::count_ones( func[0] & masks[iMask] & ~tt1 & ~tt2 )/nEdges;  
+          res+= kitty::count_ones( func[1] & masks[iMask] & tt1 & ~tt2 ) * kitty::count_ones( func[0] & masks[iMask] & tt1 &~tt2 )/nEdges;  
+        }
+      }
+      return res;
+    } 
+
     bool is_covered()
     {
       return nMasks <= nKills;
@@ -549,6 +594,119 @@ private:
     uint32_t nMasks;
     uint32_t nKills;
     double nEdges;
+    LTT care;
+    std::array<LTT, 2u> func;
+  };
+
+  template<class LTT, uint32_t CAP>
+  struct u_spfd_manager_t
+  {
+    u_spfd_manager_t(){}
+    
+    void init( LTT const& target, LTT const& careset )
+    {
+      care = careset;
+      func[1] =  target & careset;
+      func[0] = ~target & careset;
+      reset();
+    }
+
+    void reset()
+    {
+      masks[0] = care;
+      nMasks = 1;
+      nEdges = kitty::count_ones( func[1] ) * kitty::count_ones( func[0] );  
+      killed[0] = nEdges > 0 ? false : true;
+      nKills = nEdges > 0 ? 0 : 1;
+    }
+
+    bool update( LTT const& tt )
+    {
+      nEdges = 0;
+      for( uint32_t iMask{0}; iMask < nMasks; ++iMask )
+      {
+        if( killed[iMask] )
+        {
+          killed[nMasks+iMask] = true;
+          nKills++;
+        }
+        else
+        {
+          masks[nMasks+iMask] = masks[iMask] & tt;
+          masks[iMask] &= ~tt;
+
+          if( ( kitty::count_ones( masks[nMasks+iMask] & func[1] ) == 0 ) || ( kitty::count_ones( masks[nMasks+iMask] & func[0] ) == 0 ) )
+          {
+            killed[nMasks+iMask] = true;
+            nKills++;
+          }
+          else
+          {
+            killed[nMasks+iMask] = false;
+            nEdges += kitty::count_ones( func[1] & masks[nMasks+iMask] ) * kitty::count_ones( func[0] & masks[nMasks+iMask] );  
+          }
+
+          if( kitty::count_ones( masks[iMask] & func[1] ) == 0 || kitty::count_ones( masks[iMask] & func[0] ) == 0 )
+          {
+            killed[iMask] = true;
+            nKills++;
+          }
+          else
+          {
+            killed[iMask] = false;
+            nEdges += kitty::count_ones( func[1] & masks[iMask] ) * kitty::count_ones( func[0] & masks[iMask] );  
+          }
+        }
+      }
+      nMasks = nMasks * 2;
+      return true;
+    }
+
+    uint32_t evaluate( LTT const& tt )
+    {
+      uint32_t res=0;
+      for( auto iMask{0}; iMask<nMasks; ++iMask )
+      {
+        if( !killed[iMask] )
+        {
+          res+= kitty::count_ones( func[1] & masks[iMask] &  tt ) * kitty::count_ones( func[0] & masks[iMask] & tt );  
+          res+= kitty::count_ones( func[1] & masks[iMask] & ~tt ) * kitty::count_ones( func[0] & masks[iMask] & ~tt );  
+        }
+      }
+      return res;
+    } 
+
+    uint32_t evaluate( LTT const& tt1, LTT const& tt2 )
+    {
+      uint32_t res=0;
+      for( auto iMask{0}; iMask<nMasks; ++iMask )
+      {
+        if( !killed[iMask] )
+        {
+          res+= kitty::count_ones( func[1] & masks[iMask] &  tt1 & tt2 ) * kitty::count_ones( func[0] & masks[iMask] & tt1 & tt2 );  
+          res+= kitty::count_ones( func[1] & masks[iMask] & ~tt1 & tt2 ) * kitty::count_ones( func[0] & masks[iMask] & ~tt1 & tt2 );  
+          res+= kitty::count_ones( func[1] & masks[iMask] & ~tt1 &~tt2 ) * kitty::count_ones( func[0] & masks[iMask] & ~tt1 & ~tt2 );  
+          res+= kitty::count_ones( func[1] & masks[iMask] & tt1 & ~tt2 ) * kitty::count_ones( func[0] & masks[iMask] & tt1 &~tt2 );  
+        }
+      }
+      return res;
+    } 
+
+    bool is_covered()
+    {
+      return nMasks <= nKills;
+    }
+
+    bool is_saturated()
+    {
+      return nMasks >= CAP;
+    }
+
+    std::array<LTT, CAP> masks;
+    std::array<bool, CAP> killed;
+    uint32_t nMasks;
+    uint32_t nKills;
+    uint32_t nEdges;
     LTT care;
     std::array<LTT, 2u> func;
   };
@@ -590,8 +748,9 @@ public:
     static_assert( std::is_same_v<typename static_params::base_type, aig_resyn_static_params>, "Invalid static_params type" );
     static_assert( !( static_params::uniform_div_cost && static_params::preserve_depth ), "If depth is to be preserved, divisor depth cost must be provided (usually not uniform)" );
     divisors.reserve( static_params::reserve );
-    lits.reserve( static_params::reserve );
+    //lits.reserve( static_params::reserve );
     _costs.reserve( static_params::reserve );
+    _costd_divs.divs.reserve( static_params::reserve );
   }
 
   /*! \brief Perform aig resynthesis.
@@ -617,6 +776,7 @@ public:
     on_off_sets[1] = target & care;
 
     _gSPFD.init( target, care );
+    _uSPFD.init( target, care );
 
     divisors.resize( 1 ); /* clear previous data and reserve 1 dummy node for constant */
     while ( begin != end )
@@ -632,9 +792,13 @@ public:
       ++begin;
     }
 
-    for( auto div : divisors )
+    for( uint32_t iDiv{0}; iDiv<divisors.size(); ++iDiv )
     {
-      _costs.push_back(0);
+      _costs.push_back(
+        kitty::count_ones( get_div(iDiv) & on_off_sets[0] )*kitty::count_ones( ~get_div(iDiv) & on_off_sets[0] )+
+        kitty::count_ones( get_div(iDiv) & on_off_sets[1] )*kitty::count_ones( ~get_div(iDiv) & on_off_sets[1] )
+      );
+      _costd_divs.emplace_back( iDiv, _costs[iDiv] );
     }
 
     for( uint32_t i{0}; i<4; ++i )
@@ -664,7 +828,7 @@ private:
     auto const lit = compute_function_rec( num_inserts );
     if ( lit )
     {
-      assert( index_list.num_gates() <= num_inserts );
+      assert( index_list.num_gates() < num_inserts );
       index_list.add_output( *lit );
     //  std::cout << to_index_list_string( index_list ) << std::endl; 
 
@@ -707,59 +871,263 @@ private:
    */
   std::optional<uint32_t> find_resynthesis( uint32_t max_num_gates )
   {
-    _past_supports.clear();
-  bool a=false;
-    for( uint32_t i{0}; i<static_params::max_num_support_samplings; ++i )
+    if( static_params::high_effort )
     {
-      RNG.seed(i++);
-      const auto supp = find_support();
-
-      if( supp )
+      for( uint32_t i{0}; i<static_params::max_num_support_samplings; ++i )
       {
-        if(VERBOSE)
+        auto res = find_resynthesisX1(max_num_gates);
+        if( res )
         {
-          for( auto s : *supp )
-            printf("%d ", s);
-          printf(" [%d] \n", max_num_gates );
+          return res;
         }
-
-        a = true;
-
-        if( static_params::try_boolean_matching )
+      }
+      for( uint32_t i{0}; i<static_params::max_num_support_samplings; ++i )
+      {
+        auto res = find_resynthesisX2(max_num_gates);
+        if( res )
         {
+          return res;
+        }
+      }
+    }
+    else
+    {
+      _past_supports.clear();
+    bool a=false;
+      for( uint32_t i{0}; i<static_params::max_num_support_samplings; ++i )
+      {
+        RNG.seed(i++);
+        const auto supp = find_support();
 
-          if( supp->size() > 4u || supp->size() == 0u )
+        if( supp )
+        {
+          if(VERBOSE1)
           {
-            // in the future we will put a remapping
+            for( auto s : *supp )
+              printf(" %d ", s);
+            printf(" [%d] \n", max_num_gates );
+          }
+
+          a = true;
+
+          if( static_params::try_boolean_matching )
+          {
+            if( supp->size() > 4u )
+            {
+              index_list_t index_list_copy;
+              for( int iTry{0}; iTry<static_params::max_resyn_attempts; ++iTry )
+              {
+                index_list_copy=index_list;
+                auto [funcK, careK] = extract_functionalityK_from_signatures( *supp );
+                if( find_spfd_remapping( *supp, funcK, careK, max_num_gates ) )
+                {
+                  auto [lits4, func4, care4] = extract_functionality4_from_Kdivs( funcK, careK );
+                  const auto res = find_boolean_matching( lits4, func4, care4, max_num_gates ); 
+                  if( res )
+                  {
+                    return *res;
+                  }
+                }
+              }
+            }
+            else
+            {
+              auto [func4, care4] = extract_functionality4_from_signatures( *supp );
+              std::array<uint32_t, 4> lits = compute_literals( *supp );
+              const auto res =  find_boolean_matching( lits, func4, care4, max_num_gates ); 
+              if( res )
+              {
+                return *res;
+              }
+            }
             return std::nullopt;
           }
-
-          auto [func4, care4] = extract_functionality4_from_signatures( *supp );
-          const auto res =  find_boolean_matching( *supp, func4, care4, max_num_gates ); 
-
-          
-          if( res )
+          else       
           {
-            return *res;
-          }
-        }
-        else       
-        {
-          if( supp->size() == 0u )  return std::nullopt;
+            if( supp->size() == 0u )  return std::nullopt;
 
+            auto [funcK, careK] = extract_functionalityK_from_signatures( *supp );
+            //print_tt_with_dcs( funcK, careK );
 
-          auto [funcK, careK] = extract_functionalityK_from_signatures( *supp );
-          //print_tt_with_dcs( funcK, careK );
-
-          const auto res = find_spfd_resynthesis( *supp, funcK, careK, max_num_gates );
-          if( res )
-          {
-            return *res;
+            const auto res = find_spfd_resynthesis( *supp, funcK, careK, max_num_gates );
+            if( res )
+            {
+              return *res;
+            }
           }
         }
       }
     }
     return std::nullopt;
+  }
+
+  std::optional<uint32_t> find_resynthesisX1( uint32_t max_num_gates )
+  {
+    auto const supp1 = find_support_greedyX1();
+
+    if( supp1 )
+    {
+    //  for( auto x : *supp1 )
+    //  {
+    //    printf("1.%d ", x);
+    //  }
+    //  printf("\n");
+      auto const res1 = find_resynthesisX( *supp1, max_num_gates );
+      if( res1 )
+      {
+        return res1;
+      }
+    }
+
+    return std::nullopt;
+  }
+
+  std::optional<uint32_t> find_resynthesisX2( uint32_t max_num_gates )
+  {
+
+    auto const supp2 = find_support_greedyX2();
+
+    if( supp2 )
+    {
+//      for( auto x : *supp2 )
+//      {
+//        printf("2.%d ", x);
+//      }
+//      printf("\n");
+      auto const res2 = find_resynthesisX( *supp2, max_num_gates );
+      if( res2 )
+      {
+        return res2;
+      }
+    }
+    return std::nullopt;
+  }
+
+  /* See if there is a Boolean cut and a candidate resynthesis function
+     1. Perform iterative greedy support selection
+     2. Extract the local functionality
+     3. Resynthesize using Boolean matching with don't cares
+   */
+  std::optional<uint32_t> find_resynthesisX( std::vector<uint32_t> const& supp, uint32_t max_num_gates )
+  {
+    if( static_params::try_boolean_matching )
+    {
+      if( supp.size() > 4u )
+      {
+        index_list_t index_list_copy;
+        for( int iTry{0}; iTry<static_params::max_resyn_attempts; ++iTry )
+        {
+          index_list_copy=index_list;
+          auto [funcK, careK] = extract_functionalityK_from_signatures( supp );
+          if( find_spfd_remapping( supp, funcK, careK, max_num_gates ) )
+          {
+            auto [lits4, func4, care4] = extract_functionality4_from_Kdivs( funcK, careK );
+            const auto res = find_boolean_matching( lits4, func4, care4, max_num_gates ); 
+            if( res )
+            {
+              return *res;
+            }
+          }
+        }
+      }
+      else
+      {
+        auto [func4, care4] = extract_functionality4_from_signatures( supp );
+        std::array<uint32_t, 4> lits = compute_literals( supp );
+        const auto res =  find_boolean_matching( lits, func4, care4, max_num_gates ); 
+        if( res )
+        {
+          return res;
+        }
+      }
+      return std::nullopt;
+    }
+    else       
+    {
+      if( supp.size() == 0u )  return std::nullopt;
+      auto [funcK, careK] = extract_functionalityK_from_signatures( supp );
+      const auto res = find_spfd_resynthesis( supp, funcK, careK, max_num_gates );
+      if( res )
+      {
+        return *res;
+      }
+    }
+    return std::nullopt;
+  }
+
+  bool find_spfd_remapping( std::vector<uint32_t> supp, truth_tableK_t const& funcK, truth_tableK_t const& careK, uint32_t max_num_gates )
+  {
+    _divsK.clear();
+    _divsK.set_target( funcK, careK );
+    _divsK.set_support( supp, _xsK );
+
+    while( _divsK.size() > 4 && index_list.num_gates() < max_num_gates )
+    {
+      if( !_divsK.update( index_list, _functional_library, max_num_gates ) )  return false;
+    }
+    return _divsK.size() <= 4 ;
+    
+  }
+
+  std::tuple<std::array<uint32_t, 4>, truth_table4_t, truth_table4_t> extract_functionality4_from_Kdivs( truth_tableK_t const& funcK, truth_tableK_t const& careK )
+  {
+    if( _divsK.size() > 4 ) printf("[w] divisors size exceeds the limit \n");
+    std::array<uint32_t, 4> lits {0};
+
+    for( int i{0}; i<_divsK.size(); ++i )
+      lits[i] = _divsK[i].lit;
+    
+    truth_table4_t func4;
+    truth_table4_t care4;
+    truth_table4_t temp4;
+    truth_tableK_t temp = _divsK[0].func.construct();
+
+    for( uint32_t m{0u}; m < 16u; ++m )
+    {
+      if( m < ( 1 << _divsK.size() ) )
+      {
+        temp = temp | ~temp;
+        temp4 = temp4 | ~temp4;
+
+        for( uint32_t l{0u}; l < _divsK.size(); ++l )
+        {
+          if( ( m >> l ) & 0x1 == 0x1 )
+          {
+            temp &= _divsK[l].func;
+            temp4 &= _xs4[l];
+          }
+          else
+          {
+            temp &= ~_divsK[l].func;
+            temp4 &= ~_xs4[l];
+          }
+        }
+
+        if( kitty::count_ones( temp & careK ) > 0 ) // care value
+        {
+          care4 |= temp4;
+
+          if( kitty::count_ones( temp & funcK ) > 0 )
+          {
+            func4 |= temp4;
+          }
+        }
+      }
+      else
+        kitty::clear_bit( care4, m );
+    }
+
+    return std::make_tuple( lits, func4, care4 );
+  }
+
+  std::array<uint32_t, 4> compute_literals( std::vector<uint32_t> supp )
+  {
+    std::array<uint32_t, 4> lits {0};
+    for( int i{0}; i<supp.size(); ++i )
+    {
+      lits[i] = supp[i] << 1u;
+    }
+    return lits;
   }
 
   /* See if there is a constant or divisor covering all on-set bits or all off-set bits.
@@ -822,33 +1190,42 @@ private:
 
   std::optional<std::vector<uint32_t>> find_support()
   {
-    if( _past_supports.size() == 0 || !static_params::use_local_search ) 
     {
-      auto supp = static_params::use_greedy_support ? find_support_greedy( {} ) : find_support_boltz( {} );
-      if( supp )
+      if( _past_supports.size() == 0 || !static_params::use_local_search ) 
       {
-        return *supp;
+        auto supp = static_params::use_greedy_support ? find_support_greedy( {} ) : find_support_boltz( {} );
+        if( supp )
+        {
+          return *supp;
+        }
+        else
+        {
+          return std::nullopt;
+        }
       }
       else
       {
-        return std::nullopt;
+        std::vector<uint32_t> partial_support = _support;
+        // randomly erase an element an element
+        int nerase=0;
+        std::vector<uint32_t> erased;
+        while( partial_support.size() > 0 && (partial_support.size()+nerase > _support.size()) )
+        {
+          std::uniform_int_distribution<> distrib(0, partial_support.size()-1);
+          int idx = distrib(RNG);
+          erased.push_back( partial_support[idx] );
+          partial_support.erase( partial_support.begin() + idx );
+        }
+        erased.push_back( 1 );
+        partial_support.erase( partial_support.begin() + 0 ); 
+        // cover
+        return static_params::use_greedy_support ? find_support_greedy( partial_support, erased ) : find_support_boltz( partial_support, erased );
       }
-    }
-    else
-    {
-      std::vector<uint32_t> partial_support = _support;
-      // randomly erase an element an element
-      std::uniform_int_distribution<> distrib(0, partial_support.size()-1);
-      int idx = distrib(RNG);
-      uint32_t erased = partial_support[idx];
-      partial_support.erase( partial_support.begin() + idx );
-      // cover
-      return static_params::use_greedy_support ? find_support_greedy( partial_support, erased ) : find_support_boltz( partial_support, erased );
     }
     return std::nullopt;
   }
 
-  std::optional<std::vector<uint32_t>> find_support_greedy( std::vector<uint32_t>const& partial_support, uint32_t erased = std::numeric_limits<uint32_t>::max() )
+  std::optional<std::vector<uint32_t>> find_support_greedy( std::vector<uint32_t>const& partial_support, std::vector<uint32_t> erased={} )
   {
     double cost, best_cost;
     std::vector<uint32_t> best_candidates;
@@ -870,12 +1247,12 @@ private:
       for( uint32_t iCnd{1}; iCnd<divisors.size(); ++iCnd )
       {
         cost = _gSPFD.evaluate( get_div( iCnd ) );
-        if( cost < best_cost && iCnd != erased )
+        if( cost < best_cost && ( std::find( erased.begin(), erased.end(), iCnd ) == erased.end() ) )
         {
           best_cost = cost;
           best_candidates = {iCnd};
         }
-        else if( cost == best_cost && iCnd != erased )
+        else if( cost == best_cost && ( std::find( erased.begin(), erased.end(), iCnd ) == erased.end() ) )
         {
           best_candidates.push_back( iCnd );
         }
@@ -899,7 +1276,116 @@ private:
     return std::nullopt;
   }
 
-  std::optional<std::vector<uint32_t>> find_support_boltz( std::vector<uint32_t> const& partial_support, uint32_t erased = std::numeric_limits<uint32_t>::max() )
+  std::optional<std::vector<uint32_t>> find_support_greedyX1()
+  {
+    double cost, best_cost;
+    std::vector<uint32_t> best_candidates;
+    std::vector<uint32_t> supp;
+    
+    _uSPFD.reset();
+    /* add recomputation of the support */
+
+    while( !_uSPFD.is_covered() )
+    {
+      best_cost = std::numeric_limits<double>::max();
+      if( _uSPFD.is_saturated() ) break;
+      for( uint32_t iCnd{1}; iCnd<divisors.size(); ++iCnd )
+      {
+        cost = _uSPFD.evaluate( get_div( iCnd ) );
+        if( cost < best_cost )
+        {
+          best_cost = cost;
+          best_candidates = {iCnd};
+        }
+        else if( cost == best_cost )
+        {
+          best_candidates.push_back( iCnd );
+        }
+      }
+      if( best_candidates.size() == 0 ) break;
+
+      std::uniform_int_distribution<> distrib(0, best_candidates.size()-1);
+      int idx = 0;//distrib(RNG);
+      supp.push_back( best_candidates[idx] );
+      _uSPFD.update( get_div( best_candidates[idx] ) );
+    }
+    if( _uSPFD.is_covered() )
+    {
+      return supp;
+    }
+    return std::nullopt;
+  }
+
+  std::optional<std::vector<uint32_t>> find_support_greedyX2()
+  {
+    uint32_t cost, best_cost;
+    std::vector<uint32_t> supp;
+    std::vector<uint32_t> best1, best2;
+    
+    _uSPFD.reset();
+    /* add recomputation of the support */
+
+    best_cost = std::numeric_limits<double>::max();
+    for( uint32_t div1{1}; div1<divisors.size(); ++div1 )
+    {
+      for( uint32_t div2{div1+1}; div2<divisors.size(); ++div2 )
+      {
+        cost = _uSPFD.evaluate( get_div( div1 ), get_div( div2 ) );
+        if( cost < best_cost )
+        {
+          best_cost = cost;
+          best1 = {div1};
+          best2 = {div2};
+        }
+        else if( cost == best_cost )
+        {
+          best_cost = cost;
+          best1.push_back(div1);
+          best2.push_back(div2);
+        }
+      }
+    }
+    std::uniform_int_distribution<> distrib(0, best1.size()-1);
+    int idx = distrib(RNG);
+
+    supp.push_back( best1[idx] );
+    _uSPFD.update( get_div( best1[idx] ) );
+    supp.push_back( best2[idx] );
+    _uSPFD.update( get_div( best2[idx] ) );
+
+    while( !_uSPFD.is_covered() )
+    {
+      best_cost = std::numeric_limits<double>::max();
+      if( _uSPFD.is_saturated() ) break;
+      for( uint32_t iCnd{1}; iCnd<divisors.size(); ++iCnd )
+      {
+        cost = _uSPFD.evaluate( get_div( iCnd ) );
+        if( cost < best_cost )
+        {
+          best_cost = cost;
+          best1 = {iCnd};
+        }
+        else if( cost == best_cost )
+        {
+          best1.push_back( iCnd );
+        }
+      }
+      if( best1.size() == 0 ) break;
+
+      std::uniform_int_distribution<> distrib(0, best1.size()-1);
+      int idx = distrib(RNG);
+      supp.push_back( best1[idx] );
+      _uSPFD.update( get_div( best1[idx] ) );
+    }
+
+    if( _uSPFD.is_covered()  )
+    {
+      return supp;
+    }
+    return std::nullopt;
+  }
+
+  std::optional<std::vector<uint32_t>> find_support_boltz( std::vector<uint32_t> const& partial_support, std::vector<uint32_t> erased={} )
   {
     _gSPFD.reset();
     double min_cost;
@@ -937,8 +1423,8 @@ private:
       
       for( auto div : supp )
         costs[div] = 0;
-      if( erased != std::numeric_limits<uint32_t>::max() )
-        costs[erased] = 0;
+      for( auto er : erased )
+        costs[er] = 0;
 
       for( uint32_t i{1}; i<costs.size(); ++i )
       {
@@ -1076,7 +1562,8 @@ private:
 
   #pragma region boolean_matching_resynthesis
 
-  std::optional<uint32_t> find_boolean_matching( std::vector<uint32_t> const& supp, truth_table4_t const& func4, truth_table4_t const& care4, uint32_t max_num_gates )
+
+  std::optional<uint32_t> find_boolean_matching( std::array<uint32_t, 4> lits, truth_table4_t const& func4, truth_table4_t const& care4, uint32_t max_num_gates )
   {
     if(VERBOSE)
     {
@@ -1098,9 +1585,9 @@ private:
       for( auto iBit=0; iBit<4; iBit++ )
       {
         if( neg >> iBit & 0x1 == 0x1 )
-          printf("%2d : ~X[%d] <= X[%d]  <<  X[%d] <= P[%d]\n", (supp[iBit] << 1) ^ 0x1, iBit, iBit, perm[iBit], iBit );
+          printf("%2d : ~X[%d] <= X[%d]  <<  X[%d] <= P[%d]\n", lits[iBit] ^ 0x1, iBit, iBit, perm[iBit], iBit );
         else
-          printf("%2d :  X[%d] <= X[%d]  <<  X[%d] <= P[%d]\n", (supp[iBit] << 1), iBit, iBit, perm[iBit], iBit );
+          printf("%2d :  X[%d] <= X[%d]  <<  X[%d] <= P[%d]\n", lits[iBit], iBit, iBit, perm[iBit], iBit );
       }
     }
     
@@ -1128,11 +1615,8 @@ private:
     }
     bool phase = ( neg >> 4 == 1 ) ? true : false;
 
-    std::array<uint32_t, 4> lits {0};
-
-    for( auto i{0}; i<supp.size(); ++i )
+    for( auto i{0}; i<lits.size(); ++i )
     {
-      lits[i] = supp[i] << 1u;
       if( ( neg >> i ) & 0x1 == 0x1 )
         lits[i] ^= 0x1;
     }
@@ -1145,7 +1629,6 @@ private:
     }
 
     auto & db = _database.get_database();
-    db.incr_trav_id();
 
     std::unordered_map<uint64_t, uint32_t> existing_nodes;
 
@@ -1164,29 +1647,20 @@ private:
         return phase ? *res ^ 0x1 : *res;//create_index
       }
     }
-    else
-      index_list = index_list_copy;
+    //else
+    //  index_list = index_list_copy;
 
     return std::nullopt;
   }
 
   std::optional<uint32_t> create_index_list( node<aig_network> const& n, std::array<uint32_t, 4u> const& leaves, std::unordered_map<uint64_t, uint32_t> & existing_nodes )
   {
-    auto & db = _database.get_database();
-    db.incr_trav_id();
-    
     return create_index_list_rec( n, leaves, existing_nodes );
   }
 
   std::optional<uint32_t> create_index_list_rec( node<aig_network> const& n, std::array<uint32_t, 4u> const& leaves, std::unordered_map<uint64_t, uint32_t> & existing_nodes )
   {
     auto& db = _database.get_database();
-    if( db.is_pi( n ) || db.is_constant( n ) )
-      return std::nullopt;
-    if( db.visited( n ) == db.trav_id() )
-      return std::nullopt;
-
-    db.set_visited( n, db.trav_id() );
  
     std::array<uint32_t, 2u> node_data;
 
@@ -1197,6 +1671,7 @@ private:
       if( db.is_pi( g ) )
       {
         node_data[i] = db.is_complemented( f ) ? leaves[f.index-1] ^ 0x1 : leaves[f.index-1];
+        return;
       }
       else if( db.is_and( g ) )
       {
@@ -1282,8 +1757,6 @@ private:
       }
       if( _divsK.spfd.is_covered() && _divsK.size() == 1 )
       {
-        //printf("%d <= %d\n", index_list.num_gates(), max_num_gates );
-
         if( kitty::equal( _divsK.get_div(0) & _divsK.spfd.care, _divsK.spfd.func[1] ) )
         {
           return _divsK[0].lit;
@@ -1324,14 +1797,16 @@ private:
   std::vector<double> _costs;
  
   index_list_t index_list;
-  std::vector<scored_lit> lits;
+  //std::vector<costd_lit> lits;
 
   spfd_manager_t<truth_table_t, 1<<static_params::max_support_size> _gSPFD;
+  spfd_manager_t<truth_table_t, 1<<static_params::max_support_size> _uSPFD;
   std::array<truth_table4_t,4> _xs4;
   std::array<truth_tableK_t,static_params::max_support_size> _xsK;
   std::set<std::vector<uint32_t>> _past_supports;
   std::vector<uint32_t> _support;
   divisors_t _divsK;
+  costd_divisors_t _costd_divs;
 
   functional_library_t _functional_library;
 

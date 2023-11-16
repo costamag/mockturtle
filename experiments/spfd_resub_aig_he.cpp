@@ -47,7 +47,7 @@ int main()
 
   double cnt{0};
 
-  for ( auto const& benchmark : resub_benchmarks( iscas ))//experiments::c432 ))
+  for ( auto const& benchmark : resub_benchmarks( iscas ))
   {
     fmt::print( "[i] processing {}\n", benchmark );
 
@@ -76,9 +76,6 @@ int main()
     
     #pragma endregion SOA
     printf("=================\n");
-    printf("=================\n");
-    printf("=================\n");
-    printf("=================\n");
     #pragma region SPFD
     
     aig_network aig_spfd;
@@ -98,14 +95,11 @@ int main()
     ps_spfd.max_divisors = std::numeric_limits<uint32_t>::max();
 
     static constexpr uint32_t K = 10u;
-    static constexpr uint32_t S = 1u;
+    static constexpr uint32_t S = 100u;
     static constexpr uint32_t I = 10u;
-    static constexpr bool use_bmatch = false;
-    static constexpr bool use_greedy = true;
-    static constexpr bool use_lsearch = true;
     
 
-    sim_resubstitution_spfd<K, S, I, use_bmatch, use_greedy, use_lsearch>( aig_spfd, ps_spfd, &st_spfd );
+    sim_resubstitution_spfd<K, S, I>( aig_spfd, ps_spfd, &st_spfd );
     aig_spfd = cleanup_dangling( aig_spfd );
 
     const auto cec_spfd = benchmark == "hyp" ? true : abc_cec( aig_spfd, benchmark );

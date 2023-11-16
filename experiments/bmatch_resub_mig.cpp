@@ -30,6 +30,7 @@
 #include <lorina/aiger.hpp>
 #include <mockturtle/algorithms/cleanup.hpp>
 #include <mockturtle/algorithms/sim_resub.hpp>
+#include <mockturtle/algorithms/mig_resub.hpp>
 #include <mockturtle/io/aiger_reader.hpp>
 #include <mockturtle/networks/aig.hpp>
 
@@ -40,21 +41,16 @@ int main()
   using namespace experiments;
   using namespace mockturtle;
 
-  double gain_soa{0};
-  double gain_spfd{0};
-
   experiment<std::string, uint32_t, uint32_t, uint32_t, float, float, bool, bool> exp( "spfd_aig", "benchmark", "size", "gates(SOA)", "gates(SPFD)", "time(SOA)", "time(SPFD)", "eq(SOA)", "eq(SPFD)" );
 
-  double cnt{0};
-
-  for ( auto const& benchmark : resub_benchmarks( iscas ))//experiments::c432 ))
+  for ( auto const& benchmark : resub_benchmarks( ))//experiments::c880 ) )
   {
     fmt::print( "[i] processing {}\n", benchmark );
 
     #pragma region SOA
     
-    aig_network aig_soa;
-    if ( lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( aig_soa ) ) != lorina::return_code::success )
+    mig_network mig_soa;
+    if ( lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( mig_soa ) ) != lorina::return_code::success )
     {
       continue;
     }
@@ -65,24 +61,26 @@ int main()
     // ps.pattern_filename = "1024sa1/" + benchmark + ".pat";
     ps_soa.max_inserts = 20;
     ps_soa.max_pis = 10;
-    ps_soa.max_trials = 100;
-    ps_soa.max_divisors = std::numeric_limits<uint32_t>::max();
+    //ps_soa.max_divisors = std::numeric_limits<uint32_t>::max();
 
-    const uint32_t size_before = aig_soa.num_gates();
-    sim_resubstitution( aig_soa, ps_soa, &st_soa );
-    aig_soa = cleanup_dangling( aig_soa );
+    const uint32_t size_before = mig_soa.num_gates();
 
-    const auto cec_soa = benchmark == "hyp" ? true : abc_cec( aig_soa, benchmark );
+    using view_t = depth_view<fanout_view<mig_network>>;
+    fanout_view<mig_network> fanout_view{ mig_soa };
+    view_t resub_view{ fanout_view };
+
+    mig_resubstitution2( resub_view, ps_soa, &st_soa );
+    mig_soa = cleanup_dangling( mig_soa );
+
+
+    const auto cec_soa = benchmark == "hyp" ? true : abc_cec( mig_soa, benchmark );
     
     #pragma endregion SOA
-    printf("=================\n");
-    printf("=================\n");
-    printf("=================\n");
-    printf("=================\n");
+
     #pragma region SPFD
     
-    aig_network aig_spfd;
-    if ( lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( aig_spfd ) ) != lorina::return_code::success )
+    mig_network mig_spfd;
+    if ( lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( mig_spfd ) ) != lorina::return_code::success )
     {
       continue;
     }
@@ -90,41 +88,32 @@ int main()
     resubstitution_params ps_spfd;
     resubstitution_stats st_spfd;
 
-
+    // ps.pattern_filename = "1024sa1/" + benchmark + ".pat";
     ps_spfd.max_inserts = 20;
     ps_spfd.max_pis = 10;
-    ps_spfd.max_trials = 100;
-    ps_spfd.progress = true;
     ps_spfd.max_divisors = std::numeric_limits<uint32_t>::max();
 
-    static constexpr uint32_t K = 10u;
+    static constexpr uint32_t K = 4u;
     static constexpr uint32_t S = 1u;
-    static constexpr uint32_t I = 10u;
-    static constexpr bool use_bmatch = false;
+    static constexpr uint32_t I = 1u;
+    static constexpr bool use_bmatch = true;
     static constexpr bool use_greedy = true;
     static constexpr bool use_lsearch = true;
-    
 
-    sim_resubstitution_spfd<K, S, I, use_bmatch, use_greedy, use_lsearch>( aig_spfd, ps_spfd, &st_spfd );
-    aig_spfd = cleanup_dangling( aig_spfd );
+    sim_resubstitution_spfd<K, S, I, use_bmatch, use_greedy, use_lsearch>( mig_spfd, ps_spfd, &st_spfd );
+    mig_spfd = cleanup_dangling( mig_spfd );
 
-    const auto cec_spfd = benchmark == "hyp" ? true : abc_cec( aig_spfd, benchmark );
+    const auto cec_spfd = benchmark == "hyp" ? true : abc_cec( mig_spfd, benchmark );
     
     #pragma endregion SPFD
+    printf( "gates(SOA)=%d gates(SPFD)=%d\n", mig_soa.num_gates(), mig_spfd.num_gates() );
 
-    cnt++;
-    gain_soa += (double)(size_before - aig_soa.num_gates())/((double)size_before);
-    gain_spfd += (double)(size_before - aig_spfd.num_gates())/((double)size_before);
-    printf( "gain(SOA)=%d gain(SPFD)=%d\n", size_before - aig_soa.num_gates(), size_before - aig_spfd.num_gates() );
-
-    exp( benchmark, size_before, aig_soa.num_gates(), aig_spfd.num_gates(), to_seconds( st_soa.time_total ), to_seconds( st_spfd.time_total ), cec_soa, cec_spfd );
-    cnt+=1;
+    exp( benchmark, size_before, mig_soa.num_gates(), mig_spfd.num_gates(), to_seconds( st_soa.time_total ), to_seconds( st_spfd.time_total ), cec_soa, cec_spfd );
   }
-  printf("<gain(SOA)>=%.2f <gain(SPFD)>=%.2f\n", 100*gain_soa/cnt, 100*gain_spfd/cnt );
+
 
   exp.save();
   exp.table();
 
   return 0;
 }
-

@@ -88,14 +88,14 @@ int main()
 
     // ps.pattern_filename = "1024sa1/" + benchmark + ".pat";
     ps_spfd.max_inserts = 20;
-    ps_spfd.max_pis = 8;
+    ps_spfd.max_pis = 10;
     ps_spfd.max_divisors = std::numeric_limits<uint32_t>::max();
 
-    static constexpr uint32_t K = 4u;
+    static constexpr uint32_t K = 8u;
     static constexpr uint32_t S = 1u;
-    static constexpr uint32_t I = 1u;
+    static constexpr uint32_t I = 100u;
     static constexpr bool use_bmatch = false;
-    static constexpr bool use_greedy = false;
+    static constexpr bool use_greedy = true;
     static constexpr bool use_lsearch = true;
 
     sim_resubstitution_spfd<K, S, I, use_bmatch, use_greedy, use_lsearch>( xmg_spfd, ps_spfd, &st_spfd );
