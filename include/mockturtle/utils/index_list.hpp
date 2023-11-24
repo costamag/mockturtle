@@ -863,6 +863,7 @@ public:
   template<typename Fn>
   void foreach_gate( Fn&& fn ) const
   {
+    if( num_gates() == 0 ) return;
     assert( ( values.size() - 1u - num_pos() ) % 3 == 0 );
     for ( uint64_t i = 1u; i < values.size() - num_pos(); i += 3 )
     {
@@ -1057,12 +1058,12 @@ void insert( Ntk& ntk, BeginIter begin, EndIter end, mig_index_list const& indic
 inline std::string to_index_list_string( mig_index_list const& indices )
 {
   auto s = fmt::format( "{{{} | {} << 8 | {} << 16", indices.num_pis(), indices.num_pos(), indices.num_gates() );
-
   indices.foreach_gate( [&]( uint32_t lit0, uint32_t lit1, uint32_t lit2 ) {
     s += fmt::format( ", {}, {}, {}", lit0, lit1, lit2 );
   } );
 
   indices.foreach_po( [&]( uint32_t lit ) {
+
     s += fmt::format( ", {}", lit );
   } );
 

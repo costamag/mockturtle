@@ -432,20 +432,6 @@ private:
     // while ( ( leaves.size() != 0u || improve_in_parent.size() != 0u || shuffle.size() != 0u ) && maj_nodes.size() < size_limit )
     while ( leaves.size() != 0u && maj_nodes.size() < size_limit )
     {
-      // if ( leaves.size() == 0u )
-      //{
-      //   if ( improve_in_parent.size() != 0u )
-      //   {
-      //     leaves = improve_in_parent;
-      //     improve_in_parent.clear();
-      //   }
-      //   else
-      //   {
-      //     leaves = shuffle;
-      //     shuffle.clear();
-      //   }
-      //   first_round = false;
-      // }
 
       uint32_t min_mismatch = num_bits + 1;
       uint32_t pos = 0u;

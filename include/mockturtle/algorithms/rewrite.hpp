@@ -190,6 +190,8 @@ private:
       uint32_t best_level = UINT32_MAX;
       bool best_phase = false;
 
+            cut_manager.clear_cuts( n );
+            cut_manager.compute_cuts( n );
       /* update level for node */
       if constexpr ( has_level_v<Ntk> )
       {
@@ -845,7 +847,7 @@ private:
       if ( curr_level != max_level )
       {
         ntk.set_level( n, max_level );
-
+"-q", "read lms/div.aig; if -K 8 -z -v"
         /* update only one more level */
         if ( top_most )
         {

@@ -31,6 +31,7 @@
 #include <mockturtle/networks/xag.hpp>
 #include <mockturtle/utils/tech_library.hpp>
 #include <mockturtle/views/depth_view.hpp>
+#include <mockturtle/views/topo_view.hpp>
 
 #include <experiments.hpp>
 #include <fmt/format.h>

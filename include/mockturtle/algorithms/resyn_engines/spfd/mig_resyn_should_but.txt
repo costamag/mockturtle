@@ -144,9 +144,9 @@ struct mig_resyn_static_params
   static constexpr double beta_support{100};
   static constexpr double beta_synthesis{100};
 
-  static constexpr bool try_boolean_matching{false};
-  static constexpr bool use_greedy_support{ true };
-  static constexpr bool use_local_search{ false };
+  static constexpr bool try_boolean_matching{ false };
+  static constexpr bool use_greedy_support{ false };
+  static constexpr bool use_local_search{ true };
 
   using truth_table_storage_type = void;
   using node_type = void;
@@ -651,17 +651,10 @@ private:
     auto const lit = compute_function_rec( num_inserts );
     if ( lit )
     {
-
-      if(VERBOSE) printf("a\n");
       assert( index_list.num_gates() <= num_inserts );
       index_list.add_output( *lit );
-      if( index_list.num_gates()==0 )return std::nullopt;
-      if(VERBOSE) printf("b%d \n", *lit);
-      if(VERBOSE){ std::cout << to_index_list_string( index_list ) << std::endl;  }
-
       return index_list;
     }
-
     return std::nullopt;
   }
 
@@ -698,20 +691,12 @@ private:
    */
   std::optional<uint32_t> find_resynthesis( uint32_t max_num_gates )
   {
-      if(VERBOSE) printf("c\n");
-
     _past_supports.clear();
   bool a=false;
-          index_list_t index_list_copy = index_list;
-      if(VERBOSE) printf("d\n");
-
     for( uint32_t i{0}; i<static_params::max_num_support_samplings; ++i )
     {
-      if(VERBOSE) printf("e\n");
-
       RNG.seed(i++);
       const auto supp = find_support();
-      if(VERBOSE) printf("f\n");
 
       if( supp )
       {
@@ -721,109 +706,73 @@ private:
             printf("%d ", s);
           printf(" [%d]\n", max_num_gates );
         }
-      if(VERBOSE) printf("g\n");
 
         a = true;
 
         if( static_params::try_boolean_matching )
         {
-      if(VERBOSE) printf("h\n");
-
           if( supp->size() > 4u )
           {
-      if(VERBOSE) printf("i\n");
-
+            index_list_t index_list_copy;
             for( int iTry{0}; iTry<static_params::max_resyn_attempts; ++iTry )
             {
-      if(VERBOSE) printf("j\n");
-
+              index_list_copy=index_list;
               auto [funcK, careK] = extract_functionalityK_from_signatures( *supp );
               if( find_spfd_remapping( *supp, funcK, careK, max_num_gates ) )
               {
-      if(VERBOSE) printf("k\n");
-
                 if( _divsK.size() == 2 )
                 {
-      if(VERBOSE) printf("l\n");
-
-                  if( kitty::equal( _divsK.get_div(1) & _divsK.spfd.care, _divsK.spfd.func[1] ) )
+                  if( kitty::equal( _divsK[1].func & _divsK.spfd.care, _divsK.spfd.func[1] ) )
                   {
                     return _divsK[1].lit;
                   }
-                  else if( kitty::equal( _divsK.get_div(1) & _divsK.spfd.care, _divsK.spfd.func[0] ) )
+                  else if( kitty::equal( _divsK[1].func & _divsK.spfd.care, _divsK.spfd.func[0] ) )
                   {
                     return _divsK[1].lit ^ 0x1;
                   }
                   else
                   {
                     printf( "[w]: one divisor not matching\n" );
+                    return std::nullopt;
                   }
                 }
-      if(VERBOSE) printf("m\n");
-
                 auto [lits4, func4, care4] = extract_functionality4_from_Kdivs( funcK, careK );
-      if(VERBOSE) printf("n\n");
-
                 const auto res = find_boolean_matching( lits4, func4, care4, max_num_gates ); 
-      if(VERBOSE) printf("o\n");
-
                 if( res )
                 {
                   return *res;
-                }
-                else
-                {
-      if(VERBOSE) printf("p\n");
-
-            index_list = index_list_copy;
-                  
                 }
               }
             }
           }
           else
           {
-      if(VERBOSE) printf("q\n");
-
             auto [func4, care4] = extract_functionality4_from_signatures( *supp );
-      if(VERBOSE) printf("r\n");
-
             std::array<uint32_t, 4> lits = compute_literals( *supp );
-      if(VERBOSE) printf("s\n");
-
             const auto res =  find_boolean_matching( lits, func4, care4, max_num_gates ); 
-      if(VERBOSE) printf("t\n");
-
             if( res )
             {
               return *res;
             }
-            else
-              index_list = index_list_copy;
           }
-            index_list = index_list_copy;
-
           return std::nullopt;
         }
         else       
         {
           if( supp->size() == 0u )  return std::nullopt;
 
+
           auto [funcK, careK] = extract_functionalityK_from_signatures( *supp );
           //print_tt_with_dcs( funcK, careK );
-          const auto res = find_spfd_resynthesis( *supp, funcK, careK, max_num_gates );
 
+          const auto res = find_spfd_resynthesis( *supp, funcK, careK, max_num_gates );
           if( res )
           {
             return *res;
           }
-            index_list = index_list_copy;
-
         }
       }
     }
-            index_list = index_list_copy;
-
     return std::nullopt;
   }
 
@@ -920,7 +869,6 @@ private:
     }
     if ( num_bits[1] == 0 )
     {
-
       return 0;
     }
     
@@ -1222,6 +1170,8 @@ private:
 
   std::optional<uint32_t> find_boolean_matching( std::array<uint32_t, 4> lits, truth_table4_t const& func4, truth_table4_t const& care4, uint32_t max_num_gates )
   {
+
+
     if(VERBOSE)
     {
       printf("TT(0):"); print_tt_with_dcs(func4, care4);
@@ -1331,8 +1281,6 @@ private:
   {
     auto& db = _database.get_database();
 
-
-
     std::array<uint32_t, 3> node_data;
     db.foreach_fanin( n, [&]( auto const& f, auto i ) 
     {
@@ -1382,87 +1330,6 @@ private:
     std::sort( keys.begin(), keys.end() );
 
     return keys[0] | ( keys[1] << 20u ) | ( keys[2] << 40u );
-
-  }
-
-  std::optional<uint32_t> create_index_list_rec_old( node<mig_network> const& n, std::array<uint32_t, 4u> const& leaves, std::unordered_map<uint64_t, uint32_t> & existing_nodes )
-  {
-    auto& db = _database.get_database();
-
-    std::array<uint32_t, 3u> node_data{0};
-
-    db.foreach_fanin( n, [&]( auto const& f, auto i ) 
-    {
-      node<mig_network> g = db.get_node( f );
-      if( db.is_pi( g ) )
-      {
-        node_data[i] = db.is_complemented( f ) ? leaves[f.index-1] ^ 0x1 : leaves[f.index-1];
-      }
-      else if( db.is_maj(g) )
-      {
-        auto res = create_index_list_rec( g, leaves, existing_nodes );
-
-        if( res )
-        {
-          node_data[i] = db.is_complemented( f ) ? (*res) ^ 0x1 : *res;
-        }
-        else
-          return std::nullopt;
-      }
-      else if( db.is_constant( g ) )
-      {
-        node_data[i] = db.is_complemented( f ) ? 0x1 : 0x0;
-      }
-    } );
-
-    if( db.is_maj( n ) )
-    {
-      uint32_t new_lit;
-      uint64_t key0 = node_data[0];
-      uint64_t key1 = node_data[1];
-      uint64_t key2 = node_data[2];
-
-
-      if( key0 < key1 && key1 < key2 ) // 0 1 2 
-      {
-        key0 = ( key0 << 40u ) | ( key1 << 20u ) | key2;
-      }
-      else if( key0 < key2 && key2 < key1 ) // 0 2 1
-      {
-        key0 = ( key0 << 40u ) | ( key2 << 20u ) | key1;
-      }
-      else if( key1 < key0 && key0 < key2 ) // 1 0 2
-      {
-        key0 = ( key1 << 40u ) | ( key0 << 20u ) | key2;
-      }
-      else if( key1 < key2 && key2 < key0 ) // 1 2 0
-      {
-        key0 = ( key1 << 40u ) | ( key2 << 20u ) | key0;
-      }
-      else if( key2 < key0 && key0 < key1 ) // 2 0 1
-      {
-        key0 = ( key2 << 40u ) | ( key0 << 20u ) | key1;
-      }
-      else if( key2 < key1 && key1 < key0 ) // 2 1 0
-      {
-        key0 = ( key2 << 40u ) | ( key1 << 20u ) | key0;
-      }
-
-      if( auto search = existing_nodes.find( key0 ); search != existing_nodes.end() )
-      {
-        new_lit = search->second;
-      }
-      else
-      {
-        new_lit = index_list.add_maj( node_data[0], node_data[1], node_data[2] );
-        existing_nodes[key0] = new_lit;
-      }
-      return new_lit;
-    }
-    else
-    {
-      return std::nullopt;
-    }
   }
 
   #pragma endregion boolean_matching_resynthesis
@@ -1537,9 +1404,7 @@ private:
 
   functional_library_t _functional_library;
 
-  mig_npn_resynthesis _resyn;//{true};
-  exact_library<mig_network, mig_npn_resynthesis> _database;
-
+  database_t _database;
 
   stats& st;
 }; /* mig_resyn */ 

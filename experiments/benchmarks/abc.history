@@ -1,0 +1,6 @@
+read hyp.aig
+source -s abc.rc
+read netcars.aig
+open netcard.aig
+read netcard.aig
+print_stats

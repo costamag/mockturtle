@@ -31,13 +31,44 @@
 #include <mockturtle/algorithms/cleanup.hpp>
 #include <mockturtle/algorithms/sim_resub.hpp>
 #include <mockturtle/io/aiger_reader.hpp>
+#include <mockturtle/io/write_blif.hpp>
 #include <mockturtle/networks/aig.hpp>
+#include <mockturtle/algorithms/node_resynthesis/xag_npn.hpp>
 #include <mockturtle/algorithms/rewrite.hpp>
 #include <mockturtle/utils/tech_library.hpp>
 #include <mockturtle/views/depth_view.hpp>
 #include <mockturtle/views/topo_view.hpp>
 
 #include <experiments.hpp>
+
+template<class Ntk>
+mockturtle::aig_network abc_opt( Ntk const& ntk, std::string str_code, std::string abc_script = "share; resyn2rs" )
+{
+  mockturtle::aig_network res;
+  write_blif( ntk, "/tmp/pre" + str_code + ".blif" );
+
+  std::string command = "abc -q \"r /tmp/pre" + str_code + ".blif; " + abc_script + "; write_aiger /tmp/pre" + str_code + ".aig\"";
+
+  std::array<char, 128> buffer;
+  std::string result;
+  std::unique_ptr<FILE, decltype( &pclose )> pipe( popen( command.c_str(), "r" ), pclose );
+  if ( !pipe )
+  {
+    throw std::runtime_error( "popen() failed" );
+  }
+  while ( fgets( buffer.data(), buffer.size(), pipe.get() ) != nullptr )
+  {
+    result += buffer.data();
+  }
+
+  std::string string_path = ( "/tmp/pre" + str_code + ".aig" );
+  if( lorina::read_aiger( string_path, mockturtle::aiger_reader( res ) ) != lorina::return_code::success )
+    std::cerr << "read_aiger failed" << std::endl;
+
+  return res;
+}
+
+std::string SCRIPT = "compress2rs; compress2rs";
 
 int main()
 {
@@ -53,20 +84,15 @@ int main()
   double cum_gain_spfd{0};
   double cum_gain_bmatch{0};
 
-  std::vector<uint32_t> GATES_RS;
-  std::vector<uint32_t> GATES_BM;
-  std::vector<uint32_t> GATES_SP;
-  std::vector<uint32_t> GATES_N0;
-
-  experiment<std::string, uint32_t, uint32_t, float, uint32_t, float, uint32_t, float, uint32_t, float, bool, bool, bool, bool> exp( "spfd_aig", "benchmark", "size", "gates(RS)", "time(RS)", "gates(BMATCH)", "time(BMATCH)", "gates(SPFD)", "time(SPFD)", "gates(RW)", "time(RW)",  "eq(RS)", "eq(RW)", "eq(BMATCH)", "eq(SPFD)" );
+  experiment<std::string, uint32_t, float, float, float, float, float, float, float, float, bool, bool, bool, bool> exp( "spfd_aig", "benchmark", "size", "gain(RS)", "gain(RW)", "gain(BMATCH)", "gain(SPFD)", "time(RS)", "time(RW)", "time(BMATCH)", "time(SPFD)", "eq(RS)", "eq(RW)", "eq(BMATCH)", "eq(SPFD)" );
 
   double cnt{0};
 
-  static constexpr uint32_t S = 1u;
-  static constexpr uint32_t I = 1u;
-  static constexpr uint32_t N = 1u;
+  static constexpr uint32_t S = 10u;
+  static constexpr uint32_t I = 10u;
+  static constexpr uint32_t N = 100u;
   static constexpr uint32_t Ks = 10u;
-  static constexpr uint32_t Kb = 6u;
+  static constexpr uint32_t Kb = 10u;
 
   xag_npn_resynthesis<aig_network, aig_network, xag_npn_db_kind::aig_complete> resyn;
   exact_library_params eps;
@@ -74,7 +100,7 @@ int main()
   eps.compute_dc_classes = true;
   exact_library<aig_network, decltype( resyn )> exact_lib( resyn, eps );
 
-  for ( auto const& benchmark : all_benchmarks( iscas | epfl | iwls))
+  for ( auto const& benchmark : all_benchmarks( iscas | epfl | iwls ))
   {
     fmt::print( "[i] processing {}\n", benchmark );
 
@@ -95,12 +121,11 @@ int main()
     ps_rs.max_pis = Ks;
     ps_rs.max_trials = N;
     ps_rs.use_dont_cares = true;
+
+    ps_rs.odc_levels = -1;
     ps_rs.max_divisors = std::numeric_limits<uint32_t>::max();
-
+    //aig_rs = abc_opt( aig_rs, benchmark, SCRIPT );
     const uint32_t size_before = aig_rs.num_gates();
-
-    GATES_N0.push_back( size_before );
-
     sim_resubstitution( aig_rs, ps_rs, &st_rs );
     aig_rs = cleanup_dangling( aig_rs );
 
@@ -115,11 +140,13 @@ int main()
     {
       continue;
     }
+    //aig_rw = abc_opt( aig_rw, benchmark, SCRIPT );
 
     rewrite_params ps_rw;
     rewrite_stats st_rw;
     ps_rw.use_dont_cares = true;
 
+    //aig_rw = abc_opt( aig_rw, benchmark, SCRIPT );
     rewrite( aig_rw, exact_lib, ps_rw, &st_rw );
     aig_rw = cleanup_dangling( aig_rw );
 
@@ -145,9 +172,11 @@ int main()
     ps_bmatch.max_trials = N;
     ps_bmatch.progress = true;
     ps_bmatch.use_dont_cares = true;
+    ps_bmatch.odc_levels = -1;
+
     ps_bmatch.max_divisors = std::numeric_limits<uint32_t>::max();
 
-
+    //aig_bmatch = abc_opt( aig_bmatch, benchmark, SCRIPT );
     sim_resubstitution_spfd<Kb, S, I, true>( aig_bmatch, ps_bmatch, &st_bmatch );
     aig_bmatch = cleanup_dangling( aig_bmatch );
 
@@ -172,6 +201,7 @@ int main()
     ps_spfd.use_dont_cares = true;
     ps_spfd.max_divisors = std::numeric_limits<uint32_t>::max();
 
+    //aig_spfd = abc_opt( aig_spfd, benchmark, SCRIPT );
     sim_resubstitution_spfd<Kb, S, I, false>( aig_spfd, ps_spfd, &st_spfd );
     aig_spfd = cleanup_dangling( aig_spfd );
 
@@ -184,68 +214,22 @@ int main()
     gain_spfd = (double)(size_before - aig_spfd.num_gates())/((double)size_before);
     gain_bmatch = (double)(size_before - aig_bmatch.num_gates())/((double)size_before);
 
-    GATES_RS.push_back(aig_rs.num_gates());
-    GATES_BM.push_back(aig_bmatch.num_gates());
-    GATES_SP.push_back(aig_spfd.num_gates());
-
     cum_gain_rs += gain_rs;
     cum_gain_rw += gain_rw;
     cum_gain_spfd += gain_spfd;
     cum_gain_bmatch += gain_bmatch;
 
-    printf( "gates(RS)=%d gates(RW)=%d gates(BMATCH) = %d gates(SPFD)=%d\n", aig_rs.num_gates(), aig_rw.num_gates(), aig_bmatch.num_gates(), aig_spfd.num_gates() );
-    //experiment<std::string, uint32_t, float, float, float, float, float, float, float, float, bool, bool, bool, bool> exp( "spfd_aig", "benchmark", "size", "gain(RS)", "time(SOA)", "gain(BMATCH)", "time(BMATCH)", "gain(SPFD)", "time(SPFD)", "gain(RW)", "time(RW)",  "eq(RS)", "eq(RW)", "eq(BMATCH)", "eq(SPFD)" );
-    exp( benchmark, size_before, aig_rs.num_gates(), to_seconds( st_rs.time_total ),  aig_bmatch.num_gates(), to_seconds( st_bmatch.time_total ), aig_spfd.num_gates(),   to_seconds( st_spfd.time_total ), aig_rw.num_gates(), to_seconds( st_rw.time_total ),cec_rs, cec_rw, cec_bmatch, cec_spfd );
+    printf( "gain(RS)=%d gain(RW)=%d gain(BMATCH) = %d gain(SPFD)=%d\n", size_before - aig_rs.num_gates(), size_before - aig_rw.num_gates(), size_before - aig_bmatch.num_gates(), size_before - aig_spfd.num_gates() );
+
+    exp( benchmark, size_before, 100*gain_rs, 100*gain_rw, 100*gain_bmatch, 100*gain_spfd, to_seconds( st_rs.time_total ), to_seconds( st_rw.time_total ), to_seconds( st_bmatch.time_total ), to_seconds( st_spfd.time_total ), cec_rs, cec_rw, cec_bmatch, cec_spfd );
     cnt+=1;
   }
+  printf("<gain(RS)>=%.2f <gain>(RW)=%.2f <gain(BMATCH)>=%.2f <gain(SPFD)>=%.2f\n", 100*cum_gain_rs/cnt, 100*cum_gain_rw/cnt, 100*cum_gain_bmatch/cnt, 100*cum_gain_spfd/cnt );
 
   exp.save();
   exp.table();
 
-  printf("gates_rs=np.array([");
-  for( auto x : GATES_RS )
-  {
-    printf("%d, ", x );
-  }
-  printf("])\n");
-
-  printf("gates_bmatch=np.array([");
-  for( auto x : GATES_BM )
-  {
-    printf("%d, ", x );
-  }
-  printf("])\n");
-
-  printf("gates_spfd=np.array([");
-  for( auto x : GATES_SP )
-  {
-    printf("%d, ", x );
-  }
-  printf("])\n");
-
-  printf("gates_0=np.array([");
-  for( auto x : GATES_N0 )
-  {
-    printf("%d, ", x );
-  }
-  printf("])\n");
-
-
   return 0;
 }
-//| benchmark | size | gain(RS) | gain(RW) | gain(BMATCH) | gain(SPFD) | time(RS) | time(RW) | time(BMATCH) | time(SPFD) | eq(RS) | eq(RW) | eq(BMATCH) | eq(SPFD) |
-//|       c17 |    6 |     0.00 |     0.00 |         0.00 |       0.00 |     0.00 |     0.00 |         0.00 |       0.00 |   true |   true |       true |     true |
-//|      c432 |  208 |    19.71 |    20.19 |        19.23 |      19.23 |     0.00 |     0.00 |         0.04 |       0.04 |   true |   true |       true |     true |
-//|      c499 |  398 |     1.51 |     1.51 |         1.01 |       0.75 |     0.01 |     0.02 |         0.14 |       0.13 |   true |   true |       true |     true |
-//|      c880 |  325 |     5.85 |     4.00 |         4.00 |       3.69 |     0.00 |     0.01 |         0.09 |       0.08 |   true |   true |       true |     true |
-//|     c1355 |  502 |     9.16 |    21.91 |        19.92 |       8.17 |     0.01 |     0.01 |         0.11 |       0.15 |   true |   true |       true |     true |
-//|     c1908 |  341 |    15.84 |     6.74 |        15.54 |      14.37 |     0.01 |     0.01 |         0.10 |       0.16 |   true |   true |       true |     true |
-//|     c2670 |  716 |    21.23 |    20.53 |        19.27 |      16.34 |     0.02 |     0.01 |         0.38 |       0.33 |   true |   true |       true |     true |
-//|     c3540 | 1024 |    18.46 |    11.33 |        18.85 |      15.72 |     0.04 |     0.02 |         0.25 |       0.28 |   true |   true |       true |     true |
-//|     c5315 | 1776 |    21.06 |    20.61 |        22.18 |      12.95 |     0.03 |     0.04 |         0.74 |       0.82 |   true |  false |       true |     true |
-//|     c6288 | 2337 |    19.21 |    19.34 |        18.14 |       0.47 |     0.06 |     0.06 |         0.11 |       0.08 |   true |   true |       true |     true |
-//|     c7552 | 1469 |     6.74 |     3.47 |         6.19 |       4.08 |     0.02 |     0.04 |         0.81 |       0.79 |   true |   true |       true |     true |
-
-
 
 

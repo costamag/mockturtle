@@ -40,42 +40,51 @@ int main()
   using namespace experiments;
   using namespace mockturtle;
 
-  double gain_soa{0};
+  double gain_bmatch{0};
   double gain_spfd{0};
+  double cum_gain_bmatch{0};
+  double cum_gain_spfd{0};
 
-  experiment<std::string, uint32_t, uint32_t, uint32_t, float, float, bool, bool> exp( "spfd_aig", "benchmark", "size", "gates(SOA)", "gates(SPFD)", "time(SOA)", "time(SPFD)", "eq(SOA)", "eq(SPFD)" );
+  experiment<std::string, uint32_t, float, float, float, float, bool, bool> exp( "spfd_aig", "benchmark", "size", "gain(BMATCH)", "gain(SPFD)", "time(BMATCH)", "time(SPFD)", "eq(BMATCH)", "eq(SPFD)" );
 
   double cnt{0};
 
-  for ( auto const& benchmark : resub_benchmarks( iscas ))
+  for ( auto const& benchmark : resub_benchmarks( iscas | epfl ))
   {
     fmt::print( "[i] processing {}\n", benchmark );
+    printf("BMATCH\n");
 
-    #pragma region SOA
+    #pragma region BMATCH
     
-    aig_network aig_soa;
-    if ( lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( aig_soa ) ) != lorina::return_code::success )
+    aig_network aig_bmatch;
+    if ( lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( aig_bmatch ) ) != lorina::return_code::success )
     {
       continue;
     }
 
-    resubstitution_params ps_soa;
-    resubstitution_stats st_soa;
+    double const size_before = aig_bmatch.num_gates();
 
-    // ps.pattern_filename = "1024sa1/" + benchmark + ".pat";
-    ps_soa.max_inserts = 20;
-    ps_soa.max_pis = 10;
-    ps_soa.max_trials = 100;
-    ps_soa.max_divisors = std::numeric_limits<uint32_t>::max();
+    resubstitution_params ps_bmatch;
+    resubstitution_stats st_bmatch;
 
-    const uint32_t size_before = aig_soa.num_gates();
-    sim_resubstitution( aig_soa, ps_soa, &st_soa );
-    aig_soa = cleanup_dangling( aig_soa );
+    ps_bmatch.max_inserts = 20;
+    ps_bmatch.max_pis = 10;
+    ps_bmatch.max_trials = 1;
+    ps_bmatch.progress = true;
+    ps_bmatch.max_divisors = std::numeric_limits<uint32_t>::max();
 
-    const auto cec_soa = benchmark == "hyp" ? true : abc_cec( aig_soa, benchmark );
+    static constexpr uint32_t K2 = 10u;
+    static constexpr uint32_t S2 = 1u;
+    static constexpr uint32_t I2 = 1u;
+
+    sim_resubstitution_spfd<K2, S2, I2, true>( aig_bmatch, ps_bmatch, &st_bmatch );
+    aig_bmatch = cleanup_dangling( aig_bmatch );
+
+    const auto cec_bmatch = benchmark == "hyp" ? true : abc_cec( aig_bmatch, benchmark );
     
-    #pragma endregion SOA
+    #pragma endregion BMATCH
     printf("=================\n");
+    printf("SPFD\n");
     #pragma region SPFD
     
     aig_network aig_spfd;
@@ -90,19 +99,15 @@ int main()
 
     ps_spfd.max_inserts = 20;
     ps_spfd.max_pis = 10;
-    ps_spfd.max_trials = 100;
+    ps_spfd.max_trials = 1;
     ps_spfd.progress = true;
     ps_spfd.max_divisors = std::numeric_limits<uint32_t>::max();
 
     static constexpr uint32_t K = 10u;
-    static constexpr uint32_t S = 10u;
-    static constexpr uint32_t I = 10u;
-    static constexpr bool use_bmatch = false;
-    static constexpr bool use_greedy = true;
-    static constexpr bool use_lsearch = true;
-    
+    static constexpr uint32_t S = 1u;
+    static constexpr uint32_t I = 1u;
 
-    sim_resubstitution_spfd<K, S, I>( aig_spfd, ps_spfd, &st_spfd );
+    sim_resubstitution_spfd<K, S, I, false>( aig_spfd, ps_spfd, &st_spfd );
     aig_spfd = cleanup_dangling( aig_spfd );
 
     const auto cec_spfd = benchmark == "hyp" ? true : abc_cec( aig_spfd, benchmark );
@@ -110,18 +115,21 @@ int main()
     #pragma endregion SPFD
 
     cnt++;
-    gain_soa += (double)(size_before - aig_soa.num_gates())/((double)size_before);
-    gain_spfd += (double)(size_before - aig_spfd.num_gates())/((double)size_before);
-    printf( "gain(SOA)=%d gain(SPFD)=%d\n", size_before - aig_soa.num_gates(), size_before - aig_spfd.num_gates() );
+    gain_bmatch = (double)(size_before - aig_bmatch.num_gates())/((double)size_before);
+    gain_spfd = (double)(size_before - aig_spfd.num_gates())/((double)size_before);
 
-    exp( benchmark, size_before, aig_soa.num_gates(), aig_spfd.num_gates(), to_seconds( st_soa.time_total ), to_seconds( st_spfd.time_total ), cec_soa, cec_spfd );
+    cum_gain_bmatch += gain_bmatch;
+    cum_gain_spfd += gain_spfd;
+
+    printf( "gain(BMATCH)=%f gain(SPFD)=%f\n", size_before - aig_bmatch.num_gates(), size_before - aig_spfd.num_gates() );
+
+    exp( benchmark, size_before, 100*gain_bmatch, 100*gain_spfd, to_seconds( st_bmatch.time_total ), to_seconds( st_spfd.time_total ), cec_bmatch, cec_spfd );
     cnt+=1;
   }
-  printf("<gain(SOA)>=%.2f <gain(SPFD)>=%.2f\n", 100*gain_soa/cnt, 100*gain_spfd/cnt );
+  printf("<gain(BMATCH)>=%.2f <gain(SPFD)>=%.2f\n", 100*cum_gain_bmatch/cnt, 100*cum_gain_spfd/cnt );
 
   exp.save();
   exp.table();
 
   return 0;
 }
-

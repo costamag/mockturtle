@@ -778,6 +778,201 @@ private:
   std::shared_ptr<typename network_events<Ntk>::delete_event_type> delete_event;
 };
 
+/*! \brief The top-level resubstitution framework.
+ *
+ * \param ResubEngine The engine that computes the resubtitution for a given root
+ * node and divisors. One can choose from `window_based_resub_engine` which
+ * does complete simulation within small windows, or `simulation_based_resub_engine`
+ * which does partial simulation on the whole circuit.
+ *
+ * \param DivCollector Collects divisors near a given root node, and compute
+ * the potential gain (MFFC size or its variants).
+ * Currently only `default_divisor_collector` is implemented, but
+ * a frontier-based approach may be integrated in the future.
+ * When using `window_based_resub_engine`, the `DivCollector` should prepare
+ * three public data members: `leaves`, `divs`, and `mffc` (see documentation
+ * of `default_divisor_collector` for details). When using `simulation_based_resub_engine`,
+ * only `divs` is needed.
+ */
+template<class Ntk, class database_t, class ResubEngine = window_based_resub_engine<Ntk, kitty::dynamic_truth_table>, class DivCollector = default_divisor_collector<Ntk>>
+class resubstitution_with_database_impl
+{
+public:
+  using engine_st_t = typename ResubEngine::stats;
+  using collector_st_t = typename DivCollector::stats;
+  using node = typename Ntk::node;
+  using signal = typename Ntk::signal;
+  using resub_callback_t = std::function<bool( Ntk&, node const&, signal const& )>;
+  using mffc_result_t = typename ResubEngine::mffc_result_t;
+
+  /*! \brief Constructor of the top-level resubstitution framework.
+   *
+   * \param ntk The network to be optimized.
+   * \param ps Resubstitution parameters.
+   * \param st Top-level resubstitution statistics.
+   * \param engine_st Statistics of the resubstitution engine.
+   * \param collector_st Statistics of the divisor collector.
+   * \param callback Callback function when a resubstitution is found.
+   */
+  explicit resubstitution_with_database_impl( Ntk& ntk, database_t& database, resubstitution_params const& ps, resubstitution_stats& st, engine_st_t& engine_st, collector_st_t& collector_st )
+      : ntk( ntk ), database( database ), ps( ps ), st( st ), engine_st( engine_st ), collector_st( collector_st )
+  {
+    static_assert( std::is_same_v<typename ResubEngine::mffc_result_t, typename DivCollector::mffc_result_t>, "MFFC result type of the engine and the collector are different" );
+
+    st.initial_size = ntk.num_gates();
+
+    register_events();
+  }
+
+  ~resubstitution_with_database_impl()
+  {
+    ntk.events().release_add_event( add_event );
+    ntk.events().release_modified_event( modified_event );
+    ntk.events().release_delete_event( delete_event );
+  }
+
+  void run( resub_callback_t const& callback = substitute_fn<Ntk> )
+  {
+    stopwatch t( st.time_total );
+
+    /* start the managers */
+    DivCollector collector( ntk, ps, collector_st );
+    ResubEngine resub_engine( ntk, database, ps, engine_st );
+    call_with_stopwatch( st.time_resub, [&]() {
+      resub_engine.init();
+    } );
+
+    progress_bar pbar{ ntk.size(), "resub |{0}| node = {1:>4}   cand = {2:>4}   est. gain = {3:>5}", ps.progress };
+
+    auto const size = ntk.num_gates();
+    ntk.foreach_gate( [&]( auto const& n, auto i ) {
+      if ( i >= size )
+      {
+        return false; /* terminate */
+      }
+
+      pbar( i, i, candidates, st.estimated_gain );
+
+      /* compute cut, collect divisors, compute MFFC */
+      mffc_result_t potential_gain;
+      const auto collector_success = call_with_stopwatch( st.time_divs, [&]() {
+        return collector.run( n, potential_gain );
+      } );
+      if ( !collector_success )
+      {
+        return true; /* next */
+      }
+
+      /* update statistics */
+      last_gain = 0;
+      st.num_total_divisors += collector.divs.size();
+
+      /* try to find a resubstitution with the divisors */
+      auto g = call_with_stopwatch( st.time_resub, [&]() {
+        if constexpr ( ResubEngine::require_leaves_and_mffc ) /* window-based */
+        {
+          return resub_engine.run( n, collector.leaves, collector.divs, collector.mffc, potential_gain, last_gain );
+        }
+        else /* simulation-based */
+        {
+          return resub_engine.run( n, collector.divs, potential_gain, last_gain );
+        }
+      } );
+      if ( !g )
+      {
+        return true; /* next */
+      }
+
+      /* update progress bar */
+      candidates++;
+      st.estimated_gain += last_gain;
+
+      /* update network */
+      bool updated = call_with_stopwatch( st.time_callback, [&]() {
+        return callback( ntk, n, *g );
+      } );
+      if ( updated )
+      {
+        resub_engine.update();
+      }
+
+      return true; /* next */
+    } );
+  }
+
+private:
+  void register_events()
+  {
+    auto const update_level_of_new_node = [&]( const auto& n ) {
+      ntk.resize_levels();
+      update_node_level( n );
+    };
+
+    auto const update_level_of_existing_node = [&]( node const& n, const auto& old_children ) {
+      (void)old_children;
+      ntk.resize_levels();
+      update_node_level( n );
+    };
+
+    auto const update_level_of_deleted_node = [&]( const auto& n ) {
+      ntk.set_level( n, -1 );
+    };
+
+    add_event = ntk.events().register_add_event( update_level_of_new_node );
+    modified_event = ntk.events().register_modified_event( update_level_of_existing_node );
+    delete_event = ntk.events().register_delete_event( update_level_of_deleted_node );
+  }
+
+  /* maybe should move to depth_view */
+  void update_node_level( node const& n, bool top_most = true )
+  {
+    uint32_t curr_level = ntk.level( n );
+
+    uint32_t max_level = 0;
+    ntk.foreach_fanin( n, [&]( const auto& f ) {
+      auto const p = ntk.get_node( f );
+      auto const fanin_level = ntk.level( p );
+      if ( fanin_level > max_level )
+      {
+        max_level = fanin_level;
+      }
+    } );
+    ++max_level;
+
+    if ( curr_level != max_level )
+    {
+      ntk.set_level( n, max_level );
+
+      /* update only one more level */
+      if ( top_most )
+      {
+        ntk.foreach_fanout( n, [&]( const auto& p ) {
+          update_node_level( p, false );
+        } );
+      }
+    }
+  }
+
+private:
+  Ntk& ntk;
+
+  resubstitution_params const& ps;
+  resubstitution_stats& st;
+  engine_st_t& engine_st;
+  collector_st_t& collector_st;
+
+  /* temporary statistics for progress bar */
+  uint32_t candidates{ 0 };
+  uint32_t last_gain{ 0 };
+
+  /* events */
+  std::shared_ptr<typename network_events<Ntk>::add_event_type> add_event;
+  std::shared_ptr<typename network_events<Ntk>::modified_event_type> modified_event;
+  std::shared_ptr<typename network_events<Ntk>::delete_event_type> delete_event;
+
+  database_t database;
+};
+
 } /* namespace detail */
 
 /*! \brief Window-based Boolean resubstitution with default resub functor (only div0). */

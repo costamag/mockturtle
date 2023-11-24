@@ -253,30 +253,36 @@ public:
     }
     if constexpr ( std::is_same_v<index_list_type, mig_index_list> )
     {
-      id_list.foreach_gate( [&]( uint32_t id_lit0, uint32_t id_lit1, uint32_t id_lit2 ) {
-        uint32_t const node_pos0 = id_lit0 >> 1;
-        uint32_t const node_pos1 = id_lit1 >> 1;
-        uint32_t const node_pos2 = id_lit2 >> 1;
-        assert( node_pos0 < lits.size() );
-        assert( node_pos1 < lits.size() );
-        assert( node_pos2 < lits.size() );
-        lits.emplace_back( add_clauses_for_3input_gate( lit_not_cond( lits[node_pos0], id_lit0 & 0x1 ), lit_not_cond( lits[node_pos1], id_lit1 & 0x1 ), lit_not_cond( lits[node_pos2], id_lit2 & 0x1 ), std::nullopt, MAJ ) );
-      } );
+      if( id_list.num_gates() > 0 )
+      {
+        id_list.foreach_gate( [&]( uint32_t id_lit0, uint32_t id_lit1, uint32_t id_lit2 ) {
+          uint32_t const node_pos0 = id_lit0 >> 1;
+          uint32_t const node_pos1 = id_lit1 >> 1;
+          uint32_t const node_pos2 = id_lit2 >> 1;
+          assert( node_pos0 < lits.size() );
+          assert( node_pos1 < lits.size() );
+          assert( node_pos2 < lits.size() );
+          lits.emplace_back( add_clauses_for_3input_gate( lit_not_cond( lits[node_pos0], id_lit0 & 0x1 ), lit_not_cond( lits[node_pos1], id_lit1 & 0x1 ), lit_not_cond( lits[node_pos2], id_lit2 & 0x1 ), std::nullopt, MAJ ) );
+        } );
+      }
     }
     if constexpr ( std::is_same_v<index_list_type, xmg_index_list> )
     {
-      id_list.foreach_gate( [&]( uint32_t id_lit0, uint32_t id_lit1, uint32_t id_lit2 ) {
-        uint32_t const node_pos0 = ( 0x0FFFFFFF & id_lit0 ) >> 1;
-        uint32_t const node_pos1 = id_lit1 >> 1;
-        uint32_t const node_pos2 = id_lit2 >> 1;
-        assert( node_pos0 < lits.size() );
-        assert( node_pos1 < lits.size() );
-        assert( node_pos2 < lits.size() );
-        if( id_lit0 & 0xF0000000 > 0 )
-          lits.emplace_back( add_clauses_for_3input_gate( lit_not_cond( lits[node_pos0], id_lit0 & 0x1 ), lit_not_cond( lits[node_pos1], id_lit1 & 0x1 ), lit_not_cond( lits[node_pos2], id_lit2 & 0x1 ), std::nullopt, XOR ) );
-        else
-          lits.emplace_back( add_clauses_for_3input_gate( lit_not_cond( lits[node_pos0], id_lit0 & 0x1 ), lit_not_cond( lits[node_pos1], id_lit1 & 0x1 ), lit_not_cond( lits[node_pos2], id_lit2 & 0x1 ), std::nullopt, MAJ ) );
-      } );
+      if( id_list.num_gates() > 0 )
+      {
+        id_list.foreach_gate( [&]( uint32_t id_lit0, uint32_t id_lit1, uint32_t id_lit2 ) {
+          uint32_t const node_pos0 = ( 0x0FFFFFFF & id_lit0 ) >> 1;
+          uint32_t const node_pos1 = id_lit1 >> 1;
+          uint32_t const node_pos2 = id_lit2 >> 1;
+          assert( node_pos0 < lits.size() );
+          assert( node_pos1 < lits.size() );
+          assert( node_pos2 < lits.size() );
+          if( id_lit0 & 0xF0000000 > 0 )
+            lits.emplace_back( add_clauses_for_3input_gate( lit_not_cond( lits[node_pos0], id_lit0 & 0x1 ), lit_not_cond( lits[node_pos1], id_lit1 & 0x1 ), lit_not_cond( lits[node_pos2], id_lit2 & 0x1 ), std::nullopt, XOR ) );
+          else
+            lits.emplace_back( add_clauses_for_3input_gate( lit_not_cond( lits[node_pos0], id_lit0 & 0x1 ), lit_not_cond( lits[node_pos1], id_lit1 & 0x1 ), lit_not_cond( lits[node_pos2], id_lit2 & 0x1 ), std::nullopt, MAJ ) );
+        } );
+      }
     }
     if constexpr ( std::is_same_v<index_list_type, muxig_index_list> )
     {
@@ -814,3 +820,6 @@ public:
 };
 
 } /* namespace mockturtle */
+
+
+

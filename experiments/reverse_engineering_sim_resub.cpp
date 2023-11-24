@@ -41,7 +41,7 @@ int main()
   using namespace mockturtle;
 
 
-  for ( auto const& benchmark : resub_benchmarks( iscas ))
+  for ( auto const& benchmark : resub_benchmarks( iscas | epfl ))
   {
     fmt::print( "[i] processing {}\n", benchmark );
 
@@ -65,6 +65,7 @@ int main()
     const uint32_t size_before = aig_soa.num_gates();
     sim_resubstitution( aig_soa, ps_soa, &st_soa );
     aig_soa = cleanup_dangling( aig_soa );
+
 
     const auto cec_soa = benchmark == "hyp" ? true : abc_cec( aig_soa, benchmark );
     if( !cec_soa )
