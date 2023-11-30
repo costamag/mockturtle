@@ -43,6 +43,7 @@
 #include <iostream>
 #include <unordered_map>
 #include <vector>
+#include <stack>
 
 #include <parallel_hashmap/phmap.h>
 
@@ -232,6 +233,50 @@ struct storage
   phmap::flat_hash_map<node_type, uint64_t, NodeHasher> hash;
 
   T data;
+};
+
+template<typename Node, typename T = empty_storage_data, typename NodeHasher = node_hash<Node>>
+struct storage_with_nodes_stack
+{
+  storage_with_stack()
+  {
+    nodes.reserve( 10000u );
+    hash.reserve( 10000u );
+
+    /* we generally reserve the first node for a constant */
+    nodes.emplace_back();
+  }
+
+  using node_type = Node;
+
+  uint32_t trav_id = 0u;
+
+  std::vector<node_type> nodes;
+  std::vector<uint64_t> inputs;
+  std::vector<typename node_type::pointer_type> outputs;
+
+  phmap::flat_hash_map<node_type, uint64_t, NodeHasher> hash;
+
+  T data;
+
+  std::stack<uint32_t> nodes_stack;
+  uint32_t next_index;
+
+  uint32_t get_index()
+  {
+    if( nodes_stack.size() > 0 )
+    {
+      next_index = nodes_stack.top();
+      nodes_stack.pop();
+      return next_index;
+    }
+    else
+    {
+      next_index = nodes.size();
+      return next_index;
+    }
+  }
+
 };
 
 template<typename Node, typename T = empty_storage_data>
