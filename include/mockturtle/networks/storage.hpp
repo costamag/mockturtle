@@ -43,7 +43,7 @@
 #include <iostream>
 #include <unordered_map>
 #include <vector>
-#include <stack>
+#include <queue>
 
 #include <parallel_hashmap/phmap.h>
 
@@ -236,15 +236,31 @@ struct storage
 };
 
 template<typename Node, typename T = empty_storage_data, typename NodeHasher = node_hash<Node>>
-struct storage_with_nodes_stack
+struct smart_storage
 {
-  storage_with_stack()
+  smart_storage()
   {
     nodes.reserve( 10000u );
     hash.reserve( 10000u );
 
     /* we generally reserve the first node for a constant */
     nodes.emplace_back();
+  }
+
+  uint64_t get_index()
+  {
+    uint64_t new_index;
+
+    //if( available_indeces.size() == 0 ) //BEFORE ADDING IT CHECK THAT YOU CAN REMOVE THE NODE FROM THE HASH
+    {
+      return nodes.size();
+    }
+  //  else
+  //  {
+  //    new_index = available_indeces.front();
+  //    available_indeces.pop();
+  //    return new_index;
+  //  }
   }
 
   using node_type = Node;
@@ -259,24 +275,7 @@ struct storage_with_nodes_stack
 
   T data;
 
-  std::stack<uint32_t> nodes_stack;
-  uint32_t next_index;
-
-  uint32_t get_index()
-  {
-    if( nodes_stack.size() > 0 )
-    {
-      next_index = nodes_stack.top();
-      nodes_stack.pop();
-      return next_index;
-    }
-    else
-    {
-      next_index = nodes.size();
-      return next_index;
-    }
-  }
-
+  std::queue<uint64_t> available_indeces; 
 };
 
 template<typename Node, typename T = empty_storage_data>
