@@ -662,18 +662,18 @@ public:
 #pragma region unary functions
   rig_network::signal rig_network::create_buf( signal const& f )
   {
-    auto [e_signal, is_new] = _create_known_node( { f }, e_func_t::e_BUF );
-    _e_storage->nodes[e_signal.index].twin = _e_storage->nodes[f.index].twin;
-    
-    return e_signal;
+  //  auto [e_signal, is_new] = _create_known_node( { f }, e_func_t::e_BUF );
+  //  _e_storage->nodes[e_signal.index].twin = _e_storage->nodes[f.index].twin;
+  // return e_signal;
+    return f;
   }
 
   rig_network::signal rig_network::create_not( signal const& f )
   {
-    auto [e_signal, is_new] = _create_known_node( { f }, e_func_t::e_BUF ^ 0x1 );
-    _e_storage->nodes[e_signal.index].twin = _e_storage->nodes[f.index].twin;
-    
-    return e_signal;
+    //auto [e_signal, is_new] = _create_known_node( { f }, e_func_t::e_BUF ^ 0x1 );
+    //_e_storage->nodes[e_signal.index].twin = _e_storage->nodes[f.index].twin;
+    //return e_signal;
+    return !f;
   }
 
   bool rig_network::is_buf( node const& n )
@@ -848,12 +848,19 @@ rig_network::i_signal_t rig_network::i_create_and( i_signal_t a, i_signal_t b )
   {
     std::shared_ptr<e_storage_t>::element_type::node_type node;
     std::copy( children.begin(), children.end(), std::back_inserter( node.children ) );
+    
     node.func = literal;
-
-    const auto it = _e_storage->hash.find( node );
-    if ( it != _e_storage->hash.end() )
+    const auto it1 = _e_storage->hash.find( node );
+    if ( it1 != _e_storage->hash.end() )
     {
-      return std::make_pair( rig_network::signal{it->second, 0} , false );
+      return std::make_pair( rig_network::signal{it1->second, 0} , false );
+    }
+
+    node.func = literal ^ 0x1;
+    const auto it0 = _e_storage->hash.find( node );
+    if ( it0 != _e_storage->hash.end() )
+    {
+      return std::make_pair( rig_network::signal{it0->second, 1} , false );
     }
 
     const auto e_index = _e_storage->get_index();

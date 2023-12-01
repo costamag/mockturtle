@@ -145,8 +145,8 @@ TEST_CASE( "create unary operations in a RIG network", "[rig]" )
   auto f2 = rig.create_not( x1 );
   auto f3 = rig.create_buf( x1 );
 
-  CHECK( rig.size() == 4 );
-  CHECK( !rig.is_pi( rig.get_node(f1)));
+  CHECK( rig.size() == 2 );
+  CHECK( rig.is_pi( rig.get_node(f1)));
   CHECK( rig.is_pi( rig.get_node(x1)));
   CHECK( rig.is_buf( rig.get_node(f1)));
   CHECK( rig.is_not( rig.get_node(f2)));
