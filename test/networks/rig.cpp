@@ -152,3 +152,120 @@ TEST_CASE( "create unary operations in a RIG network", "[rig]" )
   CHECK( rig.is_not( rig.get_node(f2)));
   CHECK( f1 == f3 );
 }
+
+TEST_CASE( "create binary operations in an RIG", "[rig]" )
+{
+  rig_network rig;
+
+  CHECK( has_create_and_v<rig_network> );
+  CHECK( has_create_nand_v<rig_network> );
+  CHECK( has_create_or_v<rig_network> );
+  CHECK( has_create_nor_v<rig_network> );
+  CHECK( has_create_xor_v<rig_network> );
+  CHECK( has_create_xnor_v<rig_network> );
+
+  const auto x1 = rig.create_pi();
+  const auto x2 = rig.create_pi();
+
+  CHECK( rig.size() == 3 );
+
+  const auto f1 = rig.create_and( x1, x2 );
+  CHECK( rig.size() == 4 );
+
+  const auto s1 = rig.create_and( x1, x2 );
+  CHECK( rig.is_and(rig.get_node(s1)) );
+
+  CHECK( rig.size() == 4 );
+  CHECK( s1 == f1 );
+
+  const auto f2 = rig.create_nand( x1, x2 );
+  CHECK( rig.size() == 5 );
+  CHECK( f1 != !f2 );
+
+  const auto s2 = rig.create_nand( x2, x1 );
+  CHECK( rig.is_nand(rig.get_node(s2)) );
+
+  CHECK( rig.size() == 5 );
+  CHECK( s2 == f2 );
+
+  const auto f3 = rig.create_or( x1, x2 );
+  const auto s3 = rig.create_or( x2, x1 );
+  CHECK( rig.is_or(rig.get_node(f3)) );
+
+  CHECK( rig.size() == 6 );
+
+  const auto f4 = rig.create_nor( x1, x2 );
+  CHECK( rig.is_nor(rig.get_node(f4)) );
+
+  CHECK( rig.size() == 7 );
+  CHECK( f3 != !f4 );
+  CHECK( s3 == f3 );
+
+  const auto f5 = rig.create_xor( x1, x2 );
+  const auto s5 = rig.create_xor( x2, x1 );
+  CHECK( rig.is_xor(rig.get_node(s5)) );
+  CHECK( rig.size() == 8 );
+
+  const auto f6 = rig.create_xnor( x1, x2 );
+  const auto s6 = rig.create_xnor( x2, x1 );
+  CHECK( rig.is_xnor(rig.get_node(s6)) );
+  CHECK( rig.size() == 9 );
+  CHECK( f5 != !f6 );
+  CHECK( f5 == s5 );
+  CHECK( f6 == s6 );
+
+  const auto f7 = !rig.create_xnor( x2, x1 );
+  CHECK( f7 == !s6 );
+  CHECK( rig.size() == 9 );
+
+}
+
+TEST_CASE( "hash nodes in RIG network", "[rig]" )
+{
+  rig_network rig;
+
+  auto a = rig.create_pi();
+  auto b = rig.create_pi();
+
+  auto f = rig.create_and( a, b );
+  auto g = rig.create_and( a, b );
+
+  CHECK( rig.size() == 4u );
+  CHECK( rig.num_gates() == 1u );
+
+  CHECK( rig.get_node( f ) == rig.get_node( g ) );
+}
+
+TEST_CASE( "structural properties of an RIG", "[rig]" )
+{
+  rig_network rig;
+
+  CHECK( has_size_v<rig_network> );
+  CHECK( has_num_pis_v<rig_network> );
+  CHECK( has_num_pos_v<rig_network> );
+  CHECK( has_num_gates_v<rig_network> );
+  CHECK( has_fanin_size_v<rig_network> );
+  CHECK( has_fanout_size_v<rig_network> );
+
+  const auto x1 = rig.create_pi();
+  const auto x2 = rig.create_pi();
+
+  const auto f1 = rig.create_and( x1, x2 );
+  const auto f2 = rig.create_or( x1, x2 );
+
+  rig.create_po( f1 );
+  rig.create_po( f2 );
+
+  CHECK( rig.size() == 5 );
+  CHECK( rig.num_pis() == 2 );
+  CHECK( rig.num_pos() == 2 );
+  CHECK( rig.num_gates() == 2 );
+  CHECK( rig.fanin_size( rig.get_node( x1 ) ) == 1 );
+  CHECK( rig.fanin_size( rig.get_node( x2 ) ) == 1 );
+  CHECK( rig.fanin_size( rig.get_node( f1 ) ) == 2 );
+  CHECK( rig.fanin_size( rig.get_node( f2 ) ) == 2 );
+  CHECK( rig.fanout_size( rig.get_node( x1 ) ) == 2 );
+  CHECK( rig.fanout_size( rig.get_node( x2 ) ) == 2 );
+  CHECK( rig.fanout_size( rig.get_node( f1 ) ) == 1 );
+  CHECK( rig.fanout_size( rig.get_node( f2 ) ) == 1 );
+}
