@@ -44,6 +44,7 @@
 #include <unordered_map>
 #include <vector>
 #include <queue>
+#include <set>
 
 #include <parallel_hashmap/phmap.h>
 
