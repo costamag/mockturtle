@@ -173,51 +173,525 @@ TEST_CASE( "create binary operations in an RIG", "[rig]" )
   const auto f1 = rig.create_and( x1, x2 );
   CHECK( rig.size() == 4 );
 
-  const auto s1 = rig.create_and( x1, x2 );
-  CHECK( rig.is_and(rig.get_node(s1)) );
+  {
+    // check strashing
+    auto q = rig.create_and( x1, x2 );
+    CHECK( rig.is_and(rig.get_node(q)) );
 
-  CHECK( rig.size() == 4 );
-  CHECK( s1 == f1 );
+    CHECK( rig.size() == 4 );
+    CHECK( q == f1 );
+
+    // check permutation
+    q = rig.create_and( x2, x1 );
+    CHECK( rig.is_and(rig.get_node(q)) );
+    CHECK( rig.size() == 4 );
+    CHECK( q == f1 );
+    // check and with constant 0
+    q = rig.create_and( x2, rig.get_constant(0) );
+    CHECK( !rig.is_and(rig.get_node(q)) );
+    CHECK( rig.size() == 4 );
+    CHECK( q == rig.get_constant(0) );
+    q = rig.create_and( x1, rig.get_constant(0) );
+    CHECK( !rig.is_and(rig.get_node(q)) );
+    CHECK( rig.size() == 4 );
+    CHECK( q == rig.get_constant(0) );
+
+    // check and with constant 1
+    q = rig.create_and( x2, rig.get_constant(1) );
+    CHECK( !rig.is_and(rig.get_node(q)) );
+    CHECK( rig.size() == 4 );
+    CHECK( q == x2 );
+    q = rig.create_and( x1, rig.get_constant(1) );
+    CHECK( !rig.is_and(rig.get_node(q)) );
+    CHECK( rig.size() == 4 );
+    CHECK( q == x1 );
+
+    // check and with same input
+    q = rig.create_and( x2, x2 );
+    CHECK( !rig.is_and(rig.get_node(q)) );
+    CHECK( rig.size() == 4 );
+    CHECK( q == x2 );
+    q = rig.create_and( x1, !x1 );
+    CHECK( !rig.is_and(rig.get_node(q)) );
+    CHECK( rig.size() == 4 );
+    CHECK( q == rig.get_constant(0) );
+  }
+
 
   const auto f2 = rig.create_nand( x1, x2 );
   CHECK( rig.size() == 5 );
   CHECK( f1 != !f2 );
 
-  const auto s2 = rig.create_nand( x2, x1 );
-  CHECK( rig.is_nand(rig.get_node(s2)) );
+  {
+    // check strashing
+    auto q = rig.create_nand( x1, x2 );
+    CHECK( rig.is_nand(rig.get_node(q)) );
 
-  CHECK( rig.size() == 5 );
-  CHECK( s2 == f2 );
+    CHECK( rig.size() == 5 );
+    CHECK( q == f2 );
+
+    // check permutation
+    q = rig.create_nand( x2, x1 );
+    CHECK( rig.is_nand(rig.get_node(q)) );
+    CHECK( rig.size() == 5 );
+    CHECK( q == f2 );
+    // check and with constant 0
+    q = rig.create_nand( x2, rig.get_constant(0) );
+    CHECK( !rig.is_nand(rig.get_node(q)) );
+    CHECK( rig.size() == 5 );
+    CHECK( q == rig.get_constant(1) );
+
+    q = rig.create_nand( x1, rig.get_constant(0) );
+    CHECK( !rig.is_nand(rig.get_node(q)) );
+    CHECK( rig.size() == 5 );
+    CHECK( q == rig.get_constant(1) );
+
+    // check and with constant 1
+    q = rig.create_nand( x2, rig.get_constant(1) );
+    CHECK( !rig.is_nand(rig.get_node(q)) );
+    CHECK( rig.size() == 5 );
+    CHECK( q == !x2 );
+
+    q = rig.create_nand( x1, rig.get_constant(1) );
+    CHECK( !rig.is_nand(rig.get_node(q)) );
+    CHECK( rig.size() == 5 );
+    CHECK( q == !x1 );
+
+    // check nand with same input
+    q = rig.create_nand( x2, x2 );
+    CHECK( !rig.is_nand(rig.get_node(q)) );
+    CHECK( rig.size() == 5 );
+    CHECK( q == !x2 );
+    q = rig.create_nand( x1, !x1 );
+    CHECK( !rig.is_nand(rig.get_node(q)) );
+    CHECK( rig.size() == 5 );
+    CHECK( q == rig.get_constant(1) );    
+  }
 
   const auto f3 = rig.create_or( x1, x2 );
-  const auto s3 = rig.create_or( x2, x1 );
   CHECK( rig.is_or(rig.get_node(f3)) );
-
   CHECK( rig.size() == 6 );
+
+  {
+    // check strashing
+    auto q = rig.create_or( x1, x2 );
+    CHECK( rig.is_or(rig.get_node(q)) );
+
+    CHECK( rig.size() == 6 );
+    CHECK( q == f3 );
+
+    // check permutation
+    q = rig.create_or( x2, x1 );
+    CHECK( rig.is_or(rig.get_node(q)) );
+    CHECK( rig.size() == 6 );
+    CHECK( q == f3 );
+    // check or with constant 0
+    q = rig.create_or( x2, rig.get_constant(0) );
+    CHECK( !rig.is_or(rig.get_node(q)) );
+    CHECK( rig.size() == 6 );
+    CHECK( q == x2 );
+    q = rig.create_or( rig.get_constant(0), x1 );
+    CHECK( !rig.is_or(rig.get_node(q)) );
+    CHECK( rig.size() == 6 );
+    CHECK( q == x1 );
+
+    // check and with constant 1
+    q = rig.create_or( x2, rig.get_constant(1) );
+    CHECK( !rig.is_or(rig.get_node(q)) );
+    CHECK( rig.size() == 6 );
+    CHECK( q == rig.get_constant(1) );
+    q = rig.create_or( x1, rig.get_constant(1) );
+    CHECK( !rig.is_or(rig.get_node(q)) );
+    CHECK( rig.size() == 6 );
+    CHECK( q == rig.get_constant(1) );
+
+    // check nand with same input
+    q = rig.create_or( x2, x2 );
+    CHECK( !rig.is_or(rig.get_node(q)) );
+    CHECK( rig.size() == 6 );
+    CHECK( q == x2 );
+    q = rig.create_or( x1, !x1 );
+    CHECK( !rig.is_or(rig.get_node(q)) );
+    CHECK( rig.size() == 6 );
+    CHECK( q == rig.get_constant(1) );    
+  }
 
   const auto f4 = rig.create_nor( x1, x2 );
   CHECK( rig.is_nor(rig.get_node(f4)) );
 
   CHECK( rig.size() == 7 );
   CHECK( f3 != !f4 );
-  CHECK( s3 == f3 );
 
-  const auto f5 = rig.create_xor( x1, x2 );
-  const auto s5 = rig.create_xor( x2, x1 );
-  CHECK( rig.is_xor(rig.get_node(s5)) );
+  {
+    // check strashing
+    auto q = rig.create_nor( x1, x2 );
+    CHECK( rig.is_nor(rig.get_node(q)) );
+
+    CHECK( rig.size() == 7 );
+    CHECK( q == f4 );
+
+    // check permutation
+    q = rig.create_nor( x2, x1 );
+    CHECK( rig.is_nor(rig.get_node(q)) );
+    CHECK( rig.size() == 7 );
+    CHECK( q == f4 );
+
+    // check nor with constant 0
+    q = rig.create_nor( x2, rig.get_constant(0) );
+    CHECK( !rig.is_nor(rig.get_node(q)) );
+    CHECK( rig.size() == 7 );
+    CHECK( q == !x2 );
+    q = rig.create_nor( rig.get_constant(0), x1 );
+    CHECK( !rig.is_nor(rig.get_node(q)) );
+    CHECK( rig.size() == 7 );
+    CHECK( q == !x1 );
+
+    // check and with constant 1
+    q = rig.create_nor( x2, rig.get_constant(1) );
+    CHECK( !rig.is_nor(rig.get_node(q)) );
+    CHECK( rig.size() == 7 );
+    CHECK( q == rig.get_constant(0) );
+    q = rig.create_nor( x1, rig.get_constant(1) );
+    CHECK( !rig.is_nor(rig.get_node(q)) );
+    CHECK( rig.size() == 7 );
+    CHECK( q == rig.get_constant(0) );
+
+    // check nand with same input
+    q = rig.create_nor( x2, x2 );
+    CHECK( !rig.is_nor(rig.get_node(q)) );
+    CHECK( rig.size() == 7 );
+    CHECK( q == !x2 );
+    q = rig.create_nor( x1, !x1 );
+    CHECK( !rig.is_nor(rig.get_node(q)) );
+    CHECK( rig.size() == 7 );
+    CHECK( q == rig.get_constant(0) );    
+  }
+
+  const auto f5 = rig.create_lt( x1, x2 );
+  CHECK( rig.is_lt(rig.get_node(f5)) );
   CHECK( rig.size() == 8 );
+  {
+    // check strashing
+    auto q = rig.create_lt( x1, x2 );
+    CHECK( rig.is_lt(rig.get_node(q)) );
 
-  const auto f6 = rig.create_xnor( x1, x2 );
-  const auto s6 = rig.create_xnor( x2, x1 );
-  CHECK( rig.is_xnor(rig.get_node(s6)) );
-  CHECK( rig.size() == 9 );
-  CHECK( f5 != !f6 );
-  CHECK( f5 == s5 );
-  CHECK( f6 == s6 );
+    CHECK( rig.size() == 8 );
+    CHECK( q == f5 );
 
-  const auto f7 = !rig.create_xnor( x2, x1 );
-  CHECK( f7 == !s6 );
-  CHECK( rig.size() == 9 );
+    // check permutation
+    q = rig.create_lt( x2, x1 );
+    CHECK( rig.is_lt(rig.get_node(q)) );
+    CHECK( rig.size() == 9 );
+    CHECK( q != f5 );
+
+    // check nor with constant 0
+    q = rig.create_lt( rig.get_constant(0), x2 );
+    CHECK( !rig.is_lt(rig.get_node(q)) );
+    CHECK( rig.size() == 9 );
+    CHECK( q == x2 );
+    q = rig.create_lt( x2, rig.get_constant(0) );
+    CHECK( !rig.is_lt(rig.get_node(q)) );
+    CHECK( rig.size() == 9 );
+    CHECK( q == rig.get_constant(0) );
+
+    // check and with constant 1
+    q = rig.create_lt( rig.get_constant(1), x1 );
+    CHECK( !rig.is_lt(rig.get_node(q)) );
+    CHECK( rig.size() == 9 );
+    CHECK( q == rig.get_constant(0) );
+    q = rig.create_lt( x1, rig.get_constant(1) );
+    CHECK( !rig.is_lt(rig.get_node(q)) );
+    CHECK( rig.size() == 9 );
+    CHECK( q == !x1 );
+
+    // check nand with same input
+    q = rig.create_lt( x2, x2 );
+    CHECK( !rig.is_lt(rig.get_node(q)) );
+    CHECK( rig.size() == 9 );
+    CHECK( q == rig.get_constant(0) );
+    q = rig.create_lt( x1, !x1 );
+    CHECK( !rig.is_lt(rig.get_node(q)) );
+    CHECK( rig.size() == 9 );
+    CHECK( q == !x1 ); 
+    q = rig.create_lt( !x1, x1 );
+    CHECK( !rig.is_lt(rig.get_node(q)) );
+    CHECK( rig.size() == 9 );
+    CHECK( q == x1 );    
+  }
+
+  const auto f6 = rig.create_ge( x1, x2 );
+  CHECK( rig.is_ge(rig.get_node(f6)) );
+  CHECK( rig.size() == 10 );
+  {
+    // check strashing
+    auto q = rig.create_ge( x1, x2 );
+    CHECK( rig.is_ge(rig.get_node(q)) );
+
+    CHECK( rig.size() == 10 );
+    CHECK( q == f6 );
+
+    // check permutation
+    q = rig.create_ge( x2, x1 );
+    CHECK( rig.is_ge(rig.get_node(q)) );
+    CHECK( rig.size() == 11 );
+    CHECK( q != f6 );
+
+    // check nor with constant 0
+    q = rig.create_ge( rig.get_constant(0), x2 );
+    CHECK( !rig.is_ge(rig.get_node(q)) );
+    CHECK( rig.size() == 11 );
+    CHECK( q == !x2 );
+    q = rig.create_ge( x2, rig.get_constant(0) );
+    CHECK( !rig.is_ge(rig.get_node(q)) );
+    CHECK( rig.size() == 11 );
+    CHECK( q == rig.get_constant(1) );
+
+    // check and with constant 1
+    q = rig.create_ge( rig.get_constant(1), x1 );
+    CHECK( !rig.is_ge(rig.get_node(q)) );
+    CHECK( rig.size() == 11 );
+    CHECK( q == rig.get_constant(1) );
+    q = rig.create_ge( x1, rig.get_constant(1) );
+    CHECK( !rig.is_ge(rig.get_node(q)) );
+    CHECK( rig.size() == 11 );
+    CHECK( q == x1 );
+
+    // check nand with same input
+    q = rig.create_ge( x2, x2 );
+    CHECK( !rig.is_ge(rig.get_node(q)) );
+    CHECK( rig.size() == 11 );
+    CHECK( q == rig.get_constant(1) );
+    q = rig.create_ge( x1, !x1 );
+    CHECK( !rig.is_ge(rig.get_node(q)) );
+    CHECK( rig.size() == 11 );
+    CHECK( q == x1 ); 
+    q = rig.create_ge( !x1, x1 );
+    CHECK( !rig.is_ge(rig.get_node(q)) );
+    CHECK( rig.size() == 11 );
+    CHECK( q == !x1 );    
+  }
+
+  const auto f7 = rig.create_gt( x1, x2 );
+  CHECK( rig.is_gt(rig.get_node(f7)) );
+  CHECK( rig.size() == 12 );
+  {
+    // check strashing
+    auto q = rig.create_gt( x1, x2 );
+    CHECK( rig.is_gt(rig.get_node(q)) );
+
+    CHECK( rig.size() == 12 );
+    CHECK( q == f7 );
+
+    // check permutation
+    q = rig.create_gt( x2, x1 );
+    CHECK( rig.is_gt(rig.get_node(q)) );
+    CHECK( rig.size() == 13 );
+    CHECK( q != f7 );
+
+    // check nor with constant 0
+    q = rig.create_gt( rig.get_constant(0), x2 );
+    CHECK( !rig.is_gt(rig.get_node(q)) );
+    CHECK( rig.size() == 13 );
+    CHECK( q == rig.get_constant(0) );
+    q = rig.create_gt( x2, rig.get_constant(0) );
+    CHECK( !rig.is_gt(rig.get_node(q)) );
+    CHECK( rig.size() == 13 );
+    CHECK( q == x2 );
+
+    // check and with constant 1
+    q = rig.create_gt( rig.get_constant(1), x1 );
+    CHECK( !rig.is_gt(rig.get_node(q)) );
+    CHECK( rig.size() == 13 );
+    CHECK( q == !x1 );
+    q = rig.create_gt( x1, rig.get_constant(1) );
+    CHECK( !rig.is_gt( rig.get_node(q) ) );
+    CHECK( rig.size() == 13 );
+    CHECK( q == rig.get_constant(false) );
+
+    // check nand with same input
+    q = rig.create_gt( x2, x2 );
+    CHECK( !rig.is_gt(rig.get_node(q)) );
+    CHECK( rig.size() == 13 );
+    CHECK( q == rig.get_constant(0) );
+    q = rig.create_gt( x1, !x1 );
+    CHECK( !rig.is_gt( rig.get_node(q) ) );
+    CHECK( rig.size() == 13 );
+    CHECK( q == x1 ); 
+    q = rig.create_gt( !x1, x1 );
+    CHECK( !rig.is_gt(rig.get_node(q)) );
+    CHECK( rig.size() == 13 );
+    CHECK( q == !x1 );    
+  }
+
+  const auto f8 = rig.create_le( x1, x2 );
+  CHECK( rig.is_le(rig.get_node(f8)) );
+  CHECK( rig.size() == 14 );
+  {
+    // check strashing
+    auto q = rig.create_le( x1, x2 );
+    CHECK( rig.is_le(rig.get_node(q)) );
+
+    CHECK( rig.size() == 14 );
+    CHECK( q == f8 );
+
+    // check permutation
+    q = rig.create_le( x2, x1 );
+    CHECK( rig.is_le(rig.get_node(q)) );
+    CHECK( rig.size() == 15 );
+    CHECK( q != f8 );
+
+    // check nor with constant 0
+    q = rig.create_le( rig.get_constant(0), x2 );
+    CHECK( !rig.is_le(rig.get_node(q)) );
+    CHECK( rig.size() == 15 );
+    CHECK( q == rig.get_constant(1) );
+    q = rig.create_le( x2, rig.get_constant(0) );
+    CHECK( !rig.is_le(rig.get_node(q)) );
+    CHECK( rig.size() == 15 );
+    CHECK( q == !x2 );
+
+    // check and with constant 1
+    q = rig.create_le( rig.get_constant(1), x1 );
+    CHECK( !rig.is_le( rig.get_node(q) ) );
+    CHECK( rig.size() == 15 );
+    CHECK( q == x1 );
+    q = rig.create_le( x1, rig.get_constant(1) );
+    CHECK( !rig.is_le( rig.get_node(q) ) );
+    CHECK( rig.size() == 15 );
+    CHECK( q == rig.get_constant(true) );
+
+    // check nand with same input
+    q = rig.create_le( x2, x2 );
+    CHECK( !rig.is_le(rig.get_node(q)) );
+    CHECK( rig.size() == 15 );
+    CHECK( q == rig.get_constant(true) );
+    q = rig.create_le( x1, !x1 );
+    CHECK( !rig.is_le( rig.get_node(q) ) );
+    CHECK( rig.size() == 15 );
+    CHECK( q == !x1 ); 
+    q = rig.create_le( !x1, x1 );
+    CHECK( !rig.is_le(rig.get_node(q)) );
+    CHECK( rig.size() == 15 );
+    CHECK( q == x1 );    
+  }
+
+  const auto f9 = rig.create_xor( x1, x2 );
+  CHECK( rig.is_xor(rig.get_node(f9)) );
+  CHECK( rig.size() == 16 );
+  {
+    // check strashing
+    auto q = rig.create_xor( x1, x2 );
+    CHECK( rig.is_xor(rig.get_node(q)) );
+
+    CHECK( rig.size() == 16 );
+    CHECK( q == f9 );
+
+    // check permutation
+    q = rig.create_xor( x2, x1 );
+    CHECK( rig.is_xor(rig.get_node(q)) );
+    CHECK( q == f9 );
+
+    // check nor with constant 0
+    q = rig.create_xor( rig.get_constant(0), x2 );
+    CHECK( !rig.is_xor( rig.get_node(q) ) );
+    CHECK( q == x2 );
+
+    // check and with constant 1
+    q = rig.create_xor( rig.get_constant(1), x1 );
+    CHECK( !rig.is_xor( rig.get_node(q) ) );
+    CHECK( q == !x1 );
+
+    // check nand with same input
+    q = rig.create_xor( x2, x2 );
+    CHECK( !rig.is_xor( rig.get_node(q) ) );
+    CHECK( q == rig.get_constant( false ) );
+    q = rig.create_xor( x1, !x1 );
+    CHECK( !rig.is_xor( rig.get_node(q) ) );
+    CHECK( q == rig.get_constant( true ) );    
+  }
+
+  const auto f10 = rig.create_xnor( x1, x2 );
+  CHECK( rig.is_xnor(rig.get_node(f10)) );
+  CHECK( rig.size() == 17 );
+  {
+    // check strashing
+    auto q = rig.create_xnor( x1, x2 );
+    CHECK( rig.is_xnor(rig.get_node(q)) );
+
+    CHECK( rig.size() == 17 );
+    CHECK( q == f10 );
+
+    // check permutation
+    q = rig.create_xnor( x2, x1 );
+    CHECK( rig.is_xnor(rig.get_node(q)) );
+    CHECK( q == f10 );
+
+    // check nor with constant 0
+    q = rig.create_xnor( rig.get_constant(0), x2 );
+    CHECK( !rig.is_xnor( rig.get_node(q) ) );
+    CHECK( q == !x2 );
+
+    // check and with constant 1
+    q = rig.create_xnor( rig.get_constant(1), x1 );
+    CHECK( !rig.is_xnor( rig.get_node(q) ) );
+    CHECK( q == x1 );
+
+    // check nand with same input
+    q = rig.create_xnor( x2, x2 );
+    CHECK( !rig.is_xnor( rig.get_node(q) ) );
+    CHECK( q == rig.get_constant( true ) );
+    q = rig.create_xnor( x1, !x1 );
+    CHECK( !rig.is_xnor( rig.get_node(q) ) );
+    CHECK( q == rig.get_constant( false ) );    
+  }
+
+}
+
+TEST_CASE( "create ternary operations in an RIG", "[rig]" )
+{
+  rig_network rig;
+
+  CHECK( has_create_maj_v<rig_network> );
+  CHECK( has_create_xor3_v<rig_network> );
+  CHECK( has_create_ite_v<rig_network> );
+
+  const auto x1 = rig.create_pi();
+  const auto x2 = rig.create_pi();
+  const auto x3 = rig.create_pi();
+
+  CHECK( rig.size() == 4 );
+
+  const auto f1 = rig.create_maj( x1, x2, x3 );
+  const auto f2 = rig.create_maj( !x1, x2, !x3 );
+  const auto f3 = rig.create_maj( x1, !x2, x3 );
+  CHECK( rig.size() == 6 );
+  CHECK( f2 == !f3 );
+  {
+    auto q = rig.create_maj( x3, x1, x2 );
+    CHECK( q == f1 );
+    q = rig.create_maj( x2, x3, x1 );
+    CHECK( q == f1 );
+    q = rig.create_maj( x1, x3, x2 );
+    CHECK( q == f1 );
+    q = rig.create_maj( x2, x1, x3 );
+    CHECK( q == f1 );
+    q = rig.create_maj( x3, x2, x1 );
+    CHECK( q == f1 );
+    q = rig.create_maj( x3, x2, x1 );
+    CHECK( q == f1 );
+    q = rig.create_maj( x1, x3, x2 );
+    CHECK( q == f1 );
+    q = rig.create_maj( x2, x1, x3 );
+    CHECK( q == f1 );
+
+    // two inputs are the same
+    q = rig.create_maj( x1, x1, x2 );
+    CHECK( q == x1 );
+    q = rig.create_maj( x1, !x1, x2 );
+    CHECK( q == x2 );
+  }
+
+  // TODO: test for xor3 and ite.
 
 }
 
@@ -317,40 +791,6 @@ TEST_CASE( "structural properties of an RIG", "[rig]" )
   CHECK( rig.fanout_size( rig.get_node( f2 ) ) == 1 );
 }
 
-TEST_CASE( "hash generic nodes in RIG network", "[rig]" )
-{
-  rig_network rig;
-
-  const auto a = rig.create_pi();
-  const auto b = rig.create_pi();
-  const auto c = rig.create_pi();
-
-  std::vector<kitty::dynamic_truth_table> sims;
-  for( int i{0}; i<3; ++i )
-  {
-    sims.emplace_back(3u);
-    kitty::create_nth_var( sims[i], i );
-  }
-
-  kitty::dynamic_truth_table tt_maj( 3u ), tt_xor( 3u );
-  kitty::create_from_hex_string( tt_maj, "e8" );
-  kitty::create_from_hex_string( tt_xor, "96" );
-
-  auto s1 = rig.create_node( { a, b, c }, tt_maj );
-  auto s2 = rig.create_node( { a, b, c }, tt_xor );
-
-  CHECK( rig.size() == 6 );
-
-  rig.create_node( { a, b, c }, tt_maj );
-
-  CHECK( rig.size() == 6 );
-
-  auto sim_1 = rig.compute( rig.get_node(s1), sims );
-  auto sim_2 = rig.compute( rig.get_node(s2), sims );
-  
-  CHECK( kitty::equal( sim_1, tt_maj ) );
-  CHECK( kitty::equal( sim_2, tt_xor ) );
-}
 
 TEST_CASE( "node and signal iteration in an RIG", "[rig]" )
 {
@@ -653,6 +1093,416 @@ TEST_CASE( "simulate some special functions in RIGs", "[rig]" )
   CHECK( result[1]._bits[0] == 0xd8u );
 }
 
+TEST_CASE( "simulate some 2-inputs functions in RIGs", "[rig]" )
+{
+  rig_network rig;
+  const auto x1 = rig.create_pi();
+  const auto x2 = rig.create_pi();
+
+  const auto f1 = rig.create_and( x1, x2 );
+  const auto f2 = rig.create_nand( x1, x2 );
+  const auto f3 = rig.create_or( x1, x2 );
+
+  rig.create_po( f1 );
+  rig.create_po( f2 );
+  rig.create_po( f3 );
+
+  CHECK( rig.num_gates() == 3u );
+
+  auto result = simulate<kitty::dynamic_truth_table>( rig, default_simulator<kitty::dynamic_truth_table>( 2 ) );
+
+  CHECK( result[0]._bits[0] == 0x8 );
+  CHECK( result[1]._bits[0] == 0x7 );
+  CHECK( result[2]._bits[0] == 0xe );
+}
+
+TEST_CASE( "substitute input by constant in NAND-based XOR RIG", "[rig]" )
+{
+  rig_network rig;
+  const auto x1 = rig.create_pi();
+  const auto x2 = rig.create_pi();
+
+  const auto f1 = rig.create_nand( x1, x2 );
+  const auto f2 = rig.create_nand( x1, f1 );
+  const auto f3 = rig.create_nand( x2, f1 );
+  const auto f4 = rig.create_nand( f2, f3 );
+
+  rig.create_po( f4 );
+
+  CHECK( rig.num_gates() == 4u );
+  auto sims = simulate<kitty::dynamic_truth_table>( rig, default_simulator<kitty::dynamic_truth_table>( 2 ) );
+
+  CHECK( sims[0]._bits[0] == 0x6 );
+
+  rig.substitute_node( rig.get_node( x1 ), rig.get_constant( true ) );
+
+  CHECK( simulate<kitty::static_truth_table<2u>>( rig )[0]._bits == 0x3 );
+
+  CHECK( rig.fanout_size( rig.get_node( f1 ) ) == 0u );
+  CHECK( rig.fanout_size( rig.get_node( f2 ) ) == 0u );
+  CHECK( rig.fanout_size( rig.get_node( f3 ) ) == 0u );
+  CHECK( rig.fanout_size( rig.get_node( f4 ) ) == 0u );
+}
+
+TEST_CASE( "substitute node by constant in NAND-based XOR RIG", "[rig]" )
+{
+  rig_network rig;
+  const auto x1 = rig.create_pi();
+  const auto x2 = rig.create_pi();
+
+  const auto f1 = rig.create_nand( x1, x2 );
+  const auto f2 = rig.create_nand( x1, f1 );
+  const auto f3 = rig.create_nand( x2, f1 );
+  const auto f4 = rig.create_nand( f2, f3 );
+  rig.create_po( f4 );
+
+  CHECK( rig.num_gates() == 4u );
+  CHECK( simulate<kitty::static_truth_table<2u>>( rig )[0]._bits == 0x6 );
+
+  rig.substitute_node( rig.get_node( f3 ), rig.get_constant( true ) );
+
+  CHECK( simulate<kitty::static_truth_table<2u>>( rig )[0]._bits == 0x2 );
+
+  CHECK( rig.num_gates() == 2u );
+  CHECK( rig.fanout_size( rig.get_node( f1 ) ) == 1u );
+  CHECK( rig.fanout_size( rig.get_node( f2 ) ) == 1u );
+  CHECK( rig.fanout_size( rig.get_node( f3 ) ) == 0u );
+  CHECK( rig.fanout_size( rig.get_node( f4 ) ) == 0u );
+  CHECK( !rig.is_dead( rig.get_node( f1 ) ) );
+  CHECK( !rig.is_dead( rig.get_node( f2 ) ) );
+  CHECK( rig.is_dead( rig.get_node( f3 ) ) );
+  CHECK( rig.is_dead( rig.get_node( f4 ) ) );
+}
+
+TEST_CASE( "substitute node by constant in NAND-based XOR RIG (test case 2)", "[rig]" )
+{
+  rig_network rig;
+  const auto x1 = rig.create_pi();
+  const auto x2 = rig.create_pi();
+
+  const auto f1 = rig.create_nand( x1, x2 );
+  const auto f2 = rig.create_nand( x1, f1 );
+  const auto f3 = rig.create_nand( x2, f1 );
+  const auto f4 = rig.create_nand( f2, f3 );
+  rig.create_po( f4 );
+
+  CHECK( rig.num_gates() == 4u );
+  CHECK( simulate<kitty::static_truth_table<2u>>( rig )[0]._bits == 0x6 );
+
+  rig.substitute_node( rig.get_node( f1 ), rig.get_constant( true ) );
+
+  CHECK( simulate<kitty::static_truth_table<2u>>( rig )[0]._bits == 0xe );
+
+  CHECK( rig.fanout_size( rig.get_node( f1 ) ) == 0u );
+  CHECK( rig.fanout_size( rig.get_node( f2 ) ) == 0u );
+  CHECK( rig.fanout_size( rig.get_node( f3 ) ) == 0u );
+  CHECK( rig.fanout_size( rig.get_node( f4 ) ) == 1u );
+}
+
+TEST_CASE( "invoke take_out_node two times on the same node RIG", "[rig]" )
+{
+  rig_network rig;
+  const auto x1 = rig.create_pi();
+  const auto x2 = rig.create_pi();
+
+  const auto f1 = rig.create_and( x1, x2 );
+  const auto f2 = rig.create_or( x1, x2 );
+  (void)f2;
+
+  CHECK( rig.fanout_size( rig.get_node( x1 ) ) == 2u );
+  CHECK( rig.fanout_size( rig.get_node( x2 ) ) == 2u );
+
+  /* delete node */
+  CHECK( !rig.is_dead( rig.get_node( f1 ) ) );
+  rig.take_out_node( rig.get_node( f1 ) );
+  CHECK( rig.is_dead( rig.get_node( f1 ) ) );
+  CHECK( rig.fanout_size( rig.get_node( x1 ) ) == 1u );
+  CHECK( rig.fanout_size( rig.get_node( x2 ) ) == 1u );
+
+  /* ensure that double-deletion has no effect on the fanout-size of x1 and x2 */
+  CHECK( rig.is_dead( rig.get_node( f1 ) ) );
+  rig.take_out_node( rig.get_node( f1 ) );
+  CHECK( rig.is_dead( rig.get_node( f1 ) ) );
+  CHECK( rig.fanout_size( rig.get_node( x1 ) ) == 1u );
+  CHECK( rig.fanout_size( rig.get_node( x2 ) ) == 1u );
+}
+
+TEST_CASE( "substitute node and restrash RIG", "[rig]" )
+{
+  rig_network rig;
+  auto const x1 = rig.create_pi();
+  auto const x2 = rig.create_pi();
+
+  auto const f1 = rig.create_and( x1, x2 );
+  auto const f2 = rig.create_and( f1, x2 );
+  rig.create_po( f2 );
+
+  CHECK( rig.fanout_size( rig.get_node( x1 ) ) == 1 );
+  CHECK( rig.fanout_size( rig.get_node( x2 ) ) == 2 );
+  CHECK( rig.fanout_size( rig.get_node( f1 ) ) == 1 );
+  CHECK( rig.fanout_size( rig.get_node( f2 ) ) == 1 );
+
+  CHECK( simulate<kitty::static_truth_table<2u>>( rig )[0]._bits == 0x8 );
+
+  /* substitute f1 with x1
+   *
+   * this is a very interesting test case because replacing f1 with x1
+   * in f2 makes f2 and f1 equal.  a correct implementation will
+   * create a new entry in the hash, although (x1, x2) is already
+   * there, because (x1, x2) will be deleted in the next step.
+   */
+  rig.substitute_node( rig.get_node( f1 ), x1 );
+  CHECK( simulate<kitty::static_truth_table<2u>>( rig )[0]._bits == 0x8 );
+
+  CHECK( rig.fanout_size( rig.get_node( x1 ) ) == 1 );
+  CHECK( rig.fanout_size( rig.get_node( x2 ) ) == 1 );
+  CHECK( rig.fanout_size( rig.get_node( f1 ) ) == 0 );
+  CHECK( rig.fanout_size( rig.get_node( f2 ) ) == 1 );
+}
+
+TEST_CASE( "substitute node with complemented node in rig_network", "[rig]" )
+{
+  rig_network rig;
+  auto const x1 = rig.create_pi();
+  auto const x2 = rig.create_pi();
+
+  auto const f1 = rig.create_and( x1, x2 );
+  auto const f2 = rig.create_and( x1, f1 );
+  rig.create_po( f2 );
+
+  CHECK( rig.fanout_size( rig.get_node( x1 ) ) == 2 );
+  CHECK( rig.fanout_size( rig.get_node( x2 ) ) == 1 );
+  CHECK( rig.fanout_size( rig.get_node( f1 ) ) == 1 );
+  CHECK( rig.fanout_size( rig.get_node( f2 ) ) == 1 );
+
+  CHECK( simulate<kitty::static_truth_table<2u>>( rig )[0]._bits == 0x8 );
+
+  rig.substitute_node( rig.get_node( f2 ), !f2 );
+
+  CHECK( rig.fanout_size( rig.get_node( x1 ) ) == 2 );
+  CHECK( rig.fanout_size( rig.get_node( x2 ) ) == 1 );
+  CHECK( rig.fanout_size( rig.get_node( f1 ) ) == 1 );
+  CHECK( rig.fanout_size( rig.get_node( f2 ) ) == 1 );
+
+  CHECK( simulate<kitty::static_truth_table<2u>>( rig )[0]._bits == 0x7 );
+}
+
+TEST_CASE( "substitute multiple RIG nodes", "[rig]" )
+{
+  using node = rig_network::node;
+  using signal = rig_network::signal;
+
+  rig_network rig;
+  auto const x1 = rig.create_pi();
+  auto const x2 = rig.create_pi();
+  auto const x3 = rig.create_pi();
+
+  auto const n4 = rig.create_and( !x1, x2 );
+  auto const n5 = rig.create_and( x1, n4 );
+  auto const n6 = rig.create_and( x3, n5 );
+  auto const n7 = rig.create_and( n4, x2 );
+  auto const n8 = rig.create_and( !n5, !n7 );
+  auto const n9 = rig.create_and( !n8, n4 );
+
+  rig.create_po( n6 );
+  rig.create_po( n9 );
+
+  rig.substitute_nodes( std::list<std::pair<node, signal>>{
+      { rig.get_node( n5 ), rig.get_constant( false ) },
+      { rig.get_node( n9 ), n4 } } );
+
+  CHECK( !rig.is_dead( rig.get_node( rig.get_constant( false ) ) ) );
+  CHECK( !rig.is_dead( rig.get_node( x1 ) ) );
+  CHECK( !rig.is_dead( rig.get_node( x2 ) ) );
+  CHECK( !rig.is_dead( rig.get_node( x3 ) ) );
+  CHECK( !rig.is_dead( rig.get_node( n4 ) ) );
+  CHECK( rig.is_dead( rig.get_node( n5 ) ) );
+  CHECK( rig.is_dead( rig.get_node( n6 ) ) );
+  CHECK( rig.is_dead( rig.get_node( n7 ) ) );
+  CHECK( rig.is_dead( rig.get_node( n8 ) ) );
+  CHECK( rig.is_dead( rig.get_node( n9 ) ) );
+
+  CHECK( rig.fanout_size( rig.get_node( rig.get_constant( false ) ) ) == 1u );
+  CHECK( rig.fanout_size( rig.get_node( x1 ) ) == 1u );
+  CHECK( rig.fanout_size( rig.get_node( x2 ) ) == 1u );
+  CHECK( rig.fanout_size( rig.get_node( x3 ) ) == 0u );
+  CHECK( rig.fanout_size( rig.get_node( n4 ) ) == 1u );
+  CHECK( rig.fanout_size( rig.get_node( n5 ) ) == 0u );
+  CHECK( rig.fanout_size( rig.get_node( n6 ) ) == 0u );
+  CHECK( rig.fanout_size( rig.get_node( n7 ) ) == 0u );
+  CHECK( rig.fanout_size( rig.get_node( n8 ) ) == 0u );
+  CHECK( rig.fanout_size( rig.get_node( n9 ) ) == 0u );
+
+  rig.foreach_po( [&]( signal const o, uint32_t index ) {
+    switch ( index )
+    {
+    case 0:
+      CHECK( o == rig.get_constant( false ) );
+      break;
+    case 1:
+      CHECK( o == n4 );
+      break;
+    default:
+      CHECK( false );
+    }
+  } );
+}
+
+TEST_CASE( "substitute node with dependency in rig_network", "[rig]" )
+{
+  rig_network rig{};
+
+  auto const a = rig.create_pi();
+  auto const b = rig.create_pi();
+  auto const c = rig.create_pi();          /* place holder */
+  auto const tmp = rig.create_and( b, c ); /* place holder */
+  auto const f1 = rig.create_and( a, b );
+  auto const f2 = rig.create_and( f1, tmp );
+  auto const f3 = rig.create_and( f1, a );
+  rig.create_po( f2 );
+  rig.substitute_node( rig.get_node( tmp ), f3 );
+
+  /**
+   * issue #545
+   *
+   *      f2
+   *     /  \
+   *    /   f3
+   *    \  /  \
+   *  1->f1    a
+   *
+   * stack:
+   * 1. push (f2->f3)
+   * 2. push (f3->a)
+   * 3. pop (f3->a)
+   * 4. pop (f2->f3) but, f3 is dead !!!
+   */
+
+  rig.substitute_node( rig.get_node( f1 ), rig.get_constant( 1 ) /* constant 1 */ );
+
+  CHECK( rig.is_dead( rig.get_node( f1 ) ) );
+  CHECK( rig.is_dead( rig.get_node( f2 ) ) );
+  CHECK( rig.is_dead( rig.get_node( f3 ) ) );
+  rig.foreach_po( [&]( auto s ) {
+    CHECK( rig.is_dead( rig.get_node( s ) ) == false );
+  } );
+}
+
+TEST_CASE( "substitute node and re-strash case 2 RIG", "[rig]" )
+{
+  rig_network rig;
+
+  auto const x1 = rig.create_pi();
+  auto const x2 = rig.create_pi();
+  auto const x3 = rig.create_pi();
+  auto const n4 = rig.create_and( x2, x3 );
+  auto const n5 = rig.create_and( x1, n4 );
+  auto const n6 = rig.create_and( n5, x3 );
+  auto const n7 = rig.create_and( x1, n6 );
+  rig.create_po( n7 );
+
+  rig.substitute_node( rig.get_node( n6 ), n4 );
+  /* replace in node n7: n6 <- n4 => re-strash with fanins (x1, n4) => n7 <- n5
+   * take out node n6 => take out node n5 => take out node n4 (MFFC)
+   * execute n7 <- n5, but n5 is dead => revive n5 and n4 */
+
+  CHECK( !rig.is_dead( rig.get_node( n4 ) ) );
+  CHECK( !rig.is_dead( rig.get_node( n5 ) ) );
+  CHECK( rig.is_dead( rig.get_node( n6 ) ) );
+  CHECK( rig.is_dead( rig.get_node( n7 ) ) );
+  rig.foreach_fanin( rig.get_node( rig.po_at( 0 ) ), [&]( auto f, auto i ){
+    switch ( i )
+    {
+    case 0:
+      CHECK( f == x1 );
+      break;
+    case 1:
+      CHECK( f == n4 );
+      break;
+    default:
+      CHECK( false );
+    }
+  } );
+  CHECK( rig.fanout_size( rig.get_node( n4 ) ) == 1 );
+}
+
+TEST_CASE( "substitute node without re-strashing case 1 RIG", "[rig]" )
+{
+  rig_network rig;
+  auto const x1 = rig.create_pi();
+  auto const x2 = rig.create_pi();
+  auto const f1 = rig.create_and( x1, x2 );
+  auto const f2 = rig.create_and( f1, x2 );
+  rig.create_po( f2 );
+
+  rig.substitute_node_no_restrash( rig.get_node( f1 ), x1 );
+  rig = cleanup_dangling( rig );
+
+  CHECK( rig.num_gates() == 1 );
+  CHECK( simulate<kitty::static_truth_table<2u>>( rig )[0]._bits == 0x8 );
+}
+
+TEST_CASE( "substitute node with re-strashing case 2 RIG", "[rig]" )
+{
+  rig_network rig;
+
+  auto const a = rig.create_pi();
+  auto const b = rig.create_pi();
+  auto const c = rig.create_pi();
+  auto const tmp = rig.create_and( b, c );
+  auto const f1 = rig.create_and( a, b );
+  auto const f2 = rig.create_and( f1, tmp );
+  auto const f3 = rig.create_and( f1, a );
+  rig.create_po( f2 );
+  rig.substitute_node( rig.get_node( tmp ), f3 );
+  rig.substitute_node( rig.get_node( f1 ), rig.get_constant( 1 ) );
+  rig = cleanup_dangling( rig );
+
+  CHECK( rig.num_gates() == 0 );
+  CHECK( !rig.is_dead( rig.get_node( rig.po_at( 0 ) ) ) );
+  CHECK( rig.get_node( rig.po_at( 0 ) ) == rig.pi_at( 0 ) );
+}
+
+TEST_CASE( "substitute node without re-strashing case 2 RIG", "[rig]" )
+{
+  rig_network rig;
+
+  auto const a = rig.create_pi();
+  auto const b = rig.create_pi();
+  auto const c = rig.create_pi();
+  auto const tmp = rig.create_and( b, c );
+  auto const f1 = rig.create_and( a, b );
+  auto const f2 = rig.create_and( f1, tmp );
+  auto const f3 = rig.create_and( f1, a );
+  rig.create_po( f2 );
+  rig.substitute_node_no_restrash( rig.get_node( tmp ), f3 );
+  rig.substitute_node_no_restrash( rig.get_node( f1 ), rig.get_constant( 1 ) );
+  rig = cleanup_rigs( rig );
+
+  CHECK( rig.num_gates() == 0 );
+  CHECK( !rig.is_dead( rig.get_node( rig.po_at( 0 ) ) ) );
+  CHECK( rig.get_node( rig.po_at( 0 ) ) == rig.pi_at( 0 ) );
+}
+
+TEST_CASE( "substitute node without re-strashing case 3 RIG", "[rig]" )
+{
+  rig_network rig;
+
+  auto const x1 = rig.create_pi();
+  auto const x2 = rig.create_pi();
+  auto const x3 = rig.create_pi();
+  auto const n4 = rig.create_and( x2, x3 );
+  auto const n5 = rig.create_and( x1, n4 );
+  auto const n6 = rig.create_and( n5, x3 );
+  auto const n7 = rig.create_and( x1, n6 );
+  rig.create_po( n7 );
+
+  rig.substitute_node_no_restrash( rig.get_node( n6 ), n4 );
+  rig = cleanup_dangling( rig );
+  CHECK( rig.num_gates() == 2 );
+  CHECK( simulate<kitty::static_truth_table<3u>>( rig )[0]._bits == 0x80 );
+}
+
 TEST_CASE( "substitute nodes with propagation in rigs (test case 1)", "[rig]" )
 {
   CHECK( has_substitute_node_v<rig_network> );
@@ -755,4 +1605,78 @@ TEST_CASE( "substitute nodes with propagation in rigs (test case 2)", "[rig]" )
   rig = cleanup_dangling( rig );
 
   CHECK( rig.num_gates() == 1u );
+}
+
+TEST_CASE( "create a node in a RIG network", "[rig]" )
+{
+  rig_network rig;
+
+  CHECK( has_create_node_v<rig_network> );
+  CHECK( has_compute_v<rig_network, kitty::dynamic_truth_table> );
+
+  const auto x1 = rig.create_pi();
+  const auto x2 = rig.create_pi();
+
+  kitty::dynamic_truth_table tt1( 2u ), tt2( 2u ), tt_const0( 0u );
+  kitty::create_from_hex_string( tt1, "2" );
+  kitty::create_from_hex_string( tt2, "4" );
+
+  CHECK( rig.size() == 3 );
+
+  const auto _const0 = rig.create_node( {}, tt_const0 );
+  const auto _const1 = rig.create_node( {}, ~tt_const0 );
+  CHECK( _const0 == rig.get_constant( false ) );
+  CHECK( _const1 == rig.get_constant( true ) );
+
+  const auto f1 = rig.create_node( { x1, x2 }, tt1 );
+  const auto f2 = rig.create_node( { x2, x1 }, tt2 );
+
+  CHECK( rig.size() == 4 );
+
+  std::vector<kitty::dynamic_truth_table> xs;
+  xs.emplace_back( 2u );
+  xs.emplace_back( 2u );
+  kitty::create_nth_var( xs[0], 0 );
+  kitty::create_nth_var( xs[1], 1 );
+
+  const auto sim1 = rig.compute( rig.get_node( f1 ), xs.begin(), xs.end() );
+  const auto sim2 = rig.compute( rig.get_node( f2 ), xs.begin(), xs.end() );
+
+  CHECK( kitty::equal( sim2, sim1 ) );
+  CHECK( kitty::equal( sim1, ~xs[1] & xs[0] ) );
+}
+
+TEST_CASE( "hash generic nodes in RIG network", "[rig]" )
+{
+  rig_network rig;
+
+  const auto a = rig.create_pi();
+  const auto b = rig.create_pi();
+  const auto c = rig.create_pi();
+
+  std::vector<kitty::dynamic_truth_table> sims;
+  for( int i{0}; i<3; ++i )
+  {
+    sims.emplace_back(3u);
+    kitty::create_nth_var( sims[i], i );
+  }
+
+  kitty::dynamic_truth_table tt_maj( 3u ), tt_xor( 3u );
+  kitty::create_from_hex_string( tt_maj, "e8" );
+  kitty::create_from_hex_string( tt_xor, "96" );
+
+  auto s1 = rig.create_node( { a, b, c }, tt_maj );
+  auto s2 = rig.create_node( { a, b, c }, tt_xor );
+
+  CHECK( rig.size() == 6 );
+
+  rig.create_node( { a, b, c }, tt_maj );
+
+  CHECK( rig.size() == 6 );
+
+  auto sim_1 = rig.compute( rig.get_node(s1), sims );
+  auto sim_2 = rig.compute( rig.get_node(s2), sims );
+  
+  CHECK( kitty::equal( sim_1, tt_maj ) );
+  CHECK( kitty::equal( sim_2, tt_xor ) );
 }

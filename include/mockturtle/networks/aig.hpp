@@ -448,11 +448,6 @@ public:
   {
     auto& node = _storage->nodes[n];
 
-    printf("node [%d=n(%d %d)]\n", old_node, node.children[0].index, node.children[1].index );
-
-    auto oldnode = _storage->nodes[old_node];
-    printf("node [%d=n(%d %d)]\n", old_node, oldnode.children[0].index, oldnode.children[1].index );
-
     uint32_t fanin = 0u;
     if ( node.children[0].index == old_node )
     {
@@ -468,12 +463,10 @@ public:
     {
       return std::nullopt;
     }
-    printf("fanin %d\n", fanin);
 
     // determine potential new children of node n
     signal child1 = new_signal;
     signal child0 = node.children[fanin ^ 1];
-    printf("%d %d\n", child0.index, child1.index);
 
     if ( child0.index > child1.index )
     {
@@ -483,13 +476,11 @@ public:
     // check for trivial cases?
     if ( child0.index == child1.index )
     {
-      printf("trivial case: complementede children\n");
       const auto diff_pol = child0.complement != child1.complement;
       return std::make_pair( n, diff_pol ? get_constant( false ) : child1 );
     }
     else if ( child0.index == 0 ) /* constant child */
     {
-      printf("trivial case: constant child\n");
       return std::make_pair( n, child0.complement ? child1 : get_constant( false ) );
     }
 
@@ -499,7 +490,6 @@ public:
     _hash_obj.children[1] = child1;
     if ( const auto it = _storage->hash.find( _hash_obj ); it != _storage->hash.end() && it->second != old_node )
     {
-      printf("node in hash\n");
       return std::make_pair( n, signal( it->second, 0 ) );
     }
 
@@ -606,18 +596,13 @@ public:
   {
     /* we cannot delete CIs, constants, or already dead nodes */
     if ( n == 0 || is_ci( n ) || is_dead( n ) )
-    {
-      printf("early out %d %d %d \n", n == 0, is_ci( n ), is_dead( n ));
       return;
-    }
 
     /* delete the node (ignoring its current fanout_size) */
     auto& nobj = _storage->nodes[n];
     nobj.data[0].h1 = UINT32_C( 0x80000000 ); /* fanout size 0, but dead */
-    printf("erase (%d %d)\n", nobj.children[0].index, nobj.children[1].index );
-    std::cout << _storage->hash.size() << std::endl;
-    std::cout << _storage->hash.erase( nobj ) << std::endl;
-    std::cout << _storage->hash.size() << std::endl;
+    _storage->hash.erase( nobj );
+
     for ( auto const& fn : _events->on_delete )
     {
       ( *fn )( n );
@@ -627,15 +612,12 @@ public:
        fanins and try to take them out if their fanout_size become 0 */
     for ( auto i = 0u; i < 2u; ++i )
     {
-      printf("#FOs[%d] = %d \n", nobj.children[i].index, _storage->nodes[nobj.children[i].index].data[0].h1 );
       if ( fanout_size( nobj.children[i].index ) == 0 )
       {
-        printf("continue because fanout size is 0\n" );
         continue;
       }
       if ( decr_fanout_size( nobj.children[i].index ) == 0 )
       {
-        printf("in take out(%d)\n", nobj.children[i].index );
         take_out_node( nobj.children[i].index );
       }
     }
@@ -674,14 +656,12 @@ public:
 
   void substitute_node( node const& old_node, signal const& new_signal )
   {
-    print();
     std::unordered_map<node, signal> old_to_new;
     std::stack<std::pair<node, signal>> to_substitute;
     to_substitute.push( { old_node, new_signal } );
 
     while ( !to_substitute.empty() )
     {
-      print();
       const auto [_old, _curr] = to_substitute.top();
       to_substitute.pop();
 
@@ -699,40 +679,30 @@ public:
       /* revive */
       if ( is_dead( get_node( _new ) ) )
       {
-        printf("revive node %d\n", get_node( _new ) );
         revive_node( get_node( _new ) );
       }
 
       for ( auto idx = 1u; idx < _storage->nodes.size(); ++idx )
       {
         if ( is_ci( idx ) || is_dead( idx ) )
-        {
-          printf("continue ci\n");
           continue; /* ignore CIs */
-        }
-        printf("replace in node %d %d %d\n", idx, _old, _new );
+
         if ( const auto repl = replace_in_node( idx, _old, _new ); repl )
         {
-          printf("to_substitute.push(%d)\n", *repl );
           to_substitute.push( *repl );
         }
       }
 
       /* check outputs */
-      printf("replace in outputs (%d, %d)\n", _old, _new );
       replace_in_outputs( _old, _new );
-      print();
 
       /* recursively reset old node */
       if ( _old != _new.index )
       {
-        printf("take out node(%d)\n", _old);
         old_to_new.insert( { _old, _new } );
         take_out_node( _old );
       }
-      print();
     }
-    print();
   }
 
   void substitute_node_no_restrash( node const& old_node, signal const& new_signal )
@@ -1263,19 +1233,6 @@ public:
     return *_events;
   }
 #pragma endregion
-
-void print()
-{
-  foreach_gate( [&]( auto n ) 
-  { 
-    printf("[%d=");
-    foreach_fanin( n, [&]( auto const& fi ) {
-      printf("%c%d ", is_complemented(fi) ? '!' : ' ' , fi.index );
-    } );
-    printf("]");
-  } );
-  printf("\n");
-} 
 
 public:
   std::shared_ptr<aig_storage> _storage;

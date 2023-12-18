@@ -1,3 +1,7 @@
+ABORTED BECAUSE OF THE DIFFICULTY OF HANDLING SUBSTITUTE NODE
+
+
+
 /* mockturtle: C++ logic network library
  * Copyright (C) 2018-2022  EPFL
  *
@@ -62,6 +66,14 @@ namespace mockturtle
 namespace rils
 {
 
+/*! \brief identifier of the node category */
+enum i_func_t : uint32_t
+{
+  i_CONST = 0u,
+  i_PI = 1u,
+  i_BUF = 2u
+};
+
 /*! \brief literals of the precomputed truth-tables in the truth-table cache.
   *
   * The default convention for literals is assumed.  That is an index \f$i\f$
@@ -72,16 +84,16 @@ namespace rils
 enum e_func_t : uint32_t
 {
   e_CONST = 0u,
-  e_PI    = 1u,
-  e_BUF   = 2u,
-  e_AND   = 4u,
-  e_OR    = 6u,
-  e_LT    = 8u,
-  e_GT    = 10u,
-  e_XOR   = 12u,
-  e_MAJ   = 14u,
-  e_ITE   = 16u,
-  e_XOR3  = 18u,
+  e_PI = 1u,
+  e_BUF = 2u,
+  e_AND = 4u,
+  e_OR = 6u,
+  e_LT = 8u,
+  e_GT = 10u,
+  e_XOR = 12u,
+  e_MAJ = 14u,
+  e_ITE = 16u,
+  e_XOR3 = 18u,
 };
 
 #pragma region utils
@@ -188,6 +200,7 @@ enum e_func_t : uint32_t
   struct e_gate_t
   {
     using pointer_type = node_pointer<1>;
+    using twin_pointer_type = node_pointer<1>;
 
     std::vector<pointer_type> children;
 
@@ -199,8 +212,8 @@ enum e_func_t : uint32_t
     uint32_t value{0};
     /*! \brief visited flag 1 visited */
     uint32_t visited{0};
-    /*! \brief aig signal */
-    aig_network::signal twin;
+    /*! \brief Twin internal signal */
+    signal_t<twin_pointer_type> twin {0,0};
 
     bool operator==( e_gate_t const& other ) const
     {
@@ -208,8 +221,46 @@ enum e_func_t : uint32_t
     }
   };
 
+  struct i_gate_t
+  {
+    using pointer_type = node_pointer<1>;
+    using twin_pointer_type = node_pointer<1>;
+
+    std::array<pointer_type, 2> children;
+    /*! \brief number of fanouts */
+    uint32_t nfos{0};
+    /*! \brief node type const:0 pi:1 */
+    uint32_t func{0};
+    /*! \brief application specific value */
+    uint32_t value{0};
+    /*! Twin external signal: W might not exit! */
+    signal_t<twin_pointer_type> twin {0,0};
+
+    bool operator==( i_gate_t const& other ) const
+    {
+      return children == other.children;
+    }
+
+  };
+
+  /*! \brief Hash function for AIGs (from ABC) */
+  struct i_hash_t
+  {
+    uint64_t operator()( i_gate_t const& n ) const
+    {
+      uint64_t seed = -2011;
+      seed += n.children[0].index * 7937;
+      seed += n.children[1].index * 2971;
+      seed += n.children[0].weight * 911;
+      seed += n.children[1].weight * 353;
+      return seed;
+    }
+  };
   using e_storage_t = smart_storage<e_gate_t, e_data_t>;
 
+  using i_data_t = empty_storage_data;
+  struct i_hash_t;
+  using i_storage_t = smart_storage<i_gate_t, i_data_t, i_hash_t>;
 #pragma endregion utils
 
 class rig_network
@@ -219,6 +270,9 @@ class rig_network
   public:
     using e_node_t = uint64_t;
     using e_signal_t = signal_t<e_gate_t::pointer_type>;
+
+    using i_node_t = uint64_t;
+    using i_signal_t = signal_t<i_gate_t::pointer_type>;
 
     static constexpr auto min_fanin_size = 1;
     static constexpr auto max_fanin_size = 32;
@@ -231,13 +285,19 @@ class rig_network
   #pragma region constructor
   public:
     rig_network();
-    rig_network( std::shared_ptr<e_storage_t> );
+    rig_network( std::shared_ptr<e_storage_t>, std::shared_ptr<i_storage_t> );
 
   protected:
     inline void _init();
   public:
     rig_network clone() const;
   #pragma endregion constructor
+
+  #pragma region linking
+  private:
+    e_signal_t get_e_signal( i_signal_t const& );
+    i_signal_t get_i_signal( e_signal_t const& );
+  #pragma endregion linking
 
   #pragma region Primary I / O and constants
   public:
@@ -264,6 +324,8 @@ class rig_network
     signal co_at( uint32_t ) const;
     uint32_t ci_index( node const& ) const;
     uint32_t pi_index( node const& ) const;
+    //uint32_t co_index( signal const& ) const;
+    //uint32_t po_index( signal const& ) const;
   #pragma endregion nodes and signals
 
   #pragma region node and signal iterators
@@ -284,6 +346,11 @@ class rig_network
   #pragma endregion unary functions
 
   #pragma region binary functions
+    i_signal_t i_create_and( i_signal_t, i_signal_t );
+    i_signal_t i_create_xor( i_signal_t, i_signal_t );
+    i_signal_t i_create_ite( i_signal_t, i_signal_t, i_signal_t );
+    i_signal_t i_create_maj( i_signal_t, i_signal_t, i_signal_t );
+
     signal create_and( signal, signal );
     signal create_nand( signal, signal );
     signal create_or( signal, signal );
@@ -313,17 +380,16 @@ class rig_network
   #pragma endregion ternary functions
 
   #pragma region arbitrary function
-    signal clone_node( rig_network const&, node const&, std::vector<signal> const& );
-    signal create_node( std::vector<signal> , kitty::dynamic_truth_table );
-    signal create_node_in_cloning( std::vector<signal> , kitty::dynamic_truth_table const& );
+    signal create_node( std::vector<signal> const&, kitty::dynamic_truth_table const& );
     signal _create_node( std::vector<signal> const&, uint32_t );
+    std::tuple<signal, bool> _create_known_node( std::vector<signal> const&, uint32_t );
+
+    signal clone_node( rig_network const&, node const&, std::vector<signal> const& );
+
     bool is_function( node const& ) const;
 
-    aig_network::signal synthesize_twin( std::vector<signal> const&, uint32_t );
-    aig_network::signal synthesize_twin_rec( std::vector<aig_network::signal>, kitty::dynamic_truth_table const& );
-
-    void print_aig( signal ) const;
-    void print_aig_rec( aig_network::node, std::vector<aig_network::signal> const& ) const;
+    i_signal_t synthesize_twin( std::vector<signal> const&, uint32_t );
+    i_signal_t synthesize_twin_rec( std::vector<i_signal_t>, kitty::dynamic_truth_table const& );
   #pragma endregion arbitrary function
 
   #pragma region restructuring
@@ -331,13 +397,8 @@ class rig_network
     void take_out_node( node const& );
     void replace_in_outputs( node const&, signal const& );
     std::optional<std::pair<node, signal>> replace_in_node( node const&, node const&, signal );
-    void replace_in_node_no_restrash( node const&, node const&, signal );
     void revive_node( node const& );
     void substitute_node( node const&, signal const& );
-    void substitute_node_no_restrash( node const&, signal const& );
-    void substitute_nodes( std::list<std::pair<node, signal>> );
-    void normalize_node( e_gate_t & );
-
   #pragma endregion restructuring
 
   #pragma region structural properties
@@ -363,15 +424,19 @@ class rig_network
     template<typename Iterator>
     iterates_over_t<Iterator, bool>
     compute( node const& n, Iterator, Iterator ) const;
+
     template<typename Iterator>
     iterates_over_truth_table_t<Iterator>
     compute( node const&, Iterator, Iterator ) const;
+
     template<typename Iterator>
     void compute( node const&, kitty::partial_truth_table&, Iterator, Iterator ) const;
+
     template<typename TT>
     TT compute( node , std::vector<TT> const & ) const;
+
     template<typename TT>
-    TT compute_rec( aig_network::node, std::vector<aig_network::signal> const&, std::vector<TT> const & ) const;
+    TT compute_rec( i_node_t, std::vector<i_signal_t> const&, std::vector<TT> const & ) const;
   #pragma endregion simulation properties
 
   #pragma region application specific value
@@ -390,15 +455,17 @@ class rig_network
     void incr_trav_id() const;
   #pragma endregion visited flags
     void print();
+    void print_aig();
+    void print_aig_rec( i_signal_t );
   #pragma region general methods
     auto& events() const;
   #pragma endregion general methods
 
 public:
   std::shared_ptr<e_storage_t> _e_storage;
+  std::shared_ptr<i_storage_t> _i_storage;
   /* complete AIG database */
   std::shared_ptr<network_events<base_type>> _events;
-  aig_network _aig;
 
 };
 
@@ -409,13 +476,13 @@ public:
   * Construct the network using the init function
   */
   rig_network::rig_network()
-    : _e_storage( std::make_shared<e_storage_t>() ), _events( std::make_shared<decltype( _events )::element_type>() )
+    : _e_storage( std::make_shared<e_storage_t>() ), _i_storage( std::make_shared<i_storage_t>() ), _events( std::make_shared<decltype( _events )::element_type>() )
   {
     _init();
   }
 
-  rig_network::rig_network( std::shared_ptr<e_storage_t> e_storage_ptr )
-      : _e_storage( e_storage_ptr ), _events( std::make_shared<decltype( _events )::element_type>() )
+  rig_network::rig_network( std::shared_ptr<e_storage_t> e_storage_ptr, std::shared_ptr<i_storage_t> i_storage_ptr )
+      : _e_storage( e_storage_ptr ), _i_storage( i_storage_ptr ), _events( std::make_shared<decltype( _events )::element_type>() )
   {
     _init();
   }
@@ -435,6 +502,7 @@ public:
     /* constant node : #0 in the cache */
     kitty::dynamic_truth_table tt_zero( 0 );
     _e_storage->data.cache.insert( tt_zero );
+    _i_storage->nodes[0].func = i_func_t::i_CONST;
 
     /* constant node : #1 in the cache => lit = 2 */
     static uint64_t _not = 0x1;
@@ -493,17 +561,26 @@ public:
     /* truth tables for constants */
     _e_storage->nodes[0].func = 0;
 
-    for( uint32_t i{0}; i<32u; ++i )
-      _aig.create_pi();
-
   }
 
   rig_network rig_network::clone() const
   {
-    return { std::make_shared<e_storage_t>( *_e_storage ) };
+    return { std::make_shared<e_storage_t>( *_e_storage ), std::make_shared<i_storage_t>( *_i_storage ) };
   }
 
   #pragma endregion constructors
+
+#pragma region linking
+  rig_network::e_signal_t rig_network::get_e_signal( rig_network::i_signal_t const& f )
+  {
+    return _e_storage->nodes[f].twin;
+  }
+
+  rig_network::i_signal_t rig_network::get_i_signal( rig_network::e_signal_t const& f )
+  {
+    return _i_storage->nodes[f].twin;
+  }
+#pragma endregion linking
 
 #pragma region Primary I / O and constants
   rig_network::signal rig_network::get_constant( bool value = false ) const
@@ -523,6 +600,15 @@ public:
     e_node.children.emplace_back( static_cast<uint64_t>(_e_storage->inputs.size()) );
     _e_storage->inputs.push_back( e_index );
     _e_storage->nodes[e_index].func = e_func_t::e_PI;
+
+    const auto i_index = _i_storage->get_index();
+    auto& i_node = _i_storage->nodes.emplace_back();
+    i_node.children[0].data = i_node.children[1].data = _i_storage->inputs.size();
+    _i_storage->inputs.emplace_back( i_index );
+    _i_storage->nodes[i_index].func = i_func_t::i_PI;
+
+    _e_storage->nodes[e_index].twin = { i_index, 0 };
+    _i_storage->nodes[i_index].twin = { e_index, 0 };
     
     return { e_index, 0 };
   }
@@ -532,9 +618,14 @@ public:
     /* increase ref-count to children */
     _e_storage->nodes[e_signal.index].nfos++;
     auto const e_po_index = _e_storage->outputs.size();
-    _e_storage->outputs.emplace_back( e_signal.index, e_signal.complement );
+    _e_storage->outputs.emplace_back( e_signal );
+    
+    i_signal_t i_signal = get_i_signal( e_signal );
+    _i_storage->nodes[i_signal.index].nfos++;
+    i_signal_t i_out_signal { i_signal.index, i_signal.complement ^ e_signal.complement };
+    _i_storage->outputs.emplace_back( i_out_signal );
 
-    return static_cast<uint32_t>( e_po_index );
+    return e_po_index;
   }
 
   bool rig_network::is_combinational() const
@@ -679,11 +770,17 @@ public:
 #pragma region unary functions
   rig_network::signal rig_network::create_buf( signal const& f )
   {
+  //  auto [e_signal, is_new] = _create_known_node( { f }, e_func_t::e_BUF );
+  //  _e_storage->nodes[e_signal.index].twin = _e_storage->nodes[f.index].twin;
+  // return e_signal;
     return f;
   }
 
   rig_network::signal rig_network::create_not( signal const& f )
   {
+    //auto [e_signal, is_new] = _create_known_node( { f }, e_func_t::e_BUF ^ 0x1 );
+    //_e_storage->nodes[e_signal.index].twin = _e_storage->nodes[f.index].twin;
+    //return e_signal;
     return !f;
   }
 
@@ -698,202 +795,253 @@ public:
   }
 #pragma endregion unary functions
 
+rig_network::i_signal_t rig_network::i_create_and( i_signal_t a, i_signal_t b )
+{
+  /* order inputs */
+  if ( a.index > b.index )
+  {
+    std::swap( a, b );
+  }
+
+  /* trivial cases */
+  if ( a.index == b.index )
+  {
+    return ( a.complement == b.complement ) ? a : get_constant( false );
+  }
+  else if ( a.index == 0 )
+  {
+    return a.complement ? b : get_constant( false );
+  }
+
+  std::shared_ptr<i_storage_t>::element_type::node_type node;
+  node.children[0] = a;
+  node.children[1] = b;
+
+  /* structural hashing */
+  const auto it = _i_storage->hash.find( node );
+  if ( it != _i_storage->hash.end() )
+  {
+    //assert( !is_dead( it->second ) );
+    return { it->second, 0 };
+  }
+
+  const auto index = _i_storage->get_index();
+
+  if ( index >= .9 * _i_storage->nodes.capacity() )
+  {
+    _i_storage->nodes.reserve( static_cast<uint64_t>( 3.1415f * index ) );
+    _i_storage->hash.reserve( static_cast<uint64_t>( 3.1415f * index ) );
+  }
+
+  _i_storage->nodes.push_back( node );
+
+  _i_storage->hash[node] = index;
+
+  /* increase ref-count to children */
+  _i_storage->nodes[a.index].nfos++;
+  _i_storage->nodes[b.index].nfos++;
+
+  //printf("%d=AND(%c%d,%c%d)", index, a.complement ? '!':' ', a.index, b.complement ? '!':' ', b.index );
+
+  return { index, 0 };
+}
+
+rig_network::i_signal_t rig_network::i_create_xor( i_signal_t a, i_signal_t b )
+{
+  i_signal_t f1 = i_create_and( a, !b );
+  i_signal_t f2 = i_create_and( !a, b );
+  return !i_create_and( !f1, !f2 );
+}
+
+rig_network::i_signal_t rig_network::i_create_ite( i_signal_t x, i_signal_t if1, i_signal_t if0 )
+{
+  auto f0 = i_create_and( !x, if0 );
+  auto f1 = i_create_and( x, if1 );
+  auto res = !i_create_and( !f1, !f0 );
+  
+  return res;
+}
+
+rig_network::i_signal_t rig_network::i_create_maj( i_signal_t a, i_signal_t b, i_signal_t c )
+{
+  auto f0 = i_create_and( a, b );
+  auto f1 = i_create_and(!i_create_and( !a, !b ), c);
+  return !i_create_and( !f1, !f0 );
+}
+
 #pragma region binary functions
   rig_network::signal rig_network::create_and( signal a, signal b )
   {
-    /* order inputs */
     if ( a.index > b.index )
     {
       std::swap( a, b );
     }
-
-    if ( a.index == b.index )
+    auto [e_signal, is_new] = _create_known_node( { a, b }, e_func_t::e_AND );
+    if( is_new )
     {
-      return ( a.complement == b.complement ) ? a : get_constant( false );
+      i_signal_t twin_a = _e_storage->nodes[get_node( a )].twin;
+      i_signal_t twin_b = _e_storage->nodes[get_node( b )].twin;
+      i_signal_t i_signal = i_create_and( { twin_a.index, twin_a.complement ^ a.complement }, { twin_b.index, twin_b.complement ^ b.complement } );
+      _i_storage->nodes[i_signal.index].twin = e_signal;
+      _e_storage->nodes[e_signal.index].twin = i_signal;
     }
-    else if ( a.index == 0 )
-    {
-      return a.complement ? b : get_constant( false );
-    }
-
-    return _create_node( { a, b }, e_func_t::e_AND );
+    return e_signal;
   }
 
   rig_network::signal rig_network::create_nand( signal a, signal b )
   {
-    /* order inputs */
     if ( a.index > b.index )
     {
       std::swap( a, b );
     }
-
-    if ( a.index == b.index )
+    auto [e_signal, is_new] = _create_known_node( { a, b }, (e_func_t::e_AND ^ 1u ) );
+    if( is_new )
     {
-      return ( a.complement == b.complement ) ? !a : get_constant( true );
+      i_signal_t twin_a = _e_storage->nodes[get_node( a )].twin;
+      i_signal_t twin_b = _e_storage->nodes[get_node( b )].twin;
+      i_signal_t i_signal = !i_create_and( { twin_a.index, twin_a.complement ^ a.complement }, { twin_b.index, twin_b.complement ^ b.complement } );
+      _i_storage->nodes[i_signal.index].twin = e_signal;
+      _e_storage->nodes[e_signal.index].twin = i_signal;
     }
-    else if ( a.index == 0 )
-    {
-      return a.complement ? !b : get_constant( true );
-    }
-
-    return _create_node( { a, b }, (e_func_t::e_AND ^ 1u ) );
+    return e_signal;
   }
 
   rig_network::signal rig_network::create_or( signal a, signal b )
   {
-    /* order inputs */
     if ( a.index > b.index )
     {
       std::swap( a, b );
     }
-
-    if ( a.index == b.index )
+    auto [e_signal, is_new] = _create_known_node( { a, b }, e_func_t::e_OR );
+    if( is_new )
     {
-      return ( a.complement == b.complement ) ? a : get_constant( true );
+      i_signal_t twin_a = _e_storage->nodes[get_node( a )].twin;
+      i_signal_t twin_b = _e_storage->nodes[get_node( b )].twin;
+      i_signal_t i_signal = !i_create_and( { twin_a.index, 1u ^ twin_a.complement ^ a.complement }, { twin_b.index, 1u ^ twin_b.complement ^ b.complement } );
+      _i_storage->nodes[i_signal.index].twin = e_signal;
+      _e_storage->nodes[e_signal.index].twin = i_signal;
     }
-    else if ( a.index == 0 )
-    {
-      return a.complement ? get_constant( true ) : b;
-    }
-
-    return _create_node( { a, b }, e_func_t::e_OR );
+    return e_signal;
   }
 
   rig_network::signal rig_network::create_nor( signal a, signal b )
   {
-    /* order inputs */
     if ( a.index > b.index )
     {
       std::swap( a, b );
-    } 
-
-    if ( a.index == b.index )
-    {
-      return ( a.complement == b.complement ) ? !a : get_constant( false );
     }
-    else if ( a.index == 0 )
+    auto [e_signal, is_new] = _create_known_node( { a, b }, e_func_t::e_OR ^ 1u );
+    if( is_new )
     {
-      return a.complement ? get_constant( false ) : !b;
+      i_signal_t twin_a = _e_storage->nodes[get_node( a )].twin;
+      i_signal_t twin_b = _e_storage->nodes[get_node( b )].twin;
+      i_signal_t i_signal = i_create_and( { twin_a.index, 1u ^ twin_a.complement ^ a.complement }, { twin_b.index, 1u ^ twin_b.complement ^ b.complement } );
+      _i_storage->nodes[i_signal.index].twin = e_signal;
+      _e_storage->nodes[e_signal.index].twin = i_signal;
     }
-
-    return _create_node( { a, b }, e_func_t::e_OR ^ 1u );
+    return e_signal;
   }
 
   rig_network::signal rig_network::create_lt( signal a, signal b )
   {
-    if ( a.index == b.index )
+    if ( a.index > b.index )
     {
-      return ( a.complement == b.complement ) ? get_constant( false ) : b;
+      std::swap( a, b );
     }
-    else if ( a.index == 0 )
+    auto [e_signal, is_new] = _create_known_node( { a, b }, e_func_t::e_LT );
+    if( is_new )
     {
-      return a.complement ? get_constant( false ) : b;
+      i_signal_t twin_a = _e_storage->nodes[get_node( a )].twin;
+      i_signal_t twin_b = _e_storage->nodes[get_node( b )].twin;
+      i_signal_t i_signal = i_create_and( { twin_a.index, 1u ^ twin_a.complement ^ a.complement }, { twin_b.index, twin_b.complement ^ b.complement } );
+      _i_storage->nodes[i_signal.index].twin = e_signal;
+      _e_storage->nodes[e_signal.index].twin = i_signal;
     }
-    else if( b.index == 0 )
-    {
-      return b.complement ? !a : get_constant( false );
-    }
-
-    return _create_node( { a, b }, e_func_t::e_LT );
+    return e_signal;
   }
 
   rig_network::signal rig_network::create_ge( signal a, signal b )
   {
-    if ( a.index == b.index )
+    if ( a.index > b.index )
     {
-      return ( a.complement == b.complement ) ? get_constant( true ) : !b;
+      std::swap( a, b );
     }
-    else if ( a.index == 0 )
+    auto [e_signal, is_new] = _create_known_node( { a, b }, e_func_t::e_LT ^ 1u );
+    if( is_new )
     {
-      return a.complement ? get_constant( true ) : !b;
+      i_signal_t twin_a = _e_storage->nodes[get_node( a )].twin;
+      i_signal_t twin_b = _e_storage->nodes[get_node( b )].twin;
+      i_signal_t i_signal = !i_create_and( { twin_a.index, 1u ^ twin_a.complement ^ a.complement }, { twin_b.index, twin_b.complement ^ b.complement } );
+      _i_storage->nodes[i_signal.index].twin = e_signal;
+      _e_storage->nodes[e_signal.index].twin = i_signal;
     }
-    else if( b.index == 0 )
-    {
-      return b.complement ? a : get_constant( true );
-    }
-    return _create_node( { a, b }, e_func_t::e_LT ^ 1u );
+    return e_signal;
   }
 
   rig_network::signal rig_network::create_gt( signal a, signal b )
   {
-    if ( a.index == b.index )
+    if ( a.index > b.index )
     {
-      return ( a.complement == b.complement ) ? get_constant( false ) : a;
+      std::swap( a, b );
     }
-    else if ( a.index == 0 )
+    auto [e_signal, is_new] = _create_known_node( { a, b }, e_func_t::e_GT );
+    if( is_new )
     {
-      return a.complement ? !b : get_constant( false );
+      i_signal_t twin_a = _e_storage->nodes[get_node( a )].twin;
+      i_signal_t twin_b = _e_storage->nodes[get_node( b )].twin;
+      i_signal_t i_signal = i_create_and( { twin_a.index, twin_a.complement ^ a.complement }, { twin_b.index, 1u ^ twin_b.complement ^ b.complement } );
+      _i_storage->nodes[i_signal.index].twin = e_signal;
+      _e_storage->nodes[e_signal.index].twin = i_signal;
     }
-    else if( b.index == 0 )
-    {
-      return b.complement ? get_constant( false ) : a;
-    }
-
-    return _create_node( { a, b }, e_func_t::e_GT );
+    return e_signal;
   }
 
   rig_network::signal rig_network::create_le( signal a, signal b )
   {
-    if ( a.index == b.index )
+    if ( a.index > b.index )
     {
-      return ( a.complement == b.complement ) ? get_constant( true ) : !a;
+      std::swap( a, b );
     }
-    else if ( a.index == 0 )
+    auto [e_signal, is_new] = _create_known_node( { a, b }, e_func_t::e_GT ^ 1u );
+    if( is_new )
     {
-      return a.complement ? b : get_constant( true );
+      i_signal_t twin_a = _e_storage->nodes[get_node( a )].twin;
+      i_signal_t twin_b = _e_storage->nodes[get_node( b )].twin;
+      i_signal_t i_signal = !i_create_and( { twin_a.index, twin_a.complement ^ a.complement }, { twin_b.index, 1u ^ twin_b.complement ^ b.complement } );
+      _i_storage->nodes[i_signal.index].twin = e_signal;
+      _e_storage->nodes[e_signal.index].twin = i_signal;
     }
-    else if( b.index == 0 )
-    {
-      return b.complement ? get_constant( true ) : !a;
-    }
-
-    return _create_node( { a, b }, e_func_t::e_GT ^ 1u );
+    return e_signal;
   }
 
   rig_network::signal rig_network::create_xor( signal a, signal b )
   {
-    /* order inputs */
-    if ( a.index < b.index )
+    if ( a.index > b.index )
     {
       std::swap( a, b );
     }
-
-    bool f_compl = a.complement != b.complement;
-    a.complement = b.complement = false;
-
-    if ( a.index == b.index )
-    {
-      return get_constant( f_compl );
-    }
-    else if ( b.index == 0 )
-    {
-      return a ^ f_compl;
-    }
-
-    return _create_node( { a, b }, e_func_t::e_XOR ) ^ f_compl;
+    auto [e_signal, is_new] = _create_known_node( { a, b }, e_func_t::e_XOR );
+    i_signal_t twin_a = _e_storage->nodes[get_node( a )].twin;
+    i_signal_t twin_b = _e_storage->nodes[get_node( b )].twin;
+    i_signal_t i_signal = i_create_xor( { twin_a.index, twin_a.complement ^ a.complement }, { twin_b.index, twin_b.complement ^ b.complement } );
+    _i_storage->nodes[i_signal.index].twin = e_signal;
+    _e_storage->nodes[e_signal.index].twin = i_signal;
+    return e_signal;
   }
 
   rig_network::signal rig_network::create_xnor( signal a, signal b )
   {
-    /* order inputs */
-    if ( a.index < b.index )
+    if ( a.index > b.index )
     {
       std::swap( a, b );
     }
-
-    bool f_compl = a.complement != b.complement;
-    a.complement = b.complement = false;
-
-    if ( a.index == b.index )
-    {
-      return !get_constant( f_compl );
-    }
-    else if ( b.index == 0 )
-    {
-      return !( a ^ f_compl );
-    }
-
-    return _create_node( { a, b }, e_func_t::e_XOR ^ 1u );
+    auto [e_signal, is_new] = _create_known_node( { a, b }, e_func_t::e_XOR ^ 1u );
+    i_signal_t twin_a = _e_storage->nodes[get_node( a )].twin;
+    i_signal_t twin_b = _e_storage->nodes[get_node( b )].twin;
+    i_signal_t i_signal = !i_create_xor( { twin_a.index, twin_a.complement ^ a.complement }, { twin_b.index, twin_b.complement ^ b.complement } );
+    _i_storage->nodes[i_signal.index].twin = e_signal;
+    _e_storage->nodes[e_signal.index].twin = i_signal;
+    return e_signal;
   }
 
   bool rig_network::is_and( node const& n )
@@ -986,7 +1134,18 @@ public:
       b.complement = !b.complement;
       c.complement = !c.complement;
     }
-    return _create_node( { a, b, c }, e_func_t::e_MAJ ) ^ node_complement;
+
+    auto [e_signal, is_new] = _create_known_node( { a, b, c }, e_func_t::e_MAJ );
+    if( is_new )
+    {
+      i_signal_t twin_a = _e_storage->nodes[get_node( a )].twin;
+      i_signal_t twin_b = _e_storage->nodes[get_node( b )].twin;
+      i_signal_t twin_c = _e_storage->nodes[get_node( c )].twin;
+      i_signal_t i_signal = i_create_maj( { twin_a.index, twin_a.complement ^ a.complement }, { twin_b.index, twin_b.complement ^ b.complement }, { twin_c.index, twin_c.complement ^ c.complement } );
+      _i_storage->nodes[i_signal.index].twin = e_signal;
+      _e_storage->nodes[e_signal.index].twin = i_signal;
+    }
+    return node_complement ? !e_signal : e_signal;
   }
 
   rig_network::signal rig_network::create_ite( signal x, signal cond1, signal cond0 )
@@ -997,7 +1156,18 @@ public:
       std::swap( cond1, cond0 );
       complement = true;
     }
-    return _create_node( { x, cond1, cond0 }, e_func_t::e_ITE );
+    auto [e_signal, is_new] = complement ? _create_known_node( { !x, cond0, cond1 }, e_func_t::e_ITE ) : _create_known_node( { x, cond1, cond0 }, e_func_t::e_ITE );
+    if( is_new )
+    {
+      i_signal_t t_x = x.complement ? !_e_storage->nodes[get_node( x )].twin : _e_storage->nodes[get_node( x )].twin;
+      i_signal_t t_1 = cond1.complement ? !_e_storage->nodes[get_node( cond1 )].twin : _e_storage->nodes[get_node( cond1 )].twin;
+      i_signal_t t_0 = cond0.complement ? !_e_storage->nodes[get_node( cond0 )].twin : _e_storage->nodes[get_node( cond0 )].twin;
+
+      i_signal_t i_signal = complement ? i_create_ite( !t_x, t_0, t_1 ) : i_create_ite( t_x, t_1, t_0 );
+      _i_storage->nodes[i_signal.index].twin = e_signal;
+      _e_storage->nodes[e_signal.index].twin = i_signal;
+    }
+    return e_signal; 
   }
 
   rig_network::signal rig_network::create_xor3( signal a, signal b, signal c )
@@ -1044,74 +1214,56 @@ public:
       b.complement = !b.complement;
       c.complement = !c.complement;
     }
-    return _create_node( { a, b, c }, e_func_t::e_XOR3 );
+
+    auto [e_signal, is_new] = _create_known_node( { a, b, c }, e_func_t::e_XOR3 );
+    if( is_new )
+    {
+      i_signal_t twin_a = a.complement ? !_e_storage->nodes[get_node( a )].twin : _e_storage->nodes[get_node( a )].twin;
+      i_signal_t twin_b = b.complement ? !_e_storage->nodes[get_node( b )].twin : _e_storage->nodes[get_node( b )].twin;
+      i_signal_t twin_c = c.complement ? !_e_storage->nodes[get_node( c )].twin : _e_storage->nodes[get_node( c )].twin;
+      i_signal_t i_signal = i_create_xor( a, i_create_xor( b, c ) );
+      _i_storage->nodes[i_signal.index].twin = complement ? !e_signal : e_signal;
+      _e_storage->nodes[e_signal.index].twin = complement ? !i_signal : i_signal;
+    }
+    return complement ? !e_signal : e_signal;
   }
 
 #pragma endregion ternary functions
 
 #pragma region arbitrary function
-
-  template< class SIG >
-  void order_inputs( std::vector<SIG> & inputs, kitty::dynamic_truth_table & function )
+  std::tuple<rig_network::signal, bool> rig_network::_create_known_node( std::vector<signal> const& children, uint32_t literal )
   {
-    std::vector<std::pair<SIG, uint32_t>> sorted;
-    for( int i{0}; i<inputs.size(); ++i )
-      sorted.push_back( std::make_pair( inputs[i], i ) );
-    std::sort( sorted.begin(), sorted.end(), [](std::pair<SIG,uint32_t> a, std::pair<SIG,uint32_t> b)
-                                  {
-                                      return a.first < b.first;
-                                  } );
-    std::vector<uint32_t> perm;
-    inputs.clear();
-    for( int i{0}; i<sorted.size(); ++i )
-    {
-      perm.push_back(sorted[i].second);
-      inputs.push_back( sorted[i].first );
-    }
-
-    auto tt_new = function.construct();
-    for( int m{0}; m<function.num_bits(); ++m )
-    {
-      uint32_t p{0};
-      for( int v{0}; v<function.num_vars(); ++v )
-      {
-        p |= ( ( m >> perm[v] ) & 1u ) << v;
-      }
-      kitty::get_bit( function, m ) ? kitty::set_bit( tt_new, p ) : kitty::clear_bit( tt_new, p );
-    }
-    function = tt_new;
-  }
-
-  rig_network::signal rig_network::create_node( std::vector<signal> children, kitty::dynamic_truth_table function )
-  {
-    if( children.size() > 0 )
-    {
-    /* order inputs */
-
-    order_inputs( children, function );
-
-    }
-    // update in presence of trivial inputs constant nodes
-
-    // n-canonize
-
-//    auto [n_repr, neg] = exact_n_canonization( function );
-//    for( int iVar{0}; iVar<function.num_vars(); ++iVar )
-//      children[iVar].complement ^= ( ( neg >> iVar ) & 1u );
+    std::shared_ptr<e_storage_t>::element_type::node_type node;
+    std::copy( children.begin(), children.end(), std::back_inserter( node.children ) );
+    node.func = literal;
     
-    // add sorting of the variables
-    if ( children.size() == 0u )
+    const auto it = _e_storage->hash.find( node );
+
+    if ( it != _e_storage->hash.end() )
     {
-      assert( function.num_vars() == 0u );
-      return get_constant( !kitty::is_const0( function ) );
+      return std::make_pair( rig_network::signal{it->second, 0} , false );
+    }
+    const auto e_index = _e_storage->get_index();
+    _e_storage->nodes.push_back( node );
+    _e_storage->hash[node] = e_index;
+
+    /* increase ref-count to children */
+    int i{0};
+    for ( auto c : children )
+    {
+      _e_storage->nodes[c.index].nfos++;
     }
 
-    return _create_node( children, _e_storage->data.cache.insert( function ) );
+    for ( auto const& fn : _events->on_add )
+    {
+      ( *fn )( e_index );
+    }
+
+    return std::make_pair<signal, bool>( rig_network::signal{ e_index, 0 }, true );
   }
 
-  rig_network::signal rig_network::create_node_in_cloning( std::vector<signal> children, kitty::dynamic_truth_table const& function )
+  rig_network::signal rig_network::create_node( std::vector<signal> const& children, kitty::dynamic_truth_table const& function )
   {
-    // add sorting of the variables
     if ( children.size() == 0u )
     {
       assert( function.num_vars() == 0u );
@@ -1123,7 +1275,7 @@ public:
   rig_network::signal rig_network::clone_node( rig_network const& other, node const& source, std::vector<signal> const& children )
   {
     assert( children.size() == other._e_storage->nodes[source].children.size() );
-    return create_node_in_cloning( children, other._e_storage->data.cache[other._e_storage->nodes[source].func] );
+    return create_node( children, other._e_storage->data.cache[other._e_storage->nodes[source].func] );
   }
 
   rig_network::signal rig_network::_create_node( std::vector<signal> const& children, uint32_t literal )
@@ -1150,9 +1302,10 @@ public:
       _e_storage->nodes[c.index].nfos++;
     }
 
-//    synthesize
-    auto aig_signal = synthesize_twin( children, literal );
-    _e_storage->nodes[e_index].twin = aig_signal;
+    // synthesize
+    auto i_signal = synthesize_twin( children, literal );
+    _e_storage->nodes[e_index].twin = i_signal;
+    _i_storage->nodes[i_signal.index].twin = { e_index, i_signal.complement };
  
     for ( auto const& fn : _events->on_add )
     {
@@ -1167,44 +1320,46 @@ public:
     return n > 0 && !is_ci( n );
   }
 
-  aig_network::signal rig_network::synthesize_twin( std::vector<signal> const& children, uint32_t literal )
+  rig_network::i_signal_t rig_network::synthesize_twin( std::vector<signal> const& children, uint32_t literal )
   {
+    std::vector<i_signal_t> i_children;
+    for( auto i{0}; i<children.size(); ++i )
+    {
+      i_children.push_back( _e_storage->nodes[get_node(children[i])].twin );
+      i_children[i].complement ^= children[i].complement;
+    }
     kitty::dynamic_truth_table const& tt = _e_storage->data.cache[literal];
-    size_t n_fanins = tt.num_vars();
-    std::vector<aig_network::signal> aig_children;
-    for( auto i{0}; i<n_fanins; ++i )
-      aig_children.push_back( aig_network::signal{_aig.pi_at(i), 0} );
-    return synthesize_twin_rec( aig_children, tt );
+    return synthesize_twin_rec( i_children, tt );
   }
 
-  aig_network::signal rig_network::synthesize_twin_rec( std::vector<aig_network::signal> aig_children, kitty::dynamic_truth_table const& tt )
+  rig_network::i_signal_t rig_network::synthesize_twin_rec( std::vector<i_signal_t> i_children, kitty::dynamic_truth_table const& tt )
   {
     if( kitty::is_const0( tt ) )
-      return aig_network::signal{ 0, 0 };
+      return i_signal_t{ 0, 0 };
     if( kitty::is_const0( ~tt ) )
-      return aig_network::signal{ 0, 1 };
+      return i_signal_t{ 0, 1 };
 
-    if( aig_children.size() == 1u )
-      return kitty::is_normal(tt) ? aig_children[0] : !aig_children[0];
+    if( i_children.size() == 1u )
+      return kitty::is_normal(tt) ? i_children[0] : !i_children[0];
 
-    uint32_t idx = aig_children.size()-1;
-    aig_network::signal x = aig_children[idx];
-    aig_children.erase( aig_children.begin() + idx );
-    aig_network::signal f1 = synthesize_twin_rec( aig_children, kitty::cofactor1( tt, idx ) );
-    aig_network::signal f0 = synthesize_twin_rec( aig_children, kitty::cofactor0( tt, idx ) );
+    uint32_t idx = i_children.size()-1;
+    i_signal_t x = i_children[idx];
+    i_children.erase( i_children.begin() + idx );
+    i_signal_t f1 = synthesize_twin_rec( i_children, kitty::cofactor1( tt, idx ) );
+    i_signal_t f0 = synthesize_twin_rec( i_children, kitty::cofactor0( tt, idx ) );
     
     if( f1.index == 0 )
     {
-      auto res = f1.complement ? !_aig.create_and( !x, !f0 ) : _aig.create_and( !x, f0 );
+      auto res = f1.complement ? !i_create_and( !x, !f0 ) : i_create_and( !x, f0 );
       return res;
     }
     if( f0.index == 0 )
     {
-      auto res = f0.complement ? !_aig.create_and( x, !f1 ) : _aig.create_and( x, f1 );
+      auto res = f0.complement ? !i_create_and( x, !f1 ) : i_create_and( x, f1 );
       return res;
     }
 
-    return _aig.create_ite( x, f1, f0 );
+    return i_create_ite( x, f1, f0 );
   }
 
 #pragma endregion arbitrary function
@@ -1220,13 +1375,17 @@ public:
     /* we cannot delete CIs, constants, or already dead nodes */
     if ( n == 0 || is_ci( n ) || is_dead( n ) )
     {
+      printf("early out %d %d %d \n", n == 0, is_ci( n ), is_dead( n ));
       return;
     }
 
     /* delete the node (ignoring its current fanout_size) */
     auto& nobj = _e_storage->nodes[n];
     nobj.nfos = UINT32_C( 0x80000000 ); /* fanout size 0, but dead */
-    _e_storage->hash.erase( nobj );
+    printf("erase %d(%d %d)\n", nobj.func, nobj.children[0].index, nobj.children[1].index );
+    std::cout << _e_storage->hash.size() << std::endl;
+    std::cout << _e_storage->hash.erase( nobj ) << std::endl;
+    std::cout << _e_storage->hash.size() << std::endl;
 
     for ( auto const& fn : _events->on_delete )
     {
@@ -1237,12 +1396,15 @@ public:
        fanins and try to take them out if their fanout_size become 0 */
     for ( auto i = 0u; i < nobj.children.size(); ++i )
     {
+      printf("#FOs[%d] = %d \n", nobj.children[i].index, _e_storage->nodes[nobj.children[i].index].nfos );
       if ( fanout_size( nobj.children[i].index ) == 0 )
       {
+        printf("continue because fanout size is 0\n" );
         continue;
       }
       if ( decr_fanout_size( nobj.children[i].index ) == 0 )
       {
+        printf("in take out(%d)\n", nobj.children[i].index );
         take_out_node( nobj.children[i].index );
       }
     }
@@ -1251,9 +1413,7 @@ public:
   void rig_network::replace_in_outputs( node const& old_node, signal const& new_signal )
   {
     if ( is_dead( old_node ) )
-    {
       return;
-    }
 
     for ( auto& output : _e_storage->outputs )
     {
@@ -1293,6 +1453,8 @@ public:
     if( fanin == node.children.size() )
       return std::nullopt;
 
+    printf("fanin %d\n", fanin);
+
     std::vector<signal> children;
     for( uint32_t i{0}; i < _e_storage->nodes[n].children.size(); ++i )
     {
@@ -1306,6 +1468,9 @@ public:
       }
     }
     // determine potential new children of node n
+
+    printf("%d %d\n", children[0].index, children[1].index);
+    
     // normalize (SORT THE VARIABLES)
     // check for trivial cases?
     kitty::dynamic_truth_table const& tt = _e_storage->data.cache[node.func];
@@ -1318,9 +1483,12 @@ public:
       if ( children[i].index == 0 )
       {
         ttnew = children[i].complement ? kitty::cofactor1( tt, i ) : kitty::cofactor0( tt, i ) ;
+        printf("constant child\n");
+        kitty::print_binary( ttnew );
+        printf("\n");
         children.erase( children.begin()+i );
       }
-      else if ( ( i < children.size()-1 ) && ( children[i].index == children[i+1].index) )
+      else if ( (i < children.size()-1 )&& (children[i].index == children[i+1].index) )
       {
         if( children[i].complement == children[i+1].complement )
           ttnew = (ttx & kitty::cofactor1(kitty::cofactor1( tt, i ), i+1)) | ((~ttx) & kitty::cofactor0(kitty::cofactor0( tt, i ), i+1));
@@ -1331,30 +1499,29 @@ public:
       if( kitty::is_const0( ttnew ) ) return std::make_pair( n, get_constant(false));
       if( kitty::is_const0( ~ttnew ) ) 
       {
+        printf("const 1-> %d %d \n", n, 1 );
         return std::make_pair( n, get_constant(true));
       }
       if( children.size() == 1 )
       {
         //_e_storage->nodes[children[0].index].nfos++;
         if( kitty::is_normal( ttnew ) ) // BEWARE
-        {
           return std::make_pair( n, children[0] );
-        }
         else
-        {
           return std::make_pair( n, !children[0] );
-        }
       }
+
     }
     // node already in hash table
     storage::element_type::node_type _hash_obj;
-    for( uint32_t i{0}; i < children.size(); ++i )
+   for( uint32_t i{0}; i < _e_storage->nodes[n].children.size(); ++i )
     {
       _hash_obj.children.push_back( children[i] );
     }
     _hash_obj.func = node.func;
     if ( const auto it = _e_storage->hash.find( _hash_obj ); it != _e_storage->hash.end() && it->second != old_node )
     {
+      printf("node in hash\n");
       return std::make_pair( n, signal( it->second, 0 ) );
     }
 
@@ -1374,71 +1541,6 @@ public:
   //  }
 
     return std::nullopt;
-  }
-
-  void rig_network::normalize_node( e_gate_t & n )
-  {
-    auto children = n.children;
-    std::sort( children.begin(), children.end() );
-    n.children = children;
-  }
-
-  void rig_network::replace_in_node_no_restrash( node const& n, node const& old_node, signal new_signal )
-  {
-    auto& node = _e_storage->nodes[n];
-
-    uint32_t fanin = 0u;
-    while ( fanin < node.children.size() )
-    {
-      if ( node.children[fanin].index == old_node )
-      {
-        new_signal.complement ^= node.children[fanin].weight;
-        break;
-      }
-      fanin++;
-    }
-    if( fanin == node.children.size() )
-      return ;
-
-    // determine potential new children of node n
-    std::vector<e_gate_t::pointer_type> children;
-    for( uint32_t i{0}; i < _e_storage->nodes[n].children.size(); ++i )
-    {
-      if( i == fanin )
-      {
-        children.push_back( new_signal );
-      }
-      else
-      {
-        children.push_back( node.children[i] );
-      }
-    }
-
-    std::sort( children.begin(), children.end() );//WARNING
-
-    // don't check for trivial cases
-
-    // remember before
-    //std::vector<signal> old_children;
-
-
-    // erase old node in hash table
-    _e_storage->hash.erase( node );
-
-    // insert updated node into the hash table
-    node.children = children;
-    if ( _e_storage->hash.find( node ) == _e_storage->hash.end() )
-    {
-      _e_storage->hash[node] = n;
-    }
-
-    // update the reference counter of the new signal
-    _e_storage->nodes[new_signal.index].nfos++;
-
-//    for ( auto const& fn : _events->on_modified )
-//    {
-//      ( *fn )( n, { old_child0, old_child1 } );
-//    }
   }
 
   void rig_network::revive_node( node const& n )
@@ -1469,12 +1571,14 @@ public:
 
   void rig_network::substitute_node( node const& old_node, signal const& new_signal )
   {
+    print();
     std::unordered_map<node, signal> old_to_new;
     std::stack<std::pair<node, signal>> to_substitute;
     to_substitute.push( { old_node, new_signal } );
 
     while ( !to_substitute.empty() )
     {
+      print();
       const auto [_old, _curr] = to_substitute.top();
       to_substitute.pop();
 
@@ -1492,6 +1596,7 @@ public:
       /* revive */
       if ( is_dead( get_node( _new ) ) )
       {
+        printf("revive node %d\n", get_node( _new ) );
         revive_node( get_node( _new ) );
       }
 
@@ -1499,141 +1604,83 @@ public:
       {
         if ( is_ci( idx ) || is_dead( idx ) )
         {
+          printf("continue ci\n");
           continue; /* ignore CIs */
         }
 
+        printf("replace in node %d %d %d\n", idx, _old, _new );
         if ( const auto repl = replace_in_node( idx, _old, _new ); repl )
         {
+          printf("to_substitute.push(%d)\n", *repl );
           to_substitute.push( *repl );
         }
       }
 
       /* check outputs */
+      printf("replace in outputs (%d, %d)\n", _old, _new );
+
       replace_in_outputs( _old, _new );
+      print();
       /* recursively reset old node */
       if ( _old != _new.index )
       {
+        printf("take out node(%d)\n", _old);
         old_to_new.insert( { _old, _new } );
         take_out_node( _old );
       }
+      print();
     }
+    print();
   }
 
-  void rig_network::substitute_node_no_restrash( node const& old_node, signal const& new_signal )
-  {
-    if ( is_dead( get_node( new_signal ) ) )
-    {
-      revive_node( get_node( new_signal ) );
-    }
-
-    for ( auto idx = 1u; idx < _e_storage->nodes.size(); ++idx )
-    {
-      if ( is_ci( idx ) || is_dead( idx ) )
-        continue; /* ignore CIs and dead nodes */
-
-      replace_in_node_no_restrash( idx, old_node, new_signal );
-    }
-
-    /* check outputs */
-    replace_in_outputs( old_node, new_signal );
-
-    /* recursively reset old node */
-    if ( old_node != new_signal.index )
-    {
-      take_out_node( old_node );
-    }
-  }
-
-  void rig_network::substitute_nodes( std::list<std::pair<node, signal>> substitutions )
-  {
-    auto clean_substitutions = [&]( node const& n ) {
-      substitutions.erase( std::remove_if( std::begin( substitutions ), std::end( substitutions ),
-                                           [&]( auto const& s ) {
-                                             if ( s.first == n )
-                                             {
-                                               node const nn = get_node( s.second );
-                                               if ( is_dead( nn ) )
-                                                 return true;
-
-                                               /* deref fanout_size of the node */
-                                               if ( fanout_size( nn ) > 0 )
-                                               {
-                                                 decr_fanout_size( nn );
-                                               }
-                                               /* remove the node if it's fanout_size becomes 0 */
-                                               if ( fanout_size( nn ) == 0 )
-                                               {
-                                                 take_out_node( nn );
-                                               }
-                                               /* remove substitution from list */
-                                               return true;
-                                             }
-                                             return false; /* keep */
-                                           } ),
-                           std::end( substitutions ) );
-    };
-
-    /* register event to delete substitutions if their right-hand side
-       nodes get deleted */
-    auto clean_sub_event = _events->register_delete_event( clean_substitutions );
-
-    /* increment fanout_size of all signals to be used in
-       substitutions to ensure that they will not be deleted */
-    for ( const auto& s : substitutions )
-    {
-      incr_fanout_size( get_node( s.second ) );
-    }
-
-    while ( !substitutions.empty() )
-    {
-      auto const [old_node, new_signal] = substitutions.front();
-      substitutions.pop_front();
-
-      for ( auto index = 1u; index < _e_storage->nodes.size(); ++index )
-      {
-        /* skip CIs and dead nodes */
-        if ( is_ci( index ) || is_dead( index ) )
-          continue;
-
-        /* skip nodes that will be deleted */
-        if ( std::find_if( std::begin( substitutions ), std::end( substitutions ),
-                           [&index]( auto s ) { return s.first == index; } ) != std::end( substitutions ) )
-          continue;
-
-        /* replace in node */
-        if ( const auto repl = replace_in_node( index, old_node, new_signal ); repl )
-        {
-          incr_fanout_size( get_node( repl->second ) );
-          substitutions.emplace_back( *repl );
-        }
-      }
-
-      /* replace in outputs */
-      replace_in_outputs( old_node, new_signal );
-
-      /* replace in substitutions */
-      for ( auto& s : substitutions )
-      {
-        if ( get_node( s.second ) == old_node )
-        {
-          s.second = is_complemented( s.second ) ? !new_signal : new_signal;
-          incr_fanout_size( get_node( new_signal ) );
-        }
-      }
-
-      /* finally remove the node: note that we never decrement the
-         fanout_size of the old_node. instead, we remove the node and
-         reset its fanout_size to 0 knowing that it must be 0 after
-         substituting all references. */
-      assert( !is_dead( old_node ) );
-      take_out_node( old_node );
-
-      /* decrement fanout_size when released from substitution list */
-      decr_fanout_size( get_node( new_signal ) );
-    }
-
-    _events->release_delete_event( clean_sub_event );
-  }
+//    std::unordered_map<node, signal> old_to_new;
+//    std::stack<std::pair<node, signal>> to_substitute;
+//    to_substitute.push( { old_node, new_signal } );
+//
+//    while ( !to_substitute.empty() )
+//    {
+//      const auto [_old, _curr] = to_substitute.top();
+//      to_substitute.pop();
+//
+//      signal _new = _curr;
+//      /* find the real new node */
+//      if ( is_dead( get_node( _new ) ) )
+//      {
+//        auto it = old_to_new.find( get_node( _new ) );
+//        while ( it != old_to_new.end() )
+//        {
+//          _new = is_complemented( _new ) ? create_not( it->second ) : it->second;
+//          it = old_to_new.find( get_node( _new ) );
+//        }
+//      }
+//      /* revive */
+//      if ( is_dead( get_node( _new ) ) )
+//      {
+//        revive_node( get_node( _new ) );
+//      }
+//
+//      for ( auto idx = 1u; idx < _e_storage->nodes.size(); ++idx )
+//      {
+//        if ( is_ci( idx ) || is_dead( idx ) )
+//          continue; /* ignore CIs */
+//
+//        if ( const auto repl = replace_in_node( idx, _old, _new ); repl )
+//        {
+//          to_substitute.push( *repl );
+//        }
+//      }
+//
+//      /* check outputs */
+//      replace_in_outputs( _old, _new );
+//
+//      /* recursively reset old node */
+//      if ( _old != _new.index )
+//      {
+//        old_to_new.insert( { _old, _new } );
+//        take_out_node( _old );
+//      }
+//    }
+//  }
 #pragma endregion restructuring
 
 #pragma region structural properties
@@ -1698,28 +1745,32 @@ public:
 
 #pragma region simulation properties
 
-  template<typename Iterator>
-  iterates_over_t<Iterator, bool>
-  rig_network::compute( node const& n, Iterator begin, Iterator end ) const
-  {
-    (void)end;
-    uint32_t child{ 0 };
-    uint32_t index{ 0 };
-    while ( begin != end )
+    template<typename Iterator>
+    iterates_over_t<Iterator, bool>
+    rig_network::compute( node const& n, Iterator begin, Iterator end ) const
     {
-      index <<= 1;
-      index ^= *begin++ ? 1 : 0;
-      if( is_complemented(_e_storage->nodes[n].children[child]) )
-        index ^= 1;
-      child++;
+      printf("here\n");
+      (void)end;
+
+      uint32_t child{ 0 };
+      uint32_t index{ 0 };
+      while ( begin != end )
+      {
+        index <<= 1;
+        index ^= *begin++ ? 1 : 0;
+        if( is_complemented(_e_storage->nodes[n].children[child]) )
+          index ^= 1;
+
+        child++;
+      }
+      return kitty::get_bit( _e_storage->data.cache[_e_storage->nodes[n].func], index );
     }
-    return kitty::get_bit( _e_storage->data.cache[_e_storage->nodes[n].func], index );
-  }
 
     template<typename Iterator>
     iterates_over_truth_table_t<Iterator>
     rig_network::compute( node const& n, Iterator begin, Iterator end ) const
     {
+      printf("actually here\n");
       (void)end;
 
       assert( n != 0 && !is_ci( n ) );
@@ -1728,23 +1779,32 @@ public:
 
       std::vector<typename std::iterator_traits<Iterator>::value_type> tts( begin, end );
 
-      //assert( nfanin != 0 );
+      assert( nfanin != 0 );
       assert( tts.size() == nfanin );
 
       /* resulting truth table has the same size as any of the children */
 
-      std::vector<aig_network::signal> children;
+      uint32_t i{1};
+      std::vector<i_signal_t> children;
       
-      int i{0};
       foreach_fanin( n, [&]( auto const& fi ) {
-        aig_network::signal i_signal = {_aig.pi_at(i), is_complemented(fi) };//is_complemented(fi) ? !_aig.pi_at() : _e_storage->nodes[get_node(fi)].twin;
+        printf("FI[]=%d\n", fi.index);
+        i_signal_t i_signal = is_complemented(fi) ? !_e_storage->nodes[get_node(fi)].twin : _e_storage->nodes[get_node(fi)].twin;
+        _i_storage->nodes[i_signal.index].value = i++;
         children.push_back( i_signal );
-        i++;
       } );
 
-      auto res = compute_rec( _aig.get_node(_e_storage->nodes[n].twin), children, tts );
-      if( _aig.is_complemented(_e_storage->nodes[n].twin) )
+      auto res = compute_rec( _e_storage->nodes[n].twin.index, children, tts );
+      if( _e_storage->nodes[n].twin.complement )
         res = ~res;
+      printf("res=");
+      kitty::print_binary( res );
+      printf("\n");
+
+      foreach_fanin( n, [&]( auto const& fi ) {
+        i_signal_t i_signal = _e_storage->nodes[get_node(fi)].twin;
+        _i_storage->nodes[i_signal.index].value = 0;
+      } );
 
       return res;
     }
@@ -1765,18 +1825,24 @@ public:
 
       /* resulting truth table has the same size as any of the children */
 
-      std::vector<aig_network::signal> children;
+      uint32_t i{1};
+      std::vector<i_signal_t> children;
       
-      int i{0};
       foreach_fanin( n, [&]( auto const& fi ) {
-        aig_network::signal i_signal = {_aig.pi_at(i), is_complemented(fi) };
+        i_signal_t i_signal = is_complemented(fi) ? !_e_storage->nodes[get_node(fi)].twin : _e_storage->nodes[get_node(fi)].twin;
+        _i_storage->nodes[i_signal.index].value = i++;
         children.push_back( i_signal );
-        i++;
       } );
 
       result = compute_rec( _e_storage->nodes[n].twin.index, children, tts );
       if( _e_storage->nodes[n].twin.complement )
         result = ~result;
+
+
+      foreach_fanin( n, [&]( auto const& fi ) {
+        i_signal_t i_signal = _e_storage->nodes[get_node(fi)].twin;
+        _i_storage->nodes[i_signal.index].value = 0;
+      } );
 
     }
 
@@ -1786,87 +1852,47 @@ public:
       const auto nfanin = _e_storage->nodes[n].children.size();
       assert( nfanin == tts.size() );
 
-      std::vector<aig_network::signal> children;
-      int i{0};
+      uint32_t i{1};
+      std::vector<i_signal_t> children;
       foreach_fanin( n, [&]( auto const& fi ) {
-        aig_network::signal i_signal = {_aig.pi_at(i), is_complemented(fi) };//is_complemented(fi) ? !_aig.pi_at() : _e_storage->nodes[get_node(fi)].twin;
+        i_signal_t i_signal = is_complemented(fi) ? !_e_storage->nodes[get_node(fi)].twin : _e_storage->nodes[get_node(fi)].twin;
+        _i_storage->nodes[i_signal.index].value = i++;
         children.push_back( i_signal );
-        i++;
       } );
 
       TT res = compute_rec( _e_storage->nodes[n].twin.index, children, tts );
-
       if( _e_storage->nodes[n].twin.complement )
         res = ~res;
+
+      foreach_fanin( n, [&]( auto const& fi ) {
+        i_signal_t i_signal = _e_storage->nodes[get_node(fi)].twin;
+        _i_storage->nodes[i_signal.index].value = 0;
+      } );
 
       return res;
     }
 
     template<typename TT>
-    TT rig_network::compute_rec( aig_network::node i_node, std::vector<aig_network::signal> const& children, std::vector<TT> const & tts ) const
+    TT rig_network::compute_rec( i_node_t i_node, std::vector<i_signal_t> const& children, std::vector<TT> const & tts ) const
     {
-      auto const& i_gate = _aig._storage->nodes[i_node];
+      printf("node %d\n", i_node );
       TT res;
-      if( _aig.is_constant(i_node) )
+      if( i_node == 0u  )
         return res;
 
-      if( _aig.is_pi(i_node) )
-      {
-        return _aig.is_complemented(children[_aig.pi_index(i_node)]) ? ~tts[_aig.pi_index(i_node)] : tts[_aig.pi_index(i_node)];
-      }
+      i_gate_t const& i_gate = _i_storage->nodes[i_node];
+      if( i_gate.value > 0 )
+        return children[i_gate.value-1].complement ? ~tts[i_gate.value-1] : tts[i_gate.value-1];
       else
       {
-        aig_network::signal const & a = i_gate.children[0];
-        aig_network::signal const & b = i_gate.children[1];
+        i_signal_t const & a = i_gate.children[0];
+        i_signal_t const & b = i_gate.children[1];
         TT sim_a = a.complement ? ~compute_rec( a.index, children, tts ) : compute_rec( a.index, children, tts );
         TT sim_b = b.complement ? ~compute_rec( b.index, children, tts ) : compute_rec( b.index, children, tts );
         res =  sim_a & sim_b;
+        kitty::print_binary( res );
+        printf("\n");
         return res;
-      }
-    }
-
-    void rig_network::print_aig( signal f ) const
-    {
-      node n = get_node(f);
-      const auto nfanin = _e_storage->nodes[n].children.size();
-
-      std::vector<aig_network::signal> children;
-      int i{0};
-      foreach_fanin( n, [&]( auto const& fi ) {
-        aig_network::signal i_signal = {_aig.pi_at(i), is_complemented(fi) };//is_complemented(fi) ? !_aig.pi_at() : _e_storage->nodes[get_node(fi)].twin;
-        children.push_back( i_signal );
-        i++;
-      } );
-
-      print_aig_rec( _aig.get_node(_e_storage->nodes[n].twin), children );
-
-      if( _e_storage->nodes[n].twin.complement )
-        printf(" invert\n");
-      else
-        printf(" don't invert\n");
-    }
-
-    void rig_network::print_aig_rec( aig_network::node i_node, std::vector<aig_network::signal> const& children ) const
-    {
-      auto const& i_gate = _aig._storage->nodes[i_node];
-      if( _aig.is_constant(i_node) )
-      {
-        printf("[%d=%d]", i_node, 0 );
-        return;
-      }
-
-      if( _aig.is_pi(i_node) )
-      {
-        printf( "[%d = %c%d]", i_node, children[_aig.pi_index(i_node)].complement ? '!' : ' ', children[_aig.pi_index(i_node)].index );
-      }
-      else
-      {
-        aig_network::signal const & a = i_gate.children[0];
-        aig_network::signal const & b = i_gate.children[1];
-        print_aig_rec( _aig.get_node(a), children );
-        print_aig_rec( _aig.get_node(b), children );
-        printf("[%d=(%c%d, %c%d)]", i_node, _aig.is_complemented(a) ? '!' : ' ', a.index, _aig.is_complemented(b) ? '!' : ' ', b.index );
-        return;
       }
     }
   #pragma endregion simulation properties
@@ -1934,10 +1960,6 @@ public:
 
     void rig_network::print()
     {
-      printf("POs: ");
-      foreach_po( [&]( auto s, auto i ) {
-        printf("%c%d ", is_complemented(s) ? '!' : ' ', s.index );
-      } );
       foreach_gate( [&]( auto n ) 
       { 
         printf("[%d=");
@@ -1947,6 +1969,32 @@ public:
         printf("]");
       } );
       printf("\n");
+    } 
+
+    void rig_network::print_aig()
+    {
+      foreach_gate( [&]( auto n ) 
+      { 
+        printf("[%d-->%c%d --> ", n, _e_storage->nodes[n].twin.complement ? '!' : ' ', _e_storage->nodes[n].twin.index );
+        
+        print_aig_rec( _e_storage->nodes[n].twin );
+        printf("]\n");
+      } );
+      printf("\n");
+    } 
+
+    void rig_network::print_aig_rec( i_signal_t i_signal )
+    {
+      auto nd = get_node( _i_storage->nodes[i_signal.index].twin );
+      if( is_pi( nd ) )
+        return ;
+      if( is_constant( nd ) )
+        return ;
+      auto child0 = _i_storage->nodes[i_signal.index].children[0];
+      auto child1 = _i_storage->nodes[i_signal.index].children[1];
+      printf(" %d=(%c%d, %c%d) ", i_signal.index, child0.weight ? '!' : ' ', child0.index, child1.weight ? '!' : ' ', child1.index );
+      print_aig_rec( child0 );
+      print_aig_rec( child1 );
     } 
 
 } // namespace rils

@@ -81,6 +81,11 @@ public:
   {
     return data != other.data;
   }
+
+  bool operator<( node_pointer<PointerFieldSize> const&  other ) const
+  {
+    return data < other.data;
+  }
 };
 
 template<>
