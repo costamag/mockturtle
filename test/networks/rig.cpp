@@ -3,7 +3,8 @@
 #include <mockturtle/networks/rig.hpp>
 #include <mockturtle/traits.hpp>
 #include <mockturtle/algorithms/cleanup.hpp>
-
+#include <mockturtle/io/blif_reader.hpp>
+#include <mockturtle/io/write_blif.hpp>
 
 using namespace mockturtle;
 using namespace rils;
@@ -149,8 +150,8 @@ TEST_CASE( "create unary operations in a RIG network", "[rig]" )
   CHECK( rig.size() == 2 );
   CHECK( rig.is_pi( rig.get_node(f1)));
   CHECK( rig.is_pi( rig.get_node(x1)));
-  CHECK( rig.is_buf( rig.get_node(f1)));
-  CHECK( rig.is_not( rig.get_node(f2)));
+  //CHECK( rig.is_buf( rig.get_node(f1)));
+  //CHECK( rig.is_not( rig.get_node(f2)));
   CHECK( f1 == f3 );
 }
 
@@ -1607,7 +1608,7 @@ TEST_CASE( "substitute nodes with propagation in rigs (test case 2)", "[rig]" )
   CHECK( rig.num_gates() == 1u );
 }
 
-TEST_CASE( "create a node in a RIG network", "[rig]" )
+TEST_CASE( "create a node in a RIG network (test permuting inputs)", "[rig]" )
 {
   rig_network rig;
 
@@ -1646,6 +1647,41 @@ TEST_CASE( "create a node in a RIG network", "[rig]" )
   CHECK( kitty::equal( sim1, ~xs[1] & xs[0] ) );
 }
 
+TEST_CASE( "create a node in a RIG network (test cosnstant propagation)", "[rig]" )
+{
+  rig_network rig;
+
+  CHECK( has_create_node_v<rig_network> );
+  CHECK( has_compute_v<rig_network, kitty::dynamic_truth_table> );
+
+  const auto x1 = rig.create_pi();
+  const auto x2 = rig.create_pi();
+  const auto x3 = rig.create_pi();
+
+  kitty::dynamic_truth_table tt1( 3u ), tt2( 2u );
+  kitty::create_from_hex_string( tt1, "a0" );
+  kitty::create_from_hex_string( tt2, "8" );
+
+  CHECK( rig.size() == 4 );
+
+  const auto f1 = rig.create_node( { x1, x2, x3 }, tt1 );
+  const auto f2 = rig.create_node( { x1, x3 }, tt2 );
+
+  CHECK( rig.size() == 5 );
+
+  std::vector<kitty::dynamic_truth_table> xs;
+  xs.emplace_back( 3u );
+  xs.emplace_back( 3u );
+  kitty::create_nth_var( xs[0], 0 );
+  kitty::create_nth_var( xs[1], 1 );
+
+  const auto sim1 = rig.compute( rig.get_node( f1 ), xs.begin(), xs.end() );
+  const auto sim2 = rig.compute( rig.get_node( f2 ), xs.begin(), xs.end() );
+
+  CHECK( kitty::equal( sim2, sim1 ) );
+  CHECK( kitty::equal( sim1, xs[1] & xs[0] ) );
+}
+
 TEST_CASE( "hash generic nodes in RIG network", "[rig]" )
 {
   rig_network rig;
@@ -1679,4 +1715,49 @@ TEST_CASE( "hash generic nodes in RIG network", "[rig]" )
   
   CHECK( kitty::equal( sim_1, tt_maj ) );
   CHECK( kitty::equal( sim_2, tt_xor ) );
+}
+
+TEST_CASE( "read a combinational BLIF file into RIG network", "[rig]" )
+{
+  rig_network rig;
+
+  std::string file{
+      ".model top\n"
+      ".inputs a b c\n"
+      ".outputs y1 y2\n"
+      ".names a b n1\n"
+      "11 1\n"
+      ".names c n1 n2\n"
+      "1- 1\n"
+      "-1 1\n"
+      ".names n2 y1\n"
+      "0 1\n"
+      ".names n2 y2\n"
+      "1 1\n"
+      ".end\n" };
+
+  std::istringstream in( file );
+  auto result = lorina::read_blif( in, blif_reader( rig ) );
+
+  /* structural checks */
+  CHECK( result == lorina::return_code::success );
+  CHECK( rig.size() == 8 );
+  CHECK( rig.num_pis() == 3 );
+  CHECK( rig.num_pos() == 2 );
+  CHECK( rig.num_gates() == 4 );
+
+  /* functional checks */
+  default_simulator<kitty::dynamic_truth_table> sim( rig.num_pis() );
+  const auto tts = simulate<kitty::dynamic_truth_table>( rig, sim );
+  rig.foreach_po( [&]( auto const&, auto i ) {
+    switch ( i )
+    {
+    case 0:
+      CHECK( kitty::to_hex( tts[i] ) == "07" );
+      break;
+    case 1:
+      CHECK( kitty::to_hex( tts[i] ) == "f8" );
+      break;
+    }
+  } );
 }

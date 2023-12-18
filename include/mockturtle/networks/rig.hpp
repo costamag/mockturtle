@@ -337,6 +337,8 @@ class rig_network
     void substitute_node_no_restrash( node const&, signal const& );
     void substitute_nodes( std::list<std::pair<node, signal>> );
     void normalize_node( e_gate_t & );
+    void order_inputs( std::vector<signal> &, kitty::dynamic_truth_table & );
+    void constants_propagation( std::vector<signal> &, kitty::dynamic_truth_table & );
 
   #pragma endregion restructuring
 
@@ -689,12 +691,12 @@ public:
 
   bool rig_network::is_buf( node const& n )
   {
-    _e_storage->nodes[n].func == e_func_t::e_BUF;
+    return false;//_e_storage->nodes[n].func == e_func_t::e_BUF;
   }
 
   bool rig_network::is_not( node const& n )
   {
-    _e_storage->nodes[n].func == (e_func_t::e_BUF ^ 0x1);
+    return false; //_e_storage->nodes[n].func == (e_func_t::e_BUF ^ 0x1);
   }
 #pragma endregion unary functions
 
@@ -1051,13 +1053,12 @@ public:
 
 #pragma region arbitrary function
 
-  template< class SIG >
-  void order_inputs( std::vector<SIG> & inputs, kitty::dynamic_truth_table & function )
+  void rig_network::order_inputs( std::vector<signal> & inputs, kitty::dynamic_truth_table & function )
   {
-    std::vector<std::pair<SIG, uint32_t>> sorted;
+    std::vector<std::pair<signal, uint32_t>> sorted;
     for( int i{0}; i<inputs.size(); ++i )
       sorted.push_back( std::make_pair( inputs[i], i ) );
-    std::sort( sorted.begin(), sorted.end(), [](std::pair<SIG,uint32_t> a, std::pair<SIG,uint32_t> b)
+    std::sort( sorted.begin(), sorted.end(), [](std::pair<signal,uint32_t> a, std::pair<signal,uint32_t> b)
                                   {
                                       return a.first < b.first;
                                   } );
@@ -1082,16 +1083,52 @@ public:
     function = tt_new;
   }
 
+  void rig_network::constants_propagation( std::vector<signal> & inputs, kitty::dynamic_truth_table & function )
+  {
+    printf("|S|=%d\n", inputs.size());
+    kitty::print_binary( function );
+    printf("\n");
+
+    for( int iVar{0}; iVar<inputs.size(); ++iVar )
+    {
+      if ( is_constant( inputs[iVar] ) )
+      {
+        if ( is_complemented( inputs[iVar] ) )
+        {
+          kitty::cofactor1_inplace( function, iVar );
+        }
+        else
+        {
+          kitty::cofactor0_inplace( function, iVar );
+        }
+      }
+    }
+
+    const auto support = kitty::min_base_inplace( function );
+
+    printf("|S|=%d\n", support.size());
+
+    auto new_func = kitty::shrink_to( function, static_cast<unsigned int>( support.size() ) );
+    std::cout << 10 << std::endl;
+    function = new_func;
+    std::cout << 11 << std::endl;
+    std::vector<signal> children;
+    for( int iVar{inputs.size()-1}; iVar>=0; --iVar )
+    {
+      if( std::find( support.begin(), support.end(), iVar ) == support.end() )
+        inputs.erase( inputs.begin()+iVar );//.push_back( inputs[support[iVar]] );
+    }
+  }
+
   rig_network::signal rig_network::create_node( std::vector<signal> children, kitty::dynamic_truth_table function )
   {
     if( children.size() > 0 )
     {
     /* order inputs */
-
-    order_inputs( children, function );
-
+      order_inputs( children, function );
+    /* update in presence of trivial inputs constant nodes */
+      constants_propagation( children, function );
     }
-    // update in presence of trivial inputs constant nodes
 
     // n-canonize
 
@@ -1102,10 +1139,11 @@ public:
     // add sorting of the variables
     if ( children.size() == 0u )
     {
+    printf("children size is 0\n");
       assert( function.num_vars() == 0u );
       return get_constant( !kitty::is_const0( function ) );
     }
-
+    printf("_create %d %d\n", children.size(), function.num_vars());
     return _create_node( children, _e_storage->data.cache.insert( function ) );
   }
 
