@@ -270,7 +270,6 @@ public:
     }
     else
     {
-
       std::vector<kitty::cube> minterms;
       std::vector<kitty::cube> maxterms;
 

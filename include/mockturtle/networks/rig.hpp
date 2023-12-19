@@ -339,6 +339,7 @@ class rig_network
     void normalize_node( e_gate_t & );
     void order_inputs( std::vector<signal> &, kitty::dynamic_truth_table & );
     void constants_propagation( std::vector<signal> &, kitty::dynamic_truth_table & );
+    void n_canonization( std::vector<signal> &, kitty::dynamic_truth_table & );
 
   #pragma endregion restructuring
 
@@ -515,7 +516,7 @@ public:
 
   bool rig_network::constant_value( node const& n ) const
   {
-    return n == 0;
+    return 0;
   }
 
   rig_network::signal rig_network::create_pi()
@@ -1055,6 +1056,8 @@ public:
 
   void rig_network::order_inputs( std::vector<signal> & inputs, kitty::dynamic_truth_table & function )
   {
+    if( inputs.size() <= 1 ) return;
+
     std::vector<std::pair<signal, uint32_t>> sorted;
     for( int i{0}; i<inputs.size(); ++i )
       sorted.push_back( std::make_pair( inputs[i], i ) );
@@ -1085,9 +1088,7 @@ public:
 
   void rig_network::constants_propagation( std::vector<signal> & inputs, kitty::dynamic_truth_table & function )
   {
-    printf("|S|=%d\n", inputs.size());
-    kitty::print_binary( function );
-    printf("\n");
+    if( inputs.size() <= 1 ) return;
 
     for( int iVar{0}; iVar<inputs.size(); ++iVar )
     {
@@ -1105,45 +1106,46 @@ public:
     }
 
     const auto support = kitty::min_base_inplace( function );
-
-    printf("|S|=%d\n", support.size());
-
     auto new_func = kitty::shrink_to( function, static_cast<unsigned int>( support.size() ) );
-    std::cout << 10 << std::endl;
     function = new_func;
-    std::cout << 11 << std::endl;
-    std::vector<signal> children;
+
     for( int iVar{inputs.size()-1}; iVar>=0; --iVar )
     {
       if( std::find( support.begin(), support.end(), iVar ) == support.end() )
         inputs.erase( inputs.begin()+iVar );//.push_back( inputs[support[iVar]] );
     }
+    //function = new_func;
   }
 
-  rig_network::signal rig_network::create_node( std::vector<signal> children, kitty::dynamic_truth_table function )
+  void rig_network::n_canonization( std::vector<signal> & children, kitty::dynamic_truth_table & function )
   {
-    if( children.size() > 0 )
+    auto [n_repr, neg] = exact_n_canonization( function );
+    for( int iVar{0}; iVar<function.num_vars(); ++iVar )
+      children[iVar].complement ^= ( ( neg >> iVar ) & 1u );
+  }
+
+
+  rig_network::signal rig_network::create_node( std::vector<signal> children, kitty::dynamic_truth_table function )
+  {    
+    if( children.size() > 1 )
     {
     /* order inputs */
       order_inputs( children, function );
     /* update in presence of trivial inputs constant nodes */
       constants_propagation( children, function );
+    /* n-canonize */
+      //n_canonization( children, function );
     }
-
-    // n-canonize
-
-//    auto [n_repr, neg] = exact_n_canonization( function );
-//    for( int iVar{0}; iVar<function.num_vars(); ++iVar )
-//      children[iVar].complement ^= ( ( neg >> iVar ) & 1u );
-    
-    // add sorting of the variables
     if ( children.size() == 0u )
     {
-    printf("children size is 0\n");
       assert( function.num_vars() == 0u );
-      return get_constant( !kitty::is_const0( function ) );
+      return kitty::is_const0( function ) ? signal{0,0} : signal{0, 1};
     }
-    printf("_create %d %d\n", children.size(), function.num_vars());
+    else if( children.size() == 1u )//&& children[0].index != 0 ) // WARNING the second condition is a manual fix 
+    {
+      return kitty::is_normal( function ) ? children[0] : !children[0];
+    }
+
     return _create_node( children, _e_storage->data.cache.insert( function ) );
   }
 
@@ -1155,6 +1157,7 @@ public:
       assert( function.num_vars() == 0u );
       return get_constant( !kitty::is_const0( function ) );
     }
+
     return _create_node( children, _e_storage->data.cache.insert( function ) );
   }
 
@@ -1346,51 +1349,67 @@ public:
     // determine potential new children of node n
     // normalize (SORT THE VARIABLES)
     // check for trivial cases?
-    kitty::dynamic_truth_table const& tt = _e_storage->data.cache[node.func];
-    for( int i{0}; i < children.size(); ++i )
+    kitty::dynamic_truth_table tt = _e_storage->data.cache[node.func];
+
+    if( children.size() > 0 )
     {
-      auto ttnew = tt;
+      order_inputs( children, tt );
+      constants_propagation( children, tt );
+      //n_canonization( children, tt );
+    }
+
+    for( int i{children.size()-2}; i>=0; --i )
+    {
       auto ttx = tt.construct();
       kitty::create_nth_var( ttx, i );
-
-      if ( children[i].index == 0 )
-      {
-        ttnew = children[i].complement ? kitty::cofactor1( tt, i ) : kitty::cofactor0( tt, i ) ;
-        children.erase( children.begin()+i );
-      }
-      else if ( ( i < children.size()-1 ) && ( children[i].index == children[i+1].index) )
+      if ( children[i].index == children[i+1].index )
       {
         if( children[i].complement == children[i+1].complement )
-          ttnew = (ttx & kitty::cofactor1(kitty::cofactor1( tt, i ), i+1)) | ((~ttx) & kitty::cofactor0(kitty::cofactor0( tt, i ), i+1));
+          tt = (ttx & kitty::cofactor1(kitty::cofactor1( tt, i ), i+1)) | ((~ttx) & kitty::cofactor0(kitty::cofactor0( tt, i ), i+1));
         else
-          ttnew = (ttx & kitty::cofactor0(kitty::cofactor1( tt, i ), i+1)) | ((~ttx) & kitty::cofactor1(kitty::cofactor0( tt, i ), i+1));
+          tt = (ttx & kitty::cofactor0(kitty::cofactor1( tt, i ), i+1)) | ((~ttx) & kitty::cofactor1(kitty::cofactor0( tt, i ), i+1));
         children.erase( children.begin()+i+1 );
       }
-      if( kitty::is_const0( ttnew ) ) return std::make_pair( n, get_constant(false));
-      if( kitty::is_const0( ~ttnew ) ) 
+    }
+    auto supp = kitty::min_base_inplace( tt );
+    tt = kitty::shrink_to( tt, static_cast<unsigned int>( children.size() ) );
+
+    for( int i{children.size()-1}; i >= 0; --i )
+    {
+      if ( children[i].index == 0 )
       {
-        return std::make_pair( n, get_constant(true));
-      }
-      if( children.size() == 1 )
-      {
-        //_e_storage->nodes[children[0].index].nfos++;
-        if( kitty::is_normal( ttnew ) ) // BEWARE
-        {
-          return std::make_pair( n, children[0] );
-        }
-        else
-        {
-          return std::make_pair( n, !children[0] );
-        }
+        children[i].complement ? kitty::cofactor1_inplace( tt, i ) : kitty::cofactor0_inplace( tt, i ) ;
+        children.erase( children.begin()+i );
       }
     }
+    supp = kitty::min_base_inplace( tt );
+    tt = kitty::shrink_to( tt, static_cast<unsigned int>( children.size() ) );
+
+    if ( children.size() == 0u )
+    {
+      assert( tt.num_vars() == 0u );
+      return std::make_pair( n, get_constant( !kitty::is_const0( tt ) ) );
+    }
+    else if( children.size() == 1 )
+    {
+      if( kitty::is_normal( tt ) ) // BEWARE
+      {
+        return std::make_pair( n, children[0] );
+      }
+      else
+      {
+        return std::make_pair( n, !children[0] );
+      }
+    }
+
     // node already in hash table
     storage::element_type::node_type _hash_obj;
+    _hash_obj.func = _e_storage->data.cache.insert( tt );;
     for( uint32_t i{0}; i < children.size(); ++i )
     {
       _hash_obj.children.push_back( children[i] );
     }
-    _hash_obj.func = node.func;
+
     if ( const auto it = _e_storage->hash.find( _hash_obj ); it != _e_storage->hash.end() && it->second != old_node )
     {
       return std::make_pair( n, signal( it->second, 0 ) );
@@ -1401,6 +1420,7 @@ public:
 
     // insert updated node into hash table
     node.children = _hash_obj.children;
+    node.func = _hash_obj.func;
     _e_storage->hash[node] = n;
 
     // update the reference counter of the new signal
