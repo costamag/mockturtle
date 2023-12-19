@@ -310,6 +310,11 @@ class rig_network
     signal create_ite( signal, signal, signal );
     signal create_xor3( signal, signal, signal );
     signal create_maj( signal, signal, signal );
+
+    bool is_xor3( node const& );
+    bool is_maj( node const& );
+    bool is_ite( node const& );
+
   #pragma endregion ternary functions
 
   #pragma region arbitrary function
@@ -1050,6 +1055,20 @@ public:
     return _create_node( { a, b, c }, e_func_t::e_XOR3 );
   }
 
+  bool rig_network::is_xor3( node const& n )
+  {
+    return _e_storage->nodes[n].func == ( e_XOR3 );
+  }
+
+  bool rig_network::is_maj( node const& n )
+  {
+    return _e_storage->nodes[n].func == ( e_MAJ );
+  }
+
+  bool rig_network::is_ite( node const& n )
+  {
+    return _e_storage->nodes[n].func == ( e_ITE );
+  }
 #pragma endregion ternary functions
 
 #pragma region arbitrary function

@@ -1,24 +1,21 @@
 .model top
-.inputs pi1 pi2 pi3 pi4 pi5 
+.inputs pi2 pi3 pi4 pi5 pi6 
 .outputs po0 po1 
 .names new_n0
 0
 .names new_n1
 1
-.names pi1 pi2 new_n6
-11 1
-.names pi2 pi4 new_n7
-11 1
-.names pi3 new_n7 new_n8
-10 1
-.names new_n6 new_n8 new_n9
-00 1
-.names pi5 new_n7 new_n10
-10 1
-.names new_n8 new_n10 new_n11
-00 1
-.names new_n9 po0
-0 1
-.names new_n11 po1
-0 1
+.names pi2 pi3 pi4 pi5 new_n7
+--10 1
+-01- 1
+11-- 1
+.names pi3 pi4 pi5 pi6 new_n8
+--01 1
+0--1 1
+-10- 1
+01-- 1
+.names new_n7 po0
+1 1
+.names new_n8 po1
+1 1
 .end
