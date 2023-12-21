@@ -34,6 +34,7 @@
 #pragma once
 
 #include "../io/write_patterns.hpp"
+#include "../networks/rig.hpp"
 #include "../networks/aig.hpp"
 #include "../networks/xag.hpp"
 #include "../utils/progress_bar.hpp"

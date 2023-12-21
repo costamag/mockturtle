@@ -275,6 +275,7 @@ private:
   {
     index_list.clear();
     index_list.add_inputs( divisors.size() - 1 );
+    printf("#inputs: %d\n", divisors.size());
     auto const lit = compute_function_rec( num_inserts );
     if ( lit )
     {
@@ -357,10 +358,12 @@ private:
       /* 0-resub */
       if ( unateness[0] && unateness[3] )
       {
+        printf("found same\n");
         return ( v << 1 );
       }
       if ( unateness[1] && unateness[2] )
       {
+        printf("found opposite\n");
         return ( v << 1 ) + 1;
       }
       /* useless unate literal */

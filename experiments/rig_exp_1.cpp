@@ -40,6 +40,7 @@
 #include <mockturtle/views/mapping_view.hpp>
 #include <mockturtle/algorithms/sim_resub.hpp>
 
+
 #include <experiments.hpp>
 
 int main()
@@ -88,15 +89,14 @@ int main()
     uint32_t rig_num_gates = rig.num_gates();
     uint32_t rig_depth = rig_d.depth();
 
-    resubstitution_params rps;
-    resubstitution_stats rst;
+//    resubstitution_params rps;
+//    resubstitution_stats rst;
+//    // ps.pattern_filename = "1024sa1/" + benchmark + ".pat";
+//    rps.max_inserts = 20;
+//    rps.max_pis = 8;
+//    rps.max_divisors = std::numeric_limits<uint32_t>::max();
 
-    // ps.pattern_filename = "1024sa1/" + benchmark + ".pat";
-    rps.max_inserts = 20;
-    rps.max_pis = 8;
-    rps.max_divisors = std::numeric_limits<uint32_t>::max();
-
-    sim_resubstitution( rig, rps, &rst );
+    sim_resubstitution( rig );
     rig = cleanup_dangling( rig );
     depth_view<rig_network> rs_rig_d{ rig };
 

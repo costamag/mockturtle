@@ -196,6 +196,9 @@ public:
   template<class index_list_type>
   std::optional<bool> validate( node const& root, std::vector<node> const& divs, index_list_type const& id_list, bool inverted = false )
   {
+    for( auto div : divs )
+      printf("%d ", div );
+    printf("\n");
     return validate( root, divs.begin(), divs.end(), id_list, inverted );
   }
 
@@ -214,7 +217,8 @@ public:
                    std::is_same_v<index_list_type, mig_index_list> ||
                    std::is_same_v<index_list_type, xag_index_list<true>> ||
                    std::is_same_v<index_list_type, xag_index_list<false>> ||
-                   std::is_same_v<index_list_type, muxig_index_list>, "Unknown type of index list" );
+                   std::is_same_v<index_list_type, muxig_index_list> ||
+                   std::is_same_v<index_list_type, rig_index_list>, "Unknown type of index list" );
     assert( uint64_t( std::distance( divs_begin, divs_end ) ) == id_list.num_pis() && "Size of the provided divisor list does not match number of PIs of the index list" );
     assert( id_list.num_pos() == 1u && "Index list must have exactly one PO" );
 

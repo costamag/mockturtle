@@ -294,16 +294,16 @@ class rig_network
     signal create_le( signal, signal );
     signal create_xor( signal, signal );
     signal create_xnor( signal, signal );
-    bool is_and( node const& );
-    bool is_nand( node const& );
-    bool is_or( node const& );
-    bool is_nor( node const& );
-    bool is_lt( node const& );
-    bool is_ge( node const& );
-    bool is_gt( node const& );
-    bool is_le( node const& );
-    bool is_xor( node const& );
-    bool is_xnor( node const& );
+    bool is_and( node const& ) const;
+    bool is_nand( node const& ) const;
+    bool is_or( node const& ) const;
+    bool is_nor( node const& ) const;
+    bool is_lt( node const& ) const;
+    bool is_ge( node const& ) const;
+    bool is_gt( node const& ) const;
+    bool is_le( node const& ) const;
+    bool is_xor( node const& ) const;
+    bool is_xnor( node const& ) const;
   #pragma endregion binary functions
 
   #pragma region ternary functions
@@ -311,9 +311,9 @@ class rig_network
     signal create_xor3( signal, signal, signal );
     signal create_maj( signal, signal, signal );
 
-    bool is_xor3( node const& );
-    bool is_maj( node const& );
-    bool is_ite( node const& );
+    bool is_xor3( node const& ) const;
+    bool is_maj( node const& ) const;
+    bool is_ite( node const& ) const;
 
   #pragma endregion ternary functions
 
@@ -388,6 +388,7 @@ class rig_network
     void set_value( node const&, uint32_t ) const;
     uint32_t incr_value( node const& n ) const;
     uint32_t decr_value( node const& n ) const;
+    kitty::dynamic_truth_table get_function( node const& );
   #pragma endregion application specific value
 
   #pragma region visited flags
@@ -904,50 +905,50 @@ public:
     return _create_node( { a, b }, e_func_t::e_XOR ^ 1u );
   }
 
-  bool rig_network::is_and( node const& n )
+  bool rig_network::is_and( node const& n ) const
   {
     return _e_storage->nodes[n].func == e_AND;
   }
-  bool rig_network::is_nand( node const& n )
+  bool rig_network::is_nand( node const& n ) const
   {
     return ( _e_storage->nodes[n].func == ( e_AND ^ 0x1 ) );
   }
-  bool rig_network::is_or( node const& n )
+  bool rig_network::is_or( node const& n ) const
   {
     return _e_storage->nodes[n].func == e_OR;
   }
 
-  bool rig_network::is_nor( node const& n )
+  bool rig_network::is_nor( node const& n ) const
   {
     return _e_storage->nodes[n].func == ( e_OR ^ 0x1 );
   }
 
-  bool rig_network::is_lt( node const& n )
+  bool rig_network::is_lt( node const& n ) const
   {
     return _e_storage->nodes[n].func == e_LT;
   }
 
-  bool rig_network::is_ge( node const& n )
+  bool rig_network::is_ge( node const& n ) const
   {
     return _e_storage->nodes[n].func == ( e_LT ^ 0x1 );
   }
 
-  bool rig_network::is_gt( node const& n )
+  bool rig_network::is_gt( node const& n ) const
   {
     return _e_storage->nodes[n].func == e_GT;
   }
 
-  bool rig_network::is_le( node const& n )
+  bool rig_network::is_le( node const& n ) const
   {
     return _e_storage->nodes[n].func == ( e_GT ^ 0x1 );
   }
 
-  bool rig_network::is_xor( node const& n )
+  bool rig_network::is_xor( node const& n ) const
   {
     return _e_storage->nodes[n].func == e_XOR;
   }
 
-  bool rig_network::is_xnor( node const& n )
+  bool rig_network::is_xnor( node const& n ) const
   {
     return _e_storage->nodes[n].func == ( e_XOR ^ 0x1 );
   }
@@ -1055,17 +1056,17 @@ public:
     return _create_node( { a, b, c }, e_func_t::e_XOR3 );
   }
 
-  bool rig_network::is_xor3( node const& n )
+  bool rig_network::is_xor3( node const& n ) const
   {
     return _e_storage->nodes[n].func == ( e_XOR3 );
   }
 
-  bool rig_network::is_maj( node const& n )
+  bool rig_network::is_maj( node const& n ) const
   {
     return _e_storage->nodes[n].func == ( e_MAJ );
   }
 
-  bool rig_network::is_ite( node const& n )
+  bool rig_network::is_ite( node const& n ) const
   {
     return _e_storage->nodes[n].func == ( e_ITE );
   }
@@ -1972,6 +1973,11 @@ public:
     uint32_t rig_network::decr_value( node const& n ) const
     {
       return --_e_storage->nodes[n].value;
+    }
+
+    kitty::dynamic_truth_table rig_network::get_function( node const& n )
+    {
+      return _e_storage->data.cache[n];
     }
   #pragma endregion application specific value
 
