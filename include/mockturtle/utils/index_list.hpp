@@ -1377,7 +1377,30 @@ public:
     values.push_back( func_literal );
     return ( num_gates() + num_pis() ) << 1;
   }
-// FROM HERE
+
+  element_type add_function( std::vector<element_type> lits, kitty::dynamic_truth_table function )
+  {
+    if constexpr ( separate_header )
+    {
+      values.at( 2u ) += 1;
+    }
+    else
+    {
+      assert( num_gates() + 1u <= 0xffff );
+      values.at( 0u ) = ( ( num_gates() + 1 ) << 16 ) | ( values.at( 0 ) & 0xffff );
+    }
+    /* the id is the index at which we store the number of inputs */
+    element_type  identifier {values.size()}; 
+    /* size of fanins */
+    values.push_back( lits.size() );
+    /* save the fanins */
+    for( uint32_t lit : lits )
+      values.push_back( lit );
+    /* save the identifier to the truth table */
+    values.push_back( tts.size() );
+    tts.push_back( function );
+    return identifier << 1;
+  }
 
   void add_output( element_type lit )
   {
@@ -1396,6 +1419,7 @@ public:
 
 private:
   std::vector<element_type> values;
+  std::vector<kitty::dynamic_truth_table> tts;
 };
 
 using large_rig_index_list = rig_index_list<true>;

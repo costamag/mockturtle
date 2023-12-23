@@ -276,14 +276,16 @@ public:
         lits.emplace_back( add_clauses_for_3input_gate( lit_not_cond( lits[node_pos0], id_lit0 & 0x1 ), lit_not_cond( lits[node_pos1], id_lit1 & 0x1 ), lit_not_cond( lits[node_pos2], id_lit2 & 0x1 ), std::nullopt, MUX ) );
       } );
       if constexpr ( std::is_same_v<index_list_type, rig_index_list<true>> || std::is_same_v<index_list_type, rig_index_list<false>> )
-      {
-      //  id_list.foreach_gate( [&]( std::vector<uint32_t> children, uint32_t func_literal ) {
-      //    uint32_t const node_pos0 = id_lit0 >> 1;
-      //    uint32_t const node_pos1 = id_lit1 >> 1;
-      //    assert( node_pos0 < lits.size() );
-      //    assert( node_pos1 < lits.size() );
-      //    lits.emplace_back( add_clauses_for_2input_gate( lit_not_cond( lits[node_pos0], id_lit0 & 0x1 ), lit_not_cond( lits[node_pos1], id_lit1 & 0x1 ), std::nullopt, id_lit0 < id_lit1 ? AND : XOR ) );
-      //  } );
+      { // TODO: add clauses for function
+//        id_list.foreach_gate( [&]( std::vector<uint32_t> children, uint32_t func_literal ) {
+//          std::vector<uint32_t const> nodes;
+//          for( uint32_t id_lit : children )
+//          {
+//            nodes.push_back( id_lit >> 1u );
+//            assert( nodes.back() < lits.size() );
+//          }
+//          lits.emplace_back( add_clauses_for_function( lit_not_cond( lits[node_pos0], id_lit0 & 0x1 ), lit_not_cond( lits[node_pos1], id_lit1 & 0x1 ), std::nullopt, id_lit0 < id_lit1 ? AND : XOR ) );
+//        } );
       }
     }
 

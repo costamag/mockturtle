@@ -93,7 +93,8 @@ int main()
     resubstitution_stats rst;
     // ps.pattern_filename = "1024sa1/" + benchmark + ".pat";
     rps.max_inserts = 20;
-    rps.max_pis = 8;
+    rps.max_trials = 1;
+    rps.max_pis = 10;
     rps.max_divisors = std::numeric_limits<uint32_t>::max();
 
     sim_resubstitution( rig, rps, &rst );

@@ -49,6 +49,9 @@
 namespace mockturtle
 {
 
+std::mt19937 RIGRNG(5);
+
+
 struct rig_resyn_static_params
 {
   using base_type = rig_resyn_static_params;
@@ -82,6 +85,8 @@ struct rig_resyn_static_params
 
   /*! \brief Depth cost of each XOR gate (only relevant when `preserve_depth = true` and `use_xor = true`). */
   static constexpr uint32_t depth_cost_of_xor{ 1u };
+
+  static constexpr uint32_t max_support_size{3u};
 
   using truth_table_storage_type = void;
   using node_type = void;
@@ -212,6 +217,119 @@ private:
     uint32_t score{ 0 };
   };
 
+  template<class LTT, uint32_t CAP>
+  struct u_spfd_manager_t
+  {
+    u_spfd_manager_t(){}
+    
+    void init( LTT const& target, LTT const& careset )
+    {
+      care = careset;
+      func[1] =  target & careset;
+      func[0] = ~target & careset;
+      reset();
+    }
+
+    void reset()
+    {
+      masks[0] = care;
+      nMasks = 1;
+      nEdges = kitty::count_ones( func[1] ) * kitty::count_ones( func[0] );  
+      killed[0] = nEdges > 0 ? false : true;
+      nKills = nEdges > 0 ? 0 : 1;
+    }
+
+    bool update( LTT const& tt )
+    {
+      nEdges = 0;
+      for( uint32_t iMask{0}; iMask < nMasks; ++iMask )
+      {
+        if( killed[iMask] )
+        {
+          killed[nMasks+iMask] = true;
+          nKills++;
+        }
+        else
+        {
+          masks[nMasks+iMask] = masks[iMask] & tt;
+          masks[iMask] &= ~tt;
+
+          if( ( kitty::count_ones( masks[nMasks+iMask] & func[1] ) == 0 ) || ( kitty::count_ones( masks[nMasks+iMask] & func[0] ) == 0 ) )
+          {
+            killed[nMasks+iMask] = true;
+            nKills++;
+          }
+          else
+          {
+            killed[nMasks+iMask] = false;
+            nEdges += kitty::count_ones( func[1] & masks[nMasks+iMask] ) * kitty::count_ones( func[0] & masks[nMasks+iMask] );  
+          }
+
+          if( kitty::count_ones( masks[iMask] & func[1] ) == 0 || kitty::count_ones( masks[iMask] & func[0] ) == 0 )
+          {
+            killed[iMask] = true;
+            nKills++;
+          }
+          else
+          {
+            killed[iMask] = false;
+            nEdges += kitty::count_ones( func[1] & masks[iMask] ) * kitty::count_ones( func[0] & masks[iMask] );  
+          }
+        }
+      }
+      nMasks = nMasks * 2;
+      return true;
+    }
+
+    uint32_t evaluate( LTT const& tt )
+    {
+      uint32_t res=0;
+      for( auto iMask{0}; iMask<nMasks; ++iMask )
+      {
+        if( !killed[iMask] )
+        {
+          res+= kitty::count_ones( func[1] & masks[iMask] &  tt ) * kitty::count_ones( func[0] & masks[iMask] & tt );  
+          res+= kitty::count_ones( func[1] & masks[iMask] & ~tt ) * kitty::count_ones( func[0] & masks[iMask] & ~tt );  
+        }
+      }
+      return res;
+    } 
+
+    uint32_t evaluate( LTT const& tt1, LTT const& tt2 )
+    {
+      uint32_t res=0;
+      for( auto iMask{0}; iMask<nMasks; ++iMask )
+      {
+        if( !killed[iMask] )
+        {
+          res+= kitty::count_ones( func[1] & masks[iMask] &  tt1 & tt2 ) * kitty::count_ones( func[0] & masks[iMask] & tt1 & tt2 );  
+          res+= kitty::count_ones( func[1] & masks[iMask] & ~tt1 & tt2 ) * kitty::count_ones( func[0] & masks[iMask] & ~tt1 & tt2 );  
+          res+= kitty::count_ones( func[1] & masks[iMask] & ~tt1 &~tt2 ) * kitty::count_ones( func[0] & masks[iMask] & ~tt1 & ~tt2 );  
+          res+= kitty::count_ones( func[1] & masks[iMask] & tt1 & ~tt2 ) * kitty::count_ones( func[0] & masks[iMask] & tt1 &~tt2 );  
+        }
+      }
+      return res;
+    } 
+
+    bool is_covered()
+    {
+      return nMasks <= nKills;
+    }
+
+    bool is_saturated()
+    {
+      return nMasks >= CAP;
+    }
+
+    std::array<LTT, CAP> masks;
+    std::array<bool, CAP> killed;
+    uint32_t nMasks;
+    uint32_t nKills;
+    uint32_t nEdges;
+    LTT care;
+    std::array<LTT, 2u> func;
+  };
+
 public:
   explicit rig_resyn_decompose( stats& st ) noexcept
       : st( st )
@@ -242,6 +360,8 @@ public:
     ptts = &tts;
     on_off_sets[0] = ~target & care;
     on_off_sets[1] = target & care;
+
+    _uSPFD.init( target, care );
 
     divisors.resize( 1 ); /* clear previous data and reserve 1 dummy node for constant */
     while ( begin != end )
@@ -397,6 +517,119 @@ private:
    */
   std::optional<uint32_t> try_1_resub()
   {
+    /* support selection */
+    auto supp = find_support_greedy();
+    if( supp )
+    {
+      printf(".f ");
+      for( auto x : *supp )
+      {
+        printf("%d ", x );
+      }
+      printf("\n");
+      auto func = extract_functionality_from_signatures( *supp );
+      kitty::print_binary( func );
+      printf("\n");
+
+      std::vector<uint32_t> lits;
+      for( uint32_t x : *supp )
+        lits.push_back( x << 1u );
+
+      return index_list.add_function( lits, func );
+
+    }
+    /* resynthesis */
+    return std::nullopt;
+  }
+
+  kitty::dynamic_truth_table extract_functionality_from_signatures( std::vector<uint32_t> const& supp )
+  {
+    assert( supp.size() < static_params::max_support_size );
+
+    std::vector<kitty::dynamic_truth_table> xs;
+    for( uint32_t i{0}; i<supp.size(); ++i )
+    {
+      xs.emplace_back(supp.size());
+      kitty::create_nth_var( xs[i], i );
+    }
+
+    kitty::dynamic_truth_table func_s(supp.size());
+    kitty::dynamic_truth_table care_s = func_s.construct();
+    auto  temp = _uSPFD.care.construct();
+    auto  temp_s = func_s.construct();
+
+    for( uint32_t m{0u}; m < ( 1u << supp.size() ); ++m )
+    {
+      temp = temp | ~temp;
+      temp_s = temp_s | ~temp_s;
+
+      for( uint32_t l{0u}; l < supp.size(); ++l )
+      {
+        if( ( m >> l ) & 0x1 == 0x1 )
+        {
+          temp &= get_div(supp[l]);
+          temp_s &= xs[l];
+        }
+        else
+        {
+          temp &= ~get_div(supp[l]);
+          temp_s &= ~xs[l];
+        }
+      }
+
+      if( kitty::count_ones( temp & _uSPFD.care ) > 0 ) // care value
+      {
+        care_s |= temp_s;
+
+        if( kitty::count_ones( temp & _uSPFD.func[1] ) > 0 )
+        {
+          func_s |= temp_s;
+        }
+      }
+    }
+
+    return func_s;
+  }
+
+  std::optional<std::vector<uint32_t>> find_support_greedy( )
+  {
+    uint32_t cost, best_cost;
+    std::vector<uint32_t> best_candidates;
+    std::vector<uint32_t> supp;
+    
+    _uSPFD.reset();
+
+    /* add recomputation of the support */
+    while( !_uSPFD.is_covered() && supp.size() < static_params::max_support_size )
+    {
+      best_cost = std::numeric_limits<uint32_t>::max();
+      if( _uSPFD.is_saturated() ) break;
+      for( uint32_t iCnd{1}; iCnd<divisors.size(); ++iCnd )
+      {
+        cost = _uSPFD.evaluate( get_div( iCnd ) );
+        if( cost < best_cost  )
+        {
+          best_cost = cost;
+          best_candidates = {iCnd};
+        }
+        else if( cost == best_cost )
+        {
+          best_candidates.push_back( iCnd );
+        }
+      }
+      if( best_candidates.size() == 0 ) break;
+
+      std::uniform_int_distribution<> distrib(0, best_candidates.size()-1);
+      int idx = distrib(RIGRNG);
+      supp.push_back( best_candidates[idx] );
+      _uSPFD.update( get_div( best_candidates[idx] ) );
+    }
+
+    if( _uSPFD.is_covered() && supp.size() < static_params::max_support_size )
+    {
+      std::sort( supp.begin(), supp.end() );
+      return supp;
+    }
     return std::nullopt;
   }
 
@@ -418,6 +651,9 @@ private:
 
   const typename static_params::truth_table_storage_type* ptts;
   std::vector<std::conditional_t<static_params::copy_tts, TT, typename static_params::node_type>> divisors;
+
+  u_spfd_manager_t<truth_table_t, 1<<static_params::max_support_size> _uSPFD;
+
 
   index_list_t index_list;
 
