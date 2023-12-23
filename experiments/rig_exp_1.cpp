@@ -51,7 +51,7 @@ int main()
 
   experiment<std::string, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, bool, bool, bool> exp( "rig_exp_1", "benchmark", "luts", "lut_depth", "rigs", "rigs_depth", "rs rigs", "rs rigs_depth", "eq(LUT)", "eq(RIG)", "eq(RS)" );
 
-  for ( auto const& benchmark : iscas_benchmarks() )
+  for ( auto const& benchmark : iscas_benchmarks( ) )
   {
     fmt::print( "[i] processing {}\n", benchmark );
     aig_network aig;
@@ -61,7 +61,7 @@ int main()
     }
 
     lut_map_params lps;
-    lps.cut_enumeration_ps.cut_size = 4u;
+    lps.cut_enumeration_ps.cut_size = 3u;
     lps.cut_enumeration_ps.cut_limit = 8u;
     lps.recompute_cuts = true;
     lps.area_oriented_mapping = true;
@@ -89,14 +89,14 @@ int main()
     uint32_t rig_num_gates = rig.num_gates();
     uint32_t rig_depth = rig_d.depth();
 
-//    resubstitution_params rps;
-//    resubstitution_stats rst;
-//    // ps.pattern_filename = "1024sa1/" + benchmark + ".pat";
-//    rps.max_inserts = 20;
-//    rps.max_pis = 8;
-//    rps.max_divisors = std::numeric_limits<uint32_t>::max();
+    resubstitution_params rps;
+    resubstitution_stats rst;
+    // ps.pattern_filename = "1024sa1/" + benchmark + ".pat";
+    rps.max_inserts = 20;
+    rps.max_pis = 8;
+    rps.max_divisors = std::numeric_limits<uint32_t>::max();
 
-    sim_resubstitution( rig );
+    sim_resubstitution( rig, rps, &rst );
     rig = cleanup_dangling( rig );
     depth_view<rig_network> rs_rig_d{ rig };
 

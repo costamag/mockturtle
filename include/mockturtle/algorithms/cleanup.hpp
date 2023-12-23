@@ -35,6 +35,7 @@
 #pragma once
 
 #include "../networks/crossed.hpp"
+#include "../networks/rig.hpp"
 #include "../traits.hpp"
 #include "../utils/node_map.hpp"
 #include "../views/topo_view.hpp"
@@ -203,7 +204,7 @@ void cleanup_dangling_impl( NtkSrc const& ntk, NtkDest& dest, LeavesIterator beg
             break;
           }
         }
-        if constexpr ( has_is_function_v<NtkSrc> )
+        if constexpr ( has_is_function_v<NtkSrc> && std::is_same_v<typename NtkSrc::base_type, rils::rig_network> )
         {
           static_assert( has_create_node_v<NtkDest>, "NtkDest cannot create arbitrary function gates" );
           old_to_new[node] = dest.create_node( children, ntk.node_function( node ) );

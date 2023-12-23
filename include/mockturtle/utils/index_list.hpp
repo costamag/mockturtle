@@ -1307,7 +1307,7 @@ public:
   void foreach_gate( Fn&& fn ) const
   {
     uint32_t counted_gates {0};
-    uint32_t next = constexpr ( separate_header ) ? 3u : 1u;
+    uint32_t next = separate_header ? 3u : 1u;
     std::vector<uint32_t> children;
 
     for ( uint64_t i = next; i < values.size() - num_pos(); i ++ )
@@ -1371,29 +1371,13 @@ public:
       values.at( 0u ) = ( ( num_gates() + 1 ) << 16 ) | ( values.at( 0 ) & 0xffff );
     }
 
+    values.push_back( lits.size() );
+    for( uint32_t lit : lits )
+      values.push_back( lit );
+    values.push_back( func_literal );
+    return ( num_gates() + num_pis() ) << 1;
+  }
 // FROM HERE
-
-    values.push_back( lit0 < lit1 ? lit0 : lit1 );
-    values.push_back( lit0 < lit1 ? lit1 : lit0 );
-    return ( num_gates() + num_pis() ) << 1;
-  }
-
-  element_type add_xor( element_type lit0, element_type lit1 )
-  {
-    if constexpr ( separate_header )
-    {
-      values.at( 2u ) += 1;
-    }
-    else
-    {
-      assert( num_gates() + 1u <= 0xffff );
-      values.at( 0u ) = ( ( num_gates() + 1 ) << 16 ) | ( values.at( 0 ) & 0xffff );
-    }
-
-    values.push_back( lit0 > lit1 ? lit0 : lit1 );
-    values.push_back( lit0 > lit1 ? lit1 : lit0 );
-    return ( num_gates() + num_pis() ) << 1;
-  }
 
   void add_output( element_type lit )
   {
@@ -1414,7 +1398,7 @@ private:
   std::vector<element_type> values;
 };
 
-using large_xag_index_list = xag_index_list<true>;
+using large_rig_index_list = rig_index_list<true>;
 
 /*! \brief Generates a xag_index_list from a network
  *
@@ -1436,7 +1420,7 @@ using large_xag_index_list = xag_index_list<true>;
  * \param ntk A logic network
  */
 template<typename Ntk, bool separate_header = false>
-void encode( xag_index_list<separate_header>& indices, Ntk const& ntk )
+void encode( rig_index_list<separate_header>& indices, Ntk const& ntk )
 {
   static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
   static_assert( has_foreach_fanin_v<Ntk>, "Ntk does not implement the foreach_fanin method" );
@@ -1444,7 +1428,7 @@ void encode( xag_index_list<separate_header>& indices, Ntk const& ntk )
   static_assert( has_is_and_v<Ntk>, "Ntk does not implement the is_and method" );
   static_assert( has_get_node_v<Ntk>, "Ntk does not implement the get_node method" );
   static_assert( has_is_complemented_v<Ntk>, "Ntk does not implement the is_complemented method" );
-  static_assert( has_is_xor_v<Ntk>, "Ntk does not implement the is_xor method" );
+  static_assert( has_is_function_v<Ntk>, "Ntk does not implement the is_function method" );
   static_assert( has_node_to_index_v<Ntk>, "Ntk does not implement the node_to_index method" );
   static_assert( has_num_gates_v<Ntk>, "Ntk does not implement the num_gates method" );
   static_assert( has_num_pis_v<Ntk>, "Ntk does not implement the num_pis method" );
@@ -1464,33 +1448,30 @@ void encode( xag_index_list<separate_header>& indices, Ntk const& ntk )
   /* inputs */
   indices.add_inputs( ntk.num_pis() );
 
+  int counter{0};
+
   /* gates */
   ntk.foreach_gate( [&]( node const& n, uint64_t index ) {
-    assert( ntk.is_and( n ) || ntk.is_xor( n ) );
+    assert( ntk.is_function( n ) );
     if ( ntk.node_to_index( n ) != ntk.num_pis() + index + 1 )
     {
       fmt::print( "[e] network is not in normalized index order (violated by node {})\n", ntk.node_to_index( n ) );
       std::abort();
     }
 
-    std::array<uint32_t, 2u> lits;
+    std::vector<uint32_t> lits;
     ntk.foreach_fanin( n, [&]( signal const& fi, uint64_t index ) {
       if ( ntk.node_to_index( ntk.get_node( fi ) ) > ntk.node_to_index( n ) )
       {
         fmt::print( "[e] node {} not in topological order\n", ntk.node_to_index( n ) );
         std::abort();
       }
-      lits[index] = 2 * ntk.node_to_index( ntk.get_node( fi ) ) + ntk.is_complemented( fi );
+      lits.push_back( 2 * ntk.node_to_index( ntk.get_node( fi ) ) + ntk.is_complemented( fi ) );
+      counter++;
     } );
 
-    if ( ntk.is_and( n ) )
-    {
-      indices.add_and( lits[0u], lits[1u] );
-    }
-    else if ( ntk.is_xor( n ) )
-    {
-      indices.add_xor( lits[0u], lits[1u] );
-    }
+    indices.add_function( lits, ntk.get_function_id( n ) );
+
   } );
 
   /* outputs */
@@ -1500,33 +1481,31 @@ void encode( xag_index_list<separate_header>& indices, Ntk const& ntk )
 
   if constexpr ( separate_header )
   {
-    assert( indices.size() == 3u + 2u * ntk.num_gates() + ntk.num_pos() );
+    assert( indices.size() == 3u + counter + ntk.num_pos() );
   }
   else
   {
-    assert( indices.size() == 1u + 2u * ntk.num_gates() + ntk.num_pos() );
+    assert( indices.size() == 1u + counter + ntk.num_pos() );
   }
 }
 
-/*! \brief Inserts a xag_index_list into an existing network
+/*! \brief Inserts a rig_index_list into an existing network
  *
  * **Required network functions:**
- * - `create_and`
- * - `create_xor`
+ * - `create_node`
  * - `get_constant`
  *
- * \param ntk A logic network
+ * \param ntk A rig-like network
  * \param begin Begin iterator of signal inputs
  * \param end End iterator of signal inputs
  * \param indices An index list
  * \param fn Callback function
  */
 template<bool useSignal = true, typename Ntk, typename BeginIter, typename EndIter, typename Fn, bool separate_header = false>
-void insert( Ntk& ntk, BeginIter begin, EndIter end, xag_index_list<separate_header> const& indices, Fn&& fn )
+void insert( Ntk& ntk, BeginIter begin, EndIter end, rig_index_list<separate_header> const& indices, Fn&& fn )
 {
   static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
-  static_assert( has_create_and_v<Ntk>, "Ntk does not implement the create_and method" );
-  static_assert( has_create_xor_v<Ntk>, "Ntk does not implement the create_xor method" );
+  static_assert( has_create_node_v<Ntk>, "Ntk does not implement the create_node method" );
   static_assert( has_get_constant_v<Ntk>, "Ntk does not implement the get_constant method" );
 
   using node = typename Ntk::node;
@@ -1559,13 +1538,14 @@ void insert( Ntk& ntk, BeginIter begin, EndIter end, xag_index_list<separate_hea
     }
   }
 
-  indices.foreach_gate( [&]( uint32_t lit0, uint32_t lit1 ) {
-    assert( lit0 != lit1 );
-    uint32_t const i0 = lit0 >> 1;
-    uint32_t const i1 = lit1 >> 1;
-    signal const s0 = ( lit0 % 2 ) ? ntk.create_not( signals.at( i0 ) ) : signals.at( i0 );
-    signal const s1 = ( lit1 % 2 ) ? ntk.create_not( signals.at( i1 ) ) : signals.at( i1 );
-    signals.push_back( lit0 > lit1 ? ntk.create_xor( s0, s1 ) : ntk.create_and( s0, s1 ) );
+  indices.foreach_gate( [&]( std::vector<uint32_t> children_literals, uint32_t function_literal ) {
+    std::vector<signal> children;
+    for( int i{0}; i<children_literals.size(); ++i )
+    {
+      uint32_t index = children_literals[i] >> 1;
+      children.push_back( ( children_literals[i] % 2 ) ? ntk.create_not( signals.at( index ) ) : signals.at( index ) );
+    }
+    signals.push_back( ntk._create_node( children, function_literal ) );
   } );
 
   indices.foreach_po( [&]( uint32_t lit ) {
@@ -1579,12 +1559,14 @@ void insert( Ntk& ntk, BeginIter begin, EndIter end, xag_index_list<separate_hea
  * \param indices An index list
  * \return A string representation of the index list
  */
-inline std::string to_index_list_string( xag_index_list<false> const& indices )
+inline std::string to_index_list_string( rig_index_list<false> const& indices )
 {
   auto s = fmt::format( "{{{} | {} << 8 | {} << 16", indices.num_pis(), indices.num_pos(), indices.num_gates() );
 
-  indices.foreach_gate( [&]( uint32_t lit0, uint32_t lit1 ) {
-    s += fmt::format( ", {}, {}", lit0, lit1 );
+  indices.foreach_gate( [&]( std::vector<uint32_t> children, uint32_t func_lit ) {
+    for( uint32_t child : children )
+      s += fmt::format( ", {}", child );
+    s += fmt::format( ", {}", func_lit );
   } );
 
   indices.foreach_po( [&]( uint32_t lit ) {
@@ -1596,12 +1578,14 @@ inline std::string to_index_list_string( xag_index_list<false> const& indices )
   return s;
 }
 
-inline std::string to_index_list_string( xag_index_list<true> const& indices )
+inline std::string to_index_list_string( rig_index_list<true> const& indices )
 {
   auto s = fmt::format( "{{{}, {}, {}", indices.num_pis(), indices.num_pos(), indices.num_gates() );
 
-  indices.foreach_gate( [&]( uint32_t lit0, uint32_t lit1 ) {
-    s += fmt::format( ", {}, {}", lit0, lit1 );
+  indices.foreach_gate( [&]( std::vector<uint32_t> children, uint32_t func_lit ) {
+    for( uint32_t child : children )
+      s += fmt::format( ", {}", child );
+    s += fmt::format( ", {}", func_lit );
   } );
 
   indices.foreach_po( [&]( uint32_t lit ) {
@@ -1613,31 +1597,7 @@ inline std::string to_index_list_string( xag_index_list<true> const& indices )
   return s;
 }
 
-/*! \brief Generates a network from an index_list
- *
- * **Required network functions:**
- * - `create_pi`
- * - `create_po`
- *
- * \param ntk A logic network
- * \param indices An index list
- */
-template<typename Ntk, typename IndexList>
-void decode( Ntk& ntk, IndexList const& indices )
-{
-  static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
-  static_assert( has_create_pi_v<Ntk>, "Ntk does not implement the create_pi method" );
-  static_assert( has_create_po_v<Ntk>, "Ntk does not implement the create_po method" );
 
-  using signal = typename Ntk::signal;
-
-  std::vector<signal> signals( indices.num_pis() );
-  std::generate( std::begin( signals ), std::end( signals ),
-                 [&]() { return ntk.create_pi(); } );
-
-  insert( ntk, std::begin( signals ), std::end( signals ), indices,
-          [&]( signal const& s ) { ntk.create_po( s ); } );
-}
 #pragma endregion LUT index list
 
 /*! \brief Enumerate structured index_lists

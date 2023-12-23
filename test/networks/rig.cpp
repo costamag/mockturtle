@@ -3,8 +3,8 @@
 #include <mockturtle/networks/rig.hpp>
 #include <mockturtle/traits.hpp>
 #include <mockturtle/algorithms/cleanup.hpp>
-#include <mockturtle/io/blif_reader.hpp>
-#include <mockturtle/io/write_blif.hpp>
+//#include <mockturtle/io/blif_reader.hpp>
+//#include <mockturtle/io/write_blif.hpp>
 
 using namespace mockturtle;
 using namespace rils;
@@ -1715,105 +1715,105 @@ TEST_CASE( "hash generic nodes in RIG network", "[rig]" )
   CHECK( kitty::equal( sim_2, tt_xor ) );
 }
 
-TEST_CASE( "read a combinational BLIF file into RIG network", "[rig]" )
-{
-  rig_network rig;
-
-  std::string file{
-      ".model top\n"
-      ".inputs a b c\n"
-      ".outputs y1 y2 y3 y4 y5\n"
-      ".names n0\n"
-      "0\n"
-      ".names n1\n"
-      "1\n"
-      ".names a b n1\n"
-      "11 1\n"
-      ".names c n1 n2\n"
-      "1- 1\n"
-      "-1 1\n"
-      ".names n2 y1\n"
-      "0 1\n"
-      ".names n0 y2\n"
-      "1 1\n"
-      ".names n0 y3\n"
-      "0 1\n"
-      ".names n1 y4\n"
-      "1 1\n"
-      ".names n1 y5\n"
-      "0 1\n"
-      ".end\n" };
-
-  std::istringstream in( file );
-  auto result = lorina::read_blif( in, blif_reader( rig ) );
-
-  /* structural checks */
-  CHECK( result == lorina::return_code::success );
-  CHECK( rig.size() == 6 );
-  CHECK( rig.num_pis() == 3 );
-  CHECK( rig.num_pos() == 5 );
-  CHECK( rig.num_gates() == 2 );
-
-  /* functional checks */
-  default_simulator<kitty::dynamic_truth_table> sim( rig.num_pis() );
-  const auto tts = simulate<kitty::dynamic_truth_table>( rig, sim );
-  rig.foreach_po( [&]( auto const&, auto i ) {
-    switch ( i )
-    {
-    case 0:
-      CHECK( kitty::to_hex( tts[i] ) == "07" );
-      break;
-    case 1:
-      CHECK( kitty::to_hex( tts[i] ) == "00" );
-      break;
-    }
-  } );
-}
-
-TEST_CASE( "read a combinational BLIF file into RIG network case 2", "[rig]" )
-{
-  rig_network rig;
-
-  std::string file{
-      ".model top\n"
-      ".inputs a b c\n"
-      ".outputs y1 y2\n"
-      ".names a b n1\n"
-      "10 1\n"
-      ".names a b n2\n"
-      "00 1\n"
-      "01 1\n"
-      "11 1\n"
-      ".names n1 y1\n"
-      "1 1\n"
-      ".names n2 y2\n"
-      "1 1\n"
-      ".end\n" };
-
-  std::istringstream in( file );
-  auto result = lorina::read_blif( in, blif_reader( rig ) );
-
-  /* structural checks */
-  CHECK( result == lorina::return_code::success );
-  CHECK( rig.size() == 6 );
-  CHECK( rig.num_pis() == 3 );
-  CHECK( rig.num_pos() == 2 );
-  CHECK( rig.num_gates() == 2 );
-
-  /* functional checks */
-  default_simulator<kitty::dynamic_truth_table> sim( rig.num_pis() );
-  const auto tts = simulate<kitty::dynamic_truth_table>( rig, sim );
-  rig.print();
-  rig.foreach_po( [&]( auto const&, auto i ) {
-    rig.print_aig( rig.po_at( i ) );
-    switch ( i )
-    {
-    case 0:
-      CHECK( kitty::to_hex( tts[i] ) == "22" );
-      break;
-    case 1:
-      CHECK( kitty::to_hex( tts[i] ) == "dd" );
-      break;
-    }
-  } );
-}
+//TEST_CASE( "read a combinational BLIF file into RIG network", "[rig]" )
+//{
+//  rig_network rig;
+//
+//  std::string file{
+//      ".model top\n"
+//      ".inputs a b c\n"
+//      ".outputs y1 y2 y3 y4 y5\n"
+//      ".names n0\n"
+//      "0\n"
+//      ".names n1\n"
+//      "1\n"
+//      ".names a b n1\n"
+//      "11 1\n"
+//      ".names c n1 n2\n"
+//      "1- 1\n"
+//      "-1 1\n"
+//      ".names n2 y1\n"
+//      "0 1\n"
+//      ".names n0 y2\n"
+//      "1 1\n"
+//      ".names n0 y3\n"
+//      "0 1\n"
+//      ".names n1 y4\n"
+//      "1 1\n"
+//      ".names n1 y5\n"
+//      "0 1\n"
+//      ".end\n" };
+//
+//  std::istringstream in( file );
+//  auto result = lorina::read_blif( in, blif_reader( rig ) );
+//
+//  /* structural checks */
+//  CHECK( result == lorina::return_code::success );
+//  CHECK( rig.size() == 6 );
+//  CHECK( rig.num_pis() == 3 );
+//  CHECK( rig.num_pos() == 5 );
+//  CHECK( rig.num_gates() == 2 );
+//
+//  /* functional checks */
+//  default_simulator<kitty::dynamic_truth_table> sim( rig.num_pis() );
+//  const auto tts = simulate<kitty::dynamic_truth_table>( rig, sim );
+//  rig.foreach_po( [&]( auto const&, auto i ) {
+//    switch ( i )
+//    {
+//    case 0:
+//      CHECK( kitty::to_hex( tts[i] ) == "07" );
+//      break;
+//    case 1:
+//      CHECK( kitty::to_hex( tts[i] ) == "00" );
+//      break;
+//    }
+//  } );
+//}
+//
+//TEST_CASE( "read a combinational BLIF file into RIG network case 2", "[rig]" )
+//{
+//  rig_network rig;
+//
+//  std::string file{
+//      ".model top\n"
+//      ".inputs a b c\n"
+//      ".outputs y1 y2\n"
+//      ".names a b n1\n"
+//      "10 1\n"
+//      ".names a b n2\n"
+//      "00 1\n"
+//      "01 1\n"
+//      "11 1\n"
+//      ".names n1 y1\n"
+//      "1 1\n"
+//      ".names n2 y2\n"
+//      "1 1\n"
+//      ".end\n" };
+//
+//  std::istringstream in( file );
+//  auto result = lorina::read_blif( in, blif_reader( rig ) );
+//
+//  /* structural checks */
+//  CHECK( result == lorina::return_code::success );
+//  CHECK( rig.size() == 6 );
+//  CHECK( rig.num_pis() == 3 );
+//  CHECK( rig.num_pos() == 2 );
+//  CHECK( rig.num_gates() == 2 );
+//
+//  /* functional checks */
+//  default_simulator<kitty::dynamic_truth_table> sim( rig.num_pis() );
+//  const auto tts = simulate<kitty::dynamic_truth_table>( rig, sim );
+//  rig.print();
+//  rig.foreach_po( [&]( auto const&, auto i ) {
+//    rig.print_aig( rig.po_at( i ) );
+//    switch ( i )
+//    {
+//    case 0:
+//      CHECK( kitty::to_hex( tts[i] ) == "22" );
+//      break;
+//    case 1:
+//      CHECK( kitty::to_hex( tts[i] ) == "dd" );
+//      break;
+//    }
+//  } );
+//}

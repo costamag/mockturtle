@@ -172,7 +172,7 @@ class rig_resyn_decompose
 {
 public:
   using stats = rig_resyn_stats;
-  using index_list_t = large_xag_index_list;
+  using index_list_t = large_rig_index_list;
   using truth_table_t = TT;
 
 private:
@@ -275,7 +275,6 @@ private:
   {
     index_list.clear();
     index_list.add_inputs( divisors.size() - 1 );
-    printf("#inputs: %d\n", divisors.size());
     auto const lit = compute_function_rec( num_inserts );
     if ( lit )
     {
@@ -303,6 +302,19 @@ private:
       return *res0;
     }
     if ( num_inserts == 0u )
+    {
+      return std::nullopt;
+    }
+
+    /* try 1-resub */
+    auto const res1 = call_with_stopwatch( st.time_unate, [&]() {
+      return try_1_resub();
+    } );
+    if ( res1 )
+    {
+      return *res1;
+    }
+    if ( num_inserts == 1u )
     {
       return std::nullopt;
     }
@@ -358,12 +370,12 @@ private:
       /* 0-resub */
       if ( unateness[0] && unateness[3] )
       {
-        printf("found same\n");
+        //printf("found same %d\n", v << 1);
         return ( v << 1 );
       }
       if ( unateness[1] && unateness[2] )
       {
-        printf("found opposite\n");
+        //printf("found opposite %d \n", v << 1 );
         return ( v << 1 ) + 1;
       }
       /* useless unate literal */
@@ -378,6 +390,13 @@ private:
         binate_divs.emplace_back( v );
       }
     }
+    return std::nullopt;
+  }
+
+  /* See if we cna define a new function of the other divisors
+   */
+  std::optional<uint32_t> try_1_resub()
+  {
     return std::nullopt;
   }
 

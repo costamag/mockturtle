@@ -250,6 +250,7 @@ public:
 
       const auto res = call_with_stopwatch( st.time_resyn, [&]() {
         ++st.num_resyn;
+
         return engine( tts[n], care, std::begin( divs ), std::end( divs ), tts, std::min( potential_gain - 1, ps.max_inserts ) );
       } );
 
@@ -259,6 +260,7 @@ public:
         assert( id_list.num_pos() == 1u );
         last_gain = potential_gain - id_list.num_gates();
         auto valid = call_with_stopwatch( st.time_sat, [&]() {
+          //std::cout << to_index_list_string( id_list ) << std::endl;
           return validator.validate( n, divs, id_list );
         } );
         if ( valid )
