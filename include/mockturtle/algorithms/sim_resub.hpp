@@ -267,6 +267,7 @@ public:
         {
           if ( *valid )
           {
+            //printf("valid\n");
             ++st.num_resub;
             signal out_sig;
             call_with_stopwatch( st.time_interface, [&]() {
@@ -282,6 +283,7 @@ public:
           }
           else
           {
+            //printf("not valid\n");
             found_cex();
             continue;
           }

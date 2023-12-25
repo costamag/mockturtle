@@ -1306,28 +1306,27 @@ public:
   template<typename Fn>
   void foreach_gate( Fn&& fn ) const
   {
-    uint32_t counted_gates {0};
     uint32_t next = separate_header ? 3u : 1u;
     std::vector<uint32_t> children;
-
-    for ( uint64_t i = next; i < values.size() - num_pos(); i ++ )
+    int iGate{-1};
+    for ( uint64_t i = next; i < values.size() - num_pos(); i++ )
     {
       if( i == next ) 
       {
-        next += values.at( i ) + 1;
+        next += values.at( i ) + 2;
+        iGate++;
+        children.clear();
         continue;
       }
-      if( i == next - 1 )
+      if( i == next-1 )
       {
-        fn( children, values.at(i) );
+        fn( children, iGate );
       }
       else
       {
         children.push_back( values.at( i ) );
       }
-      counted_gates++;
     }
-    assert( counted_gates == num_gates() );
   }
 
   template<typename Fn>
@@ -1342,6 +1341,7 @@ public:
   void clear()
   {
     values.clear();
+    tts.clear();
     values.emplace_back( 0 );
     if constexpr ( separate_header )
     {
@@ -1399,7 +1399,7 @@ public:
     /* save the identifier to the truth table */
     values.push_back( tts.size() );
     tts.push_back( function );
-    return identifier << 1;
+    return ( num_gates() + num_pis() ) << 1;
   }
 
   void add_output( element_type lit )
@@ -1419,6 +1419,7 @@ public:
 
 private:
   std::vector<element_type> values;
+public:
   std::vector<kitty::dynamic_truth_table> tts;
 };
 
@@ -1562,14 +1563,14 @@ void insert( Ntk& ntk, BeginIter begin, EndIter end, rig_index_list<separate_hea
     }
   }
 
-  indices.foreach_gate( [&]( std::vector<uint32_t> children_literals, uint32_t function_literal ) {
+  indices.foreach_gate( [&]( std::vector<uint32_t> children_literals, uint32_t function_location ) {
     std::vector<signal> children;
     for( int i{0}; i<children_literals.size(); ++i )
     {
       uint32_t index = children_literals[i] >> 1;
       children.push_back( ( children_literals[i] % 2 ) ? ntk.create_not( signals.at( index ) ) : signals.at( index ) );
     }
-    signals.push_back( ntk._create_node( children, function_literal ) );
+    signals.push_back( ntk.create_node( children, indices.tts[function_location] ) );
   } );
 
   indices.foreach_po( [&]( uint32_t lit ) {
@@ -1604,16 +1605,16 @@ inline std::string to_index_list_string( rig_index_list<false> const& indices )
 
 inline std::string to_index_list_string( rig_index_list<true> const& indices )
 {
-  auto s = fmt::format( "{{{}, {}, {}", indices.num_pis(), indices.num_pos(), indices.num_gates() );
+  auto s = fmt::format( "{{{}, {}, {} |", indices.num_pis(), indices.num_pos(), indices.num_gates() );
 
   indices.foreach_gate( [&]( std::vector<uint32_t> children, uint32_t func_lit ) {
     for( uint32_t child : children )
       s += fmt::format( ", {}", child );
-    s += fmt::format( ", {}", func_lit );
+    s += fmt::format( ": {}", func_lit );
   } );
 
   indices.foreach_po( [&]( uint32_t lit ) {
-    s += fmt::format( ", {}", lit );
+    s += fmt::format( ". {}", lit );
   } );
 
   s += "}";

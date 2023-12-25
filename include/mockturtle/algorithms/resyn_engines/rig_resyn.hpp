@@ -86,7 +86,7 @@ struct rig_resyn_static_params
   /*! \brief Depth cost of each XOR gate (only relevant when `preserve_depth = true` and `use_xor = true`). */
   static constexpr uint32_t depth_cost_of_xor{ 1u };
 
-  static constexpr uint32_t max_support_size{3u};
+  static constexpr uint32_t max_support_size{5u};
 
   using truth_table_storage_type = void;
   using node_type = void;
@@ -400,6 +400,7 @@ private:
     {
       assert( index_list.num_gates() <= num_inserts );
       index_list.add_output( *lit );
+      //std::cout << to_index_list_string(index_list) << std::endl;
       return index_list;
     }
     return std::nullopt;
@@ -449,6 +450,9 @@ private:
    */
   std::optional<uint32_t> find_one_unate()
   {
+
+    //return std::nullopt;
+
     num_bits[0] = kitty::count_ones( on_off_sets[0] ); /* off-set */
     num_bits[1] = kitty::count_ones( on_off_sets[1] ); /* on-set */
     if ( num_bits[0] == 0 )
@@ -521,15 +525,15 @@ private:
     auto supp = find_support_greedy();
     if( supp )
     {
-      printf(".f ");
-      for( auto x : *supp )
-      {
-        printf("%d ", x );
-      }
-      printf("\n");
+//      printf(".f ");
+//      for( auto x : *supp )
+//      {
+//        printf("%d ", x );
+//      }
+//      printf("\n");
       auto func = extract_functionality_from_signatures( *supp );
-      kitty::print_binary( func );
-      printf("\n");
+//      kitty::print_binary( func );
+//      printf("\n");
 
       std::vector<uint32_t> lits;
       for( uint32_t x : *supp )
@@ -652,7 +656,7 @@ private:
   const typename static_params::truth_table_storage_type* ptts;
   std::vector<std::conditional_t<static_params::copy_tts, TT, typename static_params::node_type>> divisors;
 
-  u_spfd_manager_t<truth_table_t, 1<<static_params::max_support_size> _uSPFD;
+  u_spfd_manager_t<truth_table_t, 1 << static_params::max_support_size> _uSPFD;
 
 
   index_list_t index_list;

@@ -51,7 +51,7 @@ int main()
 
   experiment<std::string, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, bool, bool, bool> exp( "rig_exp_1", "benchmark", "luts", "lut_depth", "rigs", "rigs_depth", "rs rigs", "rs rigs_depth", "eq(LUT)", "eq(RIG)", "eq(RS)" );
 
-  for ( auto const& benchmark : iscas_benchmarks( ) )
+  for ( auto const& benchmark : epfl_benchmarks( ) )
   {
     fmt::print( "[i] processing {}\n", benchmark );
     aig_network aig;
@@ -61,7 +61,7 @@ int main()
     }
 
     lut_map_params lps;
-    lps.cut_enumeration_ps.cut_size = 3u;
+    lps.cut_enumeration_ps.cut_size = 4u;
     lps.cut_enumeration_ps.cut_limit = 8u;
     lps.recompute_cuts = true;
     lps.area_oriented_mapping = true;
@@ -114,3 +114,17 @@ int main()
 
   return 0;
 }
+
+
+//| benchmark | luts | lut_depth | rigs | rigs_depth | rs rigs | rs rigs_depth | eq(LUT) | eq(RIG) | eq(RS) |
+//|       c17 |    6 |         3 |    6 |          3 |       6 |             3 |    true |    true |   true |
+//|      c432 |  172 |        24 |  172 |         24 |     171 |            25 |    true |    true |   true |
+//|      c499 |  190 |        13 |  190 |         13 |     190 |            13 |    true |    true |   true |
+//|      c880 |  271 |        24 |  271 |         24 |     271 |            24 |    true |    true |   true |
+//|     c1355 |  190 |        13 |  190 |         13 |     190 |            13 |    true |    true |   true |
+//|     c1908 |  184 |        19 |  184 |         19 |     166 |            16 |    true |    true |   true |
+//|     c2670 |  582 |        19 |  566 |         19 |     561 |            19 |    true |    true |   true |
+//|     c3540 |  917 |        37 |  914 |         37 |     890 |            37 |    true |    true |   true |
+//|     c5315 | 1508 |        27 | 1489 |         27 |    1427 |            27 |    true |    true |   true |
+//|     c6288 | 1408 |        73 | 1408 |         73 |    1407 |            73 |    true |    true |   true |
+//|     c7552 | 1093 |        24 | 1092 |         24 |    1085 |            24 |    true |    true |   true |
