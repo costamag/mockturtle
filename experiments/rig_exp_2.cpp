@@ -49,45 +49,28 @@ int main()
   using namespace mockturtle;
   using namespace rils;
 
-  experiment<std::string, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, bool, bool, bool> exp( "rig_exp_1", "benchmark", "luts", "lut_depth", "rigs", "rigs_depth", "rs rigs", "rs rigs_depth", "eq(LUT)", "eq(RIG)", "eq(RS)" );
+  experiment<std::string, uint32_t, uint32_t, uint32_t, uint32_t, double, bool> exp( "rig_exp_2", "benchmark", "rigs0", "rigs0_depth", "rigs1", "rigs1_depth", "t(RS)", "eq(RS)" );
 
-  for ( auto const& benchmark : resub_benchmarks( iscas ) )
+  for ( auto const& benchmark : epfl_benchmarks( ~experiments::sin ) )
   {
     fmt::print( "[i] processing {}\n", benchmark );
-    aig_network aig;
-    if ( lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( aig ) ) != lorina::return_code::success )
+    rig_network rig0;
+    auto path = benchmark + "_size.blif";
+
+    if ( lorina::read_blif( path, blif_reader( rig0 ) ) != lorina::return_code::success )
     {
+      printf("rig0 unsuccessful\n");
       continue;
     }
+    rig0 = cleanup_dangling( rig0 );
+    depth_view<rig_network> rig0_d{ rig0 };
 
-    lut_map_params lps;
-    lps.cut_enumeration_ps.cut_size = 3u;
-    lps.cut_enumeration_ps.cut_limit = 8u;
-    lps.recompute_cuts = true;
-    lps.area_oriented_mapping = true;
-    lps.cut_expansion = true;
-    lut_map_stats st;
-    auto klut = lut_map( aig, lps, &st );
-
-    klut = cleanup_luts(klut);
-    depth_view<klut_network> klut_d{ klut };
-
-    auto const cec = benchmark == "hyp" ? true : abc_cec( klut, benchmark );
-
-    std::string tmp = benchmark + "tmp.blif";
-    write_blif( klut, tmp );
-    
-    rig_network rig;
-    if ( lorina::read_blif( tmp, blif_reader( rig ) ) != lorina::return_code::success )
+    rig_network rig1;
+    if ( lorina::read_blif( path, blif_reader( rig1 ) ) != lorina::return_code::success )
     {
-      printf("rig unsuccessful\n");
+      printf("rig1 unsuccessful\n");
       continue;
     }
-    depth_view<rig_network> rig_d{ rig };
-    auto const rig_cec = benchmark == "hyp" ? true : abc_cec( rig, benchmark );
-
-    uint32_t rig_num_gates = rig.num_gates();
-    uint32_t rig_depth = rig_d.depth();
 
     resubstitution_params rps;
     resubstitution_stats rst;
@@ -97,16 +80,13 @@ int main()
     rps.max_pis = 10;
     rps.max_divisors = std::numeric_limits<uint32_t>::max();
 
-    sim_resubstitution( rig, rps, &rst );
-    rig = cleanup_dangling( rig );
-    depth_view<rig_network> rs_rig_d{ rig };
+    sim_resubstitution( rig1, rps, &rst );
+    rig1 = cleanup_dangling( rig1 );
+    depth_view<rig_network> rig1_d{ rig1 };
 
-    uint32_t rs_rig_num_gates = rig.num_gates();
-    uint32_t rs_rig_depth = rs_rig_d.depth();
+    const auto cec1 = benchmark == "hyp" ? true : abc_cec( rig1, benchmark );
 
-    const auto cec_rs = benchmark == "hyp" ? true : abc_cec( rig, benchmark );
-
-    exp( benchmark, klut.num_gates(), klut_d.depth(), rig_num_gates, rig_depth, rs_rig_num_gates, rs_rig_depth, cec, rig_cec, cec_rs );
+    exp( benchmark, rig0.num_gates(), rig0_d.depth(), rig1.num_gates(), rig1_d.depth(), to_seconds(rst.time_total), cec1 );
   }
 
   exp.save();

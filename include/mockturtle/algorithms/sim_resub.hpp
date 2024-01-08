@@ -202,7 +202,7 @@ public:
       }
       else
       {
-        sim = partial_simulator( ntk.num_pis(), 1024 );
+        sim = partial_simulator( ntk.num_pis(), 1024 );//1024
         pattern_generation( ntk, sim );
       }
 
@@ -416,7 +416,7 @@ void sim_resubstitution( Ntk& ntk, resubstitution_params const& ps = {}, resubst
   }
   else if constexpr ( std::is_same_v<typename Ntk::base_type, rils::rig_network> )
   {
-    using resyn_engine_t = rig_resyn_decompose<kitty::partial_truth_table, rig_resyn_static_params_for_sim_resub<resub_view_t>>;
+    using resyn_engine_t = rils::rig_resyn_decompose<kitty::partial_truth_table, rils::rig_resyn_static_params_for_sim_resub<resub_view_t>>;
 
     if ( ps.odc_levels != 0 )
     {

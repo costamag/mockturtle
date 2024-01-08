@@ -49,8 +49,14 @@
 namespace mockturtle
 {
 
-std::mt19937 RIGRNG(5);
+namespace rils
+{
 
+enum support_selection_t
+{
+  GREEDY,
+  ALL
+};
 
 struct rig_resyn_static_params
 {
@@ -86,7 +92,9 @@ struct rig_resyn_static_params
   /*! \brief Depth cost of each XOR gate (only relevant when `preserve_depth = true` and `use_xor = true`). */
   static constexpr uint32_t depth_cost_of_xor{ 1u };
 
-  static constexpr uint32_t max_support_size{5u};
+  static constexpr uint32_t max_support_size{6u};
+
+  static constexpr support_selection_t support_selection{ GREEDY };
 
   using truth_table_storage_type = void;
   using node_type = void;
@@ -175,25 +183,39 @@ struct rig_resyn_stats
 template<class TT, class static_params = rig_resyn_static_params_default<TT>>
 class rig_resyn_decompose
 {
+private:
+  std::mt19937 RIGRNG;//(5);
+
+
 public:
   using stats = rig_resyn_stats;
   using index_list_t = large_rig_index_list;
   using truth_table_t = TT;
 
 private:
-  struct unate_lit
+  struct scored_div
   {
-    unate_lit( uint32_t l )
-        : lit( l )
+    scored_div( uint32_t l, uint32_t s )
+        : div( l ), score( s )
     {}
 
-    bool operator==( unate_lit const& other ) const
+    bool operator==( scored_div const& other ) const
     {
-      return lit == other.lit;
+      return div == other.lit;
     }
 
-    uint32_t lit;
-    uint32_t score{ 0 };
+    bool operator<( scored_div const& other ) const
+    {
+      return score < other.score;
+    }
+
+    bool operator>( scored_div const& other ) const
+    {
+      return score > other.score;
+    }
+
+    uint32_t div;
+    uint32_t score;
   };
 
   struct fanin_pair
@@ -337,6 +359,7 @@ public:
     static_assert( std::is_same_v<typename static_params::base_type, rig_resyn_static_params>, "Invalid static_params type" );
     static_assert( !( static_params::uniform_div_cost && static_params::preserve_depth ), "If depth is to be preserved, divisor depth cost must be provided (usually not uniform)" );
     divisors.reserve( static_params::reserve );
+    RIGRNG.seed(5);
   }
 
   /*! \brief Perform XAG resynthesis.
@@ -364,19 +387,23 @@ public:
     _uSPFD.init( target, care );
 
     divisors.resize( 1 ); /* clear previous data and reserve 1 dummy node for constant */
+    scored_divs.clear();
+
     while ( begin != end )
     {
       if constexpr ( static_params::copy_tts )
       {
         divisors.emplace_back( ( *ptts )[*begin] );
+        scored_divs.emplace_back( divisors.size()-1, _uSPFD.evaluate( get_div( divisors.size()-1 ) ) );
       }
       else
       {
         divisors.emplace_back( *begin );
+        scored_divs.emplace_back( divisors.size()-1, _uSPFD.evaluate( get_div( divisors.size()-1 ) ) );
       }
       ++begin;
     }
-
+    std::sort( scored_divs.begin(), scored_divs.end() );
     return compute_function( max_size );
   }
 
@@ -408,11 +435,6 @@ private:
 
   std::optional<uint32_t> compute_function_rec( uint32_t num_inserts )
   {
-    pos_unate_lits.clear();
-    neg_unate_lits.clear();
-    binate_divs.clear();
-    pos_unate_pairs.clear();
-    neg_unate_pairs.clear();
 
     /* try 0-resub and collect unate literals */
     auto const res0 = call_with_stopwatch( st.time_unate, [&]() {
@@ -470,48 +492,31 @@ private:
       /* check intersection with off-set */
       if ( kitty::intersection_is_empty<TT, 1, 1>( get_div( v ), on_off_sets[0] ) )
       {
-        pos_unate_lits.emplace_back( v << 1 );
         unateness[0] = true;
       }
       else if ( kitty::intersection_is_empty<TT, 0, 1>( get_div( v ), on_off_sets[0] ) )
       {
-        pos_unate_lits.emplace_back( v << 1 | 0x1 );
         unateness[1] = true;
       }
 
       /* check intersection with on-set */
       if ( kitty::intersection_is_empty<TT, 1, 1>( get_div( v ), on_off_sets[1] ) )
       {
-        neg_unate_lits.emplace_back( v << 1 );
         unateness[2] = true;
       }
       else if ( kitty::intersection_is_empty<TT, 0, 1>( get_div( v ), on_off_sets[1] ) )
       {
-        neg_unate_lits.emplace_back( v << 1 | 0x1 );
         unateness[3] = true;
       }
 
       /* 0-resub */
       if ( unateness[0] && unateness[3] )
       {
-        //printf("found same %d\n", v << 1);
         return ( v << 1 );
       }
       if ( unateness[1] && unateness[2] )
       {
-        //printf("found opposite %d \n", v << 1 );
         return ( v << 1 ) + 1;
-      }
-      /* useless unate literal */
-      if ( ( unateness[0] && unateness[2] ) || ( unateness[1] && unateness[3] ) )
-      {
-        pos_unate_lits.pop_back();
-        neg_unate_lits.pop_back();
-      }
-      /* binate divisor */
-      else if ( !unateness[0] && !unateness[1] && !unateness[2] && !unateness[3] )
-      {
-        binate_divs.emplace_back( v );
       }
     }
     return std::nullopt;
@@ -522,18 +527,10 @@ private:
   std::optional<uint32_t> try_1_resub()
   {
     /* support selection */
-    auto supp = find_support_greedy();
+    auto supp = find_support();
     if( supp )
     {
-//      printf(".f ");
-//      for( auto x : *supp )
-//      {
-//        printf("%d ", x );
-//      }
-//      printf("\n");
       auto func = extract_functionality_from_signatures( *supp );
-//      kitty::print_binary( func );
-//      printf("\n");
 
       std::vector<uint32_t> lits;
       for( uint32_t x : *supp )
@@ -548,7 +545,7 @@ private:
 
   kitty::dynamic_truth_table extract_functionality_from_signatures( std::vector<uint32_t> const& supp )
   {
-    assert( supp.size() < static_params::max_support_size );
+    assert( supp.size() <= static_params::max_support_size );
 
     std::vector<kitty::dynamic_truth_table> xs;
     for( uint32_t i{0}; i<supp.size(); ++i )
@@ -595,7 +592,113 @@ private:
     return func_s;
   }
 
-  std::optional<std::vector<uint32_t>> find_support_greedy( )
+  std::optional<std::vector<uint32_t>> find_support()
+  {
+    if( static_params::support_selection == support_selection_t::GREEDY )
+    {
+      return find_support_greedy();
+    }
+    else if( static_params::support_selection == support_selection_t::ALL )
+    {
+      return find_support_all();
+    }
+  }
+
+  std::optional<std::vector<uint32_t>> find_support_all()
+  {
+    auto supp3 = find_support3();
+    if( supp3 )
+      return *supp3;
+    return std::nullopt;
+  }
+
+  std::optional<std::vector<uint32_t>> find_support3()
+  {
+    std::vector<uint32_t> supp;
+    _uSPFD.reset();
+
+    std::array<TT,2u> masks0;
+    std::array<TT,4u> masks1;
+    std::array<TT,8u> masks2;
+    std::array<bool,8> is_killed;
+    uint32_t nKills0;
+    uint32_t nKills1;
+    uint32_t nKills2;
+
+    bool is_valid;
+    for( int i0{0}; i0<scored_divs.size()-1; ++i0 )
+    {
+      supp.clear();
+      nKills0 = 0;
+      masks0[0] = _uSPFD.care & get_div( scored_divs[i0].div );
+      masks0[1] = _uSPFD.care & ~get_div( scored_divs[i0].div );
+
+      if( kitty::is_const0(masks0[0]) || kitty::equal( masks0[0] & _uSPFD.func[1], masks0[0] ) ) { is_killed[0] = true; nKills0++; } else { is_killed[0] = false; }
+      if( kitty::is_const0(masks0[1]) || kitty::equal( masks0[1] & _uSPFD.func[1], masks0[1] ) ) { is_killed[1] = true; nKills0++; } else { is_killed[1] = false; }
+      if( nKills0 == 2u )
+      {
+        continue;
+      }
+      for( int i1{i0+1}; i1<scored_divs.size(); ++i1 )
+      {
+        nKills1=0;
+        for( int k1{0}; k1<2; k1++ )
+        {
+          masks1[k1] = masks0[k1] &  get_div( scored_divs[i1].div );
+          masks1[k1+2] = masks0[k1] & ~get_div( scored_divs[i1].div );
+          if( is_killed[k1] )
+          { 
+            is_killed[k1+2] = true; 
+            nKills1+=2; 
+          } 
+          else 
+          { 
+            if( kitty::is_const0(masks1[k1]) || kitty::equal( masks1[k1] & _uSPFD.func[1], masks1[k1] ) ) { is_killed[k1] = true; nKills1++; } else { is_killed[k1] = false; }
+            if( kitty::is_const0(masks1[k1+2]) || kitty::equal( masks1[k1+2] & _uSPFD.func[1], masks1[k1+2] ) ) { is_killed[k1+2] = true; nKills1++; } else { is_killed[k1+2] = false; }
+          }
+        }
+        if( nKills1 == 4u )
+        {
+          supp={scored_divs[i0].div, scored_divs[i1].div};
+          std::sort( supp.begin(), supp.end() );
+          return supp;
+        }
+
+        for( int i2{i1+1}; i2<scored_divs.size(); ++i2 )
+        {    
+          nKills2=0;
+          if( scored_divs[i2].score + scored_divs[i1].score + scored_divs[i0].score > _uSPFD.nEdges ) break;
+
+          uint32_t count;
+
+          for( int k2{0}; k2<4; k2++ )
+          {
+            masks2[k2] = masks1[k2] &  get_div( scored_divs[i2].div );
+            masks2[k2+4] = masks1[k2] & ~get_div( scored_divs[i2].div );
+            if( is_killed[k2] )
+            { 
+              is_killed[k2+4] = true; 
+              nKills2+=2; 
+            } 
+            else 
+            { 
+              if( kitty::is_const0(masks2[k2]) || kitty::equal( masks2[k2] & _uSPFD.func[1], masks2[k2] ) ) { is_killed[k2] = true; nKills2++; } else { is_killed[k2] = false; }
+              if( kitty::is_const0(masks2[k2+4]) || kitty::equal( masks2[k2+4] & _uSPFD.func[1], masks2[k2+4] ) ) { is_killed[k2+4] = true; nKills2++; } else { is_killed[k2+4] = false; }
+            }
+          }
+          if( nKills2 == 8u )
+          {
+            supp={scored_divs[i0].div, scored_divs[i1].div, scored_divs[i2].div};
+            std::sort( supp.begin(), supp.end() );
+            return supp;
+          }
+        } 
+      } 
+    }
+    return std::nullopt;
+  }
+
+  std::optional<std::vector<uint32_t>> find_support_greedy()
   {
     uint32_t cost, best_cost;
     std::vector<uint32_t> best_candidates;
@@ -629,7 +732,7 @@ private:
       _uSPFD.update( get_div( best_candidates[idx] ) );
     }
 
-    if( _uSPFD.is_covered() && supp.size() < static_params::max_support_size )
+    if( _uSPFD.is_covered() && supp.size() <= static_params::max_support_size )
     {
       std::sort( supp.begin(), supp.end() );
       return supp;
@@ -663,11 +766,11 @@ private:
 
   /* positive unate: not overlapping with off-set
      negative unate: not overlapping with on-set */
-  std::vector<unate_lit> pos_unate_lits, neg_unate_lits;
-  std::vector<uint32_t> binate_divs;
-  std::vector<fanin_pair> pos_unate_pairs, neg_unate_pairs;
+  std::vector<scored_div> scored_divs;
 
   stats& st;
 }; /* xag_resyn_decompose */
+
+}; /* namespace rils */
 
 } /* namespace mockturtle */
