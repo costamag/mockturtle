@@ -49,9 +49,11 @@ int main()
   using namespace mockturtle;
   using namespace rils;
 
-  experiment<std::string, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, bool, bool, bool> exp( "rig_exp_1", "benchmark", "luts", "lut_depth", "rigs", "rigs_depth", "rs rigs", "rs rigs_depth", "eq(LUT)", "eq(RIG)", "eq(RS)" );
+  experiment<std::string, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, double, bool, bool, bool> exp( "rig_exp_1", "benchmark", "luts", "lut_depth", "rigs", "rigs_depth", "rs rigs", "rs rigs_depth", "time", "eq(LUT)", "eq(RIG)", "eq(RS)" );
 
-  for ( auto const& benchmark : resub_benchmarks( iscas ) )
+  static constexpr uint32_t K = 3;
+
+  for ( auto const& benchmark : resub_benchmarks( iscas ))//(iscas | epfl) & ~experiments::log2 ) )
   {
     fmt::print( "[i] processing {}\n", benchmark );
     aig_network aig;
@@ -59,9 +61,10 @@ int main()
     {
       continue;
     }
+    if( aig.size() > 300000 ) continue;
 
     lut_map_params lps;
-    lps.cut_enumeration_ps.cut_size = 3u;
+    lps.cut_enumeration_ps.cut_size = K;
     lps.cut_enumeration_ps.cut_limit = 8u;
     lps.recompute_cuts = true;
     lps.area_oriented_mapping = true;
@@ -97,8 +100,11 @@ int main()
     rps.max_pis = 10;
     rps.max_divisors = std::numeric_limits<uint32_t>::max();
 
-    sim_resubstitution( rig, rps, &rst );
+    rig_resubstitution<rils::support_selection_t::GREALL, K>( rig, rps, &rst );
     rig = cleanup_dangling( rig );
+
+    printf("%d\n", rig.num_gates() );
+
     depth_view<rig_network> rs_rig_d{ rig };
 
     uint32_t rs_rig_num_gates = rig.num_gates();
@@ -106,7 +112,7 @@ int main()
 
     const auto cec_rs = benchmark == "hyp" ? true : abc_cec( rig, benchmark );
 
-    exp( benchmark, klut.num_gates(), klut_d.depth(), rig_num_gates, rig_depth, rs_rig_num_gates, rs_rig_depth, cec, rig_cec, cec_rs );
+    exp( benchmark, klut.num_gates(), klut_d.depth(), rig_num_gates, rig_depth, rs_rig_num_gates, rs_rig_depth, to_seconds(rst.time_total), cec, rig_cec, cec_rs );
   }
 
   exp.save();
@@ -116,15 +122,6 @@ int main()
 }
 
 
-//| benchmark | luts | lut_depth | rigs | rigs_depth | rs rigs | rs rigs_depth | eq(LUT) | eq(RIG) | eq(RS) |
-//|       c17 |    6 |         3 |    6 |          3 |       6 |             3 |    true |    true |   true |
-//|      c432 |  172 |        24 |  172 |         24 |     171 |            25 |    true |    true |   true |
-//|      c499 |  190 |        13 |  190 |         13 |     190 |            13 |    true |    true |   true |
-//|      c880 |  271 |        24 |  271 |         24 |     271 |            24 |    true |    true |   true |
-//|     c1355 |  190 |        13 |  190 |         13 |     190 |            13 |    true |    true |   true |
-//|     c1908 |  184 |        19 |  184 |         19 |     166 |            16 |    true |    true |   true |
-//|     c2670 |  582 |        19 |  566 |         19 |     561 |            19 |    true |    true |   true |
-//|     c3540 |  917 |        37 |  914 |         37 |     890 |            37 |    true |    true |   true |
-//|     c5315 | 1508 |        27 | 1489 |         27 |    1427 |            27 |    true |    true |   true |
-//|     c6288 | 1408 |        73 | 1408 |         73 |    1407 |            73 |    true |    true |   true |
-//|     c7552 | 1093 |        24 | 1092 |         24 |    1085 |            24 |    true |    true |   true |
+
+
+

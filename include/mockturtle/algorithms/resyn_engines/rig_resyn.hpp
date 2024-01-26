@@ -55,7 +55,13 @@ namespace rils
 enum support_selection_t
 {
   GREEDY,
-  ALL
+  ALL,
+  GREALL,
+  GREEDY2,
+  GREEDYN,
+  GREEDY3,
+  PIVOT,
+  RANDOM
 };
 
 struct rig_resyn_static_params
@@ -93,6 +99,7 @@ struct rig_resyn_static_params
   static constexpr uint32_t depth_cost_of_xor{ 1u };
 
   static constexpr uint32_t max_support_size{6u};
+  static constexpr uint32_t fraction_of_10{10};
 
   static constexpr support_selection_t support_selection{ GREEDY };
 
@@ -108,11 +115,13 @@ struct rig_resyn_static_params_default : public rig_resyn_static_params
 };
 
 
-template<class Ntk>
+template<class Ntk, support_selection_t SUP_SEL, uint32_t K>
 struct rig_resyn_static_params_for_sim_resub : public rig_resyn_static_params
 {
   using truth_table_storage_type = incomplete_node_map<kitty::partial_truth_table, Ntk>;
   using node_type = typename Ntk::node;
+  static constexpr support_selection_t support_selection = SUP_SEL;
+  static constexpr uint32_t max_support_size = K;
 };
 
 struct rig_resyn_stats
@@ -180,7 +189,7 @@ struct rig_resyn_stats
       auto result = resyn( target, care, divisors.begin(), divisors.end(), tts );
    \endverbatim
  */
-template<class TT, class static_params = rig_resyn_static_params_default<TT>>
+template<class TT, class static_params = rig_resyn_static_params_default<TT>, support_selection_t SUP_SEL=GREEDY>
 class rig_resyn_decompose
 {
 private:
@@ -247,6 +256,7 @@ private:
     void init( LTT const& target, LTT const& careset )
     {
       care = careset;
+      safe_care = careset;
       func[1] =  target & careset;
       func[0] = ~target & careset;
       reset();
@@ -254,9 +264,18 @@ private:
 
     void reset()
     {
-      masks[0] = care;
+      masks[0] = safe_care;
       nMasks = 1;
       nEdges = kitty::count_ones( func[1] ) * kitty::count_ones( func[0] );  
+      killed[0] = nEdges > 0 ? false : true;
+      nKills = nEdges > 0 ? 0 : 1;
+    }
+
+    void reset( LTT const& modified_care, bool complement )
+    {
+      masks[0] = complement ? safe_care & ~modified_care : safe_care & modified_care;
+      nMasks = 1;
+      nEdges = kitty::count_ones( func[1] & masks[0] ) * kitty::count_ones( func[0] & masks[0] );  
       killed[0] = nEdges > 0 ? false : true;
       nKills = nEdges > 0 ? 0 : 1;
     }
@@ -333,6 +352,26 @@ private:
       return res;
     } 
 
+    uint32_t evaluate( LTT const& tt1, LTT const& tt2, LTT const& tt3 )
+    {
+      uint32_t res=0;
+      for( auto iMask{0}; iMask<nMasks; ++iMask )
+      {
+        if( !killed[iMask] )
+        {
+          res+= kitty::count_ones( func[1] & masks[iMask] &  tt1 & tt2 & tt3 ) * kitty::count_ones( func[0] & masks[iMask] & tt1 & tt2 & tt3 );  
+          res+= kitty::count_ones( func[1] & masks[iMask] & ~tt1 & tt2 & tt3 ) * kitty::count_ones( func[0] & masks[iMask] & ~tt1 & tt2 & tt3 );  
+          res+= kitty::count_ones( func[1] & masks[iMask] & ~tt1 &~tt2 & tt3) * kitty::count_ones( func[0] & masks[iMask] & ~tt1 & ~tt2 & tt3 );  
+          res+= kitty::count_ones( func[1] & masks[iMask] & tt1 & ~tt2 & tt3) * kitty::count_ones( func[0] & masks[iMask] & tt1 &~tt2 & tt3);  
+          res+= kitty::count_ones( func[1] & masks[iMask] &  tt1 & tt2 & ~tt3 ) * kitty::count_ones( func[0] & masks[iMask] & tt1 & tt2 & ~tt3 );  
+          res+= kitty::count_ones( func[1] & masks[iMask] & ~tt1 & tt2 & ~tt3) * kitty::count_ones( func[0] & masks[iMask] & ~tt1 & tt2  & ~tt3);  
+          res+= kitty::count_ones( func[1] & masks[iMask] & ~tt1 &~tt2 & ~tt3) * kitty::count_ones( func[0] & masks[iMask] & ~tt1 & ~tt2 & ~tt3);  
+          res+= kitty::count_ones( func[1] & masks[iMask] & tt1 & ~tt2 & ~tt3) * kitty::count_ones( func[0] & masks[iMask] & tt1 &~tt2   & ~tt3);  
+        }
+      }
+      return res;
+    } 
+
     bool is_covered()
     {
       return nMasks <= nKills;
@@ -349,6 +388,7 @@ private:
     uint32_t nKills;
     uint32_t nEdges;
     LTT care;
+    LTT safe_care;
     std::array<LTT, 2u> func;
   };
 
@@ -596,115 +636,269 @@ private:
   {
     if( static_params::support_selection == support_selection_t::GREEDY )
     {
-      return find_support_greedy();
+      return find_support_greedy(1);
+    }
+    if( static_params::support_selection == support_selection_t::GREEDYN )
+    {
+      for( uint32_t i{0}; i<divisors.size(); ++i )
+      {
+        auto supp = find_support_greedy(i);
+        if( supp )
+          return *supp;
+      }
+      return std::nullopt;
+    }
+    if( static_params::support_selection == support_selection_t::PIVOT )
+    {
+      auto supp = find_support_greedy();
+      if( supp )
+        return *supp;
+      
+      for( uint32_t i{0}; i<scored_divs.size()*static_params::fraction_of_10/10; ++i )
+      {
+        auto supp = find_from_unbalancing(i);
+        if( supp )
+          return *supp;
+      }
+
+      return std::nullopt;
     }
     else if( static_params::support_selection == support_selection_t::ALL )
     {
       return find_support_all();
     }
+    else if( static_params::support_selection == support_selection_t::GREALL )
+    {
+      auto supp_greedy = find_support_greedy(1);
+      if( supp_greedy )
+        return supp_greedy;
+      else
+        return find_support_all();
+    }
+    else if( static_params::support_selection == support_selection_t::GREEDY2 )
+    {
+      auto supp_greedy = find_support_greedy(1);
+      if( supp_greedy )
+        return supp_greedy;
+      else
+      {
+        auto pair = find_pair_greedy();
+        if( pair )
+        {
+          return find_support_greedy( 1, *pair );
+        }
+      }
+    }
+    else if( static_params::support_selection == support_selection_t::GREEDY3 )
+    {
+      auto supp_greedy = find_support_greedy(1);
+      if( supp_greedy )
+        return supp_greedy;
+
+      auto pair = find_pair_greedy();
+      if( pair )
+      {
+        auto supp = find_support_greedy( 1, *pair );
+        if( supp )
+          return *supp;
+      }
+
+      auto triplet = find_triplet_greedy();
+      if( triplet )
+      {
+        auto supp = find_support_greedy( 1, *triplet );
+        if( supp )
+          return *supp;
+      }
+      return std::nullopt;
+    }
   }
 
   std::optional<std::vector<uint32_t>> find_support_all()
   {
-    auto supp3 = find_support3();
-    if( supp3 )
-      return *supp3;
+    auto supps3 = find_support3();
+    if( supps3 )
+    {
+      std::uniform_int_distribution<> distrib(0, supps3->size()-1);
+      int idx = distrib(RIGRNG);
+
+      std::set<std::vector<uint32_t>>::iterator it = supps3->begin();
+      std::advance(it, idx); 
+
+      return *it;
+    }
     return std::nullopt;
   }
 
-  std::optional<std::vector<uint32_t>> find_support3()
+  std::optional<std::set<std::vector<uint32_t>>> find_support3()
   {
+    std::set<std::vector<uint32_t>> res;
+
     std::vector<uint32_t> supp;
+
     _uSPFD.reset();
+    uint32_t nEdges = _uSPFD.nEdges;
 
-    std::array<TT,2u> masks0;
-    std::array<TT,4u> masks1;
-    std::array<TT,8u> masks2;
-    std::array<bool,8> is_killed;
-    uint32_t nKills0;
-    uint32_t nKills1;
-    uint32_t nKills2;
-
-    bool is_valid;
     for( int i0{0}; i0<scored_divs.size()-1; ++i0 )
     {
-      supp.clear();
-      nKills0 = 0;
-      masks0[0] = _uSPFD.care & get_div( scored_divs[i0].div );
-      masks0[1] = _uSPFD.care & ~get_div( scored_divs[i0].div );
+      _uSPFD.reset();
+      _uSPFD.update( get_div( scored_divs[i0].div ) );
 
-      if( kitty::is_const0(masks0[0]) || kitty::equal( masks0[0] & _uSPFD.func[1], masks0[0] ) ) { is_killed[0] = true; nKills0++; } else { is_killed[0] = false; }
-      if( kitty::is_const0(masks0[1]) || kitty::equal( masks0[1] & _uSPFD.func[1], masks0[1] ) ) { is_killed[1] = true; nKills0++; } else { is_killed[1] = false; }
-      if( nKills0 == 2u )
+      if( _uSPFD.is_covered() )
       {
         continue;
       }
       for( int i1{i0+1}; i1<scored_divs.size(); ++i1 )
       {
-        nKills1=0;
-        for( int k1{0}; k1<2; k1++ )
+        if( (scored_divs[i1].score + scored_divs[i0].score) <= nEdges )
         {
-          masks1[k1] = masks0[k1] &  get_div( scored_divs[i1].div );
-          masks1[k1+2] = masks0[k1] & ~get_div( scored_divs[i1].div );
-          if( is_killed[k1] )
-          { 
-            is_killed[k1+2] = true; 
-            nKills1+=2; 
-          } 
-          else 
-          { 
-            if( kitty::is_const0(masks1[k1]) || kitty::equal( masks1[k1] & _uSPFD.func[1], masks1[k1] ) ) { is_killed[k1] = true; nKills1++; } else { is_killed[k1] = false; }
-            if( kitty::is_const0(masks1[k1+2]) || kitty::equal( masks1[k1+2] & _uSPFD.func[1], masks1[k1+2] ) ) { is_killed[k1+2] = true; nKills1++; } else { is_killed[k1+2] = false; }
+          _uSPFD.reset();
+          _uSPFD.update( get_div( scored_divs[i0].div ) );
+          _uSPFD.update( get_div( scored_divs[i1].div ) );
+
+          if( _uSPFD.is_covered() )
+          {
+            supp={scored_divs[i0].div, scored_divs[i1].div};
+            std::sort( supp.begin(), supp.end() );
+            res.insert( supp );
+            return res;
+            continue;
           }
-        }
-        if( nKills1 == 4u )
-        {
-          supp={scored_divs[i0].div, scored_divs[i1].div};
-          std::sort( supp.begin(), supp.end() );
-          return supp;
         }
 
         for( int i2{i1+1}; i2<scored_divs.size(); ++i2 )
         {    
-          nKills2=0;
-          if( scored_divs[i2].score + scored_divs[i1].score + scored_divs[i0].score > _uSPFD.nEdges ) break;
+          if( (scored_divs[i2].score + scored_divs[i1].score + scored_divs[i0].score) > 2*nEdges ) break;
 
-          uint32_t count;
+          _uSPFD.reset();
+          _uSPFD.update( get_div( scored_divs[i0].div ) );
+          _uSPFD.update( get_div( scored_divs[i1].div ) );
+          _uSPFD.update( get_div( scored_divs[i2].div ) );
 
-          for( int k2{0}; k2<4; k2++ )
-          {
-            masks2[k2] = masks1[k2] &  get_div( scored_divs[i2].div );
-            masks2[k2+4] = masks1[k2] & ~get_div( scored_divs[i2].div );
-            if( is_killed[k2] )
-            { 
-              is_killed[k2+4] = true; 
-              nKills2+=2; 
-            } 
-            else 
-            { 
-              if( kitty::is_const0(masks2[k2]) || kitty::equal( masks2[k2] & _uSPFD.func[1], masks2[k2] ) ) { is_killed[k2] = true; nKills2++; } else { is_killed[k2] = false; }
-              if( kitty::is_const0(masks2[k2+4]) || kitty::equal( masks2[k2+4] & _uSPFD.func[1], masks2[k2+4] ) ) { is_killed[k2+4] = true; nKills2++; } else { is_killed[k2+4] = false; }
-            }
-          }
-          if( nKills2 == 8u )
+          if( _uSPFD.is_covered() )
           {
             supp={scored_divs[i0].div, scored_divs[i1].div, scored_divs[i2].div};
             std::sort( supp.begin(), supp.end() );
-            return supp;
+            res.insert( supp );
+            return res;
+            continue;
           }
+
         } 
       } 
     }
-    return std::nullopt;
+    if( res.size() > 0 )
+    {
+      return res;
+    }
+    else
+    {
+      return std::nullopt;
+    }
   }
 
-  std::optional<std::vector<uint32_t>> find_support_greedy()
+  std::optional<std::vector<uint32_t>> find_support_greedy( uint32_t start=1, std::vector<uint32_t> supp0 = {} )
   {
     uint32_t cost, best_cost;
     std::vector<uint32_t> best_candidates;
     std::vector<uint32_t> supp;
     
     _uSPFD.reset();
+    for( auto x : supp0 )
+    {
+      _uSPFD.update( get_div(x) );
+      supp.push_back(x);
+    }
+
+    /* add recomputation of the support */
+    while( !_uSPFD.is_covered() && supp.size() < static_params::max_support_size )
+    {
+      best_cost = std::numeric_limits<uint32_t>::max();
+      if( _uSPFD.is_saturated() ) break;
+      for( uint32_t iCnd{start}; iCnd<divisors.size(); ++iCnd )
+      {
+        cost = _uSPFD.evaluate( get_div( iCnd ) );
+        if( cost < best_cost  )
+        {
+          best_cost = cost;
+          best_candidates = {iCnd};
+        }
+        else if( cost == best_cost )
+        {
+          best_candidates.push_back( iCnd );
+        }
+      }
+      if( best_candidates.size() == 0 ) break;
+
+      std::uniform_int_distribution<> distrib(0, best_candidates.size()-1);
+      int idx = distrib(RIGRNG);
+      supp.push_back( best_candidates[idx] );
+      _uSPFD.update( get_div( best_candidates[idx] ) );
+    }
+
+    if( _uSPFD.is_covered() && supp.size() <= static_params::max_support_size )
+    {
+      std::sort( supp.begin(), supp.end() );
+
+      return supp;
+    }
+    return std::nullopt;
+  }
+
+  std::optional<std::vector<uint32_t>> find_from_unbalancing( uint32_t pivot )
+  {
+    auto supp1p = find_greedy_from_unbalancing( pivot, false, true );
+    if( supp1p )
+    {
+//      for( auto x : *supp1p )
+//        std::cout << x << " ";
+//      std::cout <<  " : pivot is " << pivot << " A" << std::endl;
+      
+      return *supp1p;
+    }
+
+    auto supp0p = find_greedy_from_unbalancing( pivot, true, true );
+    if( supp0p )
+    {
+//      for( auto x : *supp0p )
+//        std::cout << x << " ";
+//      std::cout <<  " : pivot is " << pivot << " B" << std::endl;
+      return *supp0p;
+    }
+
+    auto supp1f = find_greedy_from_unbalancing( pivot, false, false );
+    if( supp1f )
+    {
+//      for( auto x : *supp1f )
+//        std::cout << x << " ";
+//      std::cout <<  " : pivot is " << pivot << " C" << std::endl;
+      return *supp1f;
+    }
+
+    auto supp0f = find_greedy_from_unbalancing( pivot, true, false );
+    if( supp0f )
+    {
+//      for( auto x : *supp0f )
+//        std::cout << x << " ";
+//      std::cout <<  " : pivot is " << pivot << " D" << std::endl;
+      return *supp0f;
+    }
+
+    return std::nullopt;
+  }
+
+  std::optional<std::vector<uint32_t>> find_greedy_from_unbalancing( uint32_t pivot, bool complement, bool use_pivot )
+  {
+    uint32_t cost, best_cost;
+    std::vector<uint32_t> best_candidates;
+    std::vector<uint32_t> supp;
+    auto const& mask = get_div( scored_divs[pivot].div );
+    _uSPFD.reset( mask, complement );
+
+    if( use_pivot )
+    {
+      supp.push_back( scored_divs[pivot].div );
+    }
 
     /* add recomputation of the support */
     while( !_uSPFD.is_covered() && supp.size() < static_params::max_support_size )
@@ -734,10 +928,190 @@ private:
 
     if( _uSPFD.is_covered() && supp.size() <= static_params::max_support_size )
     {
-      std::sort( supp.begin(), supp.end() );
-      return supp;
+
+      _uSPFD.reset();
+      for( auto x : supp )
+        _uSPFD.update(get_div(x));
+      
+      if( _uSPFD.is_covered() )
+      {
+        std::sort( supp.begin(), supp.end() );
+        return supp;
+      }
     }
     return std::nullopt;
+  }
+
+  std::optional<std::vector<uint32_t>> find_first_K( uint32_t K )
+  {
+    uint32_t cost, best_cost;
+    std::vector<uint32_t> best_candidates;
+    std::vector<uint32_t> supp;
+    
+    _uSPFD.reset();
+
+    /* add recomputation of the support */
+    while( supp.size() < static_params::max_support_size )
+    {
+      best_cost = std::numeric_limits<uint32_t>::max();
+      if( _uSPFD.is_saturated() ) break;
+      for( uint32_t iCnd{1}; iCnd<divisors.size(); ++iCnd )
+      {
+        cost = _uSPFD.evaluate( get_div( iCnd ) );
+        if( cost < best_cost  )
+        {
+          best_cost = cost;
+          best_candidates = {iCnd};
+        }
+        else if( cost == best_cost )
+        {
+          best_candidates.push_back( iCnd );
+        }
+      }
+      if( best_candidates.size() == 0 ) break;
+
+      std::uniform_int_distribution<> distrib(0, best_candidates.size()-1);
+      int idx = distrib(RIGRNG);
+      supp.push_back( best_candidates[idx] );
+      _uSPFD.update( get_div( best_candidates[idx] ) );
+    }
+
+    return supp;
+  }
+
+  std::optional<std::vector<uint32_t>> find_pair_greedy( std::vector<uint32_t> supp0={} )
+  {
+    uint32_t cost, best_cost;
+    std::vector<std::array<uint32_t,2>> best_candidates;
+    std::vector<uint32_t> supp=supp0;
+    best_cost = std::numeric_limits<uint32_t>::max();
+
+    _uSPFD.reset();
+    for( auto x : supp0 )
+    {
+      _uSPFD.update( get_div( x ) );
+    }
+
+    for( uint32_t i{1}; i<divisors.size(); ++i )
+    {
+      for( uint32_t j{i+1}; j<divisors.size(); ++j )
+      {
+        cost = _uSPFD.evaluate( get_div(i), get_div(j) );
+        if( cost < best_cost )
+        {
+          best_cost = cost;
+          best_candidates = {{i,j}};
+        }
+        else if( cost == best_cost )
+        {
+          best_candidates.push_back({i,j});
+        }
+      }
+    }
+
+    if( best_candidates.size() == 0 )
+    {
+      return std::nullopt;
+    }
+
+    std::uniform_int_distribution<> distrib(0, best_candidates.size()-1);
+    int idx = distrib(RIGRNG);
+    supp.push_back( best_candidates[idx][0] );
+    supp.push_back( best_candidates[idx][1] );
+    
+    return supp;
+  }
+
+  std::optional<std::vector<uint32_t>> find_pair_corr( std::vector<uint32_t> supp0={} )
+  {
+    uint32_t cost, best_cost;
+    std::vector<std::array<uint32_t,2>> best_candidates;
+    std::vector<uint32_t> supp=supp0;
+    best_cost = std::numeric_limits<uint32_t>::max();
+
+    _uSPFD.reset();
+    for( auto x : supp0 )
+    {
+      _uSPFD.update( get_div( x ) );
+    }
+
+    for( uint32_t i{1}; i<divisors.size(); ++i )
+    {
+      for( uint32_t j{i+1}; j<divisors.size(); ++j )
+      {
+        uint32_t correlation = kitty::count_ones( get_div(i)^get_div(j) );
+        correlation = std::max( correlation, on_off_sets[0].num_bits()-correlation );
+        cost = _uSPFD.evaluate( get_div(i), get_div(j) )*correlation;
+        if( cost < best_cost )
+        {
+          best_cost = cost;
+          best_candidates = {{i,j}};
+        }
+        else if( cost == best_cost )
+        {
+          best_candidates.push_back({i,j});
+        }
+      }
+    }
+
+    if( best_candidates.size() == 0 )
+    {
+      return std::nullopt;
+    }
+
+    std::uniform_int_distribution<> distrib(0, best_candidates.size()-1);
+    int idx = distrib(RIGRNG);
+    supp.push_back( best_candidates[idx][0] );
+    supp.push_back( best_candidates[idx][1] );
+    
+    return supp;
+  }
+
+  std::optional<std::vector<uint32_t>> find_triplet_greedy( std::vector<uint32_t> supp0={} )
+  {
+    uint32_t cost, best_cost;
+    std::vector<std::array<uint32_t,3>> best_candidates;
+    std::vector<uint32_t> supp=supp0;
+    best_cost = std::numeric_limits<uint32_t>::max();
+
+    _uSPFD.reset();
+    for( auto x : supp0 )
+    {
+      _uSPFD.update( get_div( x ) );
+    }
+
+    for( uint32_t i{1}; i<divisors.size()-2; ++i )
+    {
+      for( uint32_t j{i+1}; j<divisors.size()-1; ++j )
+      {
+        for( uint32_t k{j+1}; k<divisors.size(); ++k )
+        {
+          cost = _uSPFD.evaluate( get_div(i), get_div(j), get_div(k) );
+          if( cost < best_cost )
+          {
+            best_cost = cost;
+            best_candidates = {{i,j,k}};
+          }
+          else if( cost == best_cost )
+          {
+            best_candidates.push_back({i,j,k});
+          }
+        }
+      }
+    }
+
+    if( best_candidates.size() == 0 )
+    {
+      return std::nullopt;
+    }
+
+    std::uniform_int_distribution<> distrib(0, best_candidates.size()-1);
+    int idx = distrib(RIGRNG);
+    supp.push_back( best_candidates[idx][0] );
+    supp.push_back( best_candidates[idx][1] );
+    supp.push_back( best_candidates[idx][2] );
+    
+    return supp;
   }
 
   inline TT const& get_div( uint32_t idx ) const
@@ -774,3 +1148,7 @@ private:
 }; /* namespace rils */
 
 } /* namespace mockturtle */
+
+
+
+

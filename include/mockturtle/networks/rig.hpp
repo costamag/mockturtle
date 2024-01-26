@@ -41,6 +41,7 @@
 #pragma once
 
 #include "../utils/truth_table_cache.hpp"
+#include "../io/genlib_reader.hpp"
 #include "../utils/algorithm.hpp"
 #include "detail/foreach.hpp"
 #include "../utils/tech_library.hpp"
@@ -51,6 +52,9 @@
 #include <kitty/print.hpp>
 #include "storage.hpp"
 #include <kitty/kitty.hpp>
+#include "../utils/node_map.hpp"
+#include "../views/topo_view.hpp"
+
 
 #include <algorithm>
 #include <memory>
@@ -195,6 +199,8 @@ enum e_func_t : uint32_t
     uint32_t nfos{0};
     /*! \brief id of the functionality stored in the tt-cache */
     uint32_t func{0};
+    /*! \brief id of the binding gate from the technology library. If negative is tt */
+    int binding{-1};
     /*! \brief application specific value */
     uint32_t value{0};
     /*! \brief visited flag 1 visited */
@@ -204,7 +210,7 @@ enum e_func_t : uint32_t
 
     bool operator==( e_gate_t const& other ) const
     {
-      return (func == other.func) && (children == other.children);
+      return (func == other.func) && (children == other.children) ;//&& ( binding == other.binding );
     }
   };
 
@@ -1802,6 +1808,155 @@ class rig_network
     {
       return _e_storage->nodes[n].func;
     }
+
+    void set_library( std::vector<gate> const& library )
+    {
+      _library = library;
+    }
+
+    void add_binding( node const& n, uint32_t gate_id )
+    {
+      assert( gate_id < _library.size() );
+      _e_storage->nodes[n].binding = gate_id;
+    }
+
+    bool add_binding_with_check( node const& n, uint32_t gate_id )
+    {
+      assert( gate_id < _library.size() );
+
+      auto const& binding = _library[gate_id];
+
+      if ( node_function( n ) == binding.function )
+      {
+        _e_storage->nodes[n].binding = gate_id;
+        return true;
+      }
+      return false;
+    }
+
+    void remove_binding( node const& n ) const
+    {
+      _e_storage->nodes[n].binding = -1;
+    }
+
+    const gate& get_binding( node const& n ) const
+    {
+      return _library[_e_storage->nodes[n].binding];
+    }
+
+    bool has_binding( node const& n ) const
+    {
+      return _e_storage->nodes[n].binding >= 0;
+    }
+
+    unsigned int get_binding_index( node const& n ) const
+    {
+      return _e_storage->nodes[n].binding;
+    }
+
+    const std::vector<gate>& get_library() const
+    {
+      return _library;
+    }
+
+    double compute_area() const
+    {
+      double area = 0;
+      foreach_node( [&]( auto const& n, auto ) {
+        if ( has_binding( n ) )
+        {
+          area += get_binding( n ).area;
+        }
+        else
+        {
+          area++;
+        }
+      } );
+
+      return area;
+    }
+
+    double compute_worst_delay() const
+    {
+      topo_view ntk_topo{ *this };
+      node_map<double, rig_network> delays( *this );
+      double worst_delay = 0;
+
+      ntk_topo.foreach_node( [&]( auto const& n, auto ) {
+        if ( is_constant( n ) || is_pi( n ) )
+        {
+          delays[n] = 0;
+          return true;
+        }
+
+        if ( has_binding( n ) )
+        {
+          auto const& g = get_binding( n );
+          double gate_delay = 0;
+          foreach_fanin( n, [&]( auto const& f, auto i ) {
+            gate_delay = std::max( gate_delay, (double)( delays[f] + std::max( g.pins[i].rise_block_delay, g.pins[i].fall_block_delay ) ) );
+          } );
+          delays[n] = gate_delay;
+          worst_delay = std::max( worst_delay, gate_delay );
+        }
+        else
+        {
+          double gate_delay = 0;
+          foreach_fanin( n, [&]( auto const& f, auto i ) {
+            gate_delay = std::max( gate_delay, (double)( delays[f] + 1u ) );
+          } );
+          delays[n] = gate_delay;
+          worst_delay = std::max( worst_delay, gate_delay );
+        }
+        return true;
+      } );
+
+      return worst_delay;
+    }
+
+    void report_binding_stats( std::ostream& os = std::cout ) const
+    {
+      os << fmt::format( "[i] Report stats: area = {:>5.2f}; delay = {:>5.2f};\n", compute_area(), compute_worst_delay() );
+    }
+
+    void report_gates_usage( std::ostream& os = std::cout ) const
+    {
+      std::vector<uint32_t> gates_profile( _library.size(), 0u );
+
+      double area = 0;
+      foreach_node( [&]( auto const& n, auto ) {
+        if ( has_binding( n ) )
+        {
+          auto const& g = get_binding( n );
+          ++gates_profile[g.id];
+          area += g.area;
+        }
+      } );
+
+      os << "[i] Report gates usage:\n";
+
+      uint32_t tot_instances = 0u;
+      for ( auto i = 0u; i < gates_profile.size(); ++i )
+      {
+        if ( gates_profile[i] > 0u )
+        {
+          float tot_gate_area = gates_profile[i] * _library[i].area;
+
+          os << fmt::format( "[i] {:<25}", _library[i].name )
+            << fmt::format( "\t Instance = {:>10d}", gates_profile[i] )
+            << fmt::format( "\t Area = {:>12.2f}", tot_gate_area )
+            << fmt::format( " {:>8.2f} %\n", tot_gate_area / area * 100 );
+
+          tot_instances += gates_profile[i];
+        }
+      }
+
+      os << fmt::format( "[i] {:<25}", "TOTAL" )
+        << fmt::format( "\t Instance = {:>10d}", tot_instances )
+        << fmt::format( "\t Area = {:>12.2f}   100.00 %\n", area );
+    }
+
+
   #pragma endregion application specific value
 
   #pragma region visited flags
@@ -1855,11 +2010,14 @@ class rig_network
       printf("\n");
     } 
 
+
+
 public:
   std::shared_ptr<e_storage_t> _e_storage;
   /* complete AIG database */
   std::shared_ptr<network_events<base_type>> _events;
   aig_network _aig;
+  std::vector<gate> _library;
 
 };
 
