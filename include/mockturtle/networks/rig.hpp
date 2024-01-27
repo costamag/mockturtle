@@ -47,6 +47,8 @@
 #include "../utils/tech_library.hpp"
 #include "../algorithms/node_resynthesis/xag_npn.hpp"
 #include "aig.hpp"
+#include "xag.hpp"
+#include "mig.hpp"
 #include <kitty/constructors.hpp>
 #include <kitty/operations.hpp>
 #include <kitty/print.hpp>
@@ -239,11 +241,133 @@ class rig_network
 
   * Construct the network using the init function
   */
-  rig_network()
+  explicit rig_network()
     : _e_storage( std::make_shared<e_storage_t>() ), _events( std::make_shared<decltype( _events )::element_type>() )
   {
     _init();
   }
+
+  #pragma construct from NETWORK
+  template<class Ntk>
+  rig_network( Ntk & ntk ) : _e_storage( std::make_shared<e_storage_t>() ), _events( std::make_shared<decltype( _events )::element_type>() )
+  {
+
+    if constexpr( std::is_same_v<typename Ntk::base_type, rig_network> )
+    {
+      *this = ntk;
+    }
+    else
+    {
+      /* initialization */
+      _init();
+      /* generate the pis */
+      ntk.clear_visited();
+      node_map<uint64_t, Ntk, std::unordered_map<typename Ntk::node, uint64_t>> old_to_new(ntk);
+
+      ntk.foreach_pi( [&]( auto n, auto i ) { 
+        old_to_new[n] = signal{create_pi().data}; 
+        ntk.set_visited( n, 1u );
+      } );
+
+      ntk.foreach_po( [&]( auto s, auto i ) {
+        create_po( _recursive_buid_from_ntk( ntk, old_to_new, s ) );
+      } ) ;
+
+      ntk.clear_visited();
+    }
+  }
+
+  template<class Ntk>
+  signal _recursive_buid_from_ntk( Ntk & ntk, node_map<uint64_t, Ntk, std::unordered_map<typename Ntk::node, uint64_t>> & old_to_new, typename Ntk::signal sig )
+  {
+    typename Ntk::node nd = ntk.get_node( sig );
+
+    if( ntk.is_constant(nd) )
+    {
+      if constexpr( std::is_same_v<typename Ntk::base_type, klut_network> )
+        return get_constant(nd);
+      else
+        return ntk.is_complemented(sig) ? get_constant(true) : get_constant(false);
+    }
+    if( ntk.visited( nd ) > 0u || ntk.is_pi( nd ) )
+    {
+      return ntk.is_complemented( sig ) ? !signal{ old_to_new[nd] } : signal{ old_to_new[nd] };
+    }
+    else
+    {
+      ntk.set_visited( nd, 1u );
+      std::vector<signal> children;
+      ntk.foreach_fanin( nd, [&]( auto const& child ) {
+        children.push_back( _recursive_buid_from_ntk( ntk, old_to_new, child ) );
+      });
+
+      if constexpr( std::is_same_v<typename Ntk::base_type, aig_network> || std::is_same_v<typename Ntk::base_type, xag_network> )
+      {
+        if( ntk.is_and( nd ) )
+        {
+          signal fnew = create_and( children[0], children[1] );
+          old_to_new[nd] = fnew.data;
+          return ntk.is_complemented( sig ) ? !fnew : fnew;
+        }
+        else if( ntk.is_xor( nd ) )
+        {
+          signal fnew = create_xor( children[0], children[1] );
+          old_to_new[nd] = fnew.data;
+          return ntk.is_complemented( sig ) ? !fnew : fnew;
+        }
+        else
+        {
+          assert(0);
+        }
+      }
+      else if constexpr( std::is_same_v<typename Ntk::base_type, mig_network> )
+      {
+        if( ntk.is_maj( nd ) )
+        {
+          signal fnew = create_maj( children[0], children[1], children[2] );
+          old_to_new[nd] = fnew.data;
+          return ntk.is_complemented( sig ) ? !fnew : fnew;
+        }
+        else
+        {
+          assert(0);
+        }
+      }
+      else if constexpr( std::is_same_v<typename Ntk::base_type, klut_network> )
+      {
+        if( ntk.is_function( nd ) )
+        {
+
+          const auto tt = ntk.node_function(nd);
+          if( children.size() == 1 )
+          {
+            signal fnew = kitty::is_normal( tt ) ? children[0] : !children[0];
+            old_to_new[nd]=fnew.data;
+            return fnew;
+          }
+          else if( children.size() > 1 )
+          {
+            signal fnew = create_node( children, tt );
+            old_to_new[nd] = fnew.data;
+            return fnew;
+          }
+          else
+          {
+            kitty::print_binary(tt); printf("\n");
+          }
+        }
+        else
+        {
+          assert(0);
+        }
+      }
+      else
+      {
+        printf("NOT IMPLEMENTED YET\n");
+      }
+    }
+  }
+  #pragma endregion construct from AIG
 
   rig_network( std::shared_ptr<e_storage_t> e_storage_ptr )
       : _e_storage( e_storage_ptr ), _events( std::make_shared<decltype( _events )::element_type>() )

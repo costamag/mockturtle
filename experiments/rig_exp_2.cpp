@@ -120,7 +120,6 @@ int main()
       printf("rig1 unsuccessful\n");
       continue;
     }
-
     std::string tmp0 = benchmark + "tmp0.bench";
     write_bench( rig0, tmp0 );
     klut_network klut0;
@@ -138,8 +137,9 @@ int main()
     rps.max_trials = 100;
     rps.max_pis = 10;
     rps.max_divisors = std::numeric_limits<uint32_t>::max();
-
+printf("a\n");
     rig_resubstitution<rils::support_selection_t::PIVOT, K>( rig1, rps, &rst );
+printf("b\n");
 
     rig1 = cleanup_dangling( rig1 );
     depth_view<rig_network> rig1_d{ rig1 };
