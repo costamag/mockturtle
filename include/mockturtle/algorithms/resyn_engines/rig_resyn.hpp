@@ -40,6 +40,8 @@
 #include <abcresub/abcresub.hpp>
 #include <fmt/format.h>
 #include <kitty/kitty.hpp>
+#include "../../utils/tech_library.hpp"
+
 
 #include <algorithm>
 #include <optional>
@@ -52,6 +54,18 @@ namespace mockturtle
 namespace rils
 {
 
+bool VERBOSE{false};
+
+enum network_t
+{
+  RIG,
+  AIG,
+  XAIG,
+  MIG,
+  kLUT,
+  MAPPED
+};
+
 enum support_selection_t
 {
   GREEDY,
@@ -61,6 +75,7 @@ enum support_selection_t
   GREEDYN,
   GREEDY3,
   PIVOT,
+  STRUCT_PIVOT,
   RANDOM
 };
 
@@ -100,6 +115,8 @@ struct rig_resyn_static_params
 
   static constexpr uint32_t max_support_size{6u};
   static constexpr uint32_t fraction_of_10{10};
+
+  static constexpr bool use_bmatch{true};
 
   static constexpr support_selection_t support_selection{ GREEDY };
 
@@ -189,7 +206,7 @@ struct rig_resyn_stats
       auto result = resyn( target, care, divisors.begin(), divisors.end(), tts );
    \endverbatim
  */
-template<class TT, class static_params = rig_resyn_static_params_default<TT>, support_selection_t SUP_SEL=GREEDY>
+template<class TT, class database_t, network_t ntk_t, class static_params = rig_resyn_static_params_default<TT>, support_selection_t SUP_SEL=GREEDY>
 class rig_resyn_decompose
 {
 private:
@@ -393,13 +410,21 @@ private:
   };
 
 public:
-  explicit rig_resyn_decompose( stats& st ) noexcept
-      : st( st )
+
+  explicit rig_resyn_decompose( database_t database, stats& st, std::vector<gate> const& _library ) noexcept
+      : st( st ), _database(database), _tech_lib( _library )
   {
     static_assert( std::is_same_v<typename static_params::base_type, rig_resyn_static_params>, "Invalid static_params type" );
     static_assert( !( static_params::uniform_div_cost && static_params::preserve_depth ), "If depth is to be preserved, divisor depth cost must be provided (usually not uniform)" );
     divisors.reserve( static_params::reserve );
     RIGRNG.seed(5);
+
+    if constexpr( ntk_t == network_t::MAPPED )
+    {
+      mps.cut_enumeration_ps.minimize_truth_table = true;
+      mps.cut_enumeration_ps.cut_limit = 24;
+    }
+
   }
 
   /*! \brief Perform XAG resynthesis.
@@ -416,7 +441,7 @@ public:
    */
   template<class iterator_type,
            bool enabled = static_params::uniform_div_cost && !static_params::preserve_depth, typename = std::enable_if_t<enabled>>
-  std::optional<index_list_t> operator()( TT const& target, TT const& care, iterator_type begin, iterator_type end, typename static_params::truth_table_storage_type const& tts, uint32_t max_size = std::numeric_limits<uint32_t>::max() )
+  std::optional<index_list_t> operator()( TT const& target, TT const& care, iterator_type begin, iterator_type end, typename static_params::truth_table_storage_type const& tts, std::vector<std::vector<uint32_t>> const& struct_cuts, double max_size = std::numeric_limits<double>::max() )
   {
     static_assert( static_params::copy_tts || std::is_same_v<typename std::iterator_traits<iterator_type>::value_type, typename static_params::node_type>, "iterator_type does not dereference to static_params::node_type" );
 
@@ -444,6 +469,23 @@ public:
       ++begin;
     }
     std::sort( scored_divs.begin(), scored_divs.end() );
+
+    /* structural cuts */
+    std::vector<uint32_t> newcut;
+    _struct_cuts.clear();
+    //printf("#structural cuts = %d\n", struct_cuts.size());
+    for( auto cut : struct_cuts )
+    {
+      newcut.clear();
+      for( auto nd : cut )
+      {
+        newcut.push_back(nd+1);
+        printf("%d ", nd+1);
+      }
+      printf("\n");
+      _struct_cuts.push_back( newcut );
+    }
+
     return compute_function( max_size );
   }
 
@@ -458,48 +500,45 @@ public:
   {}
 
 private:
-  std::optional<index_list_t> compute_function( uint32_t num_inserts )
+  std::optional<index_list_t> compute_function( double area_inserts )
   {
     index_list.clear();
     index_list.add_inputs( divisors.size() - 1 );
-    auto const lit = compute_function_rec( num_inserts );
+    auto const lit = compute_function_rec( area_inserts );
     if ( lit )
     {
-      assert( index_list.num_gates() <= num_inserts );
+      assert( index_list.get_area() <= area_inserts );
       index_list.add_output( *lit );
+      index_list.reset_area();
       //std::cout << to_index_list_string(index_list) << std::endl;
       return index_list;
     }
     return std::nullopt;
   }
 
-  std::optional<uint32_t> compute_function_rec( uint32_t num_inserts )
+  std::optional<uint32_t> compute_function_rec( double area_inserts )
   {
 
     /* try 0-resub and collect unate literals */
     auto const res0 = call_with_stopwatch( st.time_unate, [&]() {
-      return find_one_unate();
+      return find_one_unate( area_inserts );
     } );
     if ( res0 )
     {
       return *res0;
     }
-    if ( num_inserts == 0u )
+    if ( area_inserts <= 0 )
     {
       return std::nullopt;
     }
 
     /* try 1-resub */
     auto const res1 = call_with_stopwatch( st.time_unate, [&]() {
-      return try_1_resub();
+      return try_1_resub( area_inserts );
     } );
     if ( res1 )
     {
       return *res1;
-    }
-    if ( num_inserts == 1u )
-    {
-      return std::nullopt;
     }
 
     return std::nullopt;
@@ -510,11 +549,8 @@ private:
      2. Collect unate literals
      3. Find 0-resub (both positive unate and negative unate) and collect binate (neither pos nor neg unate) divisors
    */
-  std::optional<uint32_t> find_one_unate()
+  std::optional<uint32_t> find_one_unate( double max_area = 0 )
   {
-
-    //return std::nullopt;
-
     num_bits[0] = kitty::count_ones( on_off_sets[0] ); /* off-set */
     num_bits[1] = kitty::count_ones( on_off_sets[1] ); /* on-set */
     if ( num_bits[0] == 0 )
@@ -552,11 +588,45 @@ private:
       /* 0-resub */
       if ( unateness[0] && unateness[3] )
       {
-        return ( v << 1 );
+        if constexpr ( ntk_t == network_t::MAPPED )
+        {
+          auto [buf_area, buf_delay, buf_id] = _tech_lib.get_buffer_info();
+          if( buf_area <= max_area )
+          {
+            kitty::dynamic_truth_table func(1u);
+            kitty::create_from_binary_string( func, "10" );
+            return index_list.add_function( std::vector{ v << 1 }, func, buf_area, buf_delay, buf_id );
+          }
+          else
+          {
+            return std::nullopt;
+          }
+        }
+        else
+        {
+          return ( v << 1 );
+        }
       }
       if ( unateness[1] && unateness[2] )
       {
-        return ( v << 1 ) + 1;
+        if constexpr ( ntk_t == network_t::MAPPED )
+        {
+          auto [inv_area, inv_delay, inv_id] = _tech_lib.get_inverter_info();
+          if( inv_area <= max_area )
+          {
+            kitty::dynamic_truth_table func(1u);
+            kitty::create_from_binary_string( func, "01" );
+            return index_list.add_function( std::vector{ v << 1 }, func, inv_area, inv_delay, inv_id );
+          }
+          else
+          {
+            return std::nullopt;
+          }
+        }
+        else
+        {
+          return ( v << 1 ) + 1u;
+        }
       }
     }
     return std::nullopt;
@@ -564,26 +634,24 @@ private:
 
   /* See if we cna define a new function of the other divisors
    */
-  std::optional<uint32_t> try_1_resub()
+  std::optional<uint32_t> try_1_resub( double max_area )
   {
     /* support selection */
     auto supp = find_support();
     if( supp )
     {
-      auto func = extract_functionality_from_signatures( *supp );
-
-      std::vector<uint32_t> lits;
-      for( uint32_t x : *supp )
-        lits.push_back( x << 1u );
-
-      return index_list.add_function( lits, func );
-
+      auto [func, care] = extract_functionality_from_signatures( *supp );
+      
+      if constexpr( ntk_t == network_t::kLUT )
+        return _1_node_synthesis( *supp, func, care, max_area );
+      else
+        return _n_node_synthesis( *supp, func, care, max_area );
     }
     /* resynthesis */
     return std::nullopt;
   }
 
-  kitty::dynamic_truth_table extract_functionality_from_signatures( std::vector<uint32_t> const& supp )
+  std::tuple<kitty::dynamic_truth_table, kitty::dynamic_truth_table> extract_functionality_from_signatures( std::vector<uint32_t> const& supp )
   {
     assert( supp.size() <= static_params::max_support_size );
 
@@ -629,8 +697,349 @@ private:
       }
     }
 
-    return func_s;
+    return std::make_tuple(func_s, care_s);
   }
+
+#pragma region synthesis
+
+std::optional<uint32_t> _1_node_synthesis( std::vector<uint32_t> const& supp, kitty::dynamic_truth_table const& func, kitty::dynamic_truth_table const& care, double max_area )
+{
+  std::vector<uint32_t> lits;
+  for( uint32_t x : supp )
+    lits.push_back( x << 1u );
+
+  auto lit = index_list.add_function( lits, func, 1.0 );
+  if( index_list.get_area() <= max_area )
+    return lit;
+  return std::nullopt;
+}
+
+std::optional<uint32_t> _n_node_synthesis( std::vector<uint32_t> const& supp, kitty::dynamic_truth_table const& func, kitty::dynamic_truth_table const& care, double max_area )
+{
+  index_list_t index_list_copy = index_list;
+
+  if( supp.size() == 0 || supp.size() > static_params::max_support_size ) return std::nullopt;
+
+  if( static_params::use_bmatch )
+  {
+//    if( supp.size() > 4u )
+//    {
+//      for( int iTry{0}; iTry<static_params::max_resyn_attempts; ++iTry )
+//      {
+//        index_list_copy=index_list;
+//
+//        auto remap = find_spfd_remapping( supp, func, care, max_area );
+//
+//        if( remap )
+//        {
+//          auto [lits4, func4, care4] = *remap;
+//          const auto res = find_boolean_matching( lits4, func4, care4, max_area ); 
+//          if( res && index_list.get_area() <= max_area )
+//          {
+//            return *res;
+//          }
+//          else
+//          {
+//            index_list = index_list_copy;
+//            return std::nullopt;
+//          }
+//        }
+//      }
+//    }
+//    else
+    {
+      kitty::static_truth_table<4u> func4;
+      kitty::static_truth_table<4u> care4;
+      kitty::extend_to_inplace( func4, func );
+      kitty::extend_to_inplace( care4, care );
+      std::array<uint32_t, 4> lits = compute_literals( supp );
+      const auto res =  find_boolean_matching( lits, func4, care4, max_area ); 
+      if( res && index_list.get_area() <= max_area )
+      {
+        return *res;
+      }
+      else
+      {
+        index_list = index_list_copy;
+        return std::nullopt;
+      }
+    }
+  }
+  else
+  {
+
+  }
+
+  index_list = index_list_copy;
+  return std::nullopt;
+}
+
+std::array<uint32_t, 4> compute_literals( std::vector<uint32_t> const& supp )
+{
+  std::array<uint32_t, 4> lits {0};
+  for( int i{0}; i<supp.size(); ++i )
+  {
+    lits[i] = supp[i] << 1u;
+  }
+  return lits;
+}
+
+  std::optional<uint32_t> find_boolean_matching( std::array<uint32_t, 4> lits, kitty::static_truth_table<4u> const& func4, kitty::static_truth_table<4u> const& care4, double max_area )
+  {
+    auto [func_npn, neg, perm] = exact_npn_canonization( func4 );
+//    if(VERBOSE)
+//    {
+//      printf("neg  = ");
+//      for( auto iBit=3; iBit>=0; iBit-- )
+//        printf("%d", (neg >> iBit) & 0x1);
+//
+//      printf(" | perm  =");
+//      for( auto iBit=0; iBit<4; iBit++ )
+//        printf("%d ", perm[iBit]);
+//      printf("\n");
+//      
+//      for( auto iBit=0; iBit<4; iBit++ )
+//      {
+//        if( neg >> iBit & 0x1 == 0x1 )
+//          printf("%2d : ~X[%d] <= X[%d]  <<  X[%d] <= P[%d]\n", lits[iBit] ^ 0x1, iBit, iBit, perm[iBit], iBit );
+//        else
+//          printf("%2d :  X[%d] <= X[%d]  <<  X[%d] <= P[%d]\n", lits[iBit], iBit, iBit, perm[iBit], iBit );
+//      }
+//    }
+    
+    auto const care_npn = apply_npn_transformation( care4, neg & ~( 1 << 4u ), perm );
+//    if(VERBOSE)
+//    {
+//      printf("npn(TT)"); print_tt_with_dcs(func_npn, care_npn);
+//    }
+
+    auto const structures = _database.get_supergates( func_npn, ~care_npn, neg, perm );
+    if( structures == nullptr )
+    {
+      return std::nullopt;
+    }
+//    if(VERBOSE)
+//    {
+//      printf("neg* = ");
+//      for( auto iBit=3; iBit>=0; iBit-- )
+//        printf("%d", (neg >> iBit) & 0x1);
+//
+//      printf(" | perm* =");
+//      for( auto iBit=0; iBit<4; iBit++ )
+//        printf("%d ", perm[iBit]);
+//      printf("\n");
+//    }
+    bool phase = ( neg >> 4 == 1 ) ? true : false;
+
+    for( auto i{0}; i<lits.size(); ++i )
+    {
+      if( ( neg >> i ) & 0x1 == 0x1 )
+        lits[i] ^= 0x1;
+    }
+
+    std::array<uint32_t, 4> leaves {0};
+
+    for( auto i{0}; i<4; ++i )
+    {
+      leaves[i] = lits[perm[i]];
+    }
+
+    auto & db = _database.get_database();
+
+    std::unordered_map<uint64_t, uint32_t> existing_nodes;
+
+    index_list_t mapped_index_list = index_list;
+
+    auto res = create_index_list( db.get_node( structures->at(0).root ), leaves, existing_nodes );
+
+//    if(VERBOSE)
+//    {
+//      printf(" || --> [%d <?= %d]\n", index_list.num_gates(), max_num_gates );
+//    }
+
+    if constexpr ( ntk_t == network_t::MAPPED )
+    {
+      auto res_map = technology_map( mapped_index_list, index_list, ( phase != db.is_complemented( structures->at(0).root ) ) );
+      if( res_map && ( mapped_index_list.get_area() <= max_area ) )
+      {
+        return std::nullopt;
+        //return *res_map;
+      }
+      else
+      {
+        return std::nullopt;
+      }
+    }
+    else
+    {
+      if( index_list.area() <= max_area )
+      {
+        return phase != db.is_complemented( structures->at(0).root ) ? (res ^ 0x1 ) : res;//create_index
+      }
+    }
+
+    //else
+    return std::nullopt;
+  }
+
+  uint32_t technology_map( index_list_t & mapped, index_list_t const& subject, bool is_output_negated )
+  {
+    return 0;
+  }
+
+
+  template< class node_t >
+  uint32_t create_index_list( node_t const& n, std::array<uint32_t, 4u> const& leaves, std::unordered_map<uint64_t, uint32_t> & existing_nodes )
+  {
+    return create_index_list_rec( n, leaves, existing_nodes );
+  }
+
+  template< class node_t >
+  uint32_t create_index_list_rec( node_t const& n, std::array<uint32_t, 4u> const& leaves, std::unordered_map<uint64_t, uint32_t> & existing_nodes )
+  {
+    auto& db = _database.get_database();
+ 
+    std::array<uint32_t, 3u> node_data;
+
+    int i{0};
+    db.foreach_fanin( n, [&]( auto const& f, auto i ) 
+    {
+      node<aig_network> g = db.get_node( f );
+      if( db.is_pi( g ) )
+      {
+        node_data[i] = db.is_complemented( f ) ? leaves[f.index-1] ^ 0x1 : leaves[f.index-1];
+        return;
+      }
+      if constexpr( (ntk_t == network_t::AIG) || (ntk_t == network_t::XAIG) || (ntk_t == network_t::MAPPED) )
+      {
+        if( db.is_and( g ) )
+        {
+          auto res = create_index_list_rec( g, leaves, existing_nodes );
+
+          if( res )
+          {
+            node_data[i] = db.is_complemented( f ) ? (res) ^ 0x1 : res;
+          }
+        }
+        else if( db.is_xor( g ) )
+        {
+          auto res = create_index_list_rec( g, leaves, existing_nodes );
+
+          if( res )
+          {
+            node_data[i] = db.is_complemented( f ) ? (res) ^ 0x1 : res;
+          }
+        }
+      }
+      if constexpr ( ntk_t == network_t::MIG )
+      {
+        if( db.is_constant(g) )
+        {
+          node_data[i] = db.is_complemented( f ) ? 0x1 : 0x0;
+          return;
+        }
+        else if( db.is_maj( g ) )
+        {
+          auto res = create_index_list_rec( g, leaves, existing_nodes );
+          node_data[i] = db.is_complemented( f ) ? res ^ 0x1 : res;
+        }
+      }
+    } );
+
+    if constexpr ( (ntk_t == network_t::AIG) || (ntk_t == network_t::XAIG) || (ntk_t == network_t::MAPPED) )
+    {
+      if( db.is_and( n ) )
+      {
+        uint32_t new_lit;
+        uint64_t key0 = node_data[0];
+        uint64_t key1 = node_data[1];
+
+        if( key0 < key1 )
+        {
+          key0 = ( key0 << 32u ) | key1;
+        }
+        else
+        {
+          key0 = key0 | ( key1 << 32 );
+        }
+
+        if( auto search = existing_nodes.find( key0 ); search != existing_nodes.end() )
+        {
+          new_lit = search->second;
+        }
+        else
+        {
+          new_lit = index_list.add_and( node_data[0], node_data[1] );
+          existing_nodes[key0] = new_lit;
+        }
+        return new_lit;
+      }
+      else if( db.is_xor( n ) )
+      {
+        uint32_t new_lit;
+        uint64_t key0 = node_data[0];
+        uint64_t key1 = node_data[1];
+
+        if( key0 > key1 )
+        {
+          key0 = ( key0 << 32u ) | key1;
+        }
+        else
+        {
+          key0 = key0 | ( key1 << 32 );
+        }
+
+        if( auto search = existing_nodes.find( key0 ); search != existing_nodes.end() )
+        {
+          new_lit = search->second;
+        }
+        else
+        {
+          new_lit = index_list.add_xor( node_data[0], node_data[1] );
+          existing_nodes[key0] = new_lit;
+        }
+        return new_lit;
+      }
+    }
+    else if constexpr ( ntk_t == network_t::MIG )
+    {
+      if( db.is_maj(n) )
+      {
+        uint64_t key = get_key( node_data );
+        uint32_t new_lit;
+        if( auto search = existing_nodes.find( key ); search != existing_nodes.end() )
+        {
+          new_lit = search->second;
+        }
+        else
+        {
+          new_lit = index_list.add_maj( node_data[0], node_data[1], node_data[2] );
+          existing_nodes[key] = new_lit;
+        }
+        return new_lit;
+      }
+      else
+      {
+        printf("unknown recursion node\n");
+        return 0;
+      }
+    }
+      
+    return 0;
+  }
+
+  uint64_t get_key( std::array<uint32_t, 3> node_data )
+  {
+    std::vector<uint64_t> keys = { (uint64_t)node_data[0], (uint64_t)node_data[1], (uint64_t)node_data[2] };
+    std::sort( keys.begin(), keys.end() );
+    return keys[0] | ( keys[1] << 20u ) | ( keys[2] << 40u );
+  }
+
+//index_list.add_function( lits, func );
+
+#pragma endregion Synthesis
+
+#pragma region support_selection
 
   std::optional<std::vector<uint32_t>> find_support()
   {
@@ -650,6 +1059,25 @@ private:
     }
     if( static_params::support_selection == support_selection_t::PIVOT )
     {
+      auto supp = find_support_greedy();
+      if( supp )
+        return *supp;
+      
+      for( uint32_t i{0}; i<scored_divs.size()*static_params::fraction_of_10/10; ++i )
+      {
+        auto supp = find_from_unbalancing(i);
+        if( supp )
+          return *supp;
+      }
+
+      return std::nullopt;
+    }
+    if( static_params::support_selection == support_selection_t::STRUCT_PIVOT )
+    {
+      if( _struct_cuts.size() > 0 )
+      {
+        return _struct_cuts[0];
+      }
       auto supp = find_support_greedy();
       if( supp )
         return *supp;
@@ -1114,6 +1542,8 @@ private:
     return supp;
   }
 
+#pragma endregion support_selection
+
   inline TT const& get_div( uint32_t idx ) const
   {
     if constexpr ( static_params::copy_tts )
@@ -1141,14 +1571,19 @@ private:
   /* positive unate: not overlapping with off-set
      negative unate: not overlapping with on-set */
   std::vector<scored_div> scored_divs;
+  database_t _database;
+  std::vector<std::vector<uint32_t>> _struct_cuts;
+
+  std::vector<gate> _library;
 
   stats& st;
+
+  tech_library<5, classification_type::np_configurations> _tech_lib;
+  map_params mps;
+  map_stats mst;
+
 }; /* xag_resyn_decompose */
 
 }; /* namespace rils */
 
 } /* namespace mockturtle */
-
-
-
-

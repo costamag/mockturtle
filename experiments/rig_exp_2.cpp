@@ -138,7 +138,7 @@ int main()
     rps.max_pis = 10;
     rps.max_divisors = std::numeric_limits<uint32_t>::max();
 printf("a\n");
-    rig_resubstitution<rils::support_selection_t::PIVOT, K>( rig1, rps, &rst );
+    rig_resubstitution<rils::network_t::kLUT, rils::support_selection_t::STRUCT_PIVOT, K>( rig1, rps, &rst );
 printf("b\n");
 
     rig1 = cleanup_dangling( rig1 );

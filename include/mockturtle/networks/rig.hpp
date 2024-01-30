@@ -49,6 +49,7 @@
 #include "aig.hpp"
 #include "xag.hpp"
 #include "mig.hpp"
+#include "klut.hpp"
 #include <kitty/constructors.hpp>
 #include <kitty/operations.hpp>
 #include <kitty/print.hpp>
@@ -56,6 +57,7 @@
 #include <kitty/kitty.hpp>
 #include "../utils/node_map.hpp"
 #include "../views/topo_view.hpp"
+#include "detail/genlib_collection.hpp"
 
 
 #include <algorithm>
@@ -258,6 +260,8 @@ class rig_network
     }
     else
     {
+      set_technology_library<Ntk>();
+      
       /* initialization */
       _init();
       /* generate the pis */
@@ -275,6 +279,42 @@ class rig_network
 
       ntk.clear_visited();
     }
+  }
+
+  template<class Ntk>
+  void set_technology_library()
+  {
+    /* library to map to technology */
+    std::vector<gate> gates;
+    std::string lib_name;
+    if constexpr ( std::is_same_v<typename Ntk::base_type, klut_network> )
+    { 
+      return;
+    }
+    else if constexpr ( std::is_same_v<typename Ntk::base_type, aig_network> )   
+    { 
+      lib_name = rils::detail::aig_library;
+    }
+    else if constexpr ( std::is_same_v<typename Ntk::base_type, xag_network> ) 
+    {   
+      lib_name = rils::detail::xaig_library;
+    }
+    else if constexpr ( std::is_same_v<typename Ntk::base_type, mig_network> )   
+    { 
+      lib_name = rils::detail::mig_library;
+    }
+
+    std::istringstream in( lib_name );
+
+    if ( lorina::read_genlib( in, genlib_reader( gates ) ) != lorina::return_code::success )
+    {
+      printf("[e] genlib file not found\n");
+      return;
+    }
+
+    tech_library_params tps;
+    tech_library<5, classification_type::np_configurations> tech_lib( gates, tps );
+    _library = gates;
   }
 
   template<class Ntk>
@@ -306,13 +346,17 @@ class rig_network
         if( ntk.is_and( nd ) )
         {
           signal fnew = create_and( children[0], children[1] );
+          node nnew = get_node(fnew);
           old_to_new[nd] = fnew.data;
+          add_binding( nnew, 0 );
           return ntk.is_complemented( sig ) ? !fnew : fnew;
         }
         else if( ntk.is_xor( nd ) )
         {
           signal fnew = create_xor( children[0], children[1] );
+          node nnew = get_node(fnew);
           old_to_new[nd] = fnew.data;
+          add_binding( nnew, 1 );
           return ntk.is_complemented( sig ) ? !fnew : fnew;
         }
         else
@@ -325,7 +369,9 @@ class rig_network
         if( ntk.is_maj( nd ) )
         {
           signal fnew = create_maj( children[0], children[1], children[2] );
+          node nnew = get_node(fnew);
           old_to_new[nd] = fnew.data;
+          add_binding( nnew, 0 );
           return ntk.is_complemented( sig ) ? !fnew : fnew;
         }
         else
@@ -337,7 +383,6 @@ class rig_network
       {
         if( ntk.is_function( nd ) )
         {
-
           const auto tt = ntk.node_function(nd);
           if( children.size() == 1 )
           {
@@ -348,6 +393,7 @@ class rig_network
           else if( children.size() > 1 )
           {
             signal fnew = create_node( children, tt );
+            node nnew = get_node(fnew);
             old_to_new[nd] = fnew.data;
             return fnew;
           }
@@ -580,7 +626,7 @@ class rig_network
   void foreach_node( Fn&& fn ) const
   {
     auto r = range<uint64_t>( _e_storage->nodes.size() );
-    detail::foreach_element_if(
+    mockturtle::detail::foreach_element_if(
         r.begin(), r.end(),
         [this]( auto n ) { return !is_dead( n ); },
         fn );
@@ -589,32 +635,32 @@ class rig_network
   template<typename Fn>
   void foreach_ci( Fn&& fn ) const
   {
-    detail::foreach_element( _e_storage->inputs.begin(), _e_storage->inputs.end(), fn );
+    mockturtle::detail::foreach_element( _e_storage->inputs.begin(), _e_storage->inputs.end(), fn );
   }
 
   template<typename Fn>
   void foreach_co( Fn&& fn ) const
   {
-    detail::foreach_element( _e_storage->outputs.begin(), _e_storage->outputs.end(), fn );
+    mockturtle::detail::foreach_element( _e_storage->outputs.begin(), _e_storage->outputs.end(), fn );
   }
 
   template<typename Fn>
   void foreach_pi( Fn&& fn ) const
   {
-    detail::foreach_element( _e_storage->inputs.begin(), _e_storage->inputs.end(), fn );
+    mockturtle::detail::foreach_element( _e_storage->inputs.begin(), _e_storage->inputs.end(), fn );
   }
 
   template<typename Fn>
   void foreach_po( Fn&& fn ) const
   {
-    detail::foreach_element( _e_storage->outputs.begin(), _e_storage->outputs.end(), fn );
+    mockturtle::detail::foreach_element( _e_storage->outputs.begin(), _e_storage->outputs.end(), fn );
   }
 
   template<typename Fn>
   void foreach_gate( Fn&& fn ) const
   {
     auto r = range<uint64_t>( 1u, _e_storage->nodes.size() ); /* start from 1 to avoid constant */
-    detail::foreach_element_if(
+    mockturtle::detail::foreach_element_if(
         r.begin(), r.end(),
         [this]( auto n ) { return !is_ci( n ) && !is_dead( n ); },
         fn );
@@ -626,7 +672,7 @@ class rig_network
     if ( n == 0 || is_ci( n ) )
       return;
 
-    detail::foreach_element( _e_storage->nodes[n].children.begin(), _e_storage->nodes[n].children.end(), fn );
+    mockturtle::detail::foreach_element( _e_storage->nodes[n].children.begin(), _e_storage->nodes[n].children.end(), fn );
 
   }
 #pragma endregion node and signal iterators
@@ -671,7 +717,7 @@ class rig_network
       return a.complement ? b : get_constant( false );
     }
 
-    return _create_node( { a, b }, e_func_t::e_AND );
+    return _create_node( { a, b }, e_func_t::e_AND, 0u );
   }
 
   signal create_nand( signal a, signal b )
@@ -825,7 +871,7 @@ class rig_network
       return a ^ f_compl;
     }
 
-    return _create_node( { a, b }, e_func_t::e_XOR ) ^ f_compl;
+    return _create_node( { a, b }, e_func_t::e_XOR, 1u ) ^ f_compl;
   }
 
   signal create_xnor( signal a, signal b )
@@ -941,7 +987,7 @@ class rig_network
       b.complement = !b.complement;
       c.complement = !c.complement;
     }
-    return _create_node( { a, b, c }, e_func_t::e_MAJ ) ^ node_complement;
+    return _create_node( { a, b, c }, e_func_t::e_MAJ, 0u ) ^ node_complement;
   }
 
   signal create_ite( signal x, signal cond1, signal cond0 )
@@ -1091,7 +1137,7 @@ class rig_network
   }
 
 
-  signal create_node( std::vector<signal> children, kitty::dynamic_truth_table function )
+  signal create_node( std::vector<signal> children, kitty::dynamic_truth_table function, int binding = -1 )
   {    
       assert( children.size() == function.num_vars() );
     if( children.size() > 1 )
@@ -1114,7 +1160,7 @@ class rig_network
       return kitty::is_normal( function ) ? children[0] : !children[0];
     }
       assert( children.size() == function.num_vars() );
-    return _create_node( children, _e_storage->data.cache.insert( function ) );
+    return _create_node( children, _e_storage->data.cache.insert( function ), binding );
   }
 
   signal create_node_in_cloning( std::vector<signal> children, kitty::dynamic_truth_table const& function )
@@ -1135,7 +1181,7 @@ class rig_network
     return create_node_in_cloning( children, other._e_storage->data.cache[other._e_storage->nodes[source].func] );
   }
 
-  signal _create_node( std::vector<signal> const& children, uint32_t literal )
+  signal _create_node( std::vector<signal> const& children, uint32_t literal, int binding = -1 )
   {
     std::shared_ptr<e_storage_t>::element_type::node_type node;
     std::copy( children.begin(), children.end(), std::back_inserter( node.children ) );
@@ -1151,6 +1197,9 @@ class rig_network
 
     _e_storage->nodes.push_back( node );
     _e_storage->hash[node] = e_index;
+
+
+    add_binding( e_index, binding );
 
     /* increase ref-count to children */
     int i{0};
@@ -1928,7 +1977,7 @@ class rig_network
       return --_e_storage->nodes[n].value;
     }
 
-    uint32_t get_function_id( node const& n )
+    uint32_t get_function_id( node const& n ) const
     {
       return _e_storage->nodes[n].func;
     }
@@ -1938,7 +1987,7 @@ class rig_network
       _library = library;
     }
 
-    void add_binding( node const& n, uint32_t gate_id )
+    void add_binding( node const& n, int gate_id )
     {
       assert( gate_id < _library.size() );
       _e_storage->nodes[n].binding = gate_id;
@@ -1968,6 +2017,14 @@ class rig_network
       return _library[_e_storage->nodes[n].binding];
     }
 
+    double get_area( node const& n ) const
+    {
+      if( has_binding( n ) )
+        return _library[_e_storage->nodes[n].binding].area;
+      else
+        return 1.0;
+    }
+
     bool has_binding( node const& n ) const
     {
       return _e_storage->nodes[n].binding >= 0;
@@ -1993,7 +2050,8 @@ class rig_network
         }
         else
         {
-          area++;
+          if( !is_pi( n ) && !is_constant( n ) )
+            area++;
         }
       } );
 
@@ -2025,7 +2083,7 @@ class rig_network
         }
         else
         {
-          double gate_delay = 0;
+          double gate_delay = 1;
           foreach_fanin( n, [&]( auto const& f, auto i ) {
             gate_delay = std::max( gate_delay, (double)( delays[f] + 1u ) );
           } );
@@ -2046,6 +2104,7 @@ class rig_network
     void report_gates_usage( std::ostream& os = std::cout ) const
     {
       std::vector<uint32_t> gates_profile( _library.size(), 0u );
+      std::unordered_map<uint32_t,uint32_t> gates_profile_map;
 
       double area = 0;
       foreach_node( [&]( auto const& n, auto ) {
@@ -2055,29 +2114,65 @@ class rig_network
           ++gates_profile[g.id];
           area += g.area;
         }
+        else
+        {
+          if( !is_pi( n ) && !is_constant( n ) )
+          {
+            auto func_id = get_function_id( n );
+            if( gates_profile_map.find( func_id ) == gates_profile_map.end() )
+            {
+              gates_profile_map[func_id]=1;
+            }
+            else
+            {
+              gates_profile_map[func_id]+=1;
+            }
+            area += 1.0;
+          }
+        }
       } );
 
       os << "[i] Report gates usage:\n";
 
-      uint32_t tot_instances = 0u;
-      for ( auto i = 0u; i < gates_profile.size(); ++i )
+      if( _library.size()>0 )
       {
-        if ( gates_profile[i] > 0u )
+        uint32_t tot_instances = 0u;
+        for ( auto i = 0u; i < gates_profile.size(); ++i )
         {
-          float tot_gate_area = gates_profile[i] * _library[i].area;
+          if ( gates_profile[i] > 0u )
+          {
+            float tot_gate_area = gates_profile[i] * _library[i].area;
 
-          os << fmt::format( "[i] {:<25}", _library[i].name )
-            << fmt::format( "\t Instance = {:>10d}", gates_profile[i] )
-            << fmt::format( "\t Area = {:>12.2f}", tot_gate_area )
+            os << fmt::format( "[i] {:<25}", _library[i].name )
+              << fmt::format( "\t Instance = {:>10d}", gates_profile[i] )
+              << fmt::format( "\t Area = {:>12.2f}", tot_gate_area )
+              << fmt::format( " {:>8.2f} %\n", tot_gate_area / area * 100 );
+
+            tot_instances += gates_profile[i];
+          }
+        }
+
+        os << fmt::format( "[i] {:<25}", "TOTAL" )
+          << fmt::format( "\t Instance = {:>10d}", tot_instances )
+          << fmt::format( "\t Area = {:>12.2f}   100.00 %\n", area );
+      }
+      else
+      {
+        uint32_t tot_instances = 0u;
+        for ( auto& [key, value]: gates_profile_map )
+        {
+          float tot_gate_area = static_cast<float>(value);
+          os << fmt::format( "[i] {:<25}", kitty::to_hex(_e_storage->data.cache[key]).c_str() )
+            << fmt::format( "\t Instance = {:>10d}", value )
             << fmt::format( " {:>8.2f} %\n", tot_gate_area / area * 100 );
 
-          tot_instances += gates_profile[i];
+          tot_instances += value;
         }
-      }
 
-      os << fmt::format( "[i] {:<25}", "TOTAL" )
-        << fmt::format( "\t Instance = {:>10d}", tot_instances )
-        << fmt::format( "\t Area = {:>12.2f}   100.00 %\n", area );
+        os << fmt::format( "[i] {:<25}", "TOTAL" )
+          << fmt::format( "\t Instance = {:>10d}", tot_instances )
+          << fmt::format( "\t Area = {:>12.2f}   100.00 %\n", area );
+      }
     }
 
 

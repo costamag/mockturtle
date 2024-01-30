@@ -56,7 +56,7 @@ int main()
 
   experiment<std::string, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, double, bool> exp( "rig_exp_aig", "benchmark", "g(aig)", "d(aig)", "g(rig)", "d(rig)", "g(rig*)", "d(rig*)", "t(spf)", "eq(RIG)" );
 
-  for ( auto const& benchmark : all_benchmarks( iscas | epfl ) )
+  for ( auto const& benchmark : all_benchmarks( iscas ) )
   {
     fmt::print( "[i] processing {}\n", benchmark );
     aig_network aig;
@@ -69,37 +69,38 @@ int main()
 
     rig_network rig(aig);
     depth_view rig_d(rig);
+    rig.report_binding_stats();
+    rig.report_gates_usage();
 
-//    uint32_t rig_num_gates = rig.num_gates();
-//    uint32_t rig_depth = rig_d.depth();
-//
-//    resubstitution_params rps;
-//    resubstitution_stats rst;
-//    // ps.pattern_filename = "1024sa1/" + benchmark + ".pat";
-//    rps.progress =true;
-//    rps.max_inserts = 20;
-//    rps.max_trials = 100;
-//    rps.max_pis = 10;
-//    rps.max_divisors = std::numeric_limits<uint32_t>::max();
-//
-//    rig_resubstitution<rils::support_selection_t::PIVOT, K>( rig , rps, &rst );
-//    rig = cleanup_dangling( rig );
+    uint32_t rig_num_gates = rig.num_gates();
+    uint32_t rig_depth = rig_d.depth();
 
-//    printf("spf %d\n", rig.num_gates() );
-//
-//    depth_view<rig_network> rs_rig_d{ rig };
-//
-//    uint32_t rs_rig_num_gates = rig.num_gates();
-//    uint32_t rs_rig_depth = rs_rig_d.depth();
+    resubstitution_params rps;
+    resubstitution_stats rst;
+    // ps.pattern_filename = "1024sa1/" + benchmark + ".pat";
+    rps.progress =true;
+    rps.max_inserts = 20;
+    rps.max_trials = 100;
+    rps.max_pis = 10;
+    rps.max_divisors = std::numeric_limits<uint32_t>::max();
 
-    const auto cec = rig.num_gates() > 50000 ? true : abc_cec( rig, benchmark );
+    rig_resubstitution<rils::network_t::AIG, rils::support_selection_t::PIVOT, 4>( rig , rps, &rst );
+    rig = cleanup_dangling( rig );
 
-//    auto mfs_res = abc_mfs( klut, benchmark );
-//
-//
-//    printf("mfs %d\n", std::get<0>(mfs_res));
+    printf("spf %d\n", rig.num_gates() );
 
-    exp( benchmark, aig.num_gates(), aig_d.depth(), rig.num_gates(), rig_d.depth(), rig.num_gates(), rig_d.depth(), 0, cec );
+    depth_view<rig_network> rs_rig_d{ rig };
+
+    uint32_t rs_rig_num_gates = rig.num_gates();
+    uint32_t rs_rig_depth = rs_rig_d.depth();
+
+    const auto cec = rig.num_gates() > 70000 ? true : abc_cec( rig, benchmark );
+
+    printf("OPT\n");
+    rig.report_binding_stats();
+    rig.report_gates_usage();
+    printf("\n\n");
+    exp( benchmark, aig.num_gates(), aig_d.depth(), rig_num_gates, rig_depth, rig.num_gates(), rig_d.depth(), to_seconds(rst.time_total), cec );
   }
 
   exp.save();

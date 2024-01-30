@@ -80,7 +80,8 @@ int main()
 
     rig_network rig(klut);
     depth_view rig_d(rig);
-
+    rig.report_binding_stats();
+    rig.report_gates_usage();
 //    uint32_t rig_num_gates = rig.num_gates();
 //    uint32_t rig_depth = rig_d.depth();
 //
@@ -103,7 +104,8 @@ int main()
 //    uint32_t rs_rig_num_gates = rig.num_gates();
 //    uint32_t rs_rig_depth = rs_rig_d.depth();
 
-    const auto cec = rig.num_gates() > 50000 ? true : abc_cec( rig, benchmark );
+    ///const auto cec = rig.num_gates() > 50000 ? true : abc_cec( rig, benchmark );
+    const auto cec = benchmark == "hyp" ? true : abc_cec( rig, benchmark );
 
 //    auto mfs_res = abc_mfs( klut, benchmark );
 //

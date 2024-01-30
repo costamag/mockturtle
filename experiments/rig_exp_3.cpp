@@ -174,7 +174,7 @@ int main()
     rps.max_pis = 10;
     rps.max_divisors = std::numeric_limits<uint32_t>::max();
 
-    rig_resubstitution<rils::support_selection_t::PIVOT, K>( rig, rps, &rst );
+    rig_resubstitution<rils::network_t::kLUT, rils::support_selection_t::PIVOT, K>( rig, rps, &rst );
     rig = cleanup_dangling( rig );
 
     printf("spf %d\n", rig.num_gates() );
@@ -187,7 +187,6 @@ int main()
     const auto cec_rs = klut.num_gates() > 25000 ? true : abc_cec( rig, benchmark );
 
     auto mfs_res = abc_mfs( klut, benchmark );
-
 
     printf("mfs %d\n", std::get<0>(mfs_res));
 
@@ -229,3 +228,16 @@ int main()
 //[66,107,79,168,332,428,494,423,24242,62837,9589,7215,1791,6527,6006,269,41,491,88,16051,294,85]
 //[64,112,87,174,322,455,495,439,24411,62936,9693,7216,1796,6598,6014,286,51,506,89,16245,297,78]
 //2.13%
+
+//| benchmark | luts | lut_depth | rigs | rigs_depth | rs rigs | rs rigs_depth | t(spf) | rs-mfs rigs | rs-mfs rigs_depth | t(mfs) | eq(LUT) | eq(RIG) | eq(RS) |
+//|       c17 |    2 |         1 |    2 |          1 |       2 |             1 |   0.00 |           2 |                 1 |   0.03 |    true |    true |   true |
+//|      c432 |   66 |        14 |   66 |         14 |      66 |            14 |   0.03 |          64 |                14 |   0.03 |    true |    true |   true |
+//|      c499 |   78 |         7 |   78 |          7 |      78 |             7 |   0.02 |          78 |                 7 |   0.03 |    true |    true |   true |
+//|      c880 |  112 |        15 |  112 |         15 |     107 |            14 |   0.08 |         112 |                15 |   0.03 |    true |    true |   true |
+//|     c1355 |   78 |         7 |   78 |          7 |      78 |             7 |   0.02 |          78 |                 7 |   0.03 |    true |    true |   true |
+//|     c1908 |   90 |        12 |   90 |         12 |      79 |            10 |   0.03 |          86 |                12 |   0.03 |    true |    true |   true |
+//|     c2670 |  185 |         9 |  174 |          9 |     168 |            10 |   0.08 |         170 |                 9 |   0.04 |    true |    true |   true |
+//|     c3540 |  344 |        18 |  343 |         18 |     332 |            18 |   0.26 |         323 |                18 |   0.06 |    true |    true |   true |
+//|     c5315 |  487 |        14 |  471 |         14 |     428 |            14 |   0.32 |         455 |                14 |   0.06 |    true |    true |   true |
+//|     c6288 |  495 |        30 |  495 |         30 |     494 |            30 |   0.04 |         495 |                30 |   0.05 |    true |    true |   true |
+//|     c7552 |  445 |        15 |  444 |         15 |     423 |            19 |   0.31 |         432 |                17 |   0.06 |    true |    true |   true |

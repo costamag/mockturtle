@@ -203,16 +203,19 @@ public:
         _multi_lib(),
         _struct_lib()
   {
-    static_assert( NInputs < 16, "The technology library database supports NInputs up to 15\n" );
-
-    generate_library();
-
-    if ( ps.load_multioutput_gates )
-      generate_multioutput_library();
-
-    if ( ps.load_large_gates )
+    if( gates.size() > 0 )
     {
-      _struct.construct( 2, _ps.very_verbose );
+      static_assert( NInputs < 16, "The technology library database supports NInputs up to 15\n" );
+
+      generate_library();
+
+      if ( ps.load_multioutput_gates )
+        generate_multioutput_library();
+
+      if ( ps.load_large_gates )
+      {
+        _struct.construct( 2, _ps.very_verbose );
+      }
     }
   }
 

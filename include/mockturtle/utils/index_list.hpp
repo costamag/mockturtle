@@ -1285,6 +1285,16 @@ public:
     return ( values.at( 0 ) >> 16 );
   }
 
+  double get_area() const
+  {
+    return total_area;
+  }
+
+  void reset_area()
+  {
+    total_area = 0;
+  }
+
   uint64_t num_pis() const
   {
     if constexpr ( separate_header )
@@ -1342,6 +1352,7 @@ public:
   {
     values.clear();
     tts.clear();
+    ids.clear();
     values.emplace_back( 0 );
     if constexpr ( separate_header )
     {
@@ -1378,8 +1389,9 @@ public:
     return ( num_gates() + num_pis() ) << 1;
   }
 
-  element_type add_function( std::vector<element_type> lits, kitty::dynamic_truth_table function )
+  element_type add_function( std::vector<element_type> lits, kitty::dynamic_truth_table function, double area = 1 )
   {
+    total_area += area;
     if constexpr ( separate_header )
     {
       values.at( 2u ) += 1;
@@ -1399,6 +1411,129 @@ public:
     /* save the identifier to the truth table */
     values.push_back( tts.size() );
     tts.push_back( function );
+    ids.push_back(-1);
+    return ( num_gates() + num_pis() ) << 1;
+  }
+
+  element_type add_function( std::vector<element_type> lits, kitty::dynamic_truth_table function, double area, double delay, int id )
+  {
+    total_area += area;
+    if constexpr ( separate_header )
+    {
+      values.at( 2u ) += 1;
+    }
+    else
+    {
+      assert( num_gates() + 1u <= 0xffff );
+      values.at( 0u ) = ( ( num_gates() + 1 ) << 16 ) | ( values.at( 0 ) & 0xffff );
+    }
+    /* the id is the index at which we store the number of inputs */
+    element_type  identifier {values.size()}; 
+    /* size of fanins */
+    values.push_back( lits.size() );
+    /* save the fanins */
+    for( uint32_t lit : lits )
+      values.push_back( lit );
+    /* save the identifier to the truth table */
+    values.push_back( tts.size() );
+    tts.push_back( function );
+    ids.push_back( id );
+    return ( num_gates() + num_pis() ) << 1;
+  }
+
+  element_type add_and( element_type lit0, element_type lit1, double area = 1.0 )
+  {
+    assert( lit0 < lit1 );
+
+    total_area += area;
+    if constexpr ( separate_header )
+    {
+      values.at( 2u ) += 1;
+    }
+    else
+    {
+      assert( num_gates() + 1u <= 0xffff );
+      values.at( 0u ) = ( ( num_gates() + 1 ) << 16 ) | ( values.at( 0 ) & 0xffff );
+    }
+
+    /* the id is the index at which we store the number of inputs */
+    element_type  identifier {values.size()}; 
+    /* size of fanins */
+    values.push_back( 2u );
+    /* save the fanins */
+    
+    values.push_back( lit0 );
+    values.push_back( lit1 );
+    /* save the identifier to the truth table */
+    values.push_back( tts.size() );
+    kitty::dynamic_truth_table function(2u);
+    kitty::create_from_binary_string( function, "1000" );
+    tts.push_back( function );
+    ids.push_back( 0 );
+    return ( num_gates() + num_pis() ) << 1;
+  }
+
+  element_type add_xor( element_type lit0, element_type lit1, double area = 1.0 )
+  {
+    assert( lit0 > lit1 );
+
+    total_area += area;
+    if constexpr ( separate_header )
+    {
+      values.at( 2u ) += 1;
+    }
+    else
+    {
+      assert( num_gates() + 1u <= 0xffff );
+      values.at( 0u ) = ( ( num_gates() + 1 ) << 16 ) | ( values.at( 0 ) & 0xffff );
+    }
+
+    /* the id is the index at which we store the number of inputs */
+    element_type  identifier {values.size()}; 
+    /* size of fanins */
+    values.push_back( 2u );
+    /* save the fanins */
+    
+    values.push_back( lit0 );
+    values.push_back( lit1 );
+    /* save the identifier to the truth table */
+    values.push_back( tts.size() );
+    kitty::dynamic_truth_table function(2u);
+    kitty::create_from_binary_string( function, "0110" );
+    tts.push_back( function );
+    ids.push_back( 1 );
+    return ( num_gates() + num_pis() ) << 1;
+  }
+
+  element_type add_maj( element_type lit0, element_type lit1, element_type lit2, double area = 1.0 )
+  {
+
+    total_area += area;
+    if constexpr ( separate_header )
+    {
+      values.at( 2u ) += 1;
+    }
+    else
+    {
+      assert( num_gates() + 1u <= 0xffff );
+      values.at( 0u ) = ( ( num_gates() + 1 ) << 16 ) | ( values.at( 0 ) & 0xffff );
+    }
+
+    /* the id is the index at which we store the number of inputs */
+    element_type  identifier {values.size()}; 
+    /* size of fanins */
+    values.push_back( 3u );
+    /* save the fanins */
+    
+    values.push_back( lit0 );
+    values.push_back( lit1 );
+    values.push_back( lit2 );
+    /* save the identifier to the truth table */
+    values.push_back( tts.size() );
+    kitty::dynamic_truth_table function(3u);
+    kitty::create_from_binary_string( function, "11101000" );
+    tts.push_back( function );
+    ids.push_back( 0 );
     return ( num_gates() + num_pis() ) << 1;
   }
 
@@ -1419,8 +1554,11 @@ public:
 
 private:
   std::vector<element_type> values;
+  std::vector<double> area;
+  double total_area{0};
 public:
   std::vector<kitty::dynamic_truth_table> tts;
+  std::vector<int> ids;
 };
 
 using large_rig_index_list = rig_index_list<true>;
@@ -1570,7 +1708,8 @@ void insert( Ntk& ntk, BeginIter begin, EndIter end, rig_index_list<separate_hea
       uint32_t index = children_literals[i] >> 1;
       children.push_back( ( children_literals[i] % 2 ) ? ntk.create_not( signals.at( index ) ) : signals.at( index ) );
     }
-    signals.push_back( ntk.create_node( children, indices.tts[function_location] ) );
+    signals.push_back( ntk.create_node( children, indices.tts[function_location], indices.ids[function_location] ) );
+
   } );
 
   indices.foreach_po( [&]( uint32_t lit ) {

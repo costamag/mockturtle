@@ -56,7 +56,7 @@ int main()
 
   experiment<std::string, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, double, bool> exp( "rig_exp_mig", "benchmark", "g(mig)", "d(mig)", "g(rig)", "d(rig)", "g(rig*)", "d(rig*)", "t(spf)", "eq(RIG)" );
 
-  for ( auto const& benchmark : all_benchmarks( iscas | epfl ) )
+  for ( auto const& benchmark : all_benchmarks( iscas ) )
   {
     fmt::print( "[i] processing {}\n", benchmark );
     mig_network mig;
@@ -70,20 +70,28 @@ int main()
     rig_network rig(mig);
     depth_view rig_d(rig);
 
-//    uint32_t rig_num_gates = rig.num_gates();
-//    uint32_t rig_depth = rig_d.depth();
-//
-//    resubstitution_params rps;
-//    resubstitution_stats rst;
-//    // ps.pattern_filename = "1024sa1/" + benchmark + ".pat";
-//    rps.progress =true;
-//    rps.max_inserts = 20;
-//    rps.max_trials = 100;
-//    rps.max_pis = 10;
-//    rps.max_divisors = std::numeric_limits<uint32_t>::max();
-//
-//    rig_resubstitution<rils::support_selection_t::PIVOT, K>( rig , rps, &rst );
-//    rig = cleanup_dangling( rig );
+    uint32_t rig_num_gates = rig.num_gates();
+    uint32_t rig_depth = rig_d.depth();
+
+    resubstitution_params rps;
+    resubstitution_stats rst;
+    // ps.pattern_filename = "1024sa1/" + benchmark + ".pat";
+    rps.progress =true;
+    rps.max_inserts = 20;
+    rps.max_trials = 100;
+    rps.max_pis = 10;
+    rps.max_divisors = std::numeric_limits<uint32_t>::max();
+
+    rig.report_binding_stats();
+    rig.report_gates_usage();
+    printf("OPT\n");
+
+    rig_resubstitution<rils::network_t::MIG, rils::support_selection_t::PIVOT, 4>( rig , rps, &rst );
+    rig = cleanup_dangling( rig );
+
+    rig.report_binding_stats();
+    rig.report_gates_usage();
+    printf("\n\n");
 
 //    printf("spf %d\n", rig.num_gates() );
 //
@@ -99,7 +107,7 @@ int main()
 //
 //    printf("mfs %d\n", std::get<0>(mfs_res));
 
-    exp( benchmark, mig.num_gates(), mig_d.depth(), rig.num_gates(), rig_d.depth(), rig.num_gates(), rig_d.depth(), 0, cec );
+    exp( benchmark, mig.num_gates(), mig_d.depth(), rig_num_gates, rig_depth, rig.num_gates(), rig_d.depth(), to_seconds(rst.time_total), cec );
   }
 
   exp.save();
