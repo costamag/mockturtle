@@ -34,7 +34,7 @@
 #pragma once
 
 #include "../traits.hpp"
-
+#include "../networks/aig.hpp"
 #include <fmt/format.h>
 
 #include <array>
@@ -1218,6 +1218,618 @@ void decode( Ntk& ntk, IndexList const& indices )
   insert( ntk, std::begin( signals ), std::end( signals ), indices,
           [&]( signal const& s ) { ntk.create_po( s ); } );
 }
+
+#pragma region RIG index list
+
+/*! \brief Index list for TIG graphs.
+ *
+ * Small network represented as a list of literals and truth tables. 
+ * Supports LUT gates.  The list has the following 32-bit unsigned integer
+ * elements. 
+ * { element 0, element 1, ..., element N }: 
+ * - element 0 `| num_gates | num_pos | num_pis |` 
+ * - element 1 `num fanins first gate`
+ * - element [ 1 + i ] `literal i-th fanin`
+ * - element [ 1 + num fanins first gate + 1 ] `identifier truth table`
+ * - element [ 1 + num fanins first gate + 2 ] `num fanins second gate`
+ * - ...
+ * - element END `literal output`
+ * 
+ * The truth table id is an external identifier to be defined by the user
+ * and unknown to the index list representation.
+ * Warning: if literals sorting is desired, it must be performed prior to 
+ * adding nodes. The ignorance of the function associated to a literal
+ * does not allow to perform informed sorting while preserving the functionality  
+ * 
+ * Note: if `separate_header = true`, the header will be split into 3
+ * elements to support networks with larger number of PIs.
+ *
+ */
+template<bool separate_header = false>
+struct rig_index_list
+{
+public:
+  using element_type = uint32_t;
+
+public:
+  explicit rig_index_list( uint32_t num_pis = 0 )
+      : values( { num_pis } )
+  {
+    if constexpr ( separate_header )
+    {
+      values.emplace_back( 0 );
+      values.emplace_back( 0 );
+    }
+  }
+
+  explicit rig_index_list( std::vector<element_type> const& values )
+      : values( std::begin( values ), std::end( values ) )
+  {}
+
+  std::vector<element_type> raw() const
+  {
+    return values;
+  }
+
+  uint64_t size() const
+  {
+    return values.size();
+  }
+
+  uint64_t num_gates() const
+  {
+    if constexpr ( separate_header )
+    {
+      return values.at( 2 );
+    }
+    return ( values.at( 0 ) >> 16 );
+  }
+
+  double get_area() const
+  {
+    return total_area;
+  }
+
+  void reset_area()
+  {
+    total_area = 0;
+  }
+
+  uint64_t num_pis() const
+  {
+    if constexpr ( separate_header )
+    {
+      return values.at( 0 );
+    }
+    return values.at( 0 ) & 0xff;
+  }
+
+  uint64_t num_pos() const
+  {
+    if constexpr ( separate_header )
+    {
+      return values.at( 1 );
+    }
+    return ( values.at( 0 ) >> 8 ) & 0xff;
+  }
+
+  template<typename Fn>
+  void foreach_gate( Fn&& fn ) const
+  {
+    uint32_t next = separate_header ? 3u : 1u;
+    std::vector<uint32_t> children;
+    int iGate{-1};
+    for ( uint64_t i = next; i < values.size() - num_pos(); i++ )
+    {
+      if( i == next ) 
+      {
+        next += values.at( i ) + 2;
+        iGate++;
+        children.clear();
+        continue;
+      }
+      if( i == next-1 )
+      {
+        fn( children, iGate );
+      }
+      else
+      {
+        children.push_back( values.at( i ) );
+      }
+    }
+  }
+
+  template<typename Fn>
+  void foreach_po( Fn&& fn ) const
+  {
+    for ( uint64_t i = values.size() - num_pos(); i < values.size(); ++i )
+    {
+      fn( values.at( i ) );
+    }
+  }
+
+  element_type get_first_output( ) const
+  {
+    return values.at( values.size() - num_pos() );
+  }
+
+  void clear()
+  {
+    values.clear();
+    tts.clear();
+    ids.clear();
+    values.emplace_back( 0 );
+    if constexpr ( separate_header )
+    {
+      values.emplace_back( 0 );
+      values.emplace_back( 0 );
+    }
+  }
+
+  void add_inputs( uint32_t n = 1u )
+  {
+    if constexpr ( !separate_header )
+    {
+      assert( num_pis() + n <= 0xff );
+    }
+    values.at( 0u ) += n;
+  }
+
+  element_type add_function( std::vector<element_type> lits, uint32_t func_literal )
+  {
+    if constexpr ( separate_header )
+    {
+      values.at( 2u ) += 1;
+    }
+    else
+    {
+      assert( num_gates() + 1u <= 0xffff );
+      values.at( 0u ) = ( ( num_gates() + 1 ) << 16 ) | ( values.at( 0 ) & 0xffff );
+    }
+
+    values.push_back( lits.size() );
+    for( uint32_t lit : lits )
+      values.push_back( lit );
+    values.push_back( func_literal );
+    return ( num_gates() + num_pis() ) << 1;
+  }
+
+  element_type add_function( std::vector<element_type> lits, kitty::dynamic_truth_table function, double area = 1 )
+  {
+    total_area += area;
+    if constexpr ( separate_header )
+    {
+      values.at( 2u ) += 1;
+    }
+    else
+    {
+      assert( num_gates() + 1u <= 0xffff );
+      values.at( 0u ) = ( ( num_gates() + 1 ) << 16 ) | ( values.at( 0 ) & 0xffff );
+    }
+    /* the id is the index at which we store the number of inputs */
+    element_type  identifier {values.size()}; 
+    /* size of fanins */
+    values.push_back( lits.size() );
+    /* save the fanins */
+    for( uint32_t lit : lits )
+      values.push_back( lit );
+    /* save the identifier to the truth table */
+    values.push_back( tts.size() );
+    tts.push_back( function );
+    ids.push_back(-1);
+    return ( num_gates() + num_pis() ) << 1;
+  }
+
+  element_type add_function( std::vector<element_type> lits, kitty::dynamic_truth_table function, double area, int id )
+  {
+    total_area += area;
+    if constexpr ( separate_header )
+    {
+      values.at( 2u ) += 1;
+    }
+    else
+    {
+      assert( num_gates() + 1u <= 0xffff );
+      values.at( 0u ) = ( ( num_gates() + 1 ) << 16 ) | ( values.at( 0 ) & 0xffff );
+    }
+    /* the id is the index at which we store the number of inputs */
+    element_type  identifier {values.size()}; 
+    /* size of fanins */
+    values.push_back( lits.size() );
+    /* save the fanins */
+    for( uint32_t lit : lits )
+      values.push_back( lit );
+    /* save the identifier to the truth table */
+    values.push_back( tts.size() );
+    tts.push_back( function );
+    ids.push_back( id );
+    return ( num_gates() + num_pis() ) << 1;
+  }
+
+  element_type add_and( element_type lit0, element_type lit1, double area = 1.0 )
+  {
+    assert( lit0 < lit1 );
+
+    total_area += area;
+    if constexpr ( separate_header )
+    {
+      values.at( 2u ) += 1;
+    }
+    else
+    {
+      assert( num_gates() + 1u <= 0xffff );
+      values.at( 0u ) = ( ( num_gates() + 1 ) << 16 ) | ( values.at( 0 ) & 0xffff );
+    }
+
+    /* the id is the index at which we store the number of inputs */
+    element_type  identifier {values.size()}; 
+    /* size of fanins */
+    values.push_back( 2u );
+    /* save the fanins */
+    
+    values.push_back( lit0 );
+    values.push_back( lit1 );
+    /* save the identifier to the truth table */
+    values.push_back( tts.size() );
+    kitty::dynamic_truth_table function(2u);
+    kitty::create_from_binary_string( function, "1000" );
+    tts.push_back( function );
+    ids.push_back( 0 );
+    return ( num_gates() + num_pis() ) << 1;
+  }
+
+  element_type add_xor( element_type lit0, element_type lit1, double area = 1.0 )
+  {
+    assert( lit0 > lit1 );
+
+    total_area += area;
+    if constexpr ( separate_header )
+    {
+      values.at( 2u ) += 1;
+    }
+    else
+    {
+      assert( num_gates() + 1u <= 0xffff );
+      values.at( 0u ) = ( ( num_gates() + 1 ) << 16 ) | ( values.at( 0 ) & 0xffff );
+    }
+
+    /* the id is the index at which we store the number of inputs */
+    element_type  identifier {values.size()}; 
+    /* size of fanins */
+    values.push_back( 2u );
+    /* save the fanins */
+    
+    values.push_back( lit0 );
+    values.push_back( lit1 );
+    /* save the identifier to the truth table */
+    values.push_back( tts.size() );
+    kitty::dynamic_truth_table function(2u);
+    kitty::create_from_binary_string( function, "0110" );
+    tts.push_back( function );
+    ids.push_back( 1 );
+    return ( num_gates() + num_pis() ) << 1;
+  }
+
+  element_type add_maj( element_type lit0, element_type lit1, element_type lit2, double area = 1.0 )
+  {
+
+    total_area += area;
+    if constexpr ( separate_header )
+    {
+      values.at( 2u ) += 1;
+    }
+    else
+    {
+      assert( num_gates() + 1u <= 0xffff );
+      values.at( 0u ) = ( ( num_gates() + 1 ) << 16 ) | ( values.at( 0 ) & 0xffff );
+    }
+
+    /* the id is the index at which we store the number of inputs */
+    element_type  identifier {values.size()}; 
+    /* size of fanins */
+    values.push_back( 3u );
+    /* save the fanins */
+    
+    values.push_back( lit0 );
+    values.push_back( lit1 );
+    values.push_back( lit2 );
+    /* save the identifier to the truth table */
+    values.push_back( tts.size() );
+    kitty::dynamic_truth_table function(3u);
+    kitty::create_from_binary_string( function, "11101000" );
+    tts.push_back( function );
+    ids.push_back( 0 );
+    return ( num_gates() + num_pis() ) << 1;
+  }
+
+  void add_output( element_type lit )
+  {
+    if constexpr ( separate_header )
+    {
+      values.at( 1u ) += 1;
+    }
+    else
+    {
+      assert( num_pos() + 1 <= 0xff );
+      values.at( 0u ) = ( num_pos() + 1 ) << 8 | ( values.at( 0u ) & 0xffff00ff );
+    }
+
+    values.push_back( lit );
+  }
+
+private:
+  std::vector<element_type> values;
+  std::vector<double> area;
+  double total_area{0};
+public:
+  std::vector<kitty::dynamic_truth_table> tts;
+  std::vector<int> ids;
+};
+
+using large_rig_index_list = rig_index_list<true>;
+
+/*! \brief Generates a xag_index_list from a network
+ *
+ * The function requires `ntk` to consist of XOR and AND gates.
+ *
+ * **Required network functions:**
+ * - `foreach_fanin`
+ * - `foreach_gate`
+ * - `get_node`
+ * - `is_and`
+ * - `is_complemented`
+ * - `is_xor`
+ * - `node_to_index`
+ * - `num_gates`
+ * - `num_pis`
+ * - `num_pos`
+ *
+ * \param indices An index list
+ * \param ntk A logic network
+ */
+template<typename Ntk, bool separate_header = false>
+void encode( rig_index_list<separate_header>& indices, Ntk const& ntk )
+{
+  static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
+  static_assert( has_foreach_fanin_v<Ntk>, "Ntk does not implement the foreach_fanin method" );
+  static_assert( has_foreach_gate_v<Ntk>, "Ntk does not implement the foreach_gate method" );
+  static_assert( has_is_and_v<Ntk>, "Ntk does not implement the is_and method" );
+  static_assert( has_get_node_v<Ntk>, "Ntk does not implement the get_node method" );
+  static_assert( has_is_complemented_v<Ntk>, "Ntk does not implement the is_complemented method" );
+  static_assert( has_is_function_v<Ntk>, "Ntk does not implement the is_function method" );
+  static_assert( has_node_to_index_v<Ntk>, "Ntk does not implement the node_to_index method" );
+  static_assert( has_num_gates_v<Ntk>, "Ntk does not implement the num_gates method" );
+  static_assert( has_num_pis_v<Ntk>, "Ntk does not implement the num_pis method" );
+  static_assert( has_num_pos_v<Ntk>, "Ntk does not implement the num_pos method" );
+
+  using node = typename Ntk::node;
+  using signal = typename Ntk::signal;
+
+  ntk.foreach_pi( [&]( node const& n, uint64_t index ) {
+    if ( ntk.node_to_index( n ) != index + 1 )
+    {
+      fmt::print( "[e] network is not in normalized index order (violated by PI {})\n", index + 1 );
+      std::abort();
+    }
+  } );
+
+  /* inputs */
+  indices.add_inputs( ntk.num_pis() );
+
+  int counter{0};
+
+  /* gates */
+  ntk.foreach_gate( [&]( node const& n, uint64_t index ) {
+    assert( ntk.is_function( n ) );
+    if ( ntk.node_to_index( n ) != ntk.num_pis() + index + 1 )
+    {
+      fmt::print( "[e] network is not in normalized index order (violated by node {})\n", ntk.node_to_index( n ) );
+      std::abort();
+    }
+
+    std::vector<uint32_t> lits;
+    ntk.foreach_fanin( n, [&]( signal const& fi, uint64_t index ) {
+      if ( ntk.node_to_index( ntk.get_node( fi ) ) > ntk.node_to_index( n ) )
+      {
+        fmt::print( "[e] node {} not in topological order\n", ntk.node_to_index( n ) );
+        std::abort();
+      }
+      lits.push_back( 2 * ntk.node_to_index( ntk.get_node( fi ) ) + ntk.is_complemented( fi ) );
+      counter++;
+    } );
+
+    if( ntk.has_binding( n ) )
+    {
+      auto g = ntk.get_binding( n );
+      indices.add_function( lits, ntk.node_function( n ), g.area, g.id );
+    }
+    else
+      indices.add_function( lits, ntk.get_function_id( n ) );
+  } );
+
+  /* outputs */
+  ntk.foreach_po( [&]( signal const& f ) {
+    indices.add_output( 2 * ntk.node_to_index( ntk.get_node( f ) ) + ntk.is_complemented( f ) );
+  } );
+
+  if constexpr ( separate_header )
+  {
+    assert( indices.size() == 3u + counter + ntk.num_pos() );
+  }
+  else
+  {
+    assert( indices.size() == 1u + counter + ntk.num_pos() );
+  }
+}
+
+/*! \brief Inserts a rig_index_list into an existing network
+ *
+ * **Required network functions:**
+ * - `create_node`
+ * - `get_constant`
+ *
+ * \param ntk A rig-like network
+ * \param begin Begin iterator of signal inputs
+ * \param end End iterator of signal inputs
+ * \param indices An index list
+ * \param fn Callback function
+ */
+template<bool useSignal = true, typename Ntk, typename BeginIter, typename EndIter, typename Fn, bool separate_header = false>
+void insert( Ntk& ntk, BeginIter begin, EndIter end, rig_index_list<separate_header> const& indices, Fn&& fn )
+{
+  static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
+  static_assert( has_create_node_v<Ntk>, "Ntk does not implement the create_node method" );
+  static_assert( has_get_constant_v<Ntk>, "Ntk does not implement the get_constant method" );
+
+  using node = typename Ntk::node;
+  using signal = typename Ntk::signal;
+
+  if constexpr ( useSignal )
+  {
+    static_assert( std::is_same_v<std::decay_t<typename std::iterator_traits<BeginIter>::value_type>, signal>, "BeginIter value_type must be Ntk signal type" );
+    static_assert( std::is_same_v<std::decay_t<typename std::iterator_traits<EndIter>::value_type>, signal>, "EndIter value_type must be Ntk signal type" );
+  }
+  else
+  {
+    static_assert( std::is_same_v<std::decay_t<typename std::iterator_traits<BeginIter>::value_type>, node>, "BeginIter value_type must be Ntk node type" );
+    static_assert( std::is_same_v<std::decay_t<typename std::iterator_traits<EndIter>::value_type>, node>, "EndIter value_type must be Ntk node type" );
+  }
+
+  assert( uint64_t( std::distance( begin, end ) ) == indices.num_pis() );
+
+  std::vector<signal> signals;
+  signals.emplace_back( ntk.get_constant( false ) );
+  for ( auto it = begin; it != end; ++it )
+  {
+    if constexpr ( useSignal )
+    {
+      signals.push_back( *it );
+    }
+    else
+    {
+      signals.emplace_back( ntk.make_signal( *it ) );
+    }
+  }
+
+  indices.foreach_gate( [&]( std::vector<uint32_t> children_literals, uint32_t function_location ) {
+    std::vector<signal> children;
+    for( int i{0}; i<children_literals.size(); ++i )
+    {
+      uint32_t index = children_literals[i] >> 1;
+      children.push_back( ( children_literals[i] % 2 ) ? ntk.create_not( signals.at( index ) ) : signals.at( index ) );
+    }
+    auto fnew = ntk.create_node( children, indices.tts[function_location] );
+    auto nnew = ntk.get_node( fnew );
+    ntk.add_binding( nnew, indices.ids[function_location] );
+    signals.push_back( fnew );
+  } );
+
+  indices.foreach_po( [&]( uint32_t lit ) {
+    uint32_t const i = lit >> 1;
+    fn( ( lit % 2 ) ? ntk.create_not( signals.at( i ) ) : signals.at( i ) );
+  } );
+}
+
+template<bool useSignal = true, typename BeginIter, typename EndIter, typename Fn, bool separate_header = false>
+void insert_in_aig( aig_network& ntk, BeginIter begin, EndIter end, rig_index_list<separate_header> const& indices, Fn&& fn )
+{
+
+  using node = typename aig_network::node;
+  using signal = typename aig_network::signal;
+
+  if constexpr ( useSignal )
+  {
+    static_assert( std::is_same_v<std::decay_t<typename std::iterator_traits<BeginIter>::value_type>, signal>, "BeginIter value_type must be Ntk signal type" );
+    static_assert( std::is_same_v<std::decay_t<typename std::iterator_traits<EndIter>::value_type>, signal>, "EndIter value_type must be Ntk signal type" );
+  }
+  else
+  {
+    static_assert( std::is_same_v<std::decay_t<typename std::iterator_traits<BeginIter>::value_type>, node>, "BeginIter value_type must be Ntk node type" );
+    static_assert( std::is_same_v<std::decay_t<typename std::iterator_traits<EndIter>::value_type>, node>, "EndIter value_type must be Ntk node type" );
+  }
+
+  assert( uint64_t( std::distance( begin, end ) ) == indices.num_pis() );
+
+  std::vector<signal> signals;
+  signals.emplace_back( ntk.get_constant( false ) );
+  for ( auto it = begin; it != end; ++it )
+  {
+    if constexpr ( useSignal )
+    {
+      signals.push_back( *it );
+    }
+    else
+    {
+      signals.emplace_back( ntk.make_signal( *it ) );
+    }
+  }
+
+  indices.foreach_gate( [&]( std::vector<uint32_t> children_literals, uint32_t function_location ) {
+    std::vector<signal> children;
+    for( int i{0}; i<children_literals.size(); ++i )
+    {
+      uint32_t index = children_literals[i] >> 1;
+      children.push_back( ( children_literals[i] % 2 ) ? ntk.create_not( signals.at( index ) ) : signals.at( index ) );
+      if( children.size() > 2 ) assert(0);
+    }
+    auto fnew = ntk.create_and( children[0], children[1] );
+    auto nnew = ntk.get_node( fnew );
+    signals.push_back( fnew );
+  } );
+
+  if( indices.num_pos() != 1 ) assert(0);
+
+  indices.foreach_po( [&]( uint32_t lit ) {
+    uint32_t const i = lit >> 1;
+    fn( ( lit % 2 ) ? ntk.create_not( signals.at( i ) ) : signals.at( i ) );
+  } );
+}
+
+/*! \brief Converts an xag_index_list to a string
+ *
+ * \param indices An index list
+ * \return A string representation of the index list
+ */
+inline std::string to_index_list_string( rig_index_list<false> const& indices )
+{
+  auto s = fmt::format( "{{{} | {} << 8 | {} << 16", indices.num_pis(), indices.num_pos(), indices.num_gates() );
+
+  indices.foreach_gate( [&]( std::vector<uint32_t> children, uint32_t func_lit ) {
+    for( uint32_t child : children )
+      s += fmt::format( ", {}", child );
+    s += fmt::format( ", {}", func_lit );
+  } );
+
+  indices.foreach_po( [&]( uint32_t lit ) {
+    s += fmt::format( ", {}", lit );
+  } );
+
+  s += "}";
+
+  return s;
+}
+
+inline std::string to_index_list_string( rig_index_list<true> const& indices )
+{
+  auto s = fmt::format( "{{{}, {}, {} |", indices.num_pis(), indices.num_pos(), indices.num_gates() );
+
+  indices.foreach_gate( [&]( std::vector<uint32_t> children, uint32_t func_lit ) {
+    for( uint32_t child : children )
+      s += fmt::format( ", {}", child );
+    s += fmt::format( ": {}", func_lit );
+  } );
+
+  indices.foreach_po( [&]( uint32_t lit ) {
+    s += fmt::format( ". {}", lit );
+  } );
+
+  s += "}";
+
+  return s;
+}
+
+
+#pragma endregion LUT index list
 
 /*! \brief Enumerate structured index_lists
  *

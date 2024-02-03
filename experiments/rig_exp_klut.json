@@ -1,0 +1,474 @@
+[
+  {
+    "entries": [
+      {
+        "benchmark": "adder",
+        "d(klut)": 128,
+        "d(rig)": 128,
+        "d(rig*)": 128,
+        "eq(RIG)": true,
+        "g(klut)": 256,
+        "g(rig)": 256,
+        "g(rig*)": 256,
+        "t(spf)": 0.0
+      },
+      {
+        "benchmark": "bar",
+        "d(klut)": 10,
+        "d(rig)": 10,
+        "d(rig*)": 10,
+        "eq(RIG)": true,
+        "g(klut)": 2055,
+        "g(rig)": 2055,
+        "g(rig*)": 2055,
+        "t(spf)": 0.0
+      },
+      {
+        "benchmark": "div",
+        "d(klut)": 2330,
+        "d(rig)": 2330,
+        "d(rig*)": 2330,
+        "eq(RIG)": true,
+        "g(klut)": 31199,
+        "g(rig)": 31199,
+        "g(rig*)": 31199,
+        "t(spf)": 0.0
+      },
+      {
+        "benchmark": "hyp",
+        "d(klut)": 8665,
+        "d(rig)": 8665,
+        "d(rig*)": 8665,
+        "eq(RIG)": true,
+        "g(klut)": 81205,
+        "g(rig)": 81205,
+        "g(rig*)": 81205,
+        "t(spf)": 0.0
+      },
+      {
+        "benchmark": "log2",
+        "d(klut)": 174,
+        "d(rig)": 174,
+        "d(rig*)": 174,
+        "eq(RIG)": true,
+        "g(klut)": 13251,
+        "g(rig)": 13251,
+        "g(rig*)": 13251,
+        "t(spf)": 0.0
+      },
+      {
+        "benchmark": "max",
+        "d(klut)": 159,
+        "d(rig)": 159,
+        "d(rig*)": 159,
+        "eq(RIG)": true,
+        "g(klut)": 1304,
+        "g(rig)": 1304,
+        "g(rig*)": 1304,
+        "t(spf)": 0.0
+      },
+      {
+        "benchmark": "multiplier",
+        "d(klut)": 131,
+        "d(rig)": 131,
+        "d(rig*)": 131,
+        "eq(RIG)": true,
+        "g(klut)": 10102,
+        "g(rig)": 10102,
+        "g(rig*)": 10102,
+        "t(spf)": 0.0
+      },
+      {
+        "benchmark": "sin",
+        "d(klut)": 128,
+        "d(rig)": 128,
+        "d(rig*)": 128,
+        "eq(RIG)": true,
+        "g(klut)": 2420,
+        "g(rig)": 2420,
+        "g(rig*)": 2420,
+        "t(spf)": 0.0
+      },
+      {
+        "benchmark": "sqrt",
+        "d(klut)": 3984,
+        "d(rig)": 3984,
+        "d(rig*)": 3984,
+        "eq(RIG)": true,
+        "g(klut)": 14285,
+        "g(rig)": 14285,
+        "g(rig*)": 14285,
+        "t(spf)": 0.0
+      },
+      {
+        "benchmark": "square",
+        "d(klut)": 125,
+        "d(rig)": 125,
+        "d(rig*)": 125,
+        "eq(RIG)": true,
+        "g(klut)": 7864,
+        "g(rig)": 7864,
+        "g(rig*)": 7864,
+        "t(spf)": 0.0
+      },
+      {
+        "benchmark": "arbiter",
+        "d(klut)": 45,
+        "d(rig)": 45,
+        "d(rig*)": 45,
+        "eq(RIG)": true,
+        "g(klut)": 6188,
+        "g(rig)": 6188,
+        "g(rig*)": 6188,
+        "t(spf)": 0.0
+      },
+      {
+        "benchmark": "cavlc",
+        "d(klut)": 11,
+        "d(rig)": 11,
+        "d(rig*)": 11,
+        "eq(RIG)": true,
+        "g(klut)": 417,
+        "g(rig)": 417,
+        "g(rig*)": 417,
+        "t(spf)": 0.0
+      },
+      {
+        "benchmark": "ctrl",
+        "d(klut)": 5,
+        "d(rig)": 5,
+        "d(rig*)": 5,
+        "eq(RIG)": true,
+        "g(klut)": 79,
+        "g(rig)": 79,
+        "g(rig*)": 79,
+        "t(spf)": 0.0
+      },
+      {
+        "benchmark": "dec",
+        "d(klut)": 3,
+        "d(rig)": 3,
+        "d(rig*)": 3,
+        "eq(RIG)": true,
+        "g(klut)": 296,
+        "g(rig)": 296,
+        "g(rig*)": 296,
+        "t(spf)": 0.0
+      },
+      {
+        "benchmark": "i2c",
+        "d(klut)": 12,
+        "d(rig)": 12,
+        "d(rig*)": 12,
+        "eq(RIG)": true,
+        "g(klut)": 750,
+        "g(rig)": 750,
+        "g(rig*)": 750,
+        "t(spf)": 0.0
+      },
+      {
+        "benchmark": "int2float",
+        "d(klut)": 9,
+        "d(rig)": 9,
+        "d(rig*)": 9,
+        "eq(RIG)": true,
+        "g(klut)": 145,
+        "g(rig)": 145,
+        "g(rig*)": 145,
+        "t(spf)": 0.0
+      },
+      {
+        "benchmark": "mem_ctrl",
+        "d(klut)": 76,
+        "d(rig)": 76,
+        "d(rig*)": 76,
+        "eq(RIG)": true,
+        "g(klut)": 25426,
+        "g(rig)": 25387,
+        "g(rig*)": 25387,
+        "t(spf)": 0.0
+      },
+      {
+        "benchmark": "priority",
+        "d(klut)": 124,
+        "d(rig)": 124,
+        "d(rig*)": 124,
+        "eq(RIG)": true,
+        "g(klut)": 412,
+        "g(rig)": 412,
+        "g(rig*)": 412,
+        "t(spf)": 0.0
+      },
+      {
+        "benchmark": "router",
+        "d(klut)": 30,
+        "d(rig)": 30,
+        "d(rig*)": 30,
+        "eq(RIG)": true,
+        "g(klut)": 128,
+        "g(rig)": 128,
+        "g(rig*)": 128,
+        "t(spf)": 0.0
+      },
+      {
+        "benchmark": "voter",
+        "d(klut)": 44,
+        "d(rig)": 44,
+        "d(rig*)": 44,
+        "eq(RIG)": true,
+        "g(klut)": 5315,
+        "g(rig)": 5315,
+        "g(rig*)": 5315,
+        "t(spf)": 0.0
+      },
+      {
+        "benchmark": "c17",
+        "d(klut)": 2,
+        "d(rig)": 2,
+        "d(rig*)": 2,
+        "eq(RIG)": true,
+        "g(klut)": 4,
+        "g(rig)": 4,
+        "g(rig*)": 4,
+        "t(spf)": 0.0
+      },
+      {
+        "benchmark": "c432",
+        "d(klut)": 19,
+        "d(rig)": 19,
+        "d(rig*)": 19,
+        "eq(RIG)": true,
+        "g(klut)": 108,
+        "g(rig)": 108,
+        "g(rig*)": 108,
+        "t(spf)": 0.0
+      },
+      {
+        "benchmark": "c499",
+        "d(klut)": 10,
+        "d(rig)": 10,
+        "d(rig*)": 10,
+        "eq(RIG)": true,
+        "g(klut)": 114,
+        "g(rig)": 114,
+        "g(rig*)": 114,
+        "t(spf)": 0.0
+      },
+      {
+        "benchmark": "c880",
+        "d(klut)": 17,
+        "d(rig)": 17,
+        "d(rig*)": 17,
+        "eq(RIG)": true,
+        "g(klut)": 171,
+        "g(rig)": 171,
+        "g(rig*)": 171,
+        "t(spf)": 0.0
+      },
+      {
+        "benchmark": "c1355",
+        "d(klut)": 10,
+        "d(rig)": 10,
+        "d(rig*)": 10,
+        "eq(RIG)": true,
+        "g(klut)": 114,
+        "g(rig)": 114,
+        "g(rig*)": 114,
+        "t(spf)": 0.0
+      },
+      {
+        "benchmark": "c1908",
+        "d(klut)": 13,
+        "d(rig)": 13,
+        "d(rig*)": 13,
+        "eq(RIG)": true,
+        "g(klut)": 114,
+        "g(rig)": 114,
+        "g(rig*)": 114,
+        "t(spf)": 0.0
+      },
+      {
+        "benchmark": "c2670",
+        "d(klut)": 13,
+        "d(rig)": 13,
+        "d(rig*)": 13,
+        "eq(RIG)": true,
+        "g(klut)": 293,
+        "g(rig)": 280,
+        "g(rig*)": 280,
+        "t(spf)": 0.0
+      },
+      {
+        "benchmark": "c3540",
+        "d(klut)": 24,
+        "d(rig)": 24,
+        "d(rig*)": 24,
+        "eq(RIG)": true,
+        "g(klut)": 556,
+        "g(rig)": 555,
+        "g(rig*)": 555,
+        "t(spf)": 0.0
+      },
+      {
+        "benchmark": "c5315",
+        "d(klut)": 17,
+        "d(rig)": 17,
+        "d(rig*)": 17,
+        "eq(RIG)": true,
+        "g(klut)": 815,
+        "g(rig)": 798,
+        "g(rig*)": 798,
+        "t(spf)": 0.0
+      },
+      {
+        "benchmark": "c6288",
+        "d(klut)": 31,
+        "d(rig)": 31,
+        "d(rig*)": 31,
+        "eq(RIG)": true,
+        "g(klut)": 721,
+        "g(rig)": 721,
+        "g(rig*)": 721,
+        "t(spf)": 0.0
+      },
+      {
+        "benchmark": "c7552",
+        "d(klut)": 19,
+        "d(rig)": 19,
+        "d(rig*)": 19,
+        "eq(RIG)": true,
+        "g(klut)": 604,
+        "g(rig)": 603,
+        "g(rig*)": 603,
+        "t(spf)": 0.0
+      }
+    ],
+    "version": "69600a41"
+  },
+  {
+    "entries": [
+      {
+        "benchmark": "c17",
+        "d(klut)": 2,
+        "d(rig)": 2,
+        "d(rig*)": 2,
+        "eq(RIG)": true,
+        "g(klut)": 4,
+        "g(rig)": 4,
+        "g(rig*)": 4,
+        "t(spf)": 0.0
+      },
+      {
+        "benchmark": "c432",
+        "d(klut)": 19,
+        "d(rig)": 19,
+        "d(rig*)": 19,
+        "eq(RIG)": true,
+        "g(klut)": 108,
+        "g(rig)": 107,
+        "g(rig*)": 107,
+        "t(spf)": 0.0
+      },
+      {
+        "benchmark": "c499",
+        "d(klut)": 10,
+        "d(rig)": 10,
+        "d(rig*)": 10,
+        "eq(RIG)": true,
+        "g(klut)": 114,
+        "g(rig)": 114,
+        "g(rig*)": 114,
+        "t(spf)": 0.0
+      },
+      {
+        "benchmark": "c880",
+        "d(klut)": 17,
+        "d(rig)": 17,
+        "d(rig*)": 17,
+        "eq(RIG)": true,
+        "g(klut)": 171,
+        "g(rig)": 160,
+        "g(rig*)": 160,
+        "t(spf)": 0.0
+      },
+      {
+        "benchmark": "c1355",
+        "d(klut)": 10,
+        "d(rig)": 10,
+        "d(rig*)": 10,
+        "eq(RIG)": true,
+        "g(klut)": 114,
+        "g(rig)": 114,
+        "g(rig*)": 114,
+        "t(spf)": 0.0
+      },
+      {
+        "benchmark": "c1908",
+        "d(klut)": 13,
+        "d(rig)": 13,
+        "d(rig*)": 13,
+        "eq(RIG)": true,
+        "g(klut)": 114,
+        "g(rig)": 101,
+        "g(rig*)": 101,
+        "t(spf)": 0.0
+      },
+      {
+        "benchmark": "c2670",
+        "d(klut)": 13,
+        "d(rig)": 13,
+        "d(rig*)": 13,
+        "eq(RIG)": true,
+        "g(klut)": 293,
+        "g(rig)": 275,
+        "g(rig*)": 275,
+        "t(spf)": 0.0
+      },
+      {
+        "benchmark": "c3540",
+        "d(klut)": 24,
+        "d(rig)": 24,
+        "d(rig*)": 24,
+        "eq(RIG)": true,
+        "g(klut)": 556,
+        "g(rig)": 525,
+        "g(rig*)": 525,
+        "t(spf)": 0.0
+      },
+      {
+        "benchmark": "c5315",
+        "d(klut)": 17,
+        "d(rig)": 17,
+        "d(rig*)": 17,
+        "eq(RIG)": true,
+        "g(klut)": 815,
+        "g(rig)": 728,
+        "g(rig*)": 728,
+        "t(spf)": 0.0
+      },
+      {
+        "benchmark": "c6288",
+        "d(klut)": 31,
+        "d(rig)": 31,
+        "d(rig*)": 31,
+        "eq(RIG)": true,
+        "g(klut)": 721,
+        "g(rig)": 721,
+        "g(rig*)": 721,
+        "t(spf)": 0.0
+      },
+      {
+        "benchmark": "c7552",
+        "d(klut)": 19,
+        "d(rig)": 19,
+        "d(rig*)": 19,
+        "eq(RIG)": true,
+        "g(klut)": 604,
+        "g(rig)": 555,
+        "g(rig*)": 555,
+        "t(spf)": 0.0
+      }
+    ],
+    "version": "7a8dd19a"
+  }
+]

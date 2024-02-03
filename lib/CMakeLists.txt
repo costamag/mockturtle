@@ -94,3 +94,8 @@ if (ENABLE_MATPLOTLIB AND NOT TARGET matplot)
   target_include_directories(matplot SYSTEM INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/matplot/ ${Python3_INCLUDE_DIRS} ${Python3_NumPy_INCLUDE_DIRS})
   target_link_libraries(matplot INTERFACE Python3::Python Python3::NumPy)
 endif()
+
+if (NOT TARGET liblpsolve)
+  add_subdirectory(lpsolve)
+  target_include_directories(liblpsolve SYSTEM INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/lpsolve)
+endif()

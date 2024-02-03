@@ -214,7 +214,9 @@ public:
                    std::is_same_v<index_list_type, mig_index_list> ||
                    std::is_same_v<index_list_type, xag_index_list<true>> ||
                    std::is_same_v<index_list_type, xag_index_list<false>> ||
-                   std::is_same_v<index_list_type, muxig_index_list>, "Unknown type of index list" );
+                   std::is_same_v<index_list_type, muxig_index_list> ||
+                   std::is_same_v<index_list_type, rig_index_list<true>> ||
+                   std::is_same_v<index_list_type, rig_index_list<false>> , "Unknown type of index list" );
     assert( uint64_t( std::distance( divs_begin, divs_end ) ) == id_list.num_pis() && "Size of the provided divisor list does not match number of PIs of the index list" );
     assert( id_list.num_pos() == 1u && "Index list must have exactly one PO" );
 
@@ -272,6 +274,20 @@ public:
         assert( node_pos1 < lits.size() );
         assert( node_pos2 < lits.size() );
         lits.emplace_back( add_clauses_for_3input_gate( lit_not_cond( lits[node_pos0], id_lit0 & 0x1 ), lit_not_cond( lits[node_pos1], id_lit1 & 0x1 ), lit_not_cond( lits[node_pos2], id_lit2 & 0x1 ), std::nullopt, MUX ) );
+      } );
+    }
+    if constexpr ( std::is_same_v<index_list_type, rig_index_list<true>> || std::is_same_v<index_list_type, rig_index_list<false>> )
+    { // TODO: add clauses for function
+      id_list.foreach_gate( [&]( std::vector<uint32_t> children, uint32_t func_literal ) {
+        std::vector<uint32_t> nodes;
+        std::vector<bill::lit_type> lits_not_cond;
+        for( uint32_t id_lit : children )
+        {
+          nodes.push_back( id_lit >> 1u );
+          assert( nodes.back() < lits.size() );
+          lits_not_cond.push_back( lit_not_cond( lits[nodes.back()], id_lit & 0x1 ) );
+        }
+        lits.emplace_back( add_clauses_for_function( lits_not_cond, id_list.tts[func_literal] ) );
       } );
     }
 
@@ -521,6 +537,10 @@ private:
     {
       detail::on_ite<add_clause_fn_t>( node_lit, child_lits[0], child_lits[1], child_lits[2], add_clause_fn );
     }
+    else if( ntk.is_function( n ) )
+    {
+      detail::on_function( node_lit, child_lits, ntk.node_function( n ), add_clause_fn );
+    }
     return node_lit;
   }
 
@@ -576,6 +596,13 @@ private:
       detail::on_ite<add_clause_fn_t>( nlit, a, b, c, add_clause_fn );
     }
 
+    return nlit;
+  }
+
+  bill::lit_type add_clauses_for_function( std::vector<bill::lit_type> lits, kitty::dynamic_truth_table func, std::optional<bill::lit_type> d = std::nullopt )
+  {
+    auto nlit = d ? *d : bill::lit_type( solver.add_variable(), bill::lit_type::polarities::positive );
+    detail::on_function<add_clause_fn_t>( nlit, lits, func, add_clause_fn );
     return nlit;
   }
 

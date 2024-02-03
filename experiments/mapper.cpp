@@ -80,8 +80,7 @@ int main()
   /* library to map to MIGs */
   mig_npn_resynthesis resyn{ true };
   exact_library_params eps;
-  eps.np_classification = true;
-  exact_library<mig_network> exact_lib( resyn, eps );
+  exact_library<mig_network, mig_npn_resynthesis> exact_lib( resyn, eps );
 
   /* library to map to technology */
   std::vector<gate> gates;
@@ -95,7 +94,7 @@ int main()
   tech_library_params tps;
   tech_library<5, classification_type::np_configurations> tech_lib( gates, tps );
 
-  for ( auto const& benchmark : epfl_benchmarks() )
+  for ( auto const& benchmark : iscas_benchmarks( experiments::c432 ) )
   {
     fmt::print( "[i] processing {}\n", benchmark );
     mig_network mig;
@@ -126,6 +125,8 @@ int main()
     map_stats st2;
 
     binding_view<klut_network> res2 = map( aig, tech_lib, ps2, &st2 );
+
+    res2.report_gates_usage();
 
     const auto cec1 = benchmark == "hyp" ? true : abc_cec( res1, benchmark );
     const auto cec2 = benchmark == "hyp" ? true : abc_cec( res2, benchmark );

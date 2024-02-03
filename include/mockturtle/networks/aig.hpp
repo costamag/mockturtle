@@ -880,6 +880,11 @@ public:
     return n > 0 && !is_ci( n );
   }
 
+  bool is_function( node const& n ) const
+  {
+    return false;
+  }
+
   bool is_or( node const& n ) const
   {
     (void)n;

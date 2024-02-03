@@ -463,6 +463,28 @@ std::vector<std::string> epfl_benchmarks( uint64_t selection = epfl )
   return result;
 }
 
+std::vector<std::string> resub_benchmarks( uint64_t selection = epfl )
+{
+  std::vector<std::string> result;
+
+  for ( uint32_t i = 47u; i < 58u; ++i )
+  {
+    if ( ( selection >> i ) & 1 )
+    {
+      result.push_back( benchmarks[i] );
+    }
+  }
+
+  for ( uint32_t i = 0u; i < 20u; ++i )
+  {
+    if ( ( selection >> i ) & 1 )
+    {
+      result.push_back( benchmarks[i] );
+    }
+  }
+  return result;
+}
+
 std::vector<std::string> iwls_benchmarks( uint64_t selection = iwls )
 {
   std::vector<std::string> result;
