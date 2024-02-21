@@ -90,6 +90,7 @@ int main( int argc, char* argv[] )
   }
 
   sequential<aig_network> saig2 = combinatorial_to_sequential( aig, st );
+  print_stats( saig2 );
 
 //  /* library to map to technology */
 //  std::vector<gate> gates;

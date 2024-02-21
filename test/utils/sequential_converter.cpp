@@ -71,12 +71,15 @@ TEST_CASE( "create and use register in an AIG and convert to combinatorial", "[a
   CHECK( st.num_pos == 3u );
   CHECK( caig.num_pis() == st.num_pis + saig.num_registers() );
   CHECK( caig.num_gates() == saig.num_gates() );
+  CHECK( caig.num_gates() == 2u );
+  CHECK( saig.num_gates() == 2u );
   CHECK( caig.num_pos() == st.num_pos + saig.num_registers() );
 
   sequential<aig_network> saig2 = combinatorial_to_sequential( caig, st );
   CHECK( saig2.num_pis() == 3u );
   CHECK( saig2.num_pos() == 3u );
   CHECK( saig2.num_registers() == 1u );
+  CHECK( saig2.num_gates() == 2 );
 
 
 }

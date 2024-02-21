@@ -241,7 +241,6 @@ signal<sequential<Ntk>> generate_sequential_rec( Ntk const& cntk, sequential<Ntk
   }
 
   if( old_to_new.has(n) ) return old_to_new[n];
-  return sntk.get_constant(false);
 
   std::vector<signal<sequential<Ntk>>> children;
   cntk.foreach_fanin( n, [&]( auto child, auto ) {
