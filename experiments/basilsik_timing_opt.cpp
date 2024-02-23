@@ -41,8 +41,6 @@ using namespace mockturtle;
 using namespace experiments;
 
 uint32_t CALL{0};
-//using experiment_t = experiments::experiment<std::string, uint32_t, uint32_t, std::string>;
-//experiment_t exp_res( "basilsik", "benchmark", "gates", "depth", "method" );
 
 bool read_file( sequential<aig_network>&, std::string const& );
 void print_aig_commands();
@@ -67,6 +65,8 @@ aig_network mig_to_aig( Ntk const&, double required_time = std::numeric_limits<d
 template<class Ntk>
 Ntk abc_opto( Ntk const&, std::string, std::string );
 
+void abc_map( sequential<aig_network> const&, std::string );
+
 int main( int argc, char* argv[] )
 {
 
@@ -80,6 +80,8 @@ int main( int argc, char* argv[] )
 
   sequential<aig_network> saig;
   read_file( saig, benchmark );
+  printf("#pis = %5d #pos = %5d #reg = %5d\n", saig.num_pis(), saig.num_pos(), saig.num_registers());
+
 
   network_converters_stats st;
   aig_network aig = sequential_to_combinatorial( saig, st );
@@ -94,14 +96,14 @@ int main( int argc, char* argv[] )
     while( true )
     {
       getline( std::cin, command );
-      if( command == "aig->mig" || command == "exit" )
+      if( command == "->mig" || command == "map" )
         break;
       if( !optimize_aig( aig, command ) )
         printf("wrong command\n");
       
       print_stats( aig, true );
     }
-    if( command == "exit" )
+    if( command == "map" )
       break;
 
     print_mig_commands();
@@ -113,7 +115,7 @@ int main( int argc, char* argv[] )
     while( true )
     {
       getline( std::cin, command );
-      if( command == "mig->aig"  )
+      if( command == "->aig"  )
         break;
       if( !optimize_mig( depth_mig, command ) )
         printf("wrong command\n");
@@ -126,7 +128,7 @@ int main( int argc, char* argv[] )
 
     print_end_commands();
     getline( std::cin, command );
-    if( command == "exit" )
+    if( command == "map" )
       break;
   }
 
@@ -137,7 +139,10 @@ int main( int argc, char* argv[] )
   print_stats( aig, true );
 
   sequential<aig_network> saig2 = combinatorial_to_sequential( aig, st );
-  //print_stats( saig2 );
+  print_stats( saig2 );
+  printf("#pis = %5d #pos = %5d #reg = %5d\n", saig2.num_pis(), saig2.num_pos(), saig2.num_registers());
+
+  abc_map( saig2, std::string("map") );
 
   return 0;
 }
@@ -157,19 +162,20 @@ bool read_file( sequential<aig_network>& saig, std::string const& path )
 
 void print_aig_commands()
 {
-  printf("=================================\n");
-  printf("            AIG                  \n");
-  printf("---------------------------------\n");
-  printf("resyn2rs    |                    \n");
-  printf("it-resyn2rs | (resyn2rs)^infty   \n");
-  printf("compress2rs |                    \n");
-  printf("a-map       | if -a; fraig;      \n");
-  printf("d-map       | if -g; fraig;      \n");
-  printf("lazy        | if -y -K 6; fraig; \n");
-  printf("---------------------------------\n");
-  printf("exit                             \n");
-  printf("aig->mig    | map to MIGs        \n");
-  printf("---------------------------------\n\n");
+  printf("===============================================\n");
+  printf("            AIG                                \n");
+  printf("-----------------------------------------------\n");
+  printf("resyn2rs    |                                  \n");
+  printf("it-resyn2rs | (resyn2rs)^infty                 \n");
+  printf("compress2rs |                                  \n");
+  printf("a-map       | if -a; fraig;                    \n");
+  printf("d-map       | if -g; fraig;                    \n");
+  printf("it-rs-dmap  | (if -g; fraig; resyn2rs;)^infty  \n");
+  printf("lazy        | if -y -K 6; fraig;               \n");
+  printf("-----------------------------------------------\n");
+  printf("map                                            \n");
+  printf("->mig       | map to MIGs                      \n");
+  printf("---------------------------------------------\n\n");
 
 }
 
@@ -182,7 +188,7 @@ void print_mig_commands()
   printf("selective                        \n");
   printf("aggressive                       \n");
   printf("---------------------------------\n");
-  printf("mig->aig    | map to MIGs        \n");
+  printf("->aig       | map to MIGs        \n");
   printf("---------------------------------\n");
 }
 
@@ -192,7 +198,7 @@ void print_end_commands()
   printf("            END                  \n");
   printf("---------------------------------\n");
   printf("restart                          \n");
-  printf("exit                             \n");
+  printf("map                              \n");
   printf("---------------------------------\n");
 }
 
@@ -265,6 +271,17 @@ bool optimize_aig( aig_network& ntk, std::string const& cmd )
     }
     return true;
   }  
+  if( cmd == "it-rs-dmap" )
+  {
+    int nT = ntk.num_gates()+1;
+    while( nT > ntk.num_gates() )
+    {
+      nT=ntk.num_gates();
+      ntk = abc_opto( ntk, cmd+std::to_string(CALL++), "if -g; fraig; resyn2rs" );
+      print_stats(ntk);
+    }
+    return true;
+  }
   if( cmd == "compress2rs" )
   {
     auto tmp = abc_opto( ntk, cmd+std::to_string(CALL++), "compress2rs" );
@@ -353,4 +370,29 @@ Ntk abc_opto( Ntk const& ntk, std::string str_code, std::string abc_script )
 
   return res;
 }
+
 #pragma endregion optimization
+
+#pragma region mapping
+void abc_map( sequential<aig_network> const& ntk, std::string str_code )
+{
+  std::string readlib_script = "read_lib -S 20 -G 20 ../experiments/cell_libraries/basilsik.lib; ";
+  std::string read_constraints_script = "read_constr ../experiments/cell_libraries/basilsik.constr; ";
+  std::string mapping_script = "map; ";
+  write_blif( ntk, "/tmp/"+str_code+".blif" );
+  std::string command = "abc -q \""+readlib_script+read_constraints_script +"r /tmp/"+str_code+".blif; " + mapping_script + "; ps; \"";//write_verilog /tmp/" + str_code + ".v\"";
+
+  std::array<char, 128> buffer;
+  std::string result;
+  std::unique_ptr<FILE, decltype( &pclose )> pipe( popen( command.c_str(), "r" ), pclose );
+  if ( !pipe )
+  {
+    throw std::runtime_error( "popen() failed" );
+  }
+  while ( fgets( buffer.data(), buffer.size(), pipe.get() ) != nullptr )
+  {
+    result += buffer.data();
+  }
+  std::cout << result << std::endl;
+}
+#pragma endregion mapping
