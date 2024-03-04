@@ -35,6 +35,7 @@
   \author Mathias Soeken
   \author Max Austin
   \author Siang-Yun (Sonia) Lee
+  \author Andrea Costamagna
 */
 
 #pragma once
@@ -43,6 +44,8 @@
 #include <iostream>
 #include <unordered_map>
 #include <vector>
+#include <queue>
+#include <set>
 
 #include <parallel_hashmap/phmap.h>
 
@@ -78,6 +81,11 @@ public:
   bool operator!=( node_pointer<PointerFieldSize> const& other ) const
   {
     return data != other.data;
+  }
+
+  bool operator<( node_pointer<PointerFieldSize> const& other ) const
+  {
+    return data < other.data;
   }
 };
 
@@ -232,6 +240,49 @@ struct storage
   phmap::flat_hash_map<node_type, uint64_t, NodeHasher> hash;
 
   T data;
+};
+
+template<typename Node, typename T = empty_storage_data, typename NodeHasher = node_hash<Node>>
+struct smart_storage
+{
+  smart_storage()
+  {
+    nodes.reserve( 10000u );
+    hash.reserve( 10000u );
+
+    /* we generally reserve the first node for a constant */
+    nodes.emplace_back();
+  }
+
+  uint64_t get_index()
+  {
+    uint64_t new_index;
+
+    //if( available_indeces.size() == 0 ) //BEFORE ADDING IT CHECK THAT YOU CAN REMOVE THE NODE FROM THE HASH
+    {
+      return nodes.size();
+    }
+  //  else
+  //  {
+  //    new_index = available_indeces.front();
+  //    available_indeces.pop();
+  //    return new_index;
+  //  }
+  }
+
+  using node_type = Node;
+
+  uint32_t trav_id = 0u;
+
+  std::vector<node_type> nodes;
+  std::vector<uint64_t> inputs;
+  std::vector<typename node_type::pointer_type> outputs;
+
+  phmap::flat_hash_map<node_type, uint64_t, NodeHasher> hash;
+
+  T data;
+
+  std::queue<uint64_t> available_indeces; 
 };
 
 template<typename Node, typename T = empty_storage_data>

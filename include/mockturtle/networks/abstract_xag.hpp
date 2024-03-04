@@ -734,6 +734,11 @@ public:
     const auto& node = _storage->nodes[n];
     return node.fanin_size != 0u && ( node.fanin[0] < node.fanin[1] );
   }
+
+  bool is_function( node const& n ) const
+  {
+    return false;
+  }
 #pragma endregion
 
 #pragma region Value simulation

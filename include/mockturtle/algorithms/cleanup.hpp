@@ -1,16 +1,16 @@
 /* mockturtle: C++ logic network library
- * Copyright (C) 2018-2022  EPFL
+ * Copylight (C) 2018-2022  EPFL
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
  * files (the "Software"), to deal in the Software without
- * restriction, including without limitation the rights to use,
+ * restriction, including without limitation the lights to use,
  * copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the
  * Software is furnished to do so, subject to the following
  * conditions:
  *
- * The above copyright notice and this permission notice shall be
+ * The above copylight notice and this permission notice shall be
  * included in all copies or substantial portions of the Software.
  *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
@@ -35,6 +35,7 @@
 #pragma once
 
 #include "../networks/crossed.hpp"
+#include "../networks/lig.hpp"
 #include "../traits.hpp"
 #include "../utils/node_map.hpp"
 #include "../views/topo_view.hpp"
@@ -203,7 +204,7 @@ void cleanup_dangling_impl( NtkSrc const& ntk, NtkDest& dest, LeavesIterator beg
             break;
           }
         }
-        if constexpr ( has_is_function_v<NtkSrc> )
+        if constexpr ( has_is_function_v<NtkSrc> && std::is_same_v<typename NtkSrc::base_type, rils::lig_network> )
         {
           static_assert( has_create_node_v<NtkDest>, "NtkDest cannot create arbitrary function gates" );
           old_to_new[node] = dest.create_node( children, ntk.node_function( node ) );
@@ -332,6 +333,97 @@ void cleanup_luts_impl( Ntk const& ntk, Ntk& dest, LeavesIterator begin, LeavesI
       if ( dest.is_constant( old_to_new[f] ) )
       {
         if ( dest.constant_value( old_to_new[f] ) != ntk.is_complemented( f ) )
+        {
+          kitty::cofactor1_inplace( func, i );
+        }
+        else
+        {
+          kitty::cofactor0_inplace( func, i );
+        }
+      }
+    } );
+
+    const auto support = kitty::min_base_inplace( func );
+    auto new_func = kitty::shrink_to( func, static_cast<unsigned int>( support.size() ) );
+
+    std::vector<signal<Ntk>> children;
+    if ( auto var = support.begin(); var != support.end() )
+    {
+      ntk.foreach_fanin( n, [&]( auto const& f, auto i ) {
+        if ( *var == i )
+        {
+          auto const& new_f = old_to_new[f];
+          children.push_back( ntk.is_complemented( f ) ? dest.create_not( new_f ) : new_f );
+          if ( ++var == support.end() )
+          {
+            return false;
+          }
+        }
+        return true;
+      } );
+    }
+
+    if ( new_func.num_vars() == 0u )
+    {
+      old_to_new[n] = dest.get_constant( !kitty::is_const0( new_func ) );
+    }
+    else if ( new_func.num_vars() == 1u )
+    {
+      old_to_new[n] = *( new_func.begin() ) == 0b10 ? children.front() : dest.create_not( children.front() );
+    }
+    else
+    {
+      old_to_new[n] = dest.create_node( children, new_func );
+    }
+
+    if constexpr ( has_has_name_v<Ntk> && has_get_name_v<Ntk> && has_set_name_v<Ntk> )
+    {
+      auto const s = ntk.make_signal( n );
+      if ( ntk.has_name( s ) )
+      {
+        dest.set_name( old_to_new[n], ntk.get_name( s ) );
+      }
+      if ( ntk.has_name( !s ) )
+      {
+        dest.set_name( !old_to_new[n], ntk.get_name( !s ) );
+      }
+    }
+  } );
+}
+
+template<typename Ntk, typename LeavesIterator>
+void cleanup_ligs_impl( Ntk const& ntk, Ntk& dest, LeavesIterator begin, LeavesIterator end, node_map<signal<Ntk>, Ntk>& old_to_new )
+{
+  /* constants */
+  old_to_new[ntk.get_constant( false )] = dest.get_constant( false );
+
+  /* create inputs in the same order */
+  auto it = begin;
+  ntk.foreach_pi( [&]( auto node ) {
+    old_to_new[node] = *it++;
+  } );
+  if constexpr ( has_foreach_ro_v<Ntk> )
+  {
+    ntk.foreach_ro( [&]( auto node ) {
+      old_to_new[node] = *it++;
+    } );
+  }
+  assert( it == end );
+  (void)end;
+
+  /* iterate through nodes */
+  topo_view topo{ ntk };
+  topo.foreach_node( [&]( auto const& n ) {
+    if ( ntk.is_constant( n ) || ntk.is_ci( n ) )
+      return; /* continue */
+
+    auto func = ntk.node_function( n );
+
+    /* constant propagation */
+    ntk.foreach_fanin( n, [&]( auto const& f, auto i ) {
+      if ( dest.is_constant( old_to_new[f] ) )
+      {
+        if ( ntk.is_complemented( f ) )
         {
           kitty::cofactor1_inplace( func, i );
         }
@@ -572,6 +664,12 @@ template<class NtkSrc, class NtkDest = NtkSrc>
 
   NtkDest dest;
 
+  if constexpr ( std::is_same_v<NtkDest, rils::lig_network> )
+  {
+    dest.set_library( ntk._library );
+    dest._is_smart = ntk._is_smart;
+  }
+
   std::vector<signal<NtkDest>> cis;
   detail::clone_inputs( ntk, dest, cis, remove_dangling_PIs );
 
@@ -648,6 +746,41 @@ template<class Ntk>
 
   node_map<signal<Ntk>, Ntk> old_to_new( ntk );
   detail::cleanup_luts_impl( ntk, dest, cis.begin(), cis.end(), old_to_new );
+
+  detail::clone_outputs( ntk, dest, old_to_new );
+
+  return dest;
+}
+
+template<class Ntk>
+[[nodiscard]] Ntk cleanup_ligs( Ntk const& ntk )
+{
+  static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
+  static_assert( has_get_node_v<Ntk>, "Ntk does not implement the get_node method" );
+  static_assert( has_get_constant_v<Ntk>, "Ntk does not implement the get_constant method" );
+  static_assert( has_foreach_pi_v<Ntk>, "Ntk does not implement the foreach_pi method" );
+  static_assert( has_foreach_po_v<Ntk>, "Ntk does not implement the foreach_po method" );
+  static_assert( has_foreach_node_v<Ntk>, "Ntk does not implement the foreach_node method" );
+  static_assert( has_foreach_fanin_v<Ntk>, "Ntk does not implement the foreach_fanin method" );
+  static_assert( has_create_pi_v<Ntk>, "Ntk does not implement the create_pi method" );
+  static_assert( has_create_po_v<Ntk>, "Ntk does not implement the create_po method" );
+  static_assert( has_create_node_v<Ntk>, "Ntk does not implement the create_node method" );
+  static_assert( has_create_not_v<Ntk>, "Ntk does not implement the create_not method" );
+  static_assert( has_is_constant_v<Ntk>, "Ntk does not implement the is_constant method" );
+  static_assert( has_constant_value_v<Ntk>, "Ntk does not implement the constant_value method" );
+  static_assert( has_is_pi_v<Ntk>, "Ntk does not implement the is_pi method" );
+  static_assert( has_is_complemented_v<Ntk>, "Ntk does not implement the is_complemented method" );
+  static_assert( has_node_function_v<Ntk>, "Ntk does not implement the node_function method" );
+
+  Ntk dest;
+
+  dest.set_library( ntk._library );
+
+  std::vector<signal<Ntk>> cis;
+  detail::clone_inputs( ntk, dest, cis );
+
+  node_map<signal<Ntk>, Ntk> old_to_new( ntk );
+  detail::cleanup_ligs_impl( ntk, dest, cis.begin(), cis.end(), old_to_new );
 
   detail::clone_outputs( ntk, dest, old_to_new );
 

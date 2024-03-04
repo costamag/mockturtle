@@ -925,6 +925,12 @@ public:
     (void)n;
     return false;
   }
+
+  bool is_function( node const& n ) const
+  {
+    (void)n;
+    return false;
+  }
 #pragma endregion
 
 #pragma region Functional properties

@@ -31,6 +31,7 @@
   \author Mathias Soeken
   \author Siang-Yun (Sonia) Lee
   \author Marcel Walter
+  \author Andrea Costamagna
 */
 
 #pragma once
@@ -163,6 +164,142 @@ public:
   {
     return ~value;
   }
+};
+
+
+/*! \brief Simulates partial truth tables.
+ *
+ * This simulator simulates partial truth tables, whose length is flexible
+ * and new simulation patterns can be added.
+ */
+template<uint32_t NumVars>
+class static_simulator
+{
+
+  using Tt_t = kitty::static_truth_table<NumVars>;
+
+public:
+  static_simulator() {}
+
+  /*! \brief Create a `static_simulator` with random simulation patterns.
+   *
+   * \param num_pis Number of primary inputs of the network.
+   * \param num_patterns Number of initial random simulation patterns. Must be smaller than the number of bits.
+   */
+  static_simulator( uint32_t num_pis, std::default_random_engine::result_type seed = 1 )
+      : num_patterns( 1u << NumVars )
+  {
+    assert( num_pis > 0u );
+
+    for ( auto i = 0u; i < num_pis; ++i )
+    {
+      patterns.emplace_back();
+      kitty::create_random( patterns.back(), seed + i );
+    }
+  }
+
+  /* copy constructors */
+  static_simulator( static_simulator const& sim ) = default;
+  static_simulator& operator=( static_simulator const& sim ) = default;
+
+  /*! \brief Create a `partial_simulator` with given simulation patterns.
+   *
+   * \param initial_patterns Initial simulation patterns.
+   */
+  static_simulator( std::vector<Tt_t> const& initial_patterns )
+      : patterns( initial_patterns ), num_patterns( patterns.at( 0 ).num_bits() )
+  {}
+
+  /*! \brief Create a `partial_simulator` with simulation patterns read from a file.
+   *
+   * The simulation pattern file should contain `num_pis` lines of the same length.
+   * Each line is the simulation signature of a primary input, represented in hexadecimal.
+   *
+   * \param filename Name of the simulation pattern file.
+   * \param length Number of simulation patterns to keep. Should not be greater than 4 times
+   * the length of a line in the file. Setting this parameter to 0 means to keep all patterns in the file.
+   */
+  static_simulator( const std::string& filename, uint32_t length = 0u )
+  {
+    // TODO improve parser to account for wrong size
+    std::ifstream in( filename, std::ifstream::in );
+    std::string line;
+
+    while ( getline( in, line ) )
+    {
+      patterns.emplace_back( log2(line.length() * 4) );
+      kitty::create_from_hex_string( patterns.back(), line );
+  //    if ( length != 0u )
+  //    {
+  //      patterns.back().resize( length );
+  //    }
+    }
+
+    in.close();
+
+    assert( patterns.size() > 0 );
+    num_patterns = patterns[0].num_bits();
+  }
+
+  Tt_t compute_constant( bool value ) const
+  {
+    Tt_t zero;
+    return value ? ~zero : zero;
+  }
+
+  Tt_t compute_pi( uint32_t index ) const
+  {
+    return patterns.at( index );
+  }
+
+  Tt_t compute_not( Tt_t const& value ) const
+  {
+    return ~value;
+  }
+
+  /*! \brief Get the current number of simulation patterns. */
+  uint32_t num_bits() const
+  {
+    return num_patterns;
+  }
+
+  /*! \brief Add a pattern (primary input assignment) into the pattern set.
+   *
+   * \param pattern The pattern. Length should be the same as number of PIs.
+   */
+  void add_pattern( std::vector<bool> const& pattern )
+  {
+    assert( pattern.size() == patterns.size() );
+    for ( auto i = 0u; i < pattern.size(); ++i )
+    {
+      if( pattern.at( i ) )
+        kitty::set_bit( patterns.at( i ), pointer );
+      else
+        kitty::clear_bit( patterns.at( i ), pointer );
+    }
+    pointer = ( pointer + 1 ) % num_patterns;
+  }
+
+  /*! \brief Get the simulation patterns.
+   *
+   * \return A vector of `num_pis()` patterns stored in `kitty::partial_truth_table`s.
+   */
+  std::vector<Tt_t> get_patterns() const
+  {
+    return patterns;
+  }
+
+  template<class Ntk, bool enabled = has_EXCDC_interface_v<Ntk>, typename = std::enable_if_t<enabled>>
+  void remove_CDC_patterns( Ntk const& ntk )
+  {
+    printf("[w] not implemented yet\n");
+  }
+
+private:
+  std::vector<Tt_t> patterns;
+  uint32_t num_patterns;
+public:
+  uint32_t pointer{0};
 };
 
 /*! \brief Simulates partial truth tables.
@@ -735,6 +872,82 @@ void simulate_fanin_cone( Ntk const& ntk, typename Ntk::node const& n, Container
   node_to_value[n] = ntk.compute( n, fanin_values.begin(), fanin_values.end() );
 }
 
+template<class Ntk, uint32_t NumVars, class Container>
+void re_simulate_fanin_cone_static( Ntk const& ntk, typename Ntk::node const& n, Container& node_to_value, static_simulator<NumVars> const& sim );
+
+template<class Ntk, uint32_t NumVars, class Container>
+void simulate_fanin_cone_static( Ntk const& ntk, typename Ntk::node const& n, Container& node_to_value, static_simulator<NumVars> const& sim )
+{
+  std::vector<kitty::static_truth_table<NumVars>> fanin_values( ntk.fanin_size( n ) );
+  auto const fanin_fun = [&]( auto const& f, auto i ) {
+    if ( !node_to_value.has( ntk.get_node( f ) ) )
+    {
+      simulate_fanin_cone_static<Ntk, NumVars, Container>( ntk, ntk.get_node( f ), node_to_value, sim );
+    }
+    else if ( node_to_value[ntk.get_node( f )].num_bits() != sim.num_bits() )
+    {
+      re_simulate_fanin_cone_static<Ntk, NumVars, Container>( ntk, ntk.get_node( f ), node_to_value, sim );
+    }
+    fanin_values[i] = node_to_value[ntk.get_node( f )];
+  };
+
+  if constexpr ( is_crossed_network_type_v<Ntk> )
+  {
+    ntk.foreach_fanin_ignore_crossings( n, fanin_fun );
+  }
+  else
+  {
+    ntk.foreach_fanin( n, fanin_fun );
+  }
+
+  node_to_value[n] = ntk.compute( n, fanin_values.begin(), fanin_values.end() );
+}
+
+template<class Ntk, class Container>
+void simulate_fanin_cone_static( Ntk const& ntk, typename Ntk::node const& n, Container& node_to_value )
+{
+  std::vector<bool> fanin_values( ntk.fanin_size( n ) );
+  auto const fanin_fun = [&]( auto const& f, auto i ) {
+    if ( !node_to_value.has( ntk.get_node( f ) ) )
+    {
+      simulate_fanin_cone_static<Ntk, Container>( ntk, ntk.get_node( f ), node_to_value );
+    }
+
+    fanin_values[i] = node_to_value[ntk.get_node( f )];
+  };
+
+  ntk.foreach_fanin( n, fanin_fun );
+
+  node_to_value[n] = ntk.compute( n, fanin_values.begin(), fanin_values.end() );
+}
+
+template<class Ntk, uint32_t NumVars, class Container>
+void re_simulate_fanin_cone_static( Ntk const& ntk, typename Ntk::node const& n, Container& node_to_value, static_simulator<NumVars> const& sim )
+{
+  std::vector<kitty::static_truth_table<NumVars>> fanin_values( ntk.fanin_size( n ) );
+  auto const fanin_fun = [&]( auto const& f, auto i ) {
+    if ( !node_to_value.has( ntk.get_node( f ) ) )
+    {
+      simulate_fanin_cone_static<Ntk, NumVars, Container>( ntk, ntk.get_node( f ), node_to_value, sim );
+    }
+    else //if ( node_to_value[ntk.get_node( f )].num_bits() != sim.num_bits() )
+    {
+      re_simulate_fanin_cone_static<Ntk, NumVars, Container>( ntk, ntk.get_node( f ), node_to_value, sim );
+    }
+    fanin_values[i] = node_to_value[ntk.get_node( f )];
+  };
+
+  if constexpr ( is_crossed_network_type_v<Ntk> )
+  {
+    ntk.foreach_fanin_ignore_crossings( n, fanin_fun );
+  }
+  else
+  {
+    ntk.foreach_fanin( n, fanin_fun );
+  }
+  ntk.compute( n, node_to_value[n], fanin_values.begin(), fanin_values.end() );
+}
+
 template<class Ntk, class Simulator, class Container>
 void re_simulate_fanin_cone( Ntk const& ntk, typename Ntk::node const& n, Container& node_to_value, Simulator const& sim )
 {
@@ -779,6 +992,43 @@ void update_const_pi( Ntk const& ntk, Container& node_to_value, Simulator const&
 }
 
 } // namespace detail
+
+/*! \brief (Re-)simulate `n` and its transitive fanin cone.
+ *
+ * Note that re-simulation (when `node_to_value.has( n ) == true`) is only done
+ * for the last block, no matter how many bits are used in this block.
+ * Hence, it is advised to call `simulate_nodes` with `simulate_whole_tt = false`
+ * whenever `sim.num_bits() % 64 == 0`.
+ *
+ */
+template<class Ntk, uint32_t NumVars, class Container = unordered_node_map<kitty::static_truth_table<NumVars>, Ntk>>
+void simulate_node_static( Ntk const& ntk, typename Ntk::node const& n, Container& node_to_value, static_simulator<NumVars> const& sim )
+{
+  using Simulator = static_simulator<NumVars>;
+
+  static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
+  static_assert( has_get_constant_v<Ntk>, "Ntk does not implement the get_constant method" );
+  static_assert( has_constant_value_v<Ntk>, "Ntk does not implement the constant_value method" );
+  static_assert( has_get_node_v<Ntk>, "Ntk does not implement the get_node method" );
+  static_assert( has_foreach_pi_v<Ntk>, "Ntk does not implement the foreach_pi method" );
+  static_assert( has_foreach_fanin_v<Ntk>, "Ntk does not implement the foreach_fanin method" );
+  static_assert( has_compute_v<Ntk, kitty::static_truth_table<NumVars>>, "Ntk does not implement the compute specialization for kitty::static_truth_table" );
+  static_assert( has_compute_inplace_v<Ntk, kitty::static_truth_table<NumVars>>, "Ntk does not implement the in-place compute specialization for kitty::static_truth_table" );
+
+  if ( node_to_value[ntk.get_node( ntk.get_constant( false ) )].num_bits() != sim.num_bits() )
+  {
+    detail::update_const_pi( ntk, node_to_value, sim );
+  }
+
+  if ( !node_to_value.has( n ) )
+  {
+    detail::simulate_fanin_cone_static( ntk, n, node_to_value, sim );
+  }
+  else //if ( node_to_value[n].num_bits() != sim.num_bits() )
+  {
+    detail::re_simulate_fanin_cone_static( ntk, n, node_to_value, sim );
+  }
+}
 
 /*! \brief (Re-)simulate `n` and its transitive fanin cone.
  *
@@ -837,7 +1087,7 @@ void simulate_nodes( Ntk const& ntk, Container& node_to_value, Simulator const& 
   static_assert( has_foreach_fanin_v<Ntk>, "Ntk does not implement the foreach_fanin method" );
   static_assert( has_compute_v<Ntk, kitty::partial_truth_table>, "Ntk does not implement the compute specialization for kitty::partial_truth_table" );
   static_assert( has_compute_inplace_v<Ntk, kitty::partial_truth_table>, "Ntk does not implement the in-place compute specialization for kitty::partial_truth_table" );
-  static_assert( std::is_same_v<Simulator, partial_simulator> || std::is_same_v<Simulator, bit_packed_simulator>, "This function is specialized for partial_simulator or bit_packed_simulator" );
+  static_assert( std::is_same_v<Simulator, partial_simulator> || std::is_same_v<Simulator, bit_packed_simulator>, "This function is specialized for partial_simulator or bit_packed_simulator or static_simulator" );
 
   detail::update_const_pi( ntk, node_to_value, sim );
 
@@ -861,6 +1111,68 @@ void simulate_nodes( Ntk const& ntk, Container& node_to_value, Simulator const& 
       }
     } );
   }
+}
+
+template<class Ntk, uint32_t NumVars, class Container = unordered_node_map<kitty::static_truth_table<NumVars>, Ntk>>
+void simulate_nodes_static( Ntk const& ntk, Container& node_to_value, static_simulator<NumVars> const& sim, bool simulate_whole_tt = true )
+{
+
+  static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
+  static_assert( has_get_constant_v<Ntk>, "Ntk does not implement the get_constant method" );
+  static_assert( has_constant_value_v<Ntk>, "Ntk does not implement the constant_value method" );
+  static_assert( has_get_node_v<Ntk>, "Ntk does not implement the get_node method" );
+  static_assert( has_foreach_pi_v<Ntk>, "Ntk does not implement the foreach_pi method" );
+  static_assert( has_foreach_gate_v<Ntk>, "Ntk does not implement the foreach_gate method" );
+  static_assert( has_foreach_fanin_v<Ntk>, "Ntk does not implement the foreach_fanin method" );
+  static_assert( has_compute_v<Ntk, kitty::static_truth_table<NumVars>>, "Ntk does not implement the compute specialization for kitty::static_truth_table" );
+  static_assert( has_compute_inplace_v<Ntk, kitty::static_truth_table<NumVars>>, "Ntk does not implement the in-place compute specialization for kitty::static_truth_table" );
+
+  detail::update_const_pi( ntk, node_to_value, sim );
+
+  /* gates */
+  if ( simulate_whole_tt )
+  {
+    ntk.foreach_gate( [&]( auto const& n ) {
+      if ( !node_to_value.has( n ) )
+      {
+        detail::simulate_fanin_cone_static<Ntk, NumVars, Container>( ntk, n, node_to_value, sim );
+      }
+    } );
+  }
+  else
+  {
+    ntk.foreach_gate( [&]( auto const& n ) {
+      assert( node_to_value.has( n ) );
+      //if ( node_to_value[n].num_bits() != sim.num_bits() )
+      {
+        detail::re_simulate_fanin_cone_static<Ntk, NumVars, Container>( ntk, n, node_to_value, sim );
+      }
+    } );
+  }
+}
+
+template<class Ntk, class Container = unordered_node_map<bool, Ntk>>
+void simulate_nodes_static( Ntk const& ntk, Container& node_to_value, std::vector<bool> const& sim )
+{
+
+  static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
+  static_assert( has_get_constant_v<Ntk>, "Ntk does not implement the get_constant method" );
+  static_assert( has_constant_value_v<Ntk>, "Ntk does not implement the constant_value method" );
+  static_assert( has_get_node_v<Ntk>, "Ntk does not implement the get_node method" );
+  static_assert( has_foreach_pi_v<Ntk>, "Ntk does not implement the foreach_pi method" );
+  static_assert( has_foreach_gate_v<Ntk>, "Ntk does not implement the foreach_gate method" );
+  static_assert( has_foreach_fanin_v<Ntk>, "Ntk does not implement the foreach_fanin method" );
+  //static_assert( has_compute_v<Ntk, kitty::static_truth_table<NumVars>>, "Ntk does not implement the compute specialization for kitty::static_truth_table" );
+  //static_assert( has_compute_inplace_v<Ntk, kitty::static_truth_table<NumVars>>, "Ntk does not implement the in-place compute specialization for kitty::static_truth_table" );
+
+  ntk.foreach_pi( [&]( auto const& n, auto i ) {
+    node_to_value[n] = sim[i];
+  } );
+
+  /* gates */
+    ntk.foreach_gate( [&]( auto const& n ) {
+        detail::simulate_fanin_cone_static<Ntk, Container>( ntk, n, node_to_value );
+    } );
 }
 
 /*! \brief Simulates a network with a generic simulator.
