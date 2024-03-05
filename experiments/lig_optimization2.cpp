@@ -223,9 +223,9 @@ std::tuple<uint32_t,uint32_t,float> abc_mfs2( lig_network& ntk, std::string benc
 
 std::tuple<uint32_t,uint32_t,float> abc_lutpack( lig_network& ntk, std::string benchmark )
 {
-  mockturtle::write_bench( ntk, "/tmp/mfsin2_"+benchmark+".bench" );
+  mockturtle::write_bench( ntk, "/tmp/mfsin3_"+benchmark+".bench" );
   //std::string command = fmt::format( "abc -q \"read_bench /tmp/mfsin_{}.bench; mfs -D 0 -dea; write_bench /tmp/mfsout_{}.bench;\"", benchmark, benchmark );
-  std::string command = fmt::format( "abc -q \"read_bench /tmp/mfsin2_{}.bench; lutpack -L 200; time; write_blif /tmp/mfsin2_{}.blif; &get -mn; &ps;\"", benchmark, benchmark );
+  std::string command = fmt::format( "abc -q \"read_bench /tmp/mfsin3_{}.bench; lutpack -L 200; time; write_blif /tmp/mfsin3_{}.blif; &get -mn; &ps;\"", benchmark, benchmark );
 
   std::array<char, 128> buffer;
   std::string result;
@@ -246,7 +246,7 @@ std::tuple<uint32_t,uint32_t,float> abc_lutpack( lig_network& ntk, std::string b
   lig_network ntk_res;
   ntk_res._is_smart = ntk._is_smart;
 
-  std::string string_path = ("/tmp/mfsin2_"+benchmark+".blif");
+  std::string string_path = ("/tmp/mfsin3_"+benchmark+".blif");
   if( lorina::read_blif( string_path, blif_reader( ntk_res ) ) != lorina::return_code::success )
     std::cerr << "read_blif failed" << std::endl;
   ntk = ntk_res;
@@ -296,9 +296,9 @@ std::tuple<uint32_t,uint32_t,float> abc_lutpack( lig_network& ntk, std::string b
 template<class Ntk>
 std::tuple<uint32_t,uint32_t,float> abc_eval( Ntk const& ntk, std::string benchmark )
 {
-  mockturtle::write_bench( ntk, "/tmp/mfsin2_"+benchmark+".bench" );
+  mockturtle::write_bench( ntk, "/tmp/eval_"+benchmark+".bench" );
   //std::string command = fmt::format( "abc -q \"read_bench /tmp/mfsin_{}.bench; mfs -D 0 -dea; write_bench /tmp/mfsout_{}.bench;\"", benchmark, benchmark );
-  std::string command = fmt::format( "abc -q \"read_bench /tmp/mfsin2_{}.bench; &get -mn; &ps;\"", benchmark );
+  std::string command = fmt::format( "abc -q \"read_bench /tmp/eval_{}.bench; &get -mn; &ps;\"", benchmark );
 
   std::array<char, 128> buffer;
   std::string result;
@@ -363,7 +363,7 @@ template<class Ntk>
 klut_network abc_if( Ntk const& ntk, std::string str_code, uint32_t K=4u )
 {
   write_aiger( ntk, "/tmp/"+str_code+".aig" );
-  std::string command = "abc -q \"r /tmp/"+str_code+".aig; dch -f; if -a -K "+std::to_string(K)+"; write_blif /tmp/" + str_code + ".blif\"";
+  std::string command = "abc -q \"r /tmp/"+str_code+".aig; ifraig; dch -f; if -a -K "+std::to_string(K)+"; write_blif /tmp/" + str_code + ".blif\"";
 
   std::array<char, 128> buffer;
   std::string result;
@@ -407,7 +407,11 @@ int main()
   std::vector<double> abc_times;
   std::vector<double> dse_times;
 
-  for ( auto const& benchmark : all_benchmarks( ) )
+  double ra_abc{0};
+  double ra_dse{0};
+  double N{1};
+
+  for ( auto const& benchmark : all_benchmarks( epfl ) )
   {
     //if( benchmark == "hyp" ) continue;
     fmt::print( "[i] processing {}\n", benchmark );
@@ -419,16 +423,16 @@ int main()
     {
       continue;
     }
+    if( aig.num_gates() > 300000 ) continue;
 
     int nOld = aig.num_gates()+1;
     while( aig.num_gates() < nOld )
     {
       nOld = aig.num_gates();
-      aig = abc_opto( aig, benchmark, "resyn2rs" );
+      aig = abc_opto( aig, benchmark, "compress2rs" );
       printf("[aig]%6d\n", aig.num_gates());
     }
 
-    if( aig.num_gates() > 300000 ) continue;
 
     uint32_t nGates_old = aig.num_gates()+1;
 
@@ -499,6 +503,8 @@ int main()
     uint32_t abc_depth = std::get<1>(abc_res);
     double abc_time = ((double)t_abc)/CLOCKS_PER_SEC;
 
+    ra_abc =  ra_abc*(N-1)/N+((double)abc_num_gates-(double)map_num_gates)/((double)map_num_gates)/(N);
+
 
     /* CASE 3 : PIVOT 1 */    
     lig_network lig_dse;
@@ -525,31 +531,10 @@ int main()
       nOld = lig_dse.num_gates();
       if( OPTO == 0 || ( OPTO == 3 && lig_dse.num_gates() == nOld ) )
       {
-        optimize_lig<GREEDY, 4u, 4u>( lig_dse, rps, &rst_dse );
+        optimize_lig<GREEDY, 7u, 4u>( lig_dse, rps, &rst_dse );
         lig_dse = cleanup_dangling( lig_dse );
         OPTO = lig_dse.num_gates() == nOld ? 1 : 0;
         printf("GRE[4,4]: %6d [%6d]\n", lig_dse.num_gates(), lig_dse.max_num_fanins);
-      }
-      if( OPTO == 1 || ( OPTO == 0 && lig_dse.num_gates() == nOld ) )
-      {
-        optimize_lig<GREEDY, 7u, 4u>( lig_dse, rps, &rst_dse );
-        lig_dse = cleanup_dangling( lig_dse );
-        OPTO = lig_dse.num_gates() == nOld ? 2 : 0;
-        printf("GRE[7,4]: %6d [%6d]\n", lig_dse.num_gates(), lig_dse.max_num_fanins);
-      }
-      if( OPTO == 2 || ( OPTO == 1 && lig_dse.num_gates() == nOld ) )
-      {
-        optimize_lig<PIVOT, 4u, 4u>( lig_dse, rps, &rst_dse );
-        lig_dse = cleanup_dangling( lig_dse );
-        OPTO = lig_dse.num_gates() == nOld ? 3 : 1;
-        printf("PIV[4,4]: %6d [%6d]\n", lig_dse.num_gates(), lig_dse.max_num_fanins);
-      }
-      if( OPTO == 3 || ( OPTO == 2 && lig_dse.num_gates() == nOld ) )
-      {
-        optimize_lig<PIVOT, 7u, 4u>( lig_dse, rps, &rst_dse );
-        lig_dse = cleanup_dangling( lig_dse );
-        OPTO = lig_dse.num_gates() == nOld ? 3 : 2;
-        printf("PIV[7,4]: %6d [%6d]\n", lig_dse.num_gates(), lig_dse.max_num_fanins);
       }
     }
     t_new = clock() - t_new;
@@ -561,6 +546,11 @@ int main()
     uint32_t dse_depth = std::get<1>(piv_res);
     //double mfs_time = (double)std::get<2>(mfs_res);
     double dse_time = ((double)t_new)/CLOCKS_PER_SEC;
+
+    ra_dse =  ra_dse*(N-1)/N+((double)dse_num_gates-(double)map_num_gates)/((double)map_num_gates)/(N);
+
+    N+=1.0;
+    printf("ABC=%f DSE=%f\n", ra_abc, ra_dse);
 
 
     bool const lig_dse_cec = benchmark == "hyp" ? true : abc_cec( lig_dse, benchmark );
@@ -625,3 +615,25 @@ int main()
 
   return 0;
 }
+
+//|  benchmark | a(map) | a(abc) | a(new) | d(map) | d(abc) | d(new) | t(abc) |  t(new) |
+//|      adder |    255 |    255 |    255 |    127 |    127 |    127 |   0.39 |    0.52 |
+//|        bar |   1152 |   1152 |    900 |      7 |      7 |      7 |   0.41 |   13.76 |
+//|        div |   4311 |   4311 |   4307 |   2143 |   2143 |   2142 |   0.48 |   12.12 |
+//|        hyp |  60235 |  60123 |  55300 |   8533 |   8493 |   8529 |   4.46 |   86.43 |
+//|       log2 |   9803 |   9792 |   9754 |    147 |    148 |    148 |   1.77 | 1149.81 |
+//|        max |    981 |    898 |    939 |    101 |    142 |    101 |   0.79 |   96.96 |
+//| multiplier |   7222 |   7222 |   7202 |    130 |    130 |    130 |   0.54 |  709.32 |
+//|        sin |   1857 |   1847 |   1829 |     82 |     82 |     82 |   0.82 |  114.42 |
+//|       sqrt |   4331 |   4299 |   4306 |   2155 |   2142 |   2144 |   0.95 |   17.56 |
+//|     square |   5253 |   5250 |   4916 |    123 |    123 |    123 |   0.97 |    4.28 |
+//|    arbiter |   4139 |   4139 |   4092 |     30 |     30 |     30 |   0.45 | 1186.68 |
+//|      cavlc |    283 |    268 |    263 |      9 |      9 |     11 |   1.14 |   14.24 |
+//|       ctrl |     45 |     44 |     41 |      5 |      5 |      6 |   0.76 |    0.78 |
+//|        dec |    288 |    288 |    288 |      2 |      2 |      2 |   0.38 |    0.60 |
+//|        i2c |    395 |    384 |    356 |     14 |     14 |     11 |   0.78 |   33.79 |
+//|  int2float |     83 |     78 |     79 |      8 |      8 |      7 |   0.76 |    6.54 |
+//|   mem_ctrl |  14737 |  12024 |   7656 |     63 |     65 |     52 |   3.33 | 3664.14 |
+//|   priority |    208 |    171 |    198 |     25 |     33 |     25 |   0.75 |    5.46 |
+//|     router |     61 |     54 |     59 |     11 |     11 |     11 |   1.13 |    1.24 |
+//|      voter |   2477 |   2477 |   2477 |     21 |     21 |     21 |   0.43 |    3.83 |

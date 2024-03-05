@@ -126,6 +126,7 @@ struct lig_optimizer_params
   /* k-resub engine specific */
   /*! \brief Maximum number of divisors to consider in k-resub engine. Only used by `abc_resub_functor` with simulation-based resub engine. */
   uint32_t max_divisors_k{ 50 };
+
 };
 
 /*! \brief Statistics for resubstitution.
@@ -631,8 +632,6 @@ public:
       /* do resynthesis */
       const auto res = call_with_stopwatch( st.time_resyn, [&]() {
         ++st.num_resyn;
-        //kitty::create_random( rnd_tt1, _seed++ );
-        //kitty::create_random( rnd_tt2, _seed+j+1 );&( rnd_tt1 | rnd_tt2 )
         return engine( tts[n], care, std::begin( divs ), std::end( divs ), tts, std::min( potential_gain - ntk.get_area(n), ps.max_inserts ) );     
       } );
       if( res )
@@ -1007,7 +1006,7 @@ void optimize_lig( rils::lig_network& ntk, lig_optimizer_params const& ps = {}, 
 
   using resyn_engine_t = rils::lig_resyn_decompose<signature_t, resyn_params_t, SuppSel_t>;
 
-  if ( ps.max_pis <= nPisLoc )
+  //if ( ps.max_pis <= nPisLoc )
   {
     /* only non odc optimized so far */
 
@@ -1036,10 +1035,10 @@ void optimize_lig( rils::lig_network& ntk, lig_optimizer_params const& ps = {}, 
       *pst = st;
     }
   }
-  else
-  {
-    printf("ERROR\n");
-  }
+  //else
+  //{
+  //  printf("ERROR\n");
+  //}
 
 }
 

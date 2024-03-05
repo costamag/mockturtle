@@ -334,3 +334,51 @@ TEST_CASE( "spfd manager decompose problematic", "[spfd_utils]" )
             printf("NOT FOUND \n");
         }
 }
+
+
+TEST_CASE( "spfd manager decompose infinite", "[spfd_utils]" )
+{
+    static constexpr uint32_t K = 4;
+    static constexpr uint32_t S = 7;
+
+        kitty::dynamic_truth_table tt(S);
+        kitty::dynamic_truth_table mk(S);
+        std::vector<kitty::dynamic_truth_table> xs;
+        for( int i{0}; i<S; ++i )
+        {
+            xs.emplace_back(S);
+            kitty::create_nth_var( xs[i], i );
+        }
+kitty::create_from_binary_string(tt,"11000111101100010000100111101100110110011000101111011010100010010010101011111111001110110110011011111111011101111111111110111111");
+kitty::create_from_binary_string(mk,"00000000000000000000000010000000100110011000100110010001000010010000100000001000000000000000000011110111011111111111111111111111");
+
+//        kitty::print_binary( tt );
+//        printf("\n");
+        //tt = ( ( xs[3]^xs[2] | xs[1] ) ) ^ xs[0];
+        lut_resynthesis_t<K, 10u> resyn;
+        //resyn.print();
+        auto lit_out = resyn.decompose( tt, mk, 20 );
+        //resyn.print();
+        if( lit_out )
+        {
+            printf("%d\n", resyn.num_luts());
+            kitty::print_binary( tt );
+            printf("\n");
+            kitty::print_binary( resyn.sims[*lit_out] );
+            printf("\n");
+            CHECK( kitty::equal( resyn.sims[*lit_out], tt ) );
+            if( kitty::equal( resyn.sims[*lit_out], tt ) )
+            {
+                printf(":)\n");
+            }
+            else
+            {
+                printf(":(((((((((\n");
+            }
+        }
+        else
+        {
+            printf("NOT FOUND \n");
+        }
+
+}

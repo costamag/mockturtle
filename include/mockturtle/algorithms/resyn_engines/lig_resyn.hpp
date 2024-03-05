@@ -497,7 +497,7 @@ std::optional<uint32_t> _1_node_synthesis( std::vector<uint32_t> const& supp, ki
 
   _decomposer.clear();
   auto lit_out = _decomposer.decompose( func, care, max_inserts );
-  if( _decomposer.num_luts() <= max_inserts )
+  if( lit_out && _decomposer.num_luts() <= max_inserts )
   {
     return _decomposer.to_index_list( index_list, lits );
   }

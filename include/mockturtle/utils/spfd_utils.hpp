@@ -396,6 +396,7 @@ namespace mockturtle
 
     std::optional<uint32_t> _2decompose( std::vector<uint32_t>& supp, truth_table_t const& tt, truth_table_t const& mk )
     {
+      if( KILLER >= 20 ) return std::nullopt;
       sort_nlist_by_I( supp, supp.size(), tt, mk );
 
       comb_t combs( supp.size(), NUM_FANINS-1 );
@@ -440,7 +441,9 @@ namespace mockturtle
             supps.push_back( free_supp );
             sims.push_back( sim_f );
             if( kitty::equal(sim_f&mk, mk&tt) )
+            {
               return sims.size()-1;
+            }
             else
             {
               funcs.erase( funcs.begin() + funcs.size() - 1 );
@@ -460,6 +463,7 @@ namespace mockturtle
 
     std::optional<uint32_t> _Kdecompose( std::vector<uint32_t>& supp, truth_table_t const& tt, truth_table_t const& mk )
     {
+      if( KILLER >= 20 ) return std::nullopt;
       sort_nlist_by_I( supp, supp.size(), tt, mk );
 
       std::vector<uint32_t> supp_f;
@@ -510,6 +514,7 @@ namespace mockturtle
 
     std::optional<uint32_t> _Tdecompose( std::vector<uint32_t>& supp, truth_table_t const& tt, truth_table_t const& mk )
     {
+      if( KILLER >= 20 ) return std::nullopt;
       bool upd{true};
 
       truth_table_t tt_r = tt;
@@ -595,6 +600,8 @@ namespace mockturtle
 
     std::optional<uint32_t> decompose_rec( truth_table_t const& tt, truth_table_t const& mk )
     {      
+      KILLER++;
+      if( KILLER >= 20 ) return std::nullopt;
       auto supp = find_support( tt, mk );
 
       /* 0-resynthesis */
@@ -612,26 +619,31 @@ namespace mockturtle
       if( supp.size() <= 2*NUM_FANINS-1 )
       {
         auto lit2 = _2decompose( supp, tt, mk );
+
         if( lit2 )
           return *lit2;
       }
 
       auto litT = _Tdecompose( supp, tt, mk );
+
       if( litT )
       {
         return *litT;
       }
 
       auto litK = _Kdecompose( supp, tt, mk ); 
+
       if( litK )
         return *litK;
+        
+      return std::nullopt;
 
     }
 
     std::optional<uint32_t> decompose( truth_table_t const& tt, truth_table_t const& mk, uint32_t num_inserts )
     {
+      KILLER=0;
       _num_inserts = num_inserts;
-      if( _num_inserts == 0 ) return std::nullopt;
 
       /* initialization */
       sims.clear();
@@ -704,6 +716,7 @@ namespace mockturtle
         std::vector<std::vector<uint32_t>> supps;
         std::vector<truth_table_t> funcs;
         std::vector<truth_table_t> sims;
+        uint32_t KILLER{0};
 
         uint32_t _num_inserts;
 
