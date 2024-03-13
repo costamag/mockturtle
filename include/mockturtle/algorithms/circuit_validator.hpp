@@ -29,6 +29,7 @@
 
   \author Heinz Riener
   \author Siang-Yun (Sonia) Lee
+  \author Andrea Costamagna
 */
 
 #pragma once
@@ -37,6 +38,7 @@
 #include "../utils/index_list.hpp"
 #include "../utils/node_map.hpp"
 #include "cnf.hpp"
+#include "../networks/scg.hpp"
 
 #include <bill/sat/interface/abc_bsat2.hpp>
 #include <bill/sat/interface/common.hpp>
@@ -59,6 +61,8 @@ struct validator_params
 
   /*! \brief Seed for randomized solving. */
   uint32_t random_seed{ 0 };
+
+  bool use_aig{false};
 };
 
 template<class Ntk, bill::solvers Solver = bill::solvers::glucose_41, bool use_pushpop = false, bool randomize = false, bool use_odc = false>
@@ -210,10 +214,13 @@ public:
   template<class iterator_type, class index_list_type>
   std::optional<bool> validate( node const& root, iterator_type divs_begin, iterator_type divs_end, index_list_type const& id_list, bool inverted = false )
   {
-    static_assert( std::is_same_v<index_list_type, mig_index_list> ||
+    static_assert( std::is_same_v<index_list_type, abc_index_list> ||
+                   std::is_same_v<index_list_type, mig_index_list> ||
                    std::is_same_v<index_list_type, xag_index_list<true>> ||
                    std::is_same_v<index_list_type, xag_index_list<false>> ||
-                   std::is_same_v<index_list_type, muxig_index_list>, "Unknown type of index list" );
+                   std::is_same_v<index_list_type, muxig_index_list> ||
+                   std::is_same_v<index_list_type, lig_index_list<true>> ||
+                   std::is_same_v<index_list_type, lig_index_list<false>> , "Unknown type of index list" );
     assert( uint64_t( std::distance( divs_begin, divs_end ) ) == id_list.num_pis() && "Size of the provided divisor list does not match number of PIs of the index list" );
     assert( id_list.num_pos() == 1u && "Index list must have exactly one PO" );
 
@@ -239,7 +246,7 @@ public:
       push();
     }
 
-    if constexpr ( std::is_same_v<index_list_type, xag_index_list<true>> || std::is_same_v<index_list_type, xag_index_list<false>> )
+    if constexpr ( std::is_same_v<index_list_type, abc_index_list> || std::is_same_v<index_list_type, xag_index_list<true>> || std::is_same_v<index_list_type, xag_index_list<false>> )
     {
       id_list.foreach_gate( [&]( uint32_t id_lit0, uint32_t id_lit1 ) {
         uint32_t const node_pos0 = id_lit0 >> 1;
@@ -271,6 +278,20 @@ public:
         assert( node_pos1 < lits.size() );
         assert( node_pos2 < lits.size() );
         lits.emplace_back( add_clauses_for_3input_gate( lit_not_cond( lits[node_pos0], id_lit0 & 0x1 ), lit_not_cond( lits[node_pos1], id_lit1 & 0x1 ), lit_not_cond( lits[node_pos2], id_lit2 & 0x1 ), std::nullopt, MUX ) );
+      } );
+    }
+    if constexpr ( std::is_same_v<index_list_type, lig_index_list<true>> || std::is_same_v<index_list_type, lig_index_list<false>> )
+    { // TODO: add clauses for function
+      id_list.foreach_gate( [&]( std::vector<uint32_t> children, uint32_t func_literal ) {
+        std::vector<uint32_t> nodes;
+        std::vector<bill::lit_type> lits_not_cond;
+        for( uint32_t id_lit : children )
+        {
+          nodes.push_back( id_lit >> 1u );
+          assert( nodes.back() < lits.size() );
+          lits_not_cond.push_back( lit_not_cond( lits[nodes.back()], id_lit & 0x1 ) );
+        }
+        lits.emplace_back( add_clauses_for_function( lits_not_cond, id_list.tts[func_literal] ) );
       } );
     }
 
@@ -497,30 +518,47 @@ private:
       }
       child_lits.push_back( lit_not_cond( literals[f], ntk.is_complemented( f ) ) );
     } );
-    bill::lit_type node_lit = literals[n] = bill::lit_type( solver.add_variable(), bill::lit_type::polarities::positive );
-    constructed[n] = true;
 
-    if ( ntk.is_and( n ) )
+    /*
+     * more variables is worse than more clauses! I turned off the AIG-based clauses construction
+    */
+    if constexpr ( std::is_same_v<typename Ntk::base_type, scopt::scg_network> )
     {
-      detail::on_and<add_clause_fn_t>( node_lit, child_lits[0], child_lits[1], add_clause_fn );
+      bill::lit_type node_lit = literals[n] = add_node_clauses( n, child_lits, solver, add_clause_fn );
+      constructed[n] = true;
+      return node_lit;
     }
-    else if ( ntk.is_xor( n ) )
+    else
     {
-      detail::on_xor<add_clause_fn_t>( node_lit, child_lits[0], child_lits[1], add_clause_fn );
+      bill::lit_type node_lit = literals[n] = bill::lit_type( solver.add_variable(), bill::lit_type::polarities::positive );
+      constructed[n] = true;
+
+      if ( ntk.is_and( n ) )
+      {
+        detail::on_and<add_clause_fn_t>( node_lit, child_lits[0], child_lits[1], add_clause_fn );
+      }
+      else if ( ntk.is_xor( n ) )
+      {
+        detail::on_xor<add_clause_fn_t>( node_lit, child_lits[0], child_lits[1], add_clause_fn );
+      }
+      else if ( ntk.is_xor3( n ) )
+      {
+        detail::on_xor3<add_clause_fn_t>( node_lit, child_lits[0], child_lits[1], child_lits[2], add_clause_fn );
+      }
+      else if ( ntk.is_maj( n ) )
+      {
+        detail::on_maj<add_clause_fn_t>( node_lit, child_lits[0], child_lits[1], child_lits[2], add_clause_fn );
+      }
+      else if ( ntk.is_ite( n ) )
+      {
+        detail::on_ite<add_clause_fn_t>( node_lit, child_lits[0], child_lits[1], child_lits[2], add_clause_fn );
+      }
+      else if( ntk.is_function( n ) )
+      {
+        detail::on_function( node_lit, child_lits, ntk.node_function( n ), add_clause_fn );
+      }
+      return node_lit;
     }
-    else if ( ntk.is_xor3( n ) )
-    {
-      detail::on_xor3<add_clause_fn_t>( node_lit, child_lits[0], child_lits[1], child_lits[2], add_clause_fn );
-    }
-    else if ( ntk.is_maj( n ) )
-    {
-      detail::on_maj<add_clause_fn_t>( node_lit, child_lits[0], child_lits[1], child_lits[2], add_clause_fn );
-    }
-    else if ( ntk.is_ite( n ) )
-    {
-      detail::on_ite<add_clause_fn_t>( node_lit, child_lits[0], child_lits[1], child_lits[2], add_clause_fn );
-    }
-    return node_lit;
   }
 
   void push()
@@ -575,6 +613,13 @@ private:
       detail::on_ite<add_clause_fn_t>( nlit, a, b, c, add_clause_fn );
     }
 
+    return nlit;
+  }
+
+  bill::lit_type add_clauses_for_function( std::vector<bill::lit_type> lits, kitty::dynamic_truth_table func, std::optional<bill::lit_type> d = std::nullopt )
+  {
+    auto nlit = d ? *d : bill::lit_type( solver.add_variable(), bill::lit_type::polarities::positive );
+    detail::on_function<add_clause_fn_t>( nlit, lits, func, add_clause_fn );
     return nlit;
   }
 
@@ -772,6 +817,53 @@ private:
     miter.emplace_back( add_clauses_for_2input_gate( literals[n], lits[n], std::nullopt, XOR ) );
   }
 
+  template<class ClauseFn>
+  bill::lit_type add_node_clauses( typename Ntk::node n, std::vector<bill::lit_type> const& child_lits, bill::solver<Solver>& solver, ClauseFn const& fn )
+  {
+    unordered_node_map<bill::lit_type, aig_network> node_to_lit(ntk._aig);
+    // set the pis
+    ntk._aig.foreach_pi( [&]( auto pi, auto i ) { 
+      if( i >= child_lits.size() )
+        return;
+      else
+      {
+        node_to_lit[pi] = child_lits[i]; 
+      }
+    } );
+    
+    bill::lit_type aig_lit = add_node_clauses_rec( ntk._aig.get_node(ntk._storage->nodes[n].twin), node_to_lit, solver, fn );
+
+    return ntk._aig.is_complemented( ntk._storage->nodes[n].twin ) ? ~aig_lit : aig_lit;
+  }
+
+  template<class ClauseFn>
+  bill::lit_type add_node_clauses_rec( aig_network::node i_node, unordered_node_map<bill::lit_type, aig_network>& node_to_lit, bill::solver<Solver>& solver, ClauseFn const& fn )
+  {
+    if( node_to_lit.has(i_node) )
+    {
+      return node_to_lit[i_node];
+    }
+    //aig_network i_node = _aig.get_node( i_signal );
+    auto const& i_gate = ntk._aig._storage->nodes[i_node];
+
+    aig_network::signal const & a = i_gate.children[0];
+    aig_network::signal const & b = i_gate.children[1];
+    bill::lit_type lita = add_node_clauses_rec( ntk._aig.get_node(a), node_to_lit, solver, fn );
+    bill::lit_type litb = add_node_clauses_rec( ntk._aig.get_node(b), node_to_lit, solver, fn );
+
+    const bill::lit_type litc = bill::lit_type( solver.add_variable(), bill::lit_type::polarities::positive );
+
+    lita = ntk._aig.is_complemented( a ) ? ~lita : lita;
+    litb = ntk._aig.is_complemented( b ) ? ~litb : litb;
+
+    fn( { lita, ~litc } );
+    fn( { litb, ~litc } );
+    fn( { ~lita, ~litb, litc } );
+
+    node_to_lit[i_node] = litc;
+    return litc;
+  }
+
 private:
   Ntk const& ntk;
 
@@ -797,3 +889,66 @@ public:
 };
 
 } /* namespace mockturtle */
+
+
+//<g(mfs)> : -0.032707
+//<g(mfs2)>: -0.028764
+//<g(g1)>  : -0.033670
+//<g(p1)>  : -0.041503
+//<d(mfs)> : 0.026389
+//<d(mfs2)>: 0.044246
+//<d(g1)>  : 0.115913
+//<d(p1)>  : 0.115913
+//<t(mfs)> : 0.638750
+//<t(mfs2)>: 0.108750
+//<t(g1)>  : 0.010448
+//<t(p1)>  : 0.200580
+//[i] dataset c98b5e8a
+//| benchmark | a(map) | a(mfs) | a(mfs2) | a(g,1) | a(p,1) | d(map) | d(mfs) | d(mfs2) | d(g,1) | d(p,1) | t(mfs) | t(mfs2) | t(g,1) | t(p,1) |
+//|       c17 |      2 |      2 |       2 |      2 |      2 |      1 |      1 |       1 |      1 |      1 |   0.02 |    0.03 |   0.00 |   0.00 |
+//|      c432 |     85 |     78 |      78 |     72 |     71 |     10 |     11 |      11 |     13 |     13 |   0.21 |    0.12 |   0.01 |   0.07 |
+//|      c499 |     92 |     92 |      92 |     92 |     92 |      5 |      5 |       5 |      5 |      5 |   0.30 |    0.06 |   0.01 |   0.12 |
+//|      c880 |    118 |    117 |     117 |    117 |    117 |      9 |     10 |      10 |     10 |     10 |   0.14 |    0.08 |   0.01 |   0.13 |
+//|     c1355 |    106 |    106 |     106 |    106 |    106 |      5 |      5 |       5 |      5 |      5 |   0.34 |    0.06 |   0.03 |   0.25 |
+//|     c1908 |     87 |     81 |      81 |     83 |     82 |      6 |      6 |       6 |      6 |      6 |   0.17 |    0.07 |   0.00 |   0.33 |
+//|     c2670 |    174 |    173 |     170 |    171 |    168 |      7 |      7 |       8 |      8 |      8 |   0.25 |    0.06 |   0.01 |   0.08 |
+//|     c3540 |    321 |    301 |     318 |    318 |    318 |     11 |     11 |      11 |     11 |     11 |   1.56 |    0.07 |   0.02 |   0.24 |
+//|     c5315 |    420 |    417 |     417 |    416 |    413 |      9 |      9 |       9 |     10 |     10 |   1.17 |    0.15 |   0.01 |   0.43 |
+//|     c6288 |    512 |    512 |     511 |    509 |    507 |     25 |     25 |      25 |     26 |     26 |   0.07 |    0.17 |   0.01 |   0.02 |
+//|     c7552 |    450 |    438 |     437 |    441 |    436 |      9 |      9 |       9 |     11 |     11 |   1.54 |    0.15 |   0.02 |   0.30 |
+
+
+//
+//<g(mfs)> : -0.022125
+//<g(mfs2)>: -0.015938
+//<g(g1)>  : -0.028808
+//<g(p1)>  : -0.032602
+//<d(mfs)> : -0.012188
+//<d(mfs2)>: -0.012188
+//<d(g1)>  : 0.046795
+//<d(p1)>  : 0.025445
+//<t(mfs)> : 1.883333
+//<t(mfs2)>: 0.386667
+//<t(g1)>  : 1.706211
+//<t(p1)>  : 9.866994
+//[i] dataset c98b5e8a
+//|  benchmark | a(map) | a(mfs) | a(mfs2) | a(g,1) | a(p,1) | d(map) | d(mfs) | d(mfs2) | d(g,1) | d(p,1) | t(mfs) | t(mfs2) | t(g,1) | t(p,1) |
+//|      adder |    255 |    255 |     255 |    255 |    255 |    127 |    127 |     127 |    127 |    127 |   0.04 |    0.03 |   0.01 |   0.01 |
+//|        bar |   1152 |   1152 |    1152 |   1152 |   1152 |      7 |      7 |       7 |      7 |      7 |   2.13 |    0.21 |   0.05 |   2.96 |
+//|        div |   6298 |   6295 |    6298 |   6155 |   6157 |   2112 |   2112 |    2112 |   2131 |   2128 |   0.12 |    0.09 |   1.46 |   2.33 |
+//|       log2 |   9741 |   9741 |    9739 |   9735 |   9732 |    154 |    154 |     154 |    154 |    154 |   1.94 |    0.66 |  10.16 |  63.33 |
+//|        max |    931 |    931 |     931 |    930 |    930 |    136 |    136 |     136 |    136 |    136 |   0.11 |    0.05 |   0.04 |   0.63 |
+//| multiplier |   7268 |   7268 |    7268 |   7267 |   7267 |    130 |    130 |     130 |    130 |    130 |   0.79 |    0.45 |   0.36 |  17.76 |
+//|        sin |   1836 |   1835 |    1835 |   1827 |   1822 |     83 |     83 |      83 |     83 |     83 |   1.52 |    0.23 |   2.26 |  16.17 |
+//|       sqrt |   7486 |   7480 |    7482 |   7427 |   7425 |   3573 |   3572 |    3572 |   3611 |   3607 |   0.15 |    0.10 |   0.31 |   1.23 |
+//|     square |   5565 |   5565 |    5564 |   5433 |   5337 |    124 |    124 |     124 |    124 |    124 |   1.09 |    0.65 |   0.11 |   0.29 |
+//|    arbiter |   4139 |   4139 |    4139 |   4139 |   4139 |     30 |     30 |      30 |     30 |     30 |  20.97 |    1.08 |   1.10 |   9.02 |
+//|      cavlc |    280 |    274 |     278 |    272 |    269 |      9 |      8 |       8 |      9 |      9 |   0.39 |    0.08 |   0.04 |   3.77 |
+//|       ctrl |     49 |     48 |      48 |     43 |     43 |      3 |      3 |       3 |      5 |      4 |   0.03 |    0.03 |   0.00 |   0.02 |
+//|        dec |    288 |    288 |     288 |    288 |    288 |      2 |      2 |       2 |      2 |      2 |   0.11 |    0.03 |   0.03 |   0.03 |
+//|        i2c |    444 |    431 |     432 |    433 |    431 |      8 |      8 |       8 |      8 |      8 |   0.21 |    0.06 |   0.12 |   0.66 |
+//|  int2float |     89 |     85 |      86 |     88 |     88 |      8 |      8 |       8 |      8 |      8 |   0.09 |    0.04 |   0.01 |   0.49 |
+//|   mem_ctrl |  16878 |  15654 |   16128 |  14787 |  14425 |     64 |     64 |      64 |     65 |     66 |  21.23 |    3.01 |   9.94 |  40.42 |
+//|   priority |    273 |    271 |     271 |    270 |    270 |    109 |    109 |     109 |    109 |    109 |   0.20 |    0.08 |   0.15 |   0.26 |
+//|     router |     82 |     71 |      74 |     78 |     78 |     14 |     13 |      13 |     14 |     14 |   0.10 |    0.04 |   0.04 |   0.05 |
+//|      voter |   2497 |   2497 |    2497 |   2496 |   2496 |     19 |     19 |      19 |     19 |     19 |   0.28 |    0.23 |   0.59 |   0.60 |

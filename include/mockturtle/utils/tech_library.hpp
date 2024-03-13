@@ -103,6 +103,7 @@ enum class classification_type : uint32_t
 
 struct tech_library_params
 {
+
   /*! \brief Load large gates with more than 6 inputs */
   bool load_large_gates{ true };
 
@@ -1144,6 +1145,11 @@ private:
     }
   }
 
+  std::vector<gate> get_gates()
+  {
+    return _gates;
+  } 
+
 private:
   /* inverter info */
   float _inv_area{ 0.0 };
@@ -1196,6 +1202,12 @@ struct exact_supergate
 
 struct exact_library_params
 {
+
+  exact_library_params( bool dc_classes = false )
+  {
+    compute_dc_classes = dc_classes;
+  }
+
   /* area of a gate */
   float area_gate{ 1.0f };
   /* area of an inverter */

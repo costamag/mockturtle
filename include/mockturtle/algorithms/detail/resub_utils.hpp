@@ -46,6 +46,8 @@
 namespace mockturtle::experimental::detail
 {
 
+
+
 struct divisor_collector_params
 {
   /*! \brief Maximum number of nodes to be collected in the transitive fanin cone. */
@@ -508,6 +510,130 @@ private:
 private:
   Ntk const& ntk;
 }; /* node_mffc_inside */
+
+/* based on abcRefs.c */
+template<typename Ntk>
+class rils_node_mffc_inside
+{
+public:
+  using node = typename Ntk::node;
+
+public:
+  explicit rils_node_mffc_inside( Ntk const& ntk )
+      : ntk( ntk )
+  {
+    static_assert( has_incr_fanout_size_v<Ntk>, "Ntk does not implement the incr_fanout_size method" );
+    static_assert( has_decr_fanout_size_v<Ntk>, "Ntk does not implement the decr_fanout_size method" );
+    static_assert( has_fanout_size_v<Ntk>, "Ntk does not implement the fanout_size method" );
+    static_assert( has_incr_trav_id_v<Ntk>, "Ntk does not implement the incr_trav_id method" );
+    static_assert( has_trav_id_v<Ntk>, "Ntk does not implement the trav_id method" );
+    static_assert( has_set_visited_v<Ntk>, "Ntk does not implement the set_visited method" );
+    static_assert( has_visited_v<Ntk>, "Ntk does not implement the visited method" );
+    static_assert( has_foreach_fanin_v<Ntk>, "Ntk does not implement the foreach_fanin method" );
+    static_assert( has_get_node_v<Ntk>, "Ntk does not implement the get_node method" );
+    static_assert( has_is_pi_v<Ntk>, "Ntk does not implement the is_pi method" );
+  }
+
+  template<typename Fn>
+  double call_on_mffc_and_count( node const& n, std::vector<node> const& leaves, Fn&& fn )
+  {
+    /* increment the fanout counters for the leaves */
+    for ( const auto& l : leaves )
+      ntk.incr_fanout_size( l );
+
+    /* dereference the node */
+    auto count1 = node_deref_rec( n );
+
+    /* call `fn` on MFFC nodes */
+    ntk.incr_trav_id();
+    node_mffc_cone_rec( n, true, fn );
+
+    /* reference it back */
+    auto count2 = node_ref_rec( n );
+    (void)count2;
+    assert( count1 == count2 );
+
+    for ( const auto& l : leaves )
+      ntk.decr_fanout_size( l );
+
+    return count1;
+  }
+
+  double run( node const& n, std::vector<node> const& leaves, std::vector<node>& inside )
+  {
+    inside.clear();
+    return call_on_mffc_and_count( n, leaves, [&inside]( node const& m ) { inside.emplace_back( m ); } );
+  }
+
+private:
+  /* ! \brief Dereference the node's MFFC */
+  double node_deref_rec( node const& n )
+  {
+    if ( ntk.is_pi( n ) )
+      return 0;
+
+    double counter = ntk.get_area( n );
+    ntk.foreach_fanin( n, [&]( const auto& f ) {
+      auto const& p = ntk.get_node( f );
+
+      ntk.decr_fanout_size( p );
+      if ( ntk.fanout_size( p ) == 0 )
+      {
+        counter += node_deref_rec( p );
+      }
+    } );
+
+    return counter;
+  }
+
+  /* ! \brief Reference the node's MFFC */
+  double node_ref_rec( node const& n )
+  {
+    if ( ntk.is_pi( n ) )
+      return 0;
+
+    double counter = ntk.get_area( n );
+    ntk.foreach_fanin( n, [&]( const auto& f ) {
+      auto const& p = ntk.get_node( f );
+
+      auto v = ntk.fanout_size( p );
+      ntk.incr_fanout_size( p );
+      if ( v == 0 )
+      {
+        counter += node_ref_rec( p );
+      }
+    } );
+
+    return counter;
+  }
+
+  template<typename Fn>
+  void node_mffc_cone_rec( node const& n, bool top_most, Fn&& fn )
+  {
+    /* skip visited nodes */
+    if ( ntk.visited( n ) == ntk.trav_id() )
+    {
+      return;
+    }
+    ntk.set_visited( n, ntk.trav_id() );
+
+    if ( !top_most && ( ntk.is_pi( n ) || ntk.fanout_size( n ) > 0 ) )
+    {
+      return;
+    }
+
+    /* recurse on children */
+    ntk.foreach_fanin( n, [&]( const auto& f ) {
+      node_mffc_cone_rec( ntk.get_node( f ), false, fn );
+    } );
+
+    /* collect the internal nodes */
+    fn( n );
+  }
+
+private:
+  Ntk const& ntk;
+}; /* rils_node_mffc_inside */
 
 template<typename Ntk, typename TT>
 class window_simulator
