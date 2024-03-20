@@ -574,7 +574,7 @@ class scg_network
 
   bool is_ci( node const& n ) const
   {
-    return (_storage->nodes[n].func == 1) && (_storage->nodes[n].children[0].index < num_pis() );
+    return ( _storage->nodes[n].func == 1 ) && (_storage->nodes[n].children[0].index < num_pis() );
   }
 
   bool is_pi( node const& n ) const
@@ -642,6 +642,20 @@ class scg_network
   uint32_t pi_index( node const& n ) const
   {
     return static_cast<uint32_t>( _storage->nodes[n].children[0].data );
+  }
+
+  uint32_t po_index( signal const& s ) const
+  {
+    uint32_t i = -1;
+    foreach_po( [&]( const auto& x, auto index ) {
+      if ( x == s )
+      {
+        i = index;
+        return false;
+      }
+      return true;
+    } );
+    return i;
   }
 #pragma endregion nodes and signals
 
@@ -1214,9 +1228,14 @@ class scg_network
   {
     assert( children.size() == other._storage->nodes[source].children.size() );
     if( other.has_binding( source ) )
+    {
       return create_node_in_cloning( children, other.node_function( source ), other.get_binding(source).id );
+    }
     else
+    {
+      printf("NO BINDING IN CLONE\n");
       return create_node_in_cloning( children, other.node_function( source ) );
+    }
   }
 
   signal _create_node( std::vector<signal> const& children, uint32_t literal )
@@ -1838,6 +1857,11 @@ class scg_network
     return static_cast<uint32_t>( _storage->nodes[n].children.size() );
   }
 
+  node get_children( node const& n, uint32_t idx ) const
+  {
+    return static_cast<uint32_t>( _storage->nodes[n].children[idx].index );
+  }
+
   size_t fanout_size( node const& n ) const
   {
     return _storage->nodes[n].nfos & UINT32_C( 0x7FFFFFFF );
@@ -2221,9 +2245,8 @@ class scg_network
         if ( has_binding( n ) )
         {
           auto nd = get_binding( n );
-          //printf("%d\n", nd.id);
-          //printf("%f\n", nd.area);
-          area += nd.area;
+          if( !is_constant(n) && !( fanin_size(n) == 1 && is_constant( get_children(n,0) )) )
+            area += nd.area;
         }
         else
         {

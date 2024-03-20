@@ -874,6 +874,11 @@ public:
         return false;
       }
 
+      if( ntk.is_po(n) )
+      {
+        return true;
+      }
+
       //kitty::print_binary( resub_engine.get_signature( n )); printf("@\n");
 
       pbar( i, i, candidates, st.estimated_gain );

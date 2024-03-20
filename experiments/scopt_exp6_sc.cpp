@@ -37,9 +37,9 @@
 #include <mockturtle/io/write_aiger.hpp>
 #include <mockturtle/io/genlib_reader.hpp>
 #include <mockturtle/networks/aig.hpp>
-#include <mockturtle/networks/scg.hpp>
 #include <mockturtle/networks/klut.hpp>
 #include <mockturtle/networks/mig.hpp>
+#include <mockturtle/networks/scg.hpp>
 #include <mockturtle/utils/tech_library.hpp>
 #include <mockturtle/views/binding_view.hpp>
 #include <mockturtle/views/depth_view.hpp>
@@ -55,7 +55,7 @@ template<class Ntk>
 Ntk abc_opto( Ntk const& ntk, std::string str_code, std::string abc_script = "resyn2rs" )
 {
   write_aiger( ntk, "/tmp/"+str_code+".aig" );
-  std::string command = "abc -q \"r /tmp/"+str_code+".aig; " + abc_script + "; write_aiger /tmp/" + str_code + ".aig\"";
+  std::string command = "abc -q \"r /tmp/"+str_code+".aig; fraig;" + abc_script + "; write_aiger /tmp/" + str_code + ".aig\"";
 
   std::array<char, 128> buffer;
   std::string result;
@@ -82,9 +82,6 @@ int main()
   using namespace experiments;
   using namespace mockturtle;
 
-  experiment<std::string, double, double, double, double, double> exp( "SCOPT", "benchmark", "a(map)", "a(opt)", "d(map)", "d(opt)", "t(opt)");
-
-
   fmt::print( "[i] processing technology library\n" );
 
 
@@ -100,90 +97,60 @@ int main()
   tech_library_params tps;
   tech_library<5, classification_type::np_configurations> tech_lib( gates, tps );
 
-  for ( auto const& benchmark : epfl_benchmarks( experiments::multiplier ) )
+  for ( auto const& benchmark : epfl_benchmarks( experiments::mem_ctrl ) )
   {
     fmt::print( "[i] processing {}\n", benchmark );
 
+    bool start=true;
+    bool close=false;
+
     aig_network aig;
-    if ( lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( aig ) ) != lorina::return_code::success )
+    if ( lorina::read_aiger(  "mem_ctrl_optmap.aig", aiger_reader( aig ) ) != lorina::return_code::success )
     {
       continue;
     }
 
-    scopt::emap2_params ps2;
-    ps2.cut_enumeration_ps.minimize_truth_table = true;
-    ps2.cut_enumeration_ps.cut_limit = 24;
-    ps2.area_flow_rounds=2;
-    ps2.area_oriented_mapping = true;
-    scopt::emap2_stats st2;
 
+    const auto cec = benchmark == "hyp" ? true : abc_cec( aig, benchmark );
+    assert( cec && "[e] not equivalent" );
 
-    scopt::scg_network scg_p1 = scopt::emap2_klut( aig, tech_lib, ps2, &st2 );
+    scopt::emap2_params ps;
+    ps.cut_enumeration_ps.minimize_truth_table = true;
+    ps.cut_enumeration_ps.cut_limit = 24;
+    ps.area_flow_rounds=2;
+    ps.area_oriented_mapping = true;
+    scopt::emap2_stats st;
 
-    double const a_map = scg_p1.compute_area();
-    double const d_map = scg_p1.compute_worst_delay();
+    scopt::scg_network scg = emap2_klut( aig, tech_lib, ps, &st );
 
-    printf("a(start) -> %f\n", scg_p1.compute_area());
-
-    std::cout << std::endl;
-
-    /* set up the parameters */
     boptimizer_params rps;
     rps.progress =true;
-    rps.max_inserts = 100;
+    rps.max_inserts = 300;
     rps.max_trials = 1;
-    rps.max_pis = 10;
+    rps.max_pis = 16;
     rps.verbose = false;
-    rps.max_divisors = 32;
+    rps.max_divisors = 256;
 
     boptimizer_stats rst_p1;
-    double aOld = scg_p1.compute_area()+1;
-    while( scg_p1.compute_area() < aOld )
-    {
-      aOld = scg_p1.compute_area();
 
-      boptimize_sc<scopt::support_selection_t::GREEDY, 4u, 4u>( scg_p1, rps, &rst_p1 );
-      scg_p1 = cleanup_dangling( scg_p1 );
-      printf("GRE[4,4]: %6f \n", scg_p1.compute_area() );
+   
+    boptimize_sc<scopt::support_selection_t::GREEDY, 5u, 4u>( scg, rps, &rst_p1 );
+    scg = cleanup_dangling( scg );
+    printf("GRE[5,4]: %6f ", scg.compute_area() );
+    std::cout << std::endl;
+    start=false;       
 
-//      if( aOld == scg_p1.compute_area() )
-//      {
-//        boptimize_sc<scopt::support_selection_t::GREEDY, 7u, 4u>( scg_p1, rps, &rst_p1 );
-//        scg_p1 = cleanup_dangling( scg_p1 );
-//        printf("GRE[7,4]: %6d [%6d]\n", scg_p1.num_gates(), scg_p1.max_num_fanins);
-//      }
-//      if( aOld == scg_p1.compute_area() )
-//      {
-//        boptimize_sc<scopt::support_selection_t::PIVOT, 4u, 4u>( scg_p1, rps, &rst_p1 );
-//        scg_p1 = cleanup_dangling( scg_p1 );
-//        printf("PIV[4,4]: %6d [%6d]\n", scg_p1.num_gates(), scg_p1.max_num_fanins);
-//      }
-//      if( aOld == scg_p1.compute_area() )
-//      {
-//        boptimize_sc<scopt::support_selection_t::PIVOT, 7u, 4u>( scg_p1, rps, &rst_p1 );
-//        scg_p1 = cleanup_dangling( scg_p1 );
-//        printf("PIV[7,4]: %6d [%6d]\n", scg_p1.num_gates(), scg_p1.max_num_fanins);
-//      }
-      printf("%f %f\n", aOld, scg_p1.compute_area());
-    }
+    double const d_map = scg.compute_area();
+    double const d_opt = scg.compute_worst_delay();
 
-    double const d_map = scg_p1.compute_area();
-    double const d_opt = scg_p1.compute_worst_delay();
-
-    printf("a( end ) -> %f\n", scg_p1.compute_area());
+    printf("a( end ) -> %f d( end ) -> %f\n", scg.compute_area(), scg.compute_worst_delay());
     std::cout << std::endl;
 
-    auto const cec = benchmark == "hyp" ? true : abc_cec( res, benchmark );
-    auto const cec2 = benchmark == "hyp" ? true : abc_cec( scg_p1, benchmark );
-    if( !cec )  printf("[e] klut not equivalent\n");
-    if( !cec2 )  printf("[e] scg not equivalent\n");
-
-    exp( benchmark, baseline[benchmark], cells_init, mapped_aig.num_cells(), to_seconds( st.time_total ), cec );
-
+    auto const cecMP = benchmark == "hyp" ? true : abc_cec( scg, benchmark );
+    if(!cecMP)
+      printf("ERROR\n");
+    std::cout << std::endl;
   }
-
-  exp.save();
-  exp.table();
 
   return 0;
 }

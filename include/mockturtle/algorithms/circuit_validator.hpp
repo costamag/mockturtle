@@ -282,6 +282,7 @@ public:
     }
     if constexpr ( std::is_same_v<index_list_type, lig_index_list<true>> || std::is_same_v<index_list_type, lig_index_list<false>> )
     { // TODO: add clauses for function
+
       id_list.foreach_gate( [&]( std::vector<uint32_t> children, uint32_t func_literal ) {
         std::vector<uint32_t> nodes;
         std::vector<bill::lit_type> lits_not_cond;
@@ -522,7 +523,7 @@ private:
     /*
      * more variables is worse than more clauses! I turned off the AIG-based clauses construction
     */
-    if constexpr ( std::is_same_v<typename Ntk::base_type, scopt::scg_network> )
+    if constexpr ( false && std::is_same_v<typename Ntk::base_type, scopt::scg_network> )
     {
       bill::lit_type node_lit = literals[n] = add_node_clauses( n, child_lits, solver, add_clause_fn );
       constructed[n] = true;

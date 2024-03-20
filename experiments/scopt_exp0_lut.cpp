@@ -54,7 +54,7 @@
 #include <mockturtle/views/mapping_view.hpp>
 
 #include <experiments.hpp>
-#include <ctime>
+
 
 using namespace experiments;
 using namespace mockturtle;

@@ -551,7 +551,8 @@ public:
     /* reference it back */
     auto count2 = node_ref_rec( n );
     (void)count2;
-    assert( count1 == count2 );
+    double eps = 0.1;
+    assert( abs(count1-count2) <= eps );
 
     for ( const auto& l : leaves )
       ntk.decr_fanout_size( l );

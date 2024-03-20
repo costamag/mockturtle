@@ -48,6 +48,8 @@
 #include <thread>
 #include <type_traits>
 #include <vector>
+#include <fstream>
+
 
 namespace mockturtle
 {
@@ -86,7 +88,7 @@ struct scg_resyn_static_params
 
   static constexpr int max_fanin_size = -1;
   static constexpr bool accept_worse{ false };
-  static constexpr bool map{ false };
+  static constexpr bool on_the_fly{ false };
 
   static constexpr support_selection_t support_selection{ GREEDY };
 
@@ -247,7 +249,7 @@ private:
 
 public:
   explicit scg_resyn_decompose( std::vector<gate> const& gates, stats& st ) noexcept
-      : st( st ), _lps(true), _lib( _resyn, _lps ), _gates(gates), _tech_lib( gates, _tps )
+      : st( st ), _lps(false),  _gates(gates), _tech_lib( gates, _tps ), _lib( _resyn, _lps )
   {
     exact_library_params lps;
     lps.compute_dc_classes = true;
@@ -256,6 +258,55 @@ public:
     static_assert( !( static_params::uniform_div_cost && static_params::preserve_depth ), "If depth is to be preserved, divisor depth cost must be provided (usually not uniform)" );
     divisors.reserve( static_params::reserve );
     RIGRNG.seed( 5 );
+
+    auto [buf_area, buf_delay, buf_id] = _tech_lib.get_buffer_info();
+    auto [inv_area, inv_delay, inv_id] = _tech_lib.get_inverter_info();
+
+    _area_th = std::min( buf_area, inv_area );
+
+
+    kitty::static_truth_table<4u> tt;
+    int i{0};
+    std::string line;
+    std::ifstream fTts ("sky130.tts");
+    if (fTts.is_open())
+    {
+      while ( std::getline (fTts,line) )
+      {
+        kitty::create_from_binary_string( tt, line );
+        _pClassMap[tt._bits]=i++;
+      }
+      fTts.close();
+    }
+
+    std::ifstream fAreas ("sky130.area");
+    if (fAreas.is_open())
+    {
+      while ( std::getline (fAreas,line) )
+      {
+        _areas.push_back( std::stof( line ) );
+      }
+      fAreas.close();
+    }
+
+
+    std::ifstream fLists ("sky130.list");
+    if (fLists.is_open())
+    {
+      while ( std::getline (fLists,line) )
+      {
+        std::vector<uint32_t> list;
+        uint32_t number;
+        std::istringstream line_stream(line);
+        while (line_stream >> number)
+        {
+            list.push_back(number);
+        }
+        _idlists.push_back( list );
+      }
+      fLists.close();
+    }
+
   }
 
   /*! \brief Perform XAG resynthesis.
@@ -327,6 +378,7 @@ private:
     if ( lit )
     {
       index_list.add_output( *lit );
+      //std::cout << to_index_list_string(index_list) << std::endl;
       return index_list;
     }
     return std::nullopt;
@@ -344,7 +396,7 @@ private:
       return *res0;
     }
 
-    if ( num_inserts <= 0 )
+    if ( num_inserts <= _area_th )
     {
       return std::nullopt;
     }
@@ -412,20 +464,19 @@ private:
       /* 0-resub */
       if ( unateness[0] && unateness[3] )
       {
-        if( (buf_area <= max_area) )
-        {
-          kitty::dynamic_truth_table func(1u);
-          kitty::create_from_binary_string( func, "10" );
-          return index_list.add_function( std::vector{ v << 1 }, func, buf_area, buf_id );
-        }
+        //if( ( buf_area < max_area ) )
+        //{
+        //  assert( v < index_list.num_pis() );
+          return v << 1;
+        //  return index_list.add_function( std::vector{ v << 1 }, _gates[buf_id].function, buf_area, buf_id );
+        //}
       }
       if ( unateness[1] && unateness[2] )
       {
-        if( (buf_area <= max_area) )
+        if( (inv_area < max_area) )
         {
-          kitty::dynamic_truth_table func(1u);
-          kitty::create_from_binary_string( func, "01" );
-          return index_list.add_function( std::vector{ v << 1 + 1 }, func, inv_area, inv_id );
+          assert( v < index_list.num_pis() );
+          return index_list.add_function( std::vector{ v << 1 }, _gates[inv_id].function, inv_area, inv_id );
         }
       }
     }
@@ -440,8 +491,16 @@ private:
 
     if ( supp )
     {
-      auto const [func, care] = extract_functionality_from_signatures( *supp );
-      return _map_on_the_fly( *supp, func, care, max_inserts );
+      if( ((*supp).size()>4) || static_params::on_the_fly )
+      {
+        auto const [func, care] = extract_functionality_from_signatures( *supp );
+        return _map_on_the_fly( *supp, func, care, max_inserts );
+      }
+      else
+      {
+        auto const [func, care] = extract_functionality_from_signatures4( *supp );
+        return _map_with_database( *supp, func, care, max_inserts );
+      }
     }
     /* resynthesis */
     return std::nullopt;
@@ -501,6 +560,61 @@ private:
     return std::make_tuple( func_s, care_s );
   }
 
+  std::tuple<kitty::static_truth_table<4u>, kitty::static_truth_table<4u>> extract_functionality_from_signatures4( std::vector<uint32_t> const& supp )
+  {
+    assert( supp.size() <= 4u );
+
+    std::vector<kitty::static_truth_table<4u>> xs;
+    for ( uint32_t i{ 0 }; i < supp.size(); ++i )
+    {
+      xs.emplace_back();
+      kitty::create_nth_var( xs[i], i );
+    }
+
+    kitty::static_truth_table<4u> func_s;
+    kitty::static_truth_table<4u> care_s = func_s.construct();
+    kitty::static_truth_table<4u> temp_s = func_s.construct();
+    auto temp = _uSPFD.care.construct();
+
+    for ( uint32_t m{ 0u }; m < ( 1u << supp.size() ); ++m )
+    {
+      temp = temp | ~temp;
+      temp_s = temp_s | ~temp_s;
+
+      for ( uint32_t l{ 0u }; l < supp.size(); ++l )
+      {
+        if ( ( m >> l ) & 0x1 == 0x1 )
+        {
+          temp &= get_div( supp[l] );
+          temp_s &= xs[l];
+        }
+        else
+        {
+          temp &= ~get_div( supp[l] );
+          temp_s &= ~xs[l];
+        }
+      }
+
+      if ( kitty::count_ones( temp & _uSPFD.care ) > 0 ) // care value
+      {
+        care_s |= temp_s;
+
+        if ( kitty::count_ones( temp & _uSPFD.func[1] ) > 0 )
+        {
+          func_s |= temp_s;
+        }
+      }
+    }
+    auto rnd_tt = func_s.construct();
+    kitty::create_random( rnd_tt, _seed++ );
+
+    func_s |= ( rnd_tt & ~care_s );
+    // kitty::print_binary( func_s );printf("\n");
+
+    return std::make_tuple( func_s, care_s );
+  }
+
+
 #pragma region synthesis
 
 #pragma region synthesize aig
@@ -519,30 +633,127 @@ private:
       return aig.get_constant(true);
     if ( pis.size() == 1u )
       return kitty::is_normal( tt ) ? pis[0] : !pis[0];
+
+    uint32_t idx = pis.size() - 1;
+    uint32_t impurity;
+    uint32_t best_impurity=std::numeric_limits<uint32_t>::max();
+    for( int i{0}; i<pis.size(); ++i )
+    {
+      auto tt0 = kitty::cofactor0( tt, aig.pi_index(aig.get_node(pis[i]) ));
+      auto tt1 = kitty::cofactor1( tt, aig.pi_index(aig.get_node(pis[i]) ));
+      auto mk0 = kitty::cofactor0( mk, aig.pi_index(aig.get_node(pis[i]) ));
+      auto mk1 = kitty::cofactor1( mk, aig.pi_index(aig.get_node(pis[i]) ));
+
+      if( kitty::is_const0( tt0&mk0 ) ) // x & F1
+      {
+        aig_network::signal x = pis[i];
+        pis.erase( pis.begin() + i );
+        aig_network::signal f1 = synthesize_aig_rec( aig, pis, tt1, mk1 );
+        return aig.create_and( x, f1 );
+      }
+
+      if( kitty::is_const0( tt1&mk1 ) ) // x' & F0
+      {
+        aig_network::signal x = pis[i];
+        pis.erase( pis.begin() + i );
+        aig_network::signal f0 = synthesize_aig_rec( aig, pis, tt0, mk0 );
+        return aig.create_and( !x, f0 );
+      }
+
+      if( kitty::equal( tt0&mk0, mk0 ) ) // x' + F1
+      {
+        aig_network::signal x = pis[i];
+        pis.erase( pis.begin() + i );
+        aig_network::signal f1 = synthesize_aig_rec( aig, pis, tt1, mk1 );
+        return aig.create_or( !x, f1 );
+      }
+
+      if( kitty::equal( tt1&mk1, mk1 ) ) // x + F0
+      {
+        aig_network::signal x = pis[i];
+        pis.erase( pis.begin() + i );
+        aig_network::signal f0 = synthesize_aig_rec( aig, pis, tt0, mk0 );
+        return aig.create_or( x, f0 );
+      }
+      
+      uint32_t n0 = kitty::count_ones( (~tt) & mk );
+      uint32_t n1 = kitty::count_ones( tt & mk );
+      impurity = n0*n1;
+      if( impurity < best_impurity && ( n0 > 0 || n1 > 0) )
+      {
+        best_impurity = impurity;
+        idx = i;
+      }
+
+    }
+
     if( pis.size() <= 4u )
     {
       return match_aig( aig, pis, tt, mk );
     }
 
-    uint32_t idx = pis.size() - 1;
-
     aig_network::signal x = pis[idx];
     pis.erase( pis.begin() + idx );
-    aig_network::signal f1 = synthesize_aig_rec( aig, pis, kitty::cofactor1( tt, idx ), kitty::cofactor1( mk, idx ) );
-    aig_network::signal f0 = synthesize_aig_rec( aig, pis, kitty::cofactor0( tt, idx ), kitty::cofactor0( mk, idx ) );
-
-    if ( f1.index == 0 )
-    {
-      auto res = f1.complement ? !aig.create_and( !x, !f0 ) : aig.create_and( !x, f0 );
-      return res;
-    }
-    if ( f0.index == 0 )
-    {
-      auto res = f0.complement ? !aig.create_and( x, !f1 ) : aig.create_and( x, f1 );
-      return res;
-    }
+    aig_network::signal f1 = synthesize_aig_rec( aig, pis, kitty::cofactor1( tt, aig.pi_index(aig.get_node(pis[idx]) ) ), kitty::cofactor1( mk, aig.pi_index(aig.get_node(pis[idx]) ) ) );
+    aig_network::signal f0 = synthesize_aig_rec( aig, pis, kitty::cofactor0( tt, aig.pi_index(aig.get_node(pis[idx]) ) ), kitty::cofactor0( mk, aig.pi_index(aig.get_node(pis[idx]) ) ) );
 
     return aig.create_ite( x, f1, f0 );
+  }
+
+  std::tuple<kitty::static_truth_table<4u>, kitty::static_truth_table<4u>> extract_4functionality( kitty::dynamic_truth_table const& tt, kitty::dynamic_truth_table const& mk )
+  {
+
+    std::vector<kitty::dynamic_truth_table> xs;
+    std::vector<kitty::static_truth_table<4u>> x4;
+    for ( uint32_t i{ 0 }; i < 4u; ++i )
+    {
+      xs.emplace_back( tt.num_vars() );
+      x4.emplace_back( );
+      kitty::create_nth_var( xs[i], i );
+      kitty::create_nth_var( x4[i], i );
+    }
+
+    kitty::static_truth_table<4u> func_s;
+    kitty::static_truth_table<4u> care_s;
+    auto temp = tt.construct();
+    auto temp_s = func_s.construct();
+
+    for ( uint32_t m{ 0u }; m < 16u; ++m )
+    {
+      temp = temp | ~temp;
+      temp_s = temp_s | ~temp_s;
+
+      for ( uint32_t l{ 0u }; l < 4; ++l )
+      {
+        if ( ( m >> l ) & 0x1 == 0x1 )
+        {
+          temp &= xs[l];
+          temp_s &= x4[l];
+        }
+        else
+        {
+          temp &= ~xs[l];
+          temp_s &= ~x4[l];
+        }
+      }
+
+      if ( kitty::count_ones( temp & mk ) > 0 ) // care value
+      {
+        care_s |= temp_s;
+
+        if ( kitty::count_ones( temp & tt ) > 0 )
+        {
+          func_s |= temp_s;
+        }
+      }
+    }
+    auto rnd_tt = func_s.construct();
+    kitty::create_random( rnd_tt, _seed++ );
+
+    func_s |= ( rnd_tt & ~care_s );
+    // kitty::print_binary( func_s );printf("\n");
+
+    return std::make_tuple( func_s, care_s );
   }
 
   aig_network::signal match_aig( aig_network& aig, std::vector<signal<aig_network>> vars, kitty::dynamic_truth_table const& tt, kitty::dynamic_truth_table const& mk )
@@ -550,8 +761,9 @@ private:
 
     kitty::static_truth_table<4u> tt4;
     kitty::static_truth_table<4u> mk4;
-    shrink_to_inplace( tt4, tt );
-    shrink_to_inplace( mk4, mk );
+    auto config4 = extract_4functionality( tt, mk );
+    tt4 = std::get<0>(config4);
+    mk4 = std::get<1>(config4);
 
     auto config = exact_npn_canonization( tt4 );
 
@@ -629,6 +841,126 @@ private:
 
 #pragma endregion synthesize aig
 
+
+  std::optional<uint32_t> _map_with_database( std::vector<uint32_t> const& supp, kitty::static_truth_table<4u> const& func, kitty::static_truth_table<4u> const& care, double max_inserts )
+  {
+    std::vector<uint32_t> lits0;
+    for ( uint32_t x : supp )
+    {
+      lits0.push_back( x << 1u );
+    }
+
+    auto dcset = ~care;
+
+     // printf("\n");
+     // kitty::print_binary(func);
+     // printf("\n");
+
+    std::vector<uint32_t> dcs;
+    for( int bit{0}; bit<16; ++bit )
+    {
+      if( kitty::get_bit( dcset, bit ) > 0 )
+      {
+        dcs.push_back(bit);
+      }
+    }
+
+
+    uint64_t best_key;
+    double best_area = max_inserts+1;
+    std::vector<uint8_t> best_perm;
+
+    for( uint32_t m{0}; m< (1<<dcs.size()); ++m )
+    {
+      auto tt = func;
+
+      for( int i{0}; i<dcs.size(); ++i )
+      {
+        if( (m >> i)&0x1 == 0x1 )
+        {
+          kitty::flip_bit( tt, dcs[i] );
+        }
+      }
+  //    printf("\n");
+  //    kitty::print_binary(tt);
+  //    printf("\n");
+
+      /* p-canonize */
+      auto config = exact_p_canonization( tt );
+
+      auto func_p = std::get<0>( config );
+      auto neg = std::get<1>( config );
+      auto perm = std::get<2>( config );
+
+      //kitty::print_binary(func_p);
+      //printf("\n");
+
+      uint64_t key = _pClassMap[ func_p._bits&0xFFFF ];
+      if( _areas[key] <= best_area  )
+      {
+        best_key = key;
+        best_area = _areas[key];
+        best_perm = perm;
+        //printf("%f\n", best_area);
+      }
+    }
+
+    if( best_area <= max_inserts )
+    {
+      std::vector<uint32_t> lits = {0,0,0,0,0};
+      for( auto i{0}; i<4; ++i )
+      {
+        lits[i+1] = lits0[best_perm[i]];
+      }
+
+      //printf( "try match %f %f\n", best_area, max_inserts );
+      auto entry = _idlists[ best_key ];
+      int type = 0;
+      int nFins = 0;
+      uint32_t sc_id;
+      std::vector<uint32_t> children;
+      uint32_t lit;
+      //printf("build index list from entry of size %d\n", entry.size());
+      for( int i{0}; i<entry.size(); ++i )
+      {
+        if( type == 0 )
+        {
+          nFins = entry[i];
+          //printf("nFins=%d\n", nFins);
+          type=1;
+        }
+        else if( type == 1 )
+        {
+          children.push_back( lits[entry[i]] );//not accounting for 0
+        //  printf("%d ", lits[entry[i]] );
+          if( children.size() == nFins )
+          {
+        //    printf("\n");
+            type = 2;
+          }
+        }
+        else if( type == 2 )
+        {
+          type = 0;
+          sc_id = entry[i];
+          lit = index_list.add_function( children, _gates[sc_id].function, _gates[sc_id].area, _gates[sc_id].id );
+          //kitty::print_binary( _gates[sc_id].function );
+          //printf("\n");
+          lits.push_back( lit );
+          children.clear();
+        }
+      }
+      //printf(" %f %f %f\n", index_list.get_area(), _areas[best_key], max_inserts );
+      return lit;
+    }
+
+
+
+    return std::nullopt;
+  }
+
+ 
+
   std::optional<uint32_t> _map_on_the_fly( std::vector<uint32_t> const& supp, kitty::dynamic_truth_table const& func, kitty::dynamic_truth_table const& care, double max_inserts )
   {
 
@@ -641,11 +973,14 @@ private:
       pis.push_back( aig.create_pi() );
     }
 
-    synthesize_aig_inplace( aig, pis, func, care );
+    auto sig_out = synthesize_aig_inplace( aig, pis, func, care );
+    if( aig.is_constant( aig.get_node(sig_out) ) )
+      return std::nullopt;
 
     scopt::emap2_params ps2;
     ps2.cut_enumeration_ps.minimize_truth_table = true;
-    ps2.cut_enumeration_ps.cut_limit = 8;
+    ps2.cut_enumeration_ps.cut_limit = 1;
+    ps2.cut_enumeration_ps.cut_limit = 1;
     ps2.area_oriented_mapping = true;
     scopt::emap2_stats st2;
 
@@ -1028,7 +1363,11 @@ private:
   tech_library_params _tps;
   std::vector<gate> _gates;
   tech_library<5, classification_type::np_configurations> _tech_lib;
+  std::vector<std::vector<uint32_t>> _idlists;
+  std::vector<double> _areas;
+  std::unordered_map<uint64_t, uint32_t> _pClassMap;
 
+  double _area_th;
 
 }; /* xag_resyn_decompose */
 

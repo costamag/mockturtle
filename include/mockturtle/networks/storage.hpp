@@ -252,6 +252,7 @@ struct smart_storage
 
     /* we generally reserve the first node for a constant */
     nodes.emplace_back();
+    //nodes.emplace_back();
   }
 
   uint64_t get_index()

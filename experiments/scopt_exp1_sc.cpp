@@ -38,7 +38,7 @@
 #include <mockturtle/io/write_aiger.hpp>
 #include <mockturtle/io/genlib_reader.hpp>
 #include <mockturtle/networks/aig.hpp>
-#include <mockturtle/networks/lig.hpp>
+#include <mockturtle/networks/scg.hpp>
 #include <mockturtle/networks/klut.hpp>
 #include <mockturtle/networks/mig.hpp>
 #include <mockturtle/utils/tech_library.hpp>
@@ -97,7 +97,7 @@ int main()
   tech_library_params tps;
   tech_library<5, classification_type::np_configurations> tech_lib( gates, tps );
 
-  for ( auto const& benchmark : epfl_benchmarks(  ) )
+  for ( auto const& benchmark : epfl_benchmarks( experiments::mem_ctrl ) )
   {
     fmt::print( "[i] processing {}\n", benchmark );
 
@@ -126,7 +126,7 @@ int main()
     scopt::emap2_stats st2;
 
 
-    lig_network res2 = scopt::emap2_klut( aig, tech_lib, ps2, &st2 );
+    scopt::scg_network res2 = scopt::emap2_klut( aig, tech_lib, ps2, &st2 );
 
     printf( "%d -> %f %f\n", aig.num_gates(), st2.area, st2.delay );
     printf("%f %f\n", res2.compute_area(), res2.compute_worst_delay());
@@ -136,7 +136,7 @@ int main()
     auto const cec = benchmark == "hyp" ? true : abc_cec( res, benchmark );
     auto const cec2 = benchmark == "hyp" ? true : abc_cec( res2, benchmark );
     if( !cec )  printf("[e] klut not equivalent\n");
-    if( !cec2 )  printf("[e] lig not equivalent\n");
+    if( !cec2 )  printf("[e] scg not equivalent\n");
 
   }
 

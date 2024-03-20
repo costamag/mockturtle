@@ -232,6 +232,69 @@ void cleanup_dangling_impl( NtkSrc const& ntk, NtkDest& dest, LeavesIterator beg
 }
 
 template<typename NtkSrc, typename NtkDest, typename LeavesIterator>
+void cleanup_scg_impl( NtkSrc const& ntk, NtkDest& dest, LeavesIterator begin, LeavesIterator end, node_map<signal<NtkDest>, NtkSrc>& old_to_new )
+{
+  /* constants */
+  old_to_new[ntk.get_constant( false )] = dest.get_constant( false );
+  if ( ntk.get_node( ntk.get_constant( true ) ) != ntk.get_node( ntk.get_constant( false ) ) )
+  {
+    old_to_new[ntk.get_constant( true )] = dest.get_constant( true );
+  }
+
+  /* create inputs in the same order */
+  auto it = begin;
+  ntk.foreach_pi( [&]( auto node ) {
+    old_to_new[node] = *it++;
+  } );
+  if constexpr ( has_foreach_ro_v<NtkSrc> )
+  {
+    ntk.foreach_ro( [&]( auto node ) {
+      old_to_new[node] = *it++;
+    } );
+  }
+  assert( it == end );
+  (void)end;
+
+  /* foreach node in topological order */
+  topo_view topo{ ntk };
+  topo.foreach_node( [&]( auto node ) {
+    if ( ntk.is_constant( node ) || ntk.is_ci( node ) )
+      return;
+
+    /* collect children */
+    std::vector<signal<NtkDest>> children;
+    ntk.foreach_fanin( node, [&]( auto child, auto ) {
+      const auto f = old_to_new[child];
+      if ( ntk.is_complemented( child ) )
+      {
+        children.push_back( !f );
+        printf( "ERROR: COMPLEMENTED CHILD\n");
+      }
+      else
+      {
+        children.push_back( f );
+      }
+    } );
+
+    old_to_new[node] = dest.clone_node( ntk, node, children );
+
+    /* copy name */
+    if constexpr ( has_has_name_v<NtkSrc> && has_get_name_v<NtkSrc> && has_set_name_v<NtkDest> )
+    {
+      auto const s = ntk.make_signal( node );
+      if ( ntk.has_name( s ) )
+      {
+        dest.set_name( old_to_new[node], ntk.get_name( s ) );
+      }
+      if ( ntk.has_name( !s ) )
+      {
+        dest.set_name( !old_to_new[node], ntk.get_name( !s ) );
+      }
+    }
+  } );
+}
+
+template<typename NtkSrc, typename NtkDest, typename LeavesIterator>
 void cleanup_dangling_with_crossings_impl( NtkSrc const& ntk, NtkDest& dest, LeavesIterator begin, LeavesIterator end, node_map<signal<NtkDest>, NtkSrc>& old_to_new )
 {
   /* constants */
@@ -573,6 +636,42 @@ void clone_outputs( NtkSrc const& ntk, NtkDest& dest, node_map<signal<NtkDest>, 
   }
 }
 
+template<typename NtkSrc, typename NtkDest>
+void clone_outputs_sc( NtkSrc const& ntk, NtkDest& dest, node_map<signal<NtkDest>, NtkSrc> const& old_to_new, bool remove_redundant_POs = false )
+{
+  /* POs */
+  ntk.foreach_po( [&]( auto const& po ) {
+    auto const f = old_to_new[po];
+    auto const n = dest.get_node( f );
+    if ( remove_redundant_POs && ( dest.is_pi( n ) || dest.is_constant( n ) ) )
+    {
+      return;
+    }
+
+    dest.create_po( ntk.is_complemented( po ) ? !f : f );
+  } );
+
+  /* RIs */
+  if constexpr ( has_foreach_ri_v<NtkSrc> && has_create_ri_v<NtkDest> )
+  {
+    ntk.foreach_ri( [&]( auto const& f ) {
+      dest.create_ri( ntk.is_complemented( f ) ? !old_to_new[f] : old_to_new[f] );
+    } );
+  }
+
+  /* CO names */
+  if constexpr ( has_has_output_name_v<NtkSrc> && has_get_output_name_v<NtkSrc> && has_set_output_name_v<NtkDest> )
+  {
+    ntk.foreach_co( [&]( auto co, auto index ) {
+      (void)co;
+      if ( ntk.has_output_name( index ) )
+      {
+        dest.set_output_name( index, ntk.get_output_name( index ) );
+      }
+    } );
+  }
+}
+
 } // namespace detail
 
 template<typename NtkSrc, typename NtkDest, typename LeavesIterator>
@@ -688,6 +787,41 @@ template<class NtkSrc, class NtkDest = NtkSrc>
   return dest;
 }
 
+template<class NtkSrc, class NtkDest = NtkSrc>
+[[nodiscard]] NtkDest cleanup_scg( NtkSrc const& ntk, bool remove_dangling_PIs = false, bool remove_redundant_POs = false )
+{
+  static_assert( is_network_type_v<NtkSrc>, "NtkSrc is not a network type" );
+  static_assert( is_network_type_v<NtkDest>, "NtkDest is not a network type" );
+  static_assert( has_get_node_v<NtkSrc>, "NtkSrc does not implement the get_node method" );
+  static_assert( has_node_to_index_v<NtkSrc>, "NtkSrc does not implement the node_to_index method" );
+  static_assert( has_get_constant_v<NtkSrc>, "NtkSrc does not implement the get_constant method" );
+  static_assert( has_foreach_node_v<NtkSrc>, "NtkSrc does not implement the foreach_node method" );
+  static_assert( has_foreach_pi_v<NtkSrc>, "NtkSrc does not implement the foreach_pi method" );
+  static_assert( has_foreach_po_v<NtkSrc>, "NtkSrc does not implement the foreach_po method" );
+  static_assert( has_is_pi_v<NtkSrc>, "NtkSrc does not implement the is_pi method" );
+  static_assert( has_is_constant_v<NtkSrc>, "NtkSrc does not implement the is_constant method" );
+  static_assert( has_clone_node_v<NtkDest>, "NtkDest does not implement the clone_node method" );
+  static_assert( has_create_pi_v<NtkDest>, "NtkDest does not implement the create_pi method" );
+  static_assert( has_create_po_v<NtkDest>, "NtkDest does not implement the create_po method" );
+  static_assert( has_create_not_v<NtkDest>, "NtkDest does not implement the create_not method" );
+  static_assert( has_is_complemented_v<NtkSrc>, "NtkDest does not implement the is_complemented method" );
+
+  NtkDest dest;
+
+  dest.set_library( ntk._library );
+
+  std::vector<signal<NtkDest>> cis;
+  detail::clone_inputs( ntk, dest, cis, remove_dangling_PIs );
+
+  node_map<signal<NtkDest>, NtkSrc> old_to_new( ntk );
+
+  detail::cleanup_scg_impl( ntk, dest, cis.begin(), cis.end(), old_to_new );
+
+  detail::clone_outputs_sc( ntk, dest, old_to_new, remove_redundant_POs );
+
+  return dest;
+}
+
 /*! \brief Cleans up LUT nodes.
  *
  * This method reconstructs a LUT network and optimizes LUTs when they do not
@@ -751,6 +885,7 @@ template<class Ntk>
 
   return dest;
 }
+
 
 template<class Ntk>
 [[nodiscard]] Ntk cleanup_ligs( Ntk const& ntk )
