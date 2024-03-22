@@ -548,16 +548,20 @@ public:
   using signal = typename Ntk::signal;
 
   explicit window_boptimizer( Ntk& ntk, boptimizer_params const& ps, stats& st )
-      : ntk( ntk ), ps( ps ), st( st ), tts( ntk ), tt6( ntk ), _lSim( ntk, ps.max_divisors, nPisLoc ), engine( ntk._library, st.resyn_st ), validator( ntk, { ps.max_clauses, ps.odc_levels, ps.conflict_limit, ps.random_seed } )
+      : ntk( ntk ), ps( ps ), st( st ), tts( ntk ), tt6( ntk ), _asap(ntk), _alap(ntk), _lSim( ntk, ps.max_divisors, nPisLoc ), engine( ntk._library, st.resyn_st ), validator( ntk, { ps.max_clauses, ps.odc_levels, ps.conflict_limit, ps.random_seed } )
   {
     add_event = ntk.events().register_add_event( [&]( const auto& n ) {
       tts.resize();
       tt6.resize();
+      _asap.resize();
+      _alap.resize();
       call_with_stopwatch( st.time_sim, [&]() {
         simulate_node_static<Ntk, nPisGlb>( ntk, n, tts, _gSim );
         simulate_node_static<Ntk, 6>( ntk, n, tt6, _6Sim );
       } );
     } );
+    scheduling();
+
   }
 
   explicit window_boptimizer( Ntk& ntk, boptimizer_params const& ps, stats& st, std::vector<gate> const& gates )
@@ -566,11 +570,15 @@ public:
     add_event = ntk.events().register_add_event( [&]( const auto& n ) {
       tts.resize();
       tt6.resize();
+      _asap.resize();
+      _alap.resize();
       call_with_stopwatch( st.time_sim, [&]() {
         simulate_node_static<Ntk, nPisGlb>( ntk, n, tts, _gSim );
         simulate_node_static<Ntk, 6>( ntk, n, tt6, _6Sim );
       } );
     } );
+    scheduling();
+
   }
 
   ~window_boptimizer()
@@ -606,8 +614,134 @@ public:
     } );
   }
 
+  double compute_delay_ASAP( node const& n )
+  {
+    if ( ntk.visited( n ) == ntk.trav_id() )
+    {
+      return _asap[n];
+    }
+    ntk.set_visited( n, ntk.trav_id() );
+
+    if ( ntk.is_constant( n ) )
+    {
+      return _asap[n];
+    }
+    else if ( ntk.is_pi( n ) )
+    {
+      return _asap[n];
+    }
+
+    double delay{ 0 };
+    auto const& g = ntk.get_binding( n );
+
+    ntk.foreach_fanin( n, [&]( auto const& fi, auto i ) {
+      auto const ni = ntk.get_node( fi );
+      if ( !ntk.is_constant( ni ) )
+      {
+        auto fi_delay = compute_delay_ASAP( ni ) ;
+        delay = std::max( delay, (double)( _asap[ni] + std::max( g.pins[i].rise_block_delay, g.pins[i].fall_block_delay ) ) );
+        std::max( delay, fi_delay );
+      }
+    } );
+
+    _asap[n] = delay;
+    return _asap[n];
+  }
+
+  /*! \brief ASAP scheduling */
+  double ASAP()
+  {
+    double max_del = 0;
+    _asap.reset();
+    ntk.incr_trav_id();
+
+    /* dangling PIs */
+    ntk.foreach_pi( [&]( auto const& n ){
+      _asap[n] = 0;
+    } );
+    _asap[0]=0;
+
+    ntk.foreach_po( [&]( auto const& f, auto i ) {
+      auto const no = ntk.get_node( f );
+      _asap[no] = compute_delay_ASAP( no );
+      if( _asap[no] > max_del )
+      {
+        max_del =  _asap[no];
+      }
+    } );
+
+    return max_del;
+  }
+
+  void compute_delays_ALAP( node const& n )
+  {
+    ntk.set_visited( n, ntk.trav_id() );
+
+    auto const& g = ntk.get_binding( n );
+
+    ntk.foreach_fanin( n, [&]( auto const& fi, auto i ) {
+      auto const ni = ntk.get_node( fi );
+      if ( !ntk.is_constant( ni ) )
+      {
+        auto fi_level = _alap[n] - (double)( std::min( g.pins[i].rise_block_delay, g.pins[i].fall_block_delay ) );
+        if ( ntk.visited( ni ) != ntk.trav_id() || _alap[ni] > fi_level )
+        {
+          _alap[ni] = fi_level;
+          compute_delays_ALAP( ni );
+        }
+      }
+    } );
+  }
+
+  /*! \brief ALAP scheduling.
+   *
+   * ALAP should follow right after ASAP (i.e., initialization) without other optimization in between.
+   */
+  void ALAP( double delay_last )
+  {
+    _alap.reset();
+    ntk.incr_trav_id();
+
+    _alap[0]=0;
+    ntk.foreach_po( [&]( auto const& f, auto i ) {
+      auto const no = ntk.get_node( f );
+
+      if ( !ntk.is_constant( no ) && ntk.visited( no ) != ntk.trav_id() )
+      {
+        _alap[no] = delay_last;
+        compute_delays_ALAP( no );
+      }
+    } );
+
+  }
+
+  void scheduling()
+  {
+    _asap.reset();
+    _alap.reset();
+    /* ASAP */
+    auto tasap = ASAP();
+    //printf(" d= %f\n", tasap);
+    double delay_last=tasap+dT;
+    /* ALAP */
+    ALAP(delay_last);
+    /* MOBILITY */
+//    ntk.foreach_pi( [&]( auto const& n ){
+//      printf("%f ", _alap[n]-_asap[n]);
+//    } );
+//    printf("\n");
+
+//    ntk.foreach_po( [&]( auto const& f ){
+//      auto n = ntk.get_node(f);
+//      printf("%f ", _alap[n]-_asap[n]);
+//    } );
+//    printf("\n");
+
+  }
+
   void update() 
   {
+
     if constexpr ( validator_t::use_odc_ || has_EXODC_interface_v<Ntk> )
     {
       call_with_stopwatch( st.time_sat_restart, [&]() {
@@ -618,6 +752,24 @@ public:
         simulate_nodes_static<Ntk, nPisGlb>( ntk, tts, _gSim, true );
       } );
     }
+  }
+
+  template<class LIST, class LIB>
+  double compute_worst_delay( LIST list, std::vector<double> divs_delays, LIB const& lib )
+  {
+    double delay{0};
+      
+    list.foreach_gate( [&]( std::vector<uint32_t> children, uint32_t func_lit ) {
+      auto g = lib[list.ids[func_lit]];
+      int i{0};
+      for( uint32_t child : children )
+      {
+        delay = std::max( delay, ( double)( divs_delays[child >> 1u] + std::max( g.pins[i].rise_block_delay, g.pins[i].fall_block_delay ) ) );
+        i++;
+      }
+      divs_delays.push_back( delay );
+    } );
+    return delay;
   }
 
   std::optional<signal> run( node const& n, std::vector<node> const& leaves, std::vector<node> const& divs, std::vector<node> const& mffc, mffc_result_t potential_gain, double& last_gain )
@@ -646,6 +798,18 @@ public:
         auto const& id_list = *res;
         assert( id_list.num_pos() == 1u );
         last_gain = potential_gain - id_list.get_area();
+        std::vector<double> divs_delays={0};
+
+        for( auto div : divs )
+        {
+          divs_delays.push_back( _alap[div] );
+        }
+        double delay_candidate = compute_worst_delay( id_list, divs_delays, ntk.get_library() );
+        //printf( "  %f <= %f <= %f\n", _asap[n], delay_candidate, _alap[n] );
+        if( delay_candidate > _alap[n] )
+        {
+          continue;
+        }
 
         auto valid = call_with_stopwatch( st.time_sat, [&]() {
           return validator.validate( n, divs, id_list );
@@ -668,7 +832,7 @@ public:
             } );
 
             //ntk.update_levels();
-
+            scheduling();
             return out_sig;
           }
           else
@@ -790,6 +954,9 @@ private:
   uint32_t _block{0};
   incomplete_node_map<TTsig, Ntk> tts;
   incomplete_node_map<TTtmp, Ntk> tt6;
+  incomplete_node_map<double, Ntk> _asap;
+  incomplete_node_map<double, Ntk> _alap;
+  double dT{0};
   window_simulator<Ntk, TTcut> _lSim;
   static_simulator<nPisGlb> _gSim;
   static_simulator<6u> _6Sim;

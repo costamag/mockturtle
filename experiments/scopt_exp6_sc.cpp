@@ -82,6 +82,8 @@ int main()
   using namespace experiments;
   using namespace mockturtle;
 
+  experiment<std::string, double, double, double, double, double, bool> exp( "SCOPT", "benchmark", "a(map)", "a(opt)", "d(map)", "d(opt)", "t(opt)", "cec");
+
   fmt::print( "[i] processing technology library\n" );
 
 
@@ -97,7 +99,7 @@ int main()
   tech_library_params tps;
   tech_library<5, classification_type::np_configurations> tech_lib( gates, tps );
 
-  for ( auto const& benchmark : epfl_benchmarks( experiments::mem_ctrl ) )
+  for ( auto const& benchmark : epfl_benchmarks(  ) )
   {
     fmt::print( "[i] processing {}\n", benchmark );
 
@@ -105,11 +107,15 @@ int main()
     bool close=false;
 
     aig_network aig;
-    if ( lorina::read_aiger(  "mem_ctrl_optmap.aig", aiger_reader( aig ) ) != lorina::return_code::success )
+    if ( lorina::read_aiger( experiments::benchmark_path(benchmark), aiger_reader( aig ) ) != lorina::return_code::success )
     {
       continue;
     }
 
+    aig = abc_opto( aig, benchmark, "compress2rs" );
+    aig = cleanup_dangling( aig );
+    aig = abc_opto( aig, benchmark, "compress2rs" );
+    aig = cleanup_dangling( aig );
 
     const auto cec = benchmark == "hyp" ? true : abc_cec( aig, benchmark );
     assert( cec && "[e] not equivalent" );
@@ -122,6 +128,8 @@ int main()
     scopt::emap2_stats st;
 
     scopt::scg_network scg = emap2_klut( aig, tech_lib, ps, &st );
+    double const aold = scg.compute_area();
+    double const dold = scg.compute_worst_delay();
 
     boptimizer_params rps;
     rps.progress =true;
@@ -129,28 +137,36 @@ int main()
     rps.max_trials = 1;
     rps.max_pis = 16;
     rps.verbose = false;
-    rps.max_divisors = 256;
+    rps.max_divisors = 128;
 
     boptimizer_stats rst_p1;
 
    
-    boptimize_sc<scopt::support_selection_t::GREEDY, 5u, 4u>( scg, rps, &rst_p1 );
-    scg = cleanup_dangling( scg );
-    printf("GRE[5,4]: %6f ", scg.compute_area() );
+    boptimize_sc<scopt::support_selection_t::GREEDY, 4u, 4u>( scg, rps, &rst_p1 );
+    scg = cleanup_scg( scg );
+    printf("[a]%6f ", aold );
+    printf("-> %6f ", scg.compute_area() );
     std::cout << std::endl;
     start=false;       
 
     double const d_map = scg.compute_area();
     double const d_opt = scg.compute_worst_delay();
 
-    printf("a( end ) -> %f d( end ) -> %f\n", scg.compute_area(), scg.compute_worst_delay());
+    printf("[d]%6f ", dold );
+    printf("-> %6f ", d_opt );
     std::cout << std::endl;
 
     auto const cecMP = benchmark == "hyp" ? true : abc_cec( scg, benchmark );
     if(!cecMP)
       printf("ERROR\n");
     std::cout << std::endl;
+
+    exp( benchmark, aold, scg.compute_area(), dold, scg.compute_worst_delay(), 0.0, cecMP );
+
+
   }
 
+  exp.save();
+  exp.table();
   return 0;
 }
