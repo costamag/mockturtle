@@ -465,11 +465,11 @@ private:
       if ( unateness[0] && unateness[3] )
       {
         //if( ( buf_area < max_area ) )
-        //{
+        {
         //  assert( v < index_list.num_pis() );
           return v << 1;
         //  return index_list.add_function( std::vector{ v << 1 }, _gates[buf_id].function, buf_area, buf_id );
-        //}
+        }
       }
       if ( unateness[1] && unateness[2] )
       {

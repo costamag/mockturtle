@@ -560,6 +560,7 @@ public:
         simulate_node_static<Ntk, 6>( ntk, n, tt6, _6Sim );
       } );
     } );
+    //v1 asap_scheduling();
     scheduling();
 
   }
@@ -577,7 +578,7 @@ public:
         simulate_node_static<Ntk, 6>( ntk, n, tt6, _6Sim );
       } );
     } );
-    scheduling();
+    asap_scheduling();
 
   }
 
@@ -758,18 +759,60 @@ public:
   double compute_worst_delay( LIST list, std::vector<double> divs_delays, LIB const& lib )
   {
     double delay{0};
-      
     list.foreach_gate( [&]( std::vector<uint32_t> children, uint32_t func_lit ) {
       auto g = lib[list.ids[func_lit]];
       int i{0};
+      double delay=0;
       for( uint32_t child : children )
       {
         delay = std::max( delay, ( double)( divs_delays[child >> 1u] + std::max( g.pins[i].rise_block_delay, g.pins[i].fall_block_delay ) ) );
         i++;
       }
+      //printf("%f ", delay );
       divs_delays.push_back( delay );
     } );
-    return delay;
+    
+    //printf("%f ", divs_delays[list.values.back()>>1] );
+
+    return divs_delays[list.values.back()>>1];
+  }
+
+  double asap_scheduling( )
+  {
+
+    topo_view ntk_topo{ ntk };
+    ntk_topo.set_library( ntk._library );
+    double worst_delay = 0;
+
+    ntk_topo.foreach_node( [&]( auto const& n, auto ) {
+      if ( ntk.is_constant( n ) || ntk.is_pi( n ) )
+      {
+        _asap[n] = 0;
+        return true;
+      }
+      if ( ntk.has_binding( n ) )
+      {
+        auto const& g = ntk.get_binding( n );
+        double gate_delay = 0;
+        ntk.foreach_fanin( n, [&]( auto const& f, auto i ) {
+          gate_delay = std::max( gate_delay, (double)( _asap[f] + std::max( g.pins[i].rise_block_delay, g.pins[i].fall_block_delay ) ) );
+        } );
+        _asap[n] = gate_delay;
+        worst_delay = std::max( worst_delay, gate_delay );
+      }
+      else
+      {
+        double gate_delay = 1;
+        ntk.foreach_fanin( n, [&]( auto const& f, auto i ) {
+          gate_delay = std::max( gate_delay, (double)( _asap[f] + 1u ) );
+        } );
+        _asap[n] = gate_delay;
+        worst_delay = std::max( worst_delay, gate_delay );
+      }
+      return true;
+    } );
+
+    return worst_delay;
   }
 
   std::optional<signal> run( node const& n, std::vector<node> const& leaves, std::vector<node> const& divs, std::vector<node> const& mffc, mffc_result_t potential_gain, double& last_gain )
@@ -798,15 +841,18 @@ public:
         auto const& id_list = *res;
         assert( id_list.num_pos() == 1u );
         last_gain = potential_gain - id_list.get_area();
+
         std::vector<double> divs_delays={0};
 
         for( auto div : divs )
         {
-          divs_delays.push_back( _alap[div] );
+          divs_delays.push_back( _asap[div] );
         }
+
         double delay_candidate = compute_worst_delay( id_list, divs_delays, ntk.get_library() );
-        //printf( "  %f <= %f <= %f\n", _asap[n], delay_candidate, _alap[n] );
-        if( delay_candidate > _alap[n] )
+        //printf( "  %f <= %f\n", delay_candidate, _asap[n] );
+        double alap_old = _alap[n];
+        if( delay_candidate > alap_old )
         {
           continue;
         }
@@ -832,7 +878,12 @@ public:
             } );
 
             //ntk.update_levels();
-            scheduling();
+            //scheduling();
+
+            _asap[out_sig]=delay_candidate;
+            _alap[out_sig]=alap_old;
+
+
             return out_sig;
           }
           else

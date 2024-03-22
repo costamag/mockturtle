@@ -1577,10 +1577,10 @@ public:
   }
 
 private:
-  std::vector<element_type> values;
   std::vector<double> area;
   double total_area{0};
 public:
+  std::vector<element_type> values;
   std::vector<kitty::dynamic_truth_table> tts;
   std::vector<int> ids;
 };
@@ -1736,6 +1736,8 @@ void insert( Ntk& ntk, BeginIter begin, EndIter end, lig_index_list<separate_hea
     {
       uint32_t index = children_literals[i] >> 1;
       children.push_back( ( children_literals[i] % 2 ) ? ntk.create_not( signals.at( index ) ) : signals.at( index ) );
+      if(( children_literals[i] % 2 ) )
+        printf("W%d\n");
     }
     auto fnew = ntk.create_node( children, indices.tts[function_location] );
     auto nnew = ntk.get_node( fnew );
