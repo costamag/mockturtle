@@ -1561,11 +1561,11 @@ public:
   template<class LIB>
   double compute_worst_delay( std::vector<double> divs_delays, LIB const& lib )
   {
-    double delay{0};
       
     foreach_gate( [&]( std::vector<uint32_t> children, uint32_t func_lit ) {
       auto g = lib[ids[func_lit]];
       int i{0};
+      double delay{0};
       for( uint32_t child : children )
       {
         delay = std::max( delay, ( double)( divs_delays[child >> 1u] + std::max( g.pins[i].rise_block_delay, g.pins[i].fall_block_delay ) ) );
@@ -1573,7 +1573,7 @@ public:
       }
       divs_delays.push_back( delay );
     } );
-    return delay;
+    return divs_delays[values.back()>>1];
   }
 
 private:

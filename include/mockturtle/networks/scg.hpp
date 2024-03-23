@@ -1444,7 +1444,13 @@ class scg_network
     auto newsignode = _storage->nodes[get_node(new_signal)];
 
     // remember before
-    const auto old_children = node.children;
+
+
+    std::vector<signal> old_children;
+    for( uint32_t i{0}; i < _storage->nodes[old_node].children.size(); ++i )
+    {
+      old_children.push_back( node.children[i] );
+    }
 
     uint32_t fanin = 0u;
     while ( fanin < node.children.size() )
@@ -1532,6 +1538,7 @@ class scg_network
 
     // insert updated node into hash table
     node.children = _hash_obj.children;
+
     node.func = _hash_obj.func;
     node.twin = synthesize_twin( children, node.func );
     _storage->hash[node] = n;
@@ -1553,7 +1560,7 @@ class scg_network
 
   //  for ( auto const& fn : _events->on_modified )
   //  {
-  //    ( *fn )( n, _hash_obj.children );
+  //    ( *fn )( n, old_children );
   //  }
 
     return std::nullopt;
@@ -1569,6 +1576,13 @@ class scg_network
   void replace_in_node_no_restrash( node const& n, node const& old_node, signal new_signal )
   {
     auto& node = _storage->nodes[n];
+    auto& oldnode = _storage->nodes[old_node];
+
+    std::vector<signal> old_children;
+    for( uint32_t i{0}; i < _storage->nodes[old_node].children.size(); ++i )
+    {
+      old_children.push_back( node.children[i] );
+    }
 
     uint32_t fanin = 0u;
     while ( fanin < node.children.size() )
@@ -1618,10 +1632,10 @@ class scg_network
     // update the reference counter of the new signal
     _storage->nodes[new_signal.index].nfos++;
 
-  //  for ( auto const& fn : _events->on_modified )
-  //  {
-  //    ( *fn )( n, children );
-  //  }
+//    for ( auto const& fn : _events->on_modified )
+//    {
+//      ( *fn )( n, old_children );
+//    }
   }
 
   void revive_node( node const& n )

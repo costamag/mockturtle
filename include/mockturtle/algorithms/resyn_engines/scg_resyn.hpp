@@ -62,6 +62,7 @@ bool VERBOSE{ false };
 enum support_selection_t
 {
   GREEDY,
+  NGREEDY,
   PIVOT,
 };
 
@@ -89,6 +90,8 @@ struct scg_resyn_static_params
   static constexpr int max_fanin_size = -1;
   static constexpr bool accept_worse{ false };
   static constexpr bool on_the_fly{ false };
+
+  static constexpr uint32_t nBest{ 3 };
 
   static constexpr support_selection_t support_selection{ GREEDY };
 
@@ -355,6 +358,43 @@ public:
       std::sort( scored_divs.begin(), scored_divs.end() );
     } );
 
+    return compute_function( max_size );
+  }
+
+  template<class iterator_type,
+           bool enabled = static_params::uniform_div_cost && !static_params::preserve_depth, typename = std::enable_if_t<enabled>>
+  std::optional<index_list_t> operator()( TT const& target, TT const& care, iterator_type begin, iterator_type end, std::vector<double> const& idelays, typename static_params::truth_table_storage_type const& tts, double max_size )
+  {
+    static_assert( static_params::copy_tts || std::is_same_v<typename std::iterator_traits<iterator_type>::value_type, typename static_params::node_type>, "iterator_type does not dereference to static_params::node_type" );
+
+    ptts = &tts;
+    on_off_sets[0] = ~target & care;
+    on_off_sets[1] = target & care;
+
+    _uSPFD.init( target, care );
+
+    divisors.resize( 1 ); /* clear previous data and reserve 1 dummy node for constant */
+    scored_divs.clear();
+
+    while ( begin != end )
+    {
+      if constexpr ( static_params::copy_tts )
+      {
+        divisors.emplace_back( ( *ptts )[*begin] );
+        scored_divs.emplace_back( divisors.size() - 1, _uSPFD.evaluate( get_div( divisors.size() - 1 ) ) );
+      }
+      else
+      {
+        divisors.emplace_back( *begin );
+        scored_divs.emplace_back( divisors.size() - 1, _uSPFD.evaluate( get_div( divisors.size() - 1 ) ) );
+      }
+      ++begin;
+    }
+
+    call_with_stopwatch( st.time_sort, [&]() {
+      std::sort( scored_divs.begin(), scored_divs.end() );
+    } );
+    _idelays=idelays;
     return compute_function( max_size );
   }
 
@@ -1155,10 +1195,41 @@ private:
   {
     if ( static_params::support_selection == support_selection_t::GREEDY )
     {
-      auto supp = find_support_greedy( 1 );
-      if ( supp )
+      if( _idelays.size() > 0 )
       {
-        return *supp;
+        auto supp = find_support_greedy( 1 );
+        if ( supp )
+        {
+          return *supp;
+        }
+      }
+      else
+      {
+        auto supp = find_support_greedy( 1 );
+        if ( supp )
+        {
+          return *supp;
+        }
+      }
+      return std::nullopt;
+    }
+    if ( static_params::support_selection == support_selection_t::NGREEDY )
+    {
+      if( _idelays.size() > 0 )
+      {
+        auto supp = find_support_ngreedy_with_delay( 1 );
+        if ( supp )
+        {
+          return *supp;
+        }
+      }
+      else
+      {
+        auto supp = find_support_ngreedy( 1 );
+        if ( supp )
+        {
+          return *supp;
+        }
       }
       return std::nullopt;
     }
@@ -1229,6 +1300,213 @@ private:
     }
     return std::nullopt;
   }
+ /*! \brief find support greedy */
+ 
+  std::optional<std::vector<uint32_t>> find_support_ngreedy( uint32_t start = 1, std::vector<uint32_t> supp0 = {} )
+  {
+    uint32_t cost, best_cost0, best_cost1;
+    std::vector<uint32_t> best_costs;
+    std::vector<std::vector<uint32_t>> best_cands;
+
+    int nxt=0;
+
+    std::vector<uint32_t> supp;
+
+    _uSPFD.reset();
+    for ( auto x : supp0 )
+    {
+      _uSPFD.update( get_div( x ) );
+      supp.push_back( x );
+    }
+
+    /* add recomputation of the support */
+    while ( !_uSPFD.is_covered() && supp.size() < static_params::max_support_size )
+    {
+      best_costs.clear();
+      best_cands.clear();
+      for( int i{0}; i<static_params::nBest; ++i )
+      {
+        best_costs.push_back( std::numeric_limits<double>::max() );
+        best_cands.push_back( {} );
+      }
+
+      if ( _uSPFD.is_saturated() )
+        break;
+      for ( uint32_t iCnd{ start }; iCnd < divisors.size(); ++iCnd )
+      {
+        cost = _uSPFD.evaluate( get_div( iCnd ) );
+        int repl=-1;
+        for( int j{0}; j<static_params::nBest; ++j )
+        {
+          if( best_costs[j]>=cost )
+          {
+            repl=j;
+          }
+        }
+        if( repl >= 0 )
+        {
+          if( best_costs[repl]==cost )
+          {
+            best_cands[repl].push_back(iCnd);
+          }
+          else
+          {
+            for( int j{0}; j<repl; ++j )
+            {
+              best_cands[j]=best_cands[j+1];
+              best_costs[j]=best_costs[j+1];
+            }  
+            best_cands[repl]={iCnd};
+            best_costs[repl]=cost;
+          }
+        }       
+      }
+
+      std::vector<uint32_t> best_candidates;
+
+      for( auto cands : best_cands )
+      {
+        for( auto cand : cands )
+          best_candidates.push_back( cand );
+      }
+
+      std::uniform_int_distribution<> distrib( 0, best_candidates.size() - 1 );
+      int idx = distrib( RIGRNG );
+      supp.push_back( best_candidates[idx] );
+      _uSPFD.update( get_div( best_candidates[idx] ) );
+
+    }
+
+    if ( _uSPFD.is_covered() && supp.size() <= static_params::max_support_size )
+    {
+      std::sort( supp.begin(), supp.end() );
+
+      return supp;
+    }
+    return std::nullopt;
+  }
+
+ 
+  std::optional<std::vector<uint32_t>> find_support_ngreedy_with_delay( uint32_t start = 1, std::vector<uint32_t> supp0 = {} )
+  {
+    uint32_t cost, best_cost0, best_cost1;
+    std::vector<uint32_t> best_costs;
+    std::vector<std::vector<uint32_t>> best_cands;
+
+    int nxt=0;
+
+    std::vector<uint32_t> supp;
+
+    _uSPFD.reset();
+    for ( auto x : supp0 )
+    {
+      _uSPFD.update( get_div( x ) );
+      supp.push_back( x );
+    }
+
+    /* add recomputation of the support */
+    while ( !_uSPFD.is_covered() && supp.size() < static_params::max_support_size )
+    {
+      best_costs.clear();
+      best_cands.clear();
+      for( int i{0}; i<static_params::nBest; ++i )
+      {
+        best_costs.push_back( std::numeric_limits<double>::max() );
+        best_cands.push_back( {} );
+      }
+
+      if ( _uSPFD.is_saturated() )
+        break;
+      for ( uint32_t iCnd{ start }; iCnd < divisors.size(); ++iCnd )
+      {
+        cost = _uSPFD.evaluate( get_div( iCnd ) );
+        int repl=-1;
+        for( int j{0}; j<static_params::nBest; ++j )
+        {
+          if( best_costs[j]>=cost )
+          {
+            repl=j;
+          }
+        }
+        if( repl >= 0 )
+        {
+          if( best_costs[repl]==cost )
+          {
+            best_cands[repl].push_back(iCnd);
+          }
+          else
+          {
+            for( int j{0}; j<repl; ++j )
+            {
+              best_cands[j]=best_cands[j+1];
+              best_costs[j]=best_costs[j+1];
+            }  
+            best_cands[repl]={iCnd};
+            best_costs[repl]=cost;
+          }
+        }       
+      }
+
+      std::vector<uint32_t> best_candidates;
+      std::vector<double> T;
+      double Tmax=std::numeric_limits<double>::min();
+      double Tmin=std::numeric_limits<double>::max();
+
+      for( auto cands : best_cands )
+      {
+        for( auto cand : cands )
+        {
+          best_candidates.push_back( cand );
+          if( _idelays[cand] > Tmax )
+            Tmax=_idelays[cand];
+          else if( _idelays[cand] < Tmin )
+            Tmin=_idelays[cand];
+          T.push_back( _idelays[cand] );
+        }
+      }
+
+      double KAPPA=0;
+      for( int i{0}; i<T.size(); ++i )
+      {
+        T[i]=0.1+KAPPA*(Tmax-T[i])/(Tmax-Tmin);
+      }
+
+      for( int i{1}; i<T.size(); ++i )
+      {
+        T[i]+=T[i-1];
+      }
+
+      for( int i{0}; i<T.size(); ++i )
+      {
+        T[i]/=T[T.size()-1];
+      }
+
+      std::uniform_real_distribution<> distrib( 0, 1 );
+      double alpha = distrib( RIGRNG );
+      int idx=0;
+      for( int i{T.size()-1}; i>=0; --i )
+      {
+        if( alpha <= T[i] )
+        {
+          idx=i;
+          break;
+        }
+      }
+      supp.push_back( best_candidates[idx] );
+      _uSPFD.update( get_div( best_candidates[idx] ) );
+
+    }
+
+    if ( _uSPFD.is_covered() && supp.size() <= static_params::max_support_size )
+    {
+      std::sort( supp.begin(), supp.end() );
+
+      return supp;
+    }
+    return std::nullopt;
+  }
+
+  
 
   /*! \brief find support from unbalancing */
   std::optional<std::vector<uint32_t>> find_from_unbalancing( uint32_t pivot )
@@ -1366,6 +1644,7 @@ private:
   std::vector<std::vector<uint32_t>> _idlists;
   std::vector<double> _areas;
   std::unordered_map<uint64_t, uint32_t> _pClassMap;
+  std::vector<double> _idelays;
 
   double _area_th;
 
