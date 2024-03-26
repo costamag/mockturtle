@@ -91,7 +91,7 @@ struct scg_resyn_static_params
   static constexpr bool accept_worse{ false };
   static constexpr bool on_the_fly{ false };
 
-  static constexpr uint32_t nBest{ 3 };
+  static constexpr uint32_t nBest{ 2 };
 
   static constexpr support_selection_t support_selection{ GREEDY };
 
@@ -336,7 +336,7 @@ public:
 
     _uSPFD.init( target, care );
 
-    divisors.resize( 1 ); /* clear previous data and reserve 1 dummy node for constant */
+    divisors.clear(); /* clear previous data and reserve 1 dummy node for constant */
     scored_divs.clear();
 
     while ( begin != end )
@@ -344,12 +344,12 @@ public:
       if constexpr ( static_params::copy_tts )
       {
         divisors.emplace_back( ( *ptts )[*begin] );
-        scored_divs.emplace_back( divisors.size() - 1, _uSPFD.evaluate( get_div( divisors.size() - 1 ) ) );
+        scored_divs.emplace_back( divisors.size(), _uSPFD.evaluate( get_div( divisors.size() - 1 ) ) );
       }
       else
       {
         divisors.emplace_back( *begin );
-        scored_divs.emplace_back( divisors.size() - 1, _uSPFD.evaluate( get_div( divisors.size() - 1 ) ) );
+        scored_divs.emplace_back( divisors.size(), _uSPFD.evaluate( get_div( divisors.size() - 1 ) ) );
       }
       ++begin;
     }
@@ -373,7 +373,7 @@ public:
 
     _uSPFD.init( target, care );
 
-    divisors.resize( 1 ); /* clear previous data and reserve 1 dummy node for constant */
+    divisors.clear();//resize( 1 ); /* clear previous data and reserve 1 dummy node for constant */
     scored_divs.clear();
 
     while ( begin != end )
@@ -381,12 +381,12 @@ public:
       if constexpr ( static_params::copy_tts )
       {
         divisors.emplace_back( ( *ptts )[*begin] );
-        scored_divs.emplace_back( divisors.size() - 1, _uSPFD.evaluate( get_div( divisors.size() - 1 ) ) );
+        scored_divs.emplace_back( divisors.size(), _uSPFD.evaluate( get_div( divisors.size() - 1 ) ) );
       }
       else
       {
         divisors.emplace_back( *begin );
-        scored_divs.emplace_back( divisors.size() - 1, _uSPFD.evaluate( get_div( divisors.size() - 1 ) ) );
+        scored_divs.emplace_back( divisors.size(), _uSPFD.evaluate( get_div( divisors.size() - 1 ) ) );
       }
       ++begin;
     }
@@ -413,12 +413,13 @@ private:
   {
     index_list.clear();
     index_list.reset_area();
-    index_list.add_inputs( divisors.size() - 1 );
+    index_list.add_inputs( divisors.size() );
+    //std::cout << to_index_list_string(index_list) << std::endl;
+
     auto const lit = compute_function_rec( num_inserts );
     if ( lit )
     {
       index_list.add_output( *lit );
-      //std::cout << to_index_list_string(index_list) << std::endl;
       return index_list;
     }
     return std::nullopt;
@@ -478,7 +479,7 @@ private:
       return 0;
     }
 
-    for ( auto v = 1u; v < divisors.size(); ++v )
+    for ( auto v = 0u; v < divisors.size(); ++v )
     {
       bool unateness[4] = { false, false, false, false };
       /* check intersection with off-set */
@@ -507,7 +508,8 @@ private:
         //if( ( buf_area < max_area ) )
         {
         //  assert( v < index_list.num_pis() );
-          return v << 1;
+        //printf("lit out %d\n", (v+1) << 1);
+          return (v+1) << 1;
         //  return index_list.add_function( std::vector{ v << 1 }, _gates[buf_id].function, buf_area, buf_id );
         }
       }
@@ -515,8 +517,10 @@ private:
       {
         if( (inv_area < max_area) )
         {
-          assert( v < index_list.num_pis() );
-          return index_list.add_function( std::vector{ v << 1 }, _gates[inv_id].function, inv_area, inv_id );
+          //assert( v < index_list.num_pis() );
+          //printf("lit out not(%d)\n", (v+1) << 1);
+
+          return index_list.add_function( std::vector{ (v+1) << 1 }, _gates[inv_id].function, inv_area, inv_id );
         }
       }
     }
@@ -884,17 +888,18 @@ private:
 
   std::optional<uint32_t> _map_with_database( std::vector<uint32_t> const& supp, kitty::static_truth_table<4u> const& func, kitty::static_truth_table<4u> const& care, double max_inserts )
   {
-    std::vector<uint32_t> lits0;
-    for ( uint32_t x : supp )
+    std::array<uint32_t,4> lits0={0,0,0,0};
+    for ( int i{0}; i<supp.size(); ++i )
     {
-      lits0.push_back( x << 1u );
+      lits0[i] = (supp[i]+1) << 1u ;
+      //printf("l0=%d\n", (supp[i]+1) << 1u );
     }
 
     auto dcset = ~care;
 
-     // printf("\n");
-     // kitty::print_binary(func);
-     // printf("\n");
+  //  printf("\n");
+    //kitty::print_binary(func);
+    //printf("\n");
 
     std::vector<uint32_t> dcs;
     for( int bit{0}; bit<16; ++bit )
@@ -921,10 +926,12 @@ private:
           kitty::flip_bit( tt, dcs[i] );
         }
       }
-  //    printf("\n");
-  //    kitty::print_binary(tt);
-  //    printf("\n");
+      //kitty::print_binary(tt);
+      const auto support = kitty::min_base_inplace( tt );
 
+     // printf("%d\n", support.size());
+      if( support.size() != supp.size() )
+        continue;
       /* p-canonize */
       auto config = exact_p_canonization( tt );
 
@@ -941,16 +948,18 @@ private:
         best_key = key;
         best_area = _areas[key];
         best_perm = perm;
-        //printf("%f\n", best_area);
       }
     }
 
+    //printf("%f >? %f\n", max_inserts, best_area);
     if( best_area <= max_inserts )
     {
       std::vector<uint32_t> lits = {0,0,0,0,0};
       for( auto i{0}; i<4; ++i )
       {
+        //printf("p[%d]=%d\n", i, best_perm[i]);
         lits[i+1] = lits0[best_perm[i]];
+        //printf("V[%d]=%d\n", i, lits0[best_perm[i]]);
       }
 
       //printf( "try match %f %f\n", best_area, max_inserts );
@@ -972,10 +981,10 @@ private:
         else if( type == 1 )
         {
           children.push_back( lits[entry[i]] );//not accounting for 0
-        //  printf("%d ", lits[entry[i]] );
+          //printf("%d ", lits[entry[i]] );
           if( children.size() == nFins )
           {
-        //    printf("\n");
+            //printf("\n");
             type = 2;
           }
         }
@@ -1009,7 +1018,7 @@ private:
     std::vector<signal<aig_network>> pis;
     for ( uint32_t x : supp )
     {
-      lits.push_back( x << 1u );
+      lits.push_back( (x+1) << 1u );
       pis.push_back( aig.create_pi() );
     }
 
@@ -1095,7 +1104,7 @@ private:
       best_cost = std::numeric_limits<uint32_t>::max();
       if ( uSPFD.is_saturated() )
         break;
-      for ( uint32_t iCnd{ 1 }; iCnd < divs.size(); ++iCnd )
+      for ( uint32_t iCnd{ 0 }; iCnd < divs.size(); ++iCnd )
       {
         cost = uSPFD.evaluate( ( *pTts )[divs[iCnd]] );
         if ( cost < best_cost )
@@ -1197,7 +1206,7 @@ private:
     {
       if( _idelays.size() > 0 )
       {
-        auto supp = find_support_greedy( 1 );
+        auto supp = find_support_greedy( 0 );
         if ( supp )
         {
           return *supp;
@@ -1205,7 +1214,7 @@ private:
       }
       else
       {
-        auto supp = find_support_greedy( 1 );
+        auto supp = find_support_greedy( 0 );
         if ( supp )
         {
           return *supp;
@@ -1217,7 +1226,7 @@ private:
     {
       if( _idelays.size() > 0 )
       {
-        auto supp = find_support_ngreedy_with_delay( 1 );
+        auto supp = find_support_ngreedy_with_delay( 0 );
         if ( supp )
         {
           return *supp;
@@ -1225,7 +1234,7 @@ private:
       }
       else
       {
-        auto supp = find_support_ngreedy( 1 );
+        auto supp = find_support_ngreedy( 0 );
         if ( supp )
         {
           return *supp;
@@ -1235,7 +1244,7 @@ private:
     }
     if ( static_params::support_selection == support_selection_t::PIVOT )
     {
-      auto supp = find_support_greedy();
+      auto supp = find_support_greedy( 0 );
       if ( supp )
         return *supp;
 
@@ -1251,7 +1260,7 @@ private:
   }
 
   /*! \brief find support greedy */
-  std::optional<std::vector<uint32_t>> find_support_greedy( uint32_t start = 1, std::vector<uint32_t> supp0 = {} )
+  std::optional<std::vector<uint32_t>> find_support_greedy( uint32_t start = 0, std::vector<uint32_t> supp0 = {} )
   {
     uint32_t cost, best_cost;
     std::vector<uint32_t> best_candidates;
@@ -1302,7 +1311,7 @@ private:
   }
  /*! \brief find support greedy */
  
-  std::optional<std::vector<uint32_t>> find_support_ngreedy( uint32_t start = 1, std::vector<uint32_t> supp0 = {} )
+  std::optional<std::vector<uint32_t>> find_support_ngreedy( uint32_t start = 0, std::vector<uint32_t> supp0 = {} )
   {
     uint32_t cost, best_cost0, best_cost1;
     std::vector<uint32_t> best_costs;
@@ -1387,7 +1396,7 @@ private:
   }
 
  
-  std::optional<std::vector<uint32_t>> find_support_ngreedy_with_delay( uint32_t start = 1, std::vector<uint32_t> supp0 = {} )
+  std::optional<std::vector<uint32_t>> find_support_ngreedy_with_delay( uint32_t start = 0, std::vector<uint32_t> supp0 = {} )
   {
     uint32_t cost, best_cost0, best_cost1;
     std::vector<uint32_t> best_costs;
@@ -1465,31 +1474,14 @@ private:
         }
       }
 
-      double KAPPA=0;
-      for( int i{0}; i<T.size(); ++i )
-      {
-        T[i]=0.1+KAPPA*(Tmax-T[i])/(Tmax-Tmin);
-      }
-
-      for( int i{1}; i<T.size(); ++i )
-      {
-        T[i]+=T[i-1];
-      }
-
-      for( int i{0}; i<T.size(); ++i )
-      {
-        T[i]/=T[T.size()-1];
-      }
-
-      std::uniform_real_distribution<> distrib( 0, 1 );
-      double alpha = distrib( RIGRNG );
+      double bestT=std::numeric_limits<double>::max();
       int idx=0;
-      for( int i{T.size()-1}; i>=0; --i )
+      for( int i{0}; i<T.size(); ++i )
       {
-        if( alpha <= T[i] )
+        if( T[i]<bestT )
         {
           idx=i;
-          break;
+          bestT=T[i];
         }
       }
       supp.push_back( best_candidates[idx] );

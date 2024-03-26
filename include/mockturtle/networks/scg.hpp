@@ -217,6 +217,8 @@ enum e_func_t : uint32_t
     uint32_t value{0u};
     /*! \brief visited flag 1 visited */
     uint32_t visited{0};
+
+    uint32_t mark{0};
     /*! \brief aig signal */
     aig_network::signal twin;
 
@@ -255,20 +257,20 @@ class scg_network
   * Construct the network using the init function
   */
   explicit scg_network()
-    : _storage( std::make_shared<storage_t>() ), _events( std::make_shared<decltype( _events )::element_type>() )
+    : _storage( std::make_shared<storage_t>() ), _events( std::make_shared<decltype( _events )::element_type>() )//, _delays(*this)
   {
     _init();
   }
 
   explicit scg_network( std::vector<gate> const& lib )
-    : _storage( std::make_shared<storage_t>() ), _events( std::make_shared<decltype( _events )::element_type>() ), _library(lib)
+    : _storage( std::make_shared<storage_t>() ), _events( std::make_shared<decltype( _events )::element_type>() ), _library(lib)//, _delays(*this)
   {
     _init();
   } 
 
   #pragma construct from NETWORK
   template<class Ntk>
-  scg_network( Ntk & ntk ) : _storage( std::make_shared<storage_t>() ), _events( std::make_shared<decltype( _events )::element_type>() )
+  scg_network( Ntk & ntk ) : _storage( std::make_shared<storage_t>() ), _events( std::make_shared<decltype( _events )::element_type>() )//, _delays(*this)
   {
 
     if constexpr( std::is_same_v<typename Ntk::base_type, scg_network> )
@@ -440,7 +442,7 @@ class scg_network
   #pragma endregion construct from AIG
 
   scg_network( std::shared_ptr<storage_t> storage_ptr )
-      : _storage( storage_ptr ), _events( std::make_shared<decltype( _events )::element_type>() )
+      : _storage( storage_ptr ), _events( std::make_shared<decltype( _events )::element_type>() )//, _delays(*this)
   {
     _init();
   }
@@ -541,14 +543,14 @@ class scg_network
     return 0;
   }
 
-  signal create_pi()
+  signal create_pi( double arrival=0.0 )
   {
     const auto e_index = _storage->get_index();
     auto& e_node = _storage->nodes.emplace_back();
     e_node.children.emplace_back( static_cast<uint64_t>(_storage->inputs.size()) );
     _storage->inputs.push_back( e_index );
     _storage->nodes[e_index].func = e_func_t::e_PI;
-    
+    //_delays[e_index]=arrival;
     return { e_index, 0 };
   }
 
@@ -1246,8 +1248,8 @@ class scg_network
     std::shared_ptr<storage_t>::element_type::node_type node;
     std::copy( children.begin(), children.end(), std::back_inserter( node.children ) );
     node.func = literal;
-    if( !_is_smart )
-      node.value = num_gates();
+    //if( !_is_smart )
+    node.value = num_gates();
 
     const auto it = _storage->hash.find( node );
 
@@ -2396,6 +2398,36 @@ class scg_network
   #pragma endregion application specific value
 
   #pragma region visited flags
+
+    void recursively_mark( node n )
+    {
+      if( is_pi(n) || is_constant(n) || is_marked(n) )
+      {
+        return;
+      }
+
+      foreach_fanin( n, [&]( const auto& f ) {
+        recursively_mark( get_node(f) );
+      } );
+
+      set_mark( n );
+    }
+
+    void clear_marked() const
+    {
+      std::for_each( _storage->nodes.begin(), _storage->nodes.end(), []( auto& n ) { n.mark = 0; } );
+    }
+
+    void set_mark( node const& n ) const
+    {
+      _storage->nodes[n].mark = 1;
+    }
+
+    bool is_marked( node const& n ) const
+    {
+      return _storage->nodes[n].mark > 0;
+    }
+
     void clear_visited() const
     {
       std::for_each( _storage->nodes.begin(), _storage->nodes.end(), []( auto& n ) { n.visited = 0; } );
@@ -2452,6 +2484,10 @@ class scg_network
 
 public:
   std::shared_ptr<storage_t> _storage;
+
+  //incomplete_node_map<double, scg_network> _delays;
+
+
   /* complete AIG database */
   xag_npn_resynthesis<aig_network, xag_network, xag_npn_db_kind::aig_complete> aig_resyn{};
 

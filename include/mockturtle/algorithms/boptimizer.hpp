@@ -98,6 +98,9 @@ struct boptimizer_params
   /*! \brief Window size for don't cares calculation. Only used by window-based resub engine. */
   uint32_t window_size{ 12u };
 
+  bool use_delay_constraints{true};
+  bool high_effort_delay{false};
+
   /*! \brief Whether to prevent from increasing depth. Currently only used by window-based resub engine. */
   bool preserve_depth{ false };
 
@@ -327,7 +330,7 @@ private:
     }
     /* add the leaves of the cuts to the divisors */
     divs.clear();
-
+    /*add the 0 divisor for constant resub*/
     ntk.incr_trav_id();
     for ( const auto& l : leaves )
     {
@@ -563,8 +566,14 @@ public:
       } );
     } );
     //v1 asap_timing_information();
-
-    timing_information();
+    kitty::static_truth_table<nPisGlb> tts0;
+    kitty::static_truth_table<nPisLoc> tt60;
+    tts[0] = tts0;
+    tt6[0] = tt60;
+    if( ps.use_delay_constraints )
+    {
+      timing_information();
+    }
 
   }
 
@@ -582,7 +591,14 @@ public:
       } );
     } );
 
-    timing_information();
+    kitty::static_truth_table<nPisGlb> tts0;
+    kitty::static_truth_table<nPisLoc> tt60;
+    tts[0] = tts0;
+    tt6[0] = tt60;
+    if( ps.use_delay_constraints )
+    {
+      timing_information();
+    }
 
   }
 
@@ -628,72 +644,98 @@ public:
     } );
   }
 
-  void propagate_arrival_times( node n )//, new_node nn )
+  double prop_arr_rec( node n )
   {
-    bool found{false};
-    for ( auto it = topo_order.begin(); it != topo_order.end(); ++it )
+    if( _arr_times.has(n) )
     {
-      if( !found )
-      {
-        if( *it == n )
-        {
-          found = true;
-        }
-        continue;
-      }
-
-      if ( ntk.has_binding( *it ) )
-      {
-        auto const& g = ntk.get_binding( *it );
-        double gate_delay = 0;
-        ntk.foreach_fanin( *it, [&]( auto const& f, auto i ) {
-          gate_delay = std::max( gate_delay, (double)( _arr_times[f] + std::max( g.pins[i].rise_block_delay, g.pins[i].fall_block_delay ) ) );
-        } );
-        _arr_times[*it] = gate_delay;
-      }
-      else
-      {
-        double gate_delay = 1;
-        ntk.foreach_fanin( *it, [&]( auto const& f, auto i ) {
-          gate_delay = std::max( gate_delay, (double)( _arr_times[f] + 1u ) );
-        } );
-        _arr_times[*it] = gate_delay;
-      }
+      return _arr_times[n];
     }
+
+    if ( ntk.has_binding( n ) )
+    {
+      auto const& g = ntk.get_binding( n );
+      double gate_delay = 0;
+      ntk.foreach_fanin( n, [&]( auto const& f, auto i ) {
+        double arr_fanin = prop_arr_rec( ntk.get_node(f) );
+        gate_delay = std::max( gate_delay, (double)( arr_fanin + std::max( g.pins[i].rise_block_delay, g.pins[i].fall_block_delay ) ) );
+      } );
+      _arr_times[n] = gate_delay;
+    }
+    else
+    {
+      double gate_delay = 1;
+      ntk.foreach_fanin( n, [&]( auto const& f, auto i ) {
+        double arr_fanin = prop_arr_rec( ntk.get_node(f) );
+        gate_delay = std::max( gate_delay, (double)( arr_fanin + 1u ) );
+      } );
+      _arr_times[n] = gate_delay;
+    }
+    return _arr_times[n];
   }
 
-  void propagate_arrival_times()
+  double propagate_arrival_times()
   {
+    _arr_times.reset();
     ntk.foreach_pi( [&]( auto const& n, auto i ) {
       _arr_times[n]=0.0;
     } );
+    _arr_times[0]=0.0;
 
-    for ( auto it = topo_order.begin(); it != topo_order.end(); ++it )
-    {
-      if ( ntk.is_constant( *it ) || ntk.is_pi( *it ) )
+    double max_delay=0;
+    ntk.foreach_po( [&]( auto const& no, auto i ) {
+      auto out_del = prop_arr_rec(ntk.get_node(no));
+      if( out_del > max_delay )
       {
-        _arr_times[*it]=0.0;
-        continue;
+        max_delay = out_del;
       }
-      if ( ntk.has_binding( *it ) )
-      {
-        auto const& g = ntk.get_binding( *it );
-        double gate_delay = 0;
-        ntk.foreach_fanin( *it, [&]( auto const& f, auto i ) {
-          gate_delay = std::max( gate_delay, (double)( _arr_times[f] + std::max( g.pins[i].rise_block_delay, g.pins[i].fall_block_delay ) ) );
-        } );
-        _arr_times[*it] = gate_delay;
-      }
-      else
-      {
-        double gate_delay = 1;
-        ntk.foreach_fanin( *it, [&]( auto const& f, auto i ) {
-          gate_delay = std::max( gate_delay, (double)( _arr_times[f] + 1u ) );
-        } );
-        _arr_times[*it] = gate_delay;
-      }
-    }
+    } );
+    return max_delay;
   }
+
+//  double propagate_arrival_times()
+//  {
+//    ntk.foreach_pi( [&]( auto const& n, auto i ) {
+//      _arr_times[n]=0.0;
+//    } );
+//    _arr_times[0]=0.0;
+//
+//    double max_delay;
+//    for ( auto it = topo_order.begin(); it != topo_order.end(); ++it )
+//    {
+//      if ( ntk.is_constant( *it ) || ntk.is_pi( *it ) )
+//      {
+//        _arr_times[*it]=0.0;
+//        continue;
+//      }
+//      if ( ntk.has_binding( *it ) )
+//      {
+//        auto const& g = ntk.get_binding( *it );
+//        double gate_delay = 0;
+//        ntk.foreach_fanin( *it, [&]( auto const& f, auto i ) {
+//          gate_delay = std::max( gate_delay, (double)( _arr_times[f] + std::max( g.pins[i].rise_block_delay, g.pins[i].fall_block_delay ) ) );
+//        } );
+//        _arr_times[*it] = gate_delay;
+//        if( gate_delay > max_delay )
+//        {
+//          max_delay = gate_delay;
+//        }
+//      }
+//      else
+//      {
+//        double gate_delay = 1;
+//        ntk.foreach_fanin( *it, [&]( auto const& f, auto i ) {
+//          gate_delay = std::max( gate_delay, (double)( _arr_times[f] + 1u ) );
+//        } );
+//        _arr_times[*it] = gate_delay;
+//
+//        if( gate_delay > max_delay )
+//        {
+//          max_delay = gate_delay;
+//        }
+//      }
+//    }
+//    return max_delay;
+//  }
 
   void propagate_required_times( double worst_delay )
   {
@@ -737,23 +779,41 @@ public:
 
   void timing_information()
   {
+    _W_REQ_NODES.clear();
     _arr_times.reset();
     _req_times.reset();
 
     //compute_required_time();
+
     init_topo_order();
-
-    propagate_arrival_times();
-
-    double worst_delay = ntk.compute_worst_delay();
-
+    double worst_delay = propagate_arrival_times();
     propagate_required_times( worst_delay );
 
   }
 
-  void update() 
+  void update( node n, node nn ) 
   {
-    timing_information();
+    //ntk.clear_marks();
+    //timing_information();
+    //init_topo_order();
+    //propagate_arrival_times( );
+              //reset_arrival_from( n );
+              //_arr_times.reset();
+              //compute_required_time();
+    //if( _DO_ARR )
+    //  timing_information();
+    //else
+    //if( ps.use_delay_constraints )
+    //]{
+    //  if( _DO_ARR )
+    //timing_information();
+    //  else
+    //}
+    if( ps.use_delay_constraints )
+    {
+      propagate_arrival_times();
+    }
+
     if constexpr ( validator_t::use_odc_ || has_EXODC_interface_v<Ntk> )
     {
       call_with_stopwatch( st.time_sat_restart, [&]() {
@@ -769,26 +829,48 @@ public:
   template<class LIST, class LIB>
   double compute_worst_delay( LIST list, std::vector<double> divs_delays, LIB const& lib )
   {
-    double delay{0};
+    //std::cout << to_index_list_string(list) << std::endl;
+    double delay;
     list.foreach_gate( [&]( std::vector<uint32_t> children, uint32_t func_lit ) {
       auto g = lib[list.ids[func_lit]];
       int i{0};
       double delay=0;
       for( uint32_t child : children )
       {
-        delay = std::max( delay, ( double)( divs_delays[child >> 1u] + std::max( g.pins[i].rise_block_delay, g.pins[i].fall_block_delay ) ) );
+        delay = std::max( delay, ( double)( divs_delays[(child >> 1u)] + std::max( g.pins[i].rise_block_delay, g.pins[i].fall_block_delay ) ) );
         i++;
+        //printf("%d del %f->%f\n", func_lit, divs_delays[(child >> 1u)], delay );
       }
       divs_delays.push_back( delay );
     } );
     
-    //printf("%f ", divs_delays[list.values.back()>>1] );
 
     return divs_delays[list.values.back()>>1];
   }
 
+  void recursively_mark( node n )
+  {
+    if( ntk.is_pi(n) || ntk.is_constant(n) || ntk.is_marked(n) )
+    {
+      return;
+    }
+
+    ntk.foreach_fanin( n, [&]( const auto& f ) {
+      recursively_mark( ntk.get_node(f) );
+    } );
+
+    ntk.set_mark( n );
+  }
+
   std::optional<signal> run( node const& n, std::vector<node> const& leaves, std::vector<node> const& divs, std::vector<node> const& mffc, mffc_result_t potential_gain, double& last_gain )
   {
+
+    if( ps.use_delay_constraints && ntk.is_marked(n) )
+    {
+      timing_information();
+      ntk.clear_marked();
+    }
+
     /* make valid the simulation at each divisor node */
     check_tts( n );
     for ( auto const& d : divs )
@@ -799,12 +881,16 @@ public:
     /* compute the observability don't cares */
     kitty::static_truth_table<nPisGlb> const care = _gSim.compute_constant( true );//~observability_dont_cares( ntk, n, _gSim, tts, 10 );
 
-    std::vector<double> divs_delays={0};
-
+    std::vector<double> divs_delays{0.0};
+    _arr_times[0]=0;
+    int i=0;
+    //printf("%d|%d|%f ", i++, 0, _arr_times[0]  );
     for( auto div : divs )
     {
       divs_delays.push_back( _arr_times[div] );
+      //printf("%d|%d|%f ", i++, div, _arr_times[div]  );
     }
+    //printf("\n");
 
     for ( auto j = 0u; j < ps.max_trials; ++j )
     {
@@ -826,8 +912,9 @@ public:
 
         double delay_candidate = compute_worst_delay( id_list, divs_delays, ntk.get_library() );
 
-        if( delay_candidate <= _req_times[n] )
+        if( !ps.use_delay_constraints || delay_candidate <= _req_times[n] )
         {
+
           auto valid = call_with_stopwatch( st.time_sat, [&]() {
             return validator.validate( n, divs, id_list );
           } );
@@ -835,25 +922,86 @@ public:
           {
             if ( *valid )
             {
+              //printf("cand %f < %f \n", delay_candidate, _req_times[n] );
+
               ++st.num_resub;
 
               signal out_sig;
               std::vector<signal> divs_sig( divs.size() );
+              std::vector<node> upd_req_nodes;
               call_with_stopwatch( st.time_interface, [&]() {
                 std::transform( divs.begin(), divs.end(), divs_sig.begin(), [&]( const node n ) {
                   return ntk.make_signal( n );
                 } );
-                insert( ntk, divs_sig.begin(), divs_sig.end(), id_list, [&]( signal const& s ) {
+                  double del0 = ntk.compute_worst_delay();
+                  //printf("d0 : %f \n", del0 );
+                  //std::cout << to_index_list_string(id_list) << std::endl;
+                  //upd_req_nodes = insert( ntk, divs_sig.begin(), divs_sig.end(), id_list, _arr_times, _req_times, n, [&]( signal const& s ) {
+                  insert( ntk, divs_sig.begin(), divs_sig.end(), id_list, [&]( signal const& s ) {
                   out_sig = s;
+                  _NNEW = ntk.get_node(out_sig);
                 } );
               } );
+              
+              if( ps.use_delay_constraints )
+              {
+                recursively_mark( ntk.get_node(out_sig) );
+              }
+                  //std::cout << to_index_list_string(list) << std::endl;
 
-              _req_times[out_sig]=_req_times[n];
-              _arr_times[n] = delay_candidate;
-              _arr_times[out_sig] = delay_candidate;
-              //propagate_arrival_times( n, ntk.get_node(out_sig) );
+            //  _W_ARR_NODES.clear();
+            //  for( auto cr_nd : upd_req_nodes )
+            //  {
+            //    _W_REQ_NODES.insert( cr_nd );
+            //    _W_ARR_NODES.insert( cr_nd );
+            //  }
+            //  _W_ARR_NODES.insert( n );
+
+              // find all the variables that are present in the current topological order
+         //     _req_times[out_sig]=_req_times[n];
+         //     if( _arr_times[out_sig] != delay_candidate )
+         //     {
+         //       printf("[w] candidate delay does not match computation\n");
+         //     }
+
+
+
+              //printf("arr[n]=%f <! %f\n", _arr_times[n], _req_times[n]);
+              //_req_times[out_sig]=_req_times[n];
+              _DELAY_NEW = delay_candidate;
+              //_arr_times[ntk.get_node(out_sig)] = delay_candidate;
+              //_arr_times.erase( n );
+              
+              //reset_arrival_from( n );
+              //_arr_times.reset();
+
+              //compute_required_time();
+              //init_topo_order();
+          //    _DO_ARR=false;
+              
+            //    std::vector<uint32_t> idivs;
+            //    id_list.foreach_gate( [&]( std::vector<uint32_t> children, uint32_t func_lit ) {
+            //    for( uint32_t child : children )
+            //    {
+            //      uint32_t id_child = child >> 1u;
+            //      if( id_child < id_list.num_pis() )
+            //      {
+            //        idivs.push_back( id_child );
+            //      }
+            //    }
+            //  } );
+
+            //  double slack = delay_candidate - _arr_times[n];
+            //  for( auto idiv : idivs )
+            //  {
+            //    _req_times[divs[idiv]]
+            //  }
+
+              //double worst_delay = propagate_arrival_times();
 
               return out_sig;
+              //ntk.set_mark(ntk.get_node(out_sig));
+
             }
             else
             {
@@ -972,7 +1120,7 @@ public:
     return tts[n];
   }
 
-private:
+public:
   Ntk& ntk;
   boptimizer_params const& ps;
   stats& st;
@@ -981,9 +1129,13 @@ private:
   incomplete_node_map<TTtmp, Ntk> tt6;
   incomplete_node_map<double, Ntk> _arr_times;
   incomplete_node_map<double, Ntk> _req_times;
+  std::set<signal> _W_REQ_NODES;
+  std::set<signal> _W_ARR_NODES;
 
   std::vector<node> topo_order;
-
+  double _DELAY_NEW{0};
+  node _NNEW;
+  bool _DO_ARR{false};
   double dT{0};
   window_simulator<Ntk, TTcut> _lSim;
   static_simulator<nPisGlb> _gSim;
@@ -1058,7 +1210,7 @@ public:
       {
         return false; /* terminate */
       }
-      if ( (ntk.fanin_size(n) == 1) && (ntk.po_index(n)!=-1) )
+      if ( (ntk.fanin_size(n) == 1) && ntk.po_index(n) != -1 )
       {
         return true; /* terminate */
       }
@@ -1110,7 +1262,30 @@ public:
       } );
       if ( updated )
       {
-        resub_engine.update();
+        resub_engine.update( n, ntk.get_node(*g) );
+        //printf("ro=%f  ao=%f\n", resub_engine._req_times[n],  resub_engine._arr_times[n] );
+        //printf("rn=%f  an=%f\n", resub_engine._req_times[*g], resub_engine._arr_times[*g] );
+        //double del1 = ntk.compute_worst_delay();
+        //printf("%f\n", del1);
+        //if( del1 > 32430.76 )
+        //{
+        //  printf("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\n");
+        //  printf("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\n");
+        //  printf("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\n");
+        //  printf("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\n");
+        //  printf("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\n");
+        //  printf("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\n");
+        //  std::vector<int> r;
+        //  printf("%d\n", r[2]);
+        //}
+        //printf("&arr[ntk.get_node(*g)]=%f vd %f\n", resub_engine._arr_times[ntk.get_node(*g)], resub_engine._DELAY_NEW );
+        //printf("&arr[n]=%f <! %f***\n", resub_engine._arr_times[n], resub_engine._req_times[n] );
+        //std::vector<int> a;
+        //if( del1 > del0 )
+        //{
+      //    resub_engine.update( ntk.get_node(*g), n );
+        //  printf("WARNING\n");
+        //}
         //resub_engine.propagate_arrival_times( ntk.get_node(*g) );
       }
 

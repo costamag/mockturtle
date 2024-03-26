@@ -1242,6 +1242,8 @@ void decode( Ntk& ntk, IndexList const& indices )
  * adding nodes. The ignorance of the function associated to a literal
  * does not allow to perform informed sorting while preserving the functionality  
  * 
+ * Literal count starts from 1 to leave space for the onstant 0
+ * 
  * Note: if `separate_header = true`, the header will be split into 3
  * elements to support networks with larger number of PIs.
  *
@@ -1349,7 +1351,7 @@ public:
     }
   }
 
-  element_type get_first_output( ) const
+  element_type get_first_output() const
   {
     return values.at( values.size() - num_pos() );
   }
@@ -1439,7 +1441,10 @@ public:
     values.push_back( lits.size() );
     /* save the fanins */
     for( uint32_t lit : lits )
+    {
+      //printf( "L%d\n", lit );
       values.push_back( lit );
+    }
     /* save the identifier to the truth table */
     values.push_back( tts.size() );
     tts.push_back( function );
@@ -1717,7 +1722,7 @@ void insert( Ntk& ntk, BeginIter begin, EndIter end, lig_index_list<separate_hea
   assert( uint64_t( std::distance( begin, end ) ) == indices.num_pis() );
 
   std::vector<signal> signals;
-  signals.emplace_back( ntk.get_constant( false ) );
+  signals.push_back( ntk.get_constant( false ) );
   for ( auto it = begin; it != end; ++it )
   {
     if constexpr ( useSignal )
@@ -1734,13 +1739,14 @@ void insert( Ntk& ntk, BeginIter begin, EndIter end, lig_index_list<separate_hea
     std::vector<signal> children;
     for( int i{0}; i<children_literals.size(); ++i )
     {
-      uint32_t index = children_literals[i] >> 1;
+      uint32_t index = (children_literals[i] >> 1);
       children.push_back( ( children_literals[i] % 2 ) ? ntk.create_not( signals.at( index ) ) : signals.at( index ) );
       if(( children_literals[i] % 2 ) )
         printf("W%d\n");
     }
     auto fnew = ntk.create_node( children, indices.tts[function_location] );
     auto nnew = ntk.get_node( fnew );
+    ntk.recursively_mark(nnew);
     ntk.add_binding( nnew, indices.ids[function_location] );
     signals.push_back( fnew );
   } );
@@ -1750,6 +1756,133 @@ void insert( Ntk& ntk, BeginIter begin, EndIter end, lig_index_list<separate_hea
     fn( ( lit % 2 ) ? ntk.create_not( signals.at( i ) ) : signals.at( i ) );
   } );
 }
+
+/*! \brief Inserts a lig_index_list into an existing network
+ *
+ * **Required network functions:**
+ * - `create_node`
+ * - `get_constant`
+ *
+ * \param ntk A rig-like network
+ * \param begin Begin iterator of signal inputs
+ * \param end End iterator of signal inputs
+ * \param indices An index list
+ * \param fn Callback function
+ */
+template<bool useSignal = true, typename Ntk, typename BeginIter, typename EndIter, typename Fn, bool separate_header = false>
+std::vector<node<Ntk>> insert( Ntk& ntk, BeginIter begin, EndIter end, lig_index_list<separate_header> const& indices, incomplete_node_map<double, Ntk>& arr_times, incomplete_node_map<double, Ntk>& req_times, node<Ntk> nd, Fn&& fn )
+{
+  static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
+  static_assert( has_create_node_v<Ntk>, "Ntk does not implement the create_node method" );
+  static_assert( has_get_constant_v<Ntk>, "Ntk does not implement the get_constant method" );
+
+  using node = typename Ntk::node;
+  using signal = typename Ntk::signal;
+
+  if constexpr ( useSignal )
+  {
+    static_assert( std::is_same_v<std::decay_t<typename std::iterator_traits<BeginIter>::value_type>, signal>, "BeginIter value_type must be Ntk signal type" );
+    static_assert( std::is_same_v<std::decay_t<typename std::iterator_traits<EndIter>::value_type>, signal>, "EndIter value_type must be Ntk signal type" );
+  }
+  else
+  {
+    static_assert( std::is_same_v<std::decay_t<typename std::iterator_traits<BeginIter>::value_type>, node>, "BeginIter value_type must be Ntk node type" );
+    static_assert( std::is_same_v<std::decay_t<typename std::iterator_traits<EndIter>::value_type>, node>, "EndIter value_type must be Ntk node type" );
+  }
+
+  assert( uint64_t( std::distance( begin, end ) ) == indices.num_pis() );
+
+  std::vector<signal> signals;
+  signals.push_back( ntk.get_constant( false ) );
+  for ( auto it = begin; it != end; ++it )
+  {
+    if constexpr ( useSignal )
+    {
+      signals.push_back( *it );
+    }
+    else
+    {
+      signals.emplace_back( ntk.make_signal( *it ) );
+    }
+  }
+  std::vector<node> critical_inputs;
+  indices.foreach_gate( [&]( std::vector<uint32_t> children_literals, uint32_t function_location ) {
+    std::vector<signal> children;
+    for( int i{0}; i<children_literals.size(); ++i )
+    {
+      uint32_t index = (children_literals[i] >> 1);
+      children.push_back( ( children_literals[i] % 2 ) ? ntk.create_not( signals.at( index ) ) : signals.at( index ) );
+      if(( children_literals[i] % 2 ) )
+        printf("W%d\n");
+      if( children_literals[i]<indices.num_pis() )
+      {
+        req_times[signals.at( index )]=req_times[nd];
+        critical_inputs.push_back( ntk.get_node(signals.at( index )) );
+      }
+    }
+    auto fnew = ntk.create_node( children, indices.tts[function_location] );
+    auto nnew = ntk.get_node( fnew );
+    ntk.add_binding( nnew, indices.ids[function_location] );
+    signals.push_back( fnew );
+
+    arr_times[nnew] = 0;
+    auto const& g = ntk.get_binding( nnew );
+    for( int ic{0}; ic<children.size(); ++ic )
+    {
+      arr_times[nnew] = std::max( arr_times[nnew], (double)( arr_times[children[ic]] + std::max( g.pins[ic].rise_block_delay, g.pins[ic].fall_block_delay ) ) );
+    }
+  } );
+  uint32_t litout;
+  indices.foreach_po( [&]( uint32_t lit ) {
+    litout = lit >> 1;
+    fn( ( lit % 2 ) ? ntk.create_not( signals.at( litout ) ) : signals.at( litout ) );
+  } );
+
+  /* propagate_arrivals */
+  if( arr_times[signals.at( litout )] >  req_times[nd] ) printf("[e] VIOLATED REQUIRED TIME\n");
+  printf("no.%f\n", arr_times[signals.at( litout )]);
+  //printf("a.%f\n", arr_times[nd]);
+  //printf("r.%f\n", req_times[nd]);
+
+  //req_times[signals[litout]]=req_times[nd];
+  if( litout < indices.num_pis() )
+  {
+    req_times[signals.at( litout )] = std::min( req_times[nd], req_times[signals.at( litout )]);
+  }
+  else
+  {
+    req_times[signals.at( litout )] = req_times[nd];
+  }
+
+  for( int i{signals.size()-1}; i>=0; --i )//reverse topological order
+  {
+    auto nc = ntk.get_node(signals[i]);
+    req_times[nc]=req_times[nd];
+    if( ntk.is_pi(nc) )
+    {
+      continue;
+    }
+    auto const& fos = ntk.fanout( nc );
+    for( auto fo : fos )
+    {
+      auto const& g = ntk.get_binding( fo );
+      uint32_t idx;
+      ntk.foreach_fanin( fo, [&]( auto const& f, auto i ) {
+        if( nc == ntk.get_node(f) )
+        {
+          idx=i;
+          return;
+        }
+      } );
+      req_times[signals[i]] = std::min( req_times[signals[i]], (double)( req_times[fo] - std::max( g.pins[idx].rise_block_delay, g.pins[idx].fall_block_delay ) ) );
+    }
+  }
+  printf("co.%f\n", req_times[signals.at( litout )]);
+
+  return critical_inputs;
+
+}
+
 
 //uint32_t build_from_lig( std::vector<uint32_t>& lits, lig_network & lig )
 //{
