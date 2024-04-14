@@ -59,12 +59,12 @@ namespace scopt
 
 bool VERBOSE{ false };
 
-enum support_selection_t
-{
-  GREEDY,
-  NGREEDY,
-  PIVOT,
-};
+//enum support_selection_t
+//{
+//  GREEDY,
+//  NGREEDY,
+//  PIVOT,
+//};
 
 std::mt19937 RIGRNG( 5 );
 
@@ -93,7 +93,7 @@ struct scg_resyn_static_params
 
   static constexpr uint32_t nBest{ 2 };
 
-  static constexpr support_selection_t support_selection{ GREEDY };
+  static constexpr support_selection_t support_selection{ GRE };
 
   using truth_table_storage_type = void;
   using node_type = void;
@@ -189,7 +189,7 @@ struct scg_resyn_stats
    \endverbatim
  */
 
-template<class TT, class static_params = scg_resyn_static_params_default<TT>, support_selection_t SUP_SEL = GREEDY>
+template<class NTK, class TT, class static_params = scg_resyn_static_params_default<TT>, support_selection_t SUP_SEL = GRE>
 class scg_resyn_decompose
 {
 
@@ -252,7 +252,7 @@ private:
 
 public:
   explicit scg_resyn_decompose( std::vector<gate> const& gates, stats& st ) noexcept
-      : st( st ), _lps(false),  _gates(gates), _tech_lib( gates, _tps ), _lib( _resyn, _lps )
+      : st( st ), _lps(false),  _gates(gates), _tech_lib( gates, _tps ), _lib( _resyn, _lps ), _supportor( static_params::support_selection )
   {
     exact_library_params lps;
     lps.compute_dc_classes = true;
@@ -281,6 +281,10 @@ public:
       }
       fTts.close();
     }
+    else
+    {
+      printf("not found\n");
+    }
 
     std::ifstream fAreas ("sky130.area");
     if (fAreas.is_open())
@@ -290,6 +294,10 @@ public:
         _areas.push_back( std::stof( line ) );
       }
       fAreas.close();
+    }
+    else
+    {
+      printf("not found\n");
     }
 
 
@@ -309,6 +317,10 @@ public:
       }
       fLists.close();
     }
+    else
+    {
+      printf("not found\n");
+    }
 
   }
 
@@ -326,9 +338,16 @@ public:
    */
   template<class iterator_type,
            bool enabled = static_params::uniform_div_cost && !static_params::preserve_depth, typename = std::enable_if_t<enabled>>
-  std::optional<index_list_t> operator()( TT const& target, TT const& care, iterator_type begin, iterator_type end, typename static_params::truth_table_storage_type const& tts, double max_size )
+  std::optional<index_list_t> operator()( TT const& target, TT const& care, iterator_type begin, iterator_type end, iterator_type dbegin, iterator_type dend, typename static_params::truth_table_storage_type const& tts, double max_size )
   {
     static_assert( static_params::copy_tts || std::is_same_v<typename std::iterator_traits<iterator_type>::value_type, typename static_params::node_type>, "iterator_type does not dereference to static_params::node_type" );
+    
+  //  _fsupp.clear();
+  //  if ( max_size > 0 )
+  //  {
+  //    auto fsup = _supportor( target, care, begin, end, tts );
+  //    if( fsup ) _fsupp=*fsup;
+  //  }
 
     ptts = &tts;
     on_off_sets[0] = ~target & care;
@@ -366,7 +385,12 @@ public:
   std::optional<index_list_t> operator()( TT const& target, TT const& care, iterator_type begin, iterator_type end, std::vector<double> const& idelays, typename static_params::truth_table_storage_type const& tts, double max_size )
   {
     static_assert( static_params::copy_tts || std::is_same_v<typename std::iterator_traits<iterator_type>::value_type, typename static_params::node_type>, "iterator_type does not dereference to static_params::node_type" );
-
+  //  _fsupp.clear();
+  //  if ( max_size > 0 )
+  //  {
+  //    auto fsup = _supportor( target, care, begin, end, tts );
+  //    if( fsup ) _fsupp=*fsup;
+  //  }
     ptts = &tts;
     on_off_sets[0] = ~target & care;
     on_off_sets[1] = target & care;
@@ -437,14 +461,14 @@ private:
       return *res0;
     }
 
-    if ( num_inserts <= _area_th )
+    if ( num_inserts < _area_th ) //MOD<=
     {
       return std::nullopt;
     }
 
-    auto const supp = call_with_stopwatch( st.time_supp, [&]() {
-      return find_support();
-    } );
+//    auto const supp = call_with_stopwatch( st.time_supp, [&]() {
+//      return find_support();
+//    } );
 
     /* try n-resub */
     auto const resn = call_with_stopwatch( st.time_resub, [&]() {
@@ -912,8 +936,12 @@ private:
 
 
     uint64_t best_key;
-    double best_area = max_inserts+1;
+    double best_area = max_inserts;
     std::vector<uint8_t> best_perm;
+
+    std::vector<std::vector<uint8_t>> best_perms;
+    std::vector<uint64_t> best_keys;
+    std::vector<double> best_areas;
 
     for( uint32_t m{0}; m< (1<<dcs.size()); ++m )
     {
@@ -927,11 +955,13 @@ private:
         }
       }
       //kitty::print_binary(tt);
-      const auto support = kitty::min_base_inplace( tt );
+//      const auto support = kitty::min_base_inplace( tt );
 
      // printf("%d\n", support.size());
-      if( support.size() != supp.size() )
-        continue;
+//      if( support.size() != supp.size() )
+//      {
+//        for( int )
+//      }
       /* p-canonize */
       auto config = exact_p_canonization( tt );
 
@@ -943,17 +973,34 @@ private:
       //printf("\n");
 
       uint64_t key = _pClassMap[ func_p._bits&0xFFFF ];
-      if( _areas[key] <= best_area  )
+      if( _areas[key] < best_area  )//MOD<=
       {
         best_key = key;
         best_area = _areas[key];
         best_perm = perm;
+
+        best_keys ={ key };
+        best_areas = {_areas[key] };
+        best_perms = { perm };
+      }
+      else if( _areas[key] == best_area )
+      {
+        best_keys.push_back( key );
+        best_areas.push_back( _areas[key] );
+        best_perms.push_back( perm );
       }
     }
 
     //printf("%f >? %f\n", max_inserts, best_area);
-    if( best_area <= max_inserts )
+    if( best_area < max_inserts )
     {
+
+      std::uniform_int_distribution<> distrib( 0, best_perms.size() - 1 );
+      int idx = distrib( RIGRNG );
+      best_key = best_keys[idx];
+      best_area = best_areas[idx];
+      best_perm = best_perms[idx];
+
       std::vector<uint32_t> lits = {0,0,0,0,0};
       for( auto i{0}; i<4; ++i )
       {
@@ -1036,7 +1083,7 @@ private:
     scopt::scg_network scg = scopt::emap2_klut( aig, _tech_lib, ps2, &st2 );
 
     //printf("substitute if %f<=%f\n", scg.compute_area(), max_inserts );
-    if( scg.compute_area() <= max_inserts )
+    if( scg.compute_area() < max_inserts )//MOD<=
     {      
       scg.foreach_pi( [&]( auto n, auto i ) { 
         scg.set_value( n, lits[i] );
@@ -1202,61 +1249,86 @@ private:
 
   std::optional<std::vector<uint32_t>> find_support()
   {
-    if ( static_params::support_selection == support_selection_t::GREEDY )
+
+  //  if( _fsupp.size() > 0 )
+  //  {
+  //    return _fsupp;
+  //  }
+  //
+  //  return std::nullopt;
+
+  //  if ( static_params::support_selection == support_selection_t::GREEDY )
+  //  {
+      //if( _idelays.size() > 0 )
+  //    {
+    for( int iter{0}; iter<4; iter++ )
     {
-      if( _idelays.size() > 0 )
-      {
         auto supp = find_support_greedy( 0 );
         if ( supp )
         {
           return *supp;
         }
-      }
-      else
-      {
-        auto supp = find_support_greedy( 0 );
-        if ( supp )
-        {
-          return *supp;
-        }
-      }
-      return std::nullopt;
     }
-    if ( static_params::support_selection == support_selection_t::NGREEDY )
+    return std::nullopt;
+
+
+  //      auto supp = find_support_greedy( 0 );
+  //      if ( supp )
+  //      {
+  //        return *supp;
+  //      }
+  //  return std::nullopt;
+
+
+  //    }
+  //    else
+  //    {
+  //      auto supp = find_support_greedy( 0 );
+  //      if ( supp )
+  //      {
+  //        return *supp;
+  //      }
+  //    }
+  //    return std::nullopt;
+  //  }
+  //  if ( static_params::support_selection == support_selection_t::NGREEDY )
+  //  {
+  //    if( _idelays.size() > 0 )
+  //    {
+  //      auto supp = find_support_ngreedy_with_delay( 0 );
+  //      if ( supp )
+  //      {
+  //        return *supp;
+  //      }
+  //    }
+  //    else
+  //    {
+    for( int iter{0}; iter<4; iter++ )
     {
-      if( _idelays.size() > 0 )
-      {
-        auto supp = find_support_ngreedy_with_delay( 0 );
-        if ( supp )
-        {
-          return *supp;
-        }
-      }
-      else
-      {
         auto supp = find_support_ngreedy( 0 );
         if ( supp )
         {
           return *supp;
         }
-      }
-      return std::nullopt;
     }
-    if ( static_params::support_selection == support_selection_t::PIVOT )
-    {
-      auto supp = find_support_greedy( 0 );
-      if ( supp )
-        return *supp;
-
-      for ( uint32_t i{ 0 }; i < scored_divs.size() * static_params::fraction_of_10 / 10; ++i )
-      {
-        auto supp = find_from_unbalancing( i );
-        if ( supp )
-          return *supp;
-      }
-
+  //    }
+  ////    return std::nullopt;
+  //  }
+  //  if ( static_params::support_selection == support_selection_t::PIVOT )
+  //  {
+  //    auto supp = find_support_greedy( 0 );
+  //    if ( supp )
+  //      return *supp;
+//
+  //    for ( uint32_t i{ 0 }; i < scored_divs.size() * static_params::fraction_of_10 / 10; ++i )
+  //    {
+  //      auto supp = find_from_unbalancing( i );
+  //      if ( supp )
+  //        return *supp;
+  //    }
+//
       return std::nullopt;
-    }
+  //  }
   }
 
   /*! \brief find support greedy */
@@ -1311,6 +1383,48 @@ private:
   }
  /*! \brief find support greedy */
  
+  /*! \brief find support greedy */
+  std::optional<std::vector<uint32_t>> find_support_greedy_fast( uint32_t start = 0, std::vector<uint32_t> supp0 = {} )
+  {
+    uint32_t cost, best_cost, best;
+    std::vector<uint32_t> supp;
+
+    _uSPFD.reset();
+    for ( auto x : supp0 )
+    {
+      _uSPFD.update( get_div( x ) );
+      supp.push_back( x );
+    }
+
+    /* add recomputation of the support */
+    while ( !_uSPFD.is_covered() && supp.size() < static_params::max_support_size )
+    {
+      best_cost = std::numeric_limits<uint32_t>::max();
+      if ( _uSPFD.is_saturated() )
+        break;
+      for ( uint32_t iCnd{ start }; iCnd < divisors.size(); ++iCnd )
+      {
+        cost = _uSPFD.evaluate( get_div( iCnd ) );
+        if ( cost < best_cost )
+        {
+          best_cost = cost;
+          best = iCnd ;
+        }
+      }
+
+      supp.push_back( best );
+      _uSPFD.update( get_div( best) );
+    }
+
+    if ( _uSPFD.is_covered() && supp.size() <= static_params::max_support_size )
+    {
+      std::sort( supp.begin(), supp.end() );
+
+      return supp;
+    }
+    return std::nullopt;
+  }
+
   std::optional<std::vector<uint32_t>> find_support_ngreedy( uint32_t start = 0, std::vector<uint32_t> supp0 = {} )
   {
     uint32_t cost, best_cost0, best_cost1;
@@ -1637,6 +1751,13 @@ private:
   std::vector<double> _areas;
   std::unordered_map<uint64_t, uint32_t> _pClassMap;
   std::vector<double> _idelays;
+
+  support_selector<TT, NTK, static_params::max_support_size> _supportor;
+  std::vector<uint32_t> _fsupp;
+  std::set<std::vector<uint32_t>> _supset;
+
+
+  uint32_t _sref{0};
 
   double _area_th;
 

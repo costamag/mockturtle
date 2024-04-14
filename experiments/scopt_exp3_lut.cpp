@@ -54,7 +54,8 @@ template<class Ntk>
 Ntk abc_opto( Ntk const& ntk, std::string str_code, std::string abc_script = "resyn2rs" )
 {
   write_aiger( ntk, "/tmp/"+str_code+".aig" );
-  std::string command = "abc -q \"r /tmp/"+str_code+".aig; " + abc_script + "; write_aiger /tmp/" + str_code + ".aig\"";
+  std::string command = "abc -q \"r /tmp/"+str_code+".aig; fraig; write_aiger /tmp/" + str_code + ".aig\"";
+  //std::string command = "abc -q \"r /tmp/"+str_code+".aig; " + abc_script + "; fraig; write_aiger /tmp/" + str_code + ".aig\"";
 
   std::array<char, 128> buffer;
   std::string result;
@@ -76,11 +77,11 @@ Ntk abc_opto( Ntk const& ntk, std::string str_code, std::string abc_script = "re
   return res;
 }
 
-std::tuple<uint32_t,uint32_t,float> abc_mfs( lig_network& ntk, std::string benchmark )
+std::tuple<uint32_t,uint32_t,float> abc_mfs( lig_network& ntk, std::string benchmark, uint32_t M = 5000 )
 {//mfs2 -L 20 -ea
   mockturtle::write_bench( ntk, "/tmp/mfsin_"+benchmark+".bench" );
   //std::string command = fmt::format( "abc -q \"read_bench /tmp/mfsin_{}.bench; mfs -D 0 -dea; write_bench /tmp/mfsout_{}.bench;\"", benchmark, benchmark );
-  std::string command = fmt::format( "abc -q \"read_bench /tmp/mfsin_{}.bench; mfs -e -W 20 -L 200; time; write_blif /tmp/mfsin_{}.blif; &get -mn; &ps;\"", benchmark, benchmark );
+  std::string command = fmt::format( "abc -q \"read_bench /tmp/mfsin_{}.bench; mfs -W 4 -M " + std::to_string(M) + " -L 200; time; write_blif /tmp/mfsin_{}.blif; &get -mn; &ps;\"", benchmark, benchmark );
 
   std::array<char, 128> buffer;
   std::string result;
@@ -148,11 +149,12 @@ std::tuple<uint32_t,uint32_t,float> abc_mfs( lig_network& ntk, std::string bench
 
 }
 
-std::tuple<uint32_t,uint32_t,float> abc_mfs2( lig_network& ntk, std::string benchmark )
+std::tuple<uint32_t,uint32_t,float> abc_mfs2( lig_network& ntk, std::string benchmark, uint32_t M = 5000 )
 {
-  mockturtle::write_bench( ntk, "/tmp/mfsin2_"+benchmark+".bench" );
+  mockturtle::write_bench( ntk, "/tmp/mfsin2_"+benchmark+".bench" ); 
+
   //std::string command = fmt::format( "abc -q \"read_bench /tmp/mfsin_{}.bench; mfs -D 0 -dea; write_bench /tmp/mfsout_{}.bench;\"", benchmark, benchmark );
-  std::string command = fmt::format( "abc -q \"read_bench /tmp/mfsin2_{}.bench; mfs2 -e -W 20 -L 200; time; write_blif /tmp/mfsin2_{}.blif; &get -mn; &ps;\"", benchmark, benchmark );
+  std::string command = fmt::format( "abc -q \"read_bench /tmp/mfsin2_{}.bench; mfs2 -e -W 4 -M " + std::to_string(M) + " -L 200; time; write_blif /tmp/mfsin2_{}.blif; &get -mn; &ps;\"", benchmark, benchmark );
 
   std::array<char, 128> buffer;
   std::string result;
@@ -223,7 +225,7 @@ std::tuple<uint32_t,uint32_t,float> abc_lutpack( lig_network& ntk, std::string b
 {
   mockturtle::write_bench( ntk, "/tmp/mfsin2_"+benchmark+".bench" );
   //std::string command = fmt::format( "abc -q \"read_bench /tmp/mfsin_{}.bench; mfs -D 0 -dea; write_bench /tmp/mfsout_{}.bench;\"", benchmark, benchmark );
-  std::string command = fmt::format( "abc -q \"read_bench /tmp/mfsin2_{}.bench; lutpack -L 200; time; write_blif /tmp/mfsin2_{}.blif; &get -mn; &ps;\"", benchmark, benchmark );
+  std::string command = fmt::format( "abc -q \"read_bench /tmp/mfsin2_{}.bench; lutpack -N 3 -S 3 -L 200; time; write_blif /tmp/mfsin2_{}.blif; &get -mn; &ps;\"", benchmark, benchmark );
 
   std::array<char, 128> buffer;
   std::string result;
@@ -355,12 +357,11 @@ std::tuple<uint32_t,uint32_t,float> abc_eval( Ntk const& ntk, std::string benchm
   return res;
 
 }
-
 template<class Ntk>
-klut_network abc_if( Ntk const& ntk, std::string str_code, uint32_t K=4u )
+lig_network abc_if( Ntk const& ntk, std::string str_code, uint32_t K=4u )
 {
   write_aiger( ntk, "/tmp/"+str_code+".aig" );
-  std::string command = "abc -q \"r /tmp/"+str_code+".aig; dch -f; if -a -K "+std::to_string(K)+"; write_blif /tmp/" + str_code + ".blif\"";
+  std::string command = "abc -q \"r /tmp/"+str_code+".aig; fraig; st; dch; if -a –C 12 -K "+std::to_string(K)+"; write_blif /tmp/" + str_code + ".blif\"";
 
   std::array<char, 128> buffer;
   std::string result;
@@ -374,7 +375,7 @@ klut_network abc_if( Ntk const& ntk, std::string str_code, uint32_t K=4u )
     result += buffer.data();
   }
 
-  klut_network res;
+  lig_network res;
 
   std::string string_path = ("/tmp/"+str_code+".blif");
   if( lorina::read_blif( string_path, blif_reader( res ) ) != lorina::return_code::success )
@@ -382,6 +383,7 @@ klut_network abc_if( Ntk const& ntk, std::string str_code, uint32_t K=4u )
 
   return res;
 }
+
 
 int main()
 {
@@ -410,10 +412,10 @@ int main()
   std::vector<double> lp_times;
   std::vector<double> p1_times;
 
-  for ( auto const& benchmark : iscas_benchmarks( ) )
+  for ( auto const& benchmark : epfl_benchmarks( ) )
   {
     if( benchmark == "hyp" ) continue;
-    fmt::print( "[i] processing {}\n", benchmark );
+  //  fmt::print( "[i] processing {}\n", benchmark );
 
     std::string tmp = benchmark + "_exp1.blif";
 
@@ -431,7 +433,6 @@ int main()
 //      printf("..%d\n", aig.num_gates());
 //    }
 
-    if( aig.num_gates() > 300000 ) continue;
 
     /* aig optimization */
     uint32_t nGates_old = aig.num_gates()+1;
@@ -446,26 +447,34 @@ int main()
 
     /* set up the parameters */
     boptimizer_params rps;
-    rps.progress =true;
+    rps.progress =false;
     rps.max_inserts = 20;
-    rps.max_trials = 1;
+    rps.max_trials = 100;
     rps.max_pis = 16;
     rps.verbose = false;
-    rps.max_divisors = 64;
+    rps.max_divisors = 128;
 
     /* CASE 0: parameters */
     //klut_network klut=abc_if( aig, benchmark, 4u );
 
-    scopt::lut_map2_params ps;
-    ps.cut_enumeration_ps.cut_size = 4u;
-    ps.cut_enumeration_ps.cut_limit = 8u;
-    ps.recompute_cuts = true;
-    ps.area_oriented_mapping = true;
-    ps.cut_expansion = true;
-    scopt::lut_map2_stats st;
-    const auto lig0 = scopt::lut_map2( aig, ps, &st );
+    //scopt::lut_map2_params ps;
+    //ps.cut_enumeration_ps.cut_size = K;
+    //ps.cut_enumeration_ps.cut_limit = 8u;
+    //ps.recompute_cuts = true;
+    //ps.area_oriented_mapping = true;
+    //ps.cut_expansion = true;
+    //scopt::lut_map2_stats st;
+//
+    //const auto lig0 = scopt::lut_map2( aig, ps, &st );
 
+    if( aig.num_gates() > 300000 ) continue;
+    aig = abc_opto( aig, benchmark );
 
+    //const auto lig_map0 = scopt::lut_map2( aig, ps, &st );
+    const auto lig_map = abc_if( aig, benchmark, K );
+    const auto lig0 = cleanup_ligs( lig_map );
+
+    //if(lig0.num_gates()>1000) continue;
     write_blif( lig0, tmp );
 
     lig_network lig;
@@ -478,7 +487,7 @@ int main()
     auto const lig_cec = benchmark == "hyp" ? true : abc_cec( lig, benchmark );
 
     uint32_t map_num_gates = lig.num_gates();
-    printf("MP : %6d\n", map_num_gates );
+    //printf("MP : %6d\n", map_num_gates );
     uint32_t map_depth = lig_d.depth();
 
     /* MFS */
@@ -495,8 +504,17 @@ int main()
     while ( lig_mfs.num_gates() < nOldMfs )
     {
       nOldMfs = lig_mfs.num_gates();
-      auto mfs2_res = abc_mfs( lig_mfs, benchmark );
+      auto mfs2_res = abc_mfs( lig_mfs, benchmark, nOldMfs );
+      lig_mfs = cleanup_dangling( lig_mfs );
       printf("MFS: %6d\n", lig_mfs.num_gates() );
+      
+      if( lig_mfs.num_gates() == nOldMfs )
+      {
+        abc_lutpack( lig_mfs, benchmark );
+        lig_mfs = cleanup_dangling( lig_mfs );
+        printf("LPK: %6d\n", lig_mfs.num_gates() );
+
+      }
     }
     
     depth_view<lig_network> dlig_mfs{lig_mfs};
@@ -515,13 +533,23 @@ int main()
     }
     if( lig_mfs2.num_gates() != map_num_gates ) continue;
     int nOldMfs2 = lig_mfs2.num_gates()+1;
+
     while ( lig_mfs2.num_gates() < nOldMfs2 )
     {
       nOldMfs2 = lig_mfs2.num_gates();
-      auto mfs2_res = abc_mfs2( lig_mfs2, benchmark );
+      auto mfs2_res = abc_mfs2( lig_mfs2, benchmark, nOldMfs2 );
+      lig_mfs2 = cleanup_dangling( lig_mfs2 );
       printf("MF2: %6d\n", lig_mfs2.num_gates() );
+
+      if( lig_mfs2.num_gates() == nOldMfs2 )
+      {
+        abc_lutpack( lig_mfs2, benchmark );
+        lig_mfs2 = cleanup_dangling( lig_mfs2 );
+        printf("LPK: %6d\n", lig_mfs2.num_gates() );
+
+      }
     }
-    
+
     depth_view<lig_network> dlig_mfs2{lig_mfs2};
 
     uint32_t mfs2_num_gates = lig_mfs2.num_gates();//std::get<0>(mfs2_res);
@@ -529,13 +557,6 @@ int main()
     double mfs2_time = 0;//(double)std::get<2>(mfs2_res);
 
     /* CASE 1 : GREEDY 1 */    
-//    int nOld = aig.num_gates()+1;
-//    while( aig.num_gates() < nOld )
-//    {
-//      nOld = aig.num_gates();
-//      aig = abc_opto( aig, benchmark, "resyn2rs" );
-//      printf("..%d\n", aig.num_gates());
-//    }
 
     lig_network lig_lp;
     if ( lorina::read_blif( tmp, blif_reader( lig_lp ) ) != lorina::return_code::success )
@@ -545,11 +566,24 @@ int main()
     }
     if( lig_lp.num_gates() != map_num_gates ) continue;
     int nOldLP = lig_lp.num_gates()+1;
+
+
+    boptimizer_stats rst;
+
     while ( lig_lp.num_gates() < nOldLP )
     {
       nOldLP = lig_lp.num_gates();
-      auto lp_res = abc_lutpack( lig_lp, benchmark );
-      printf("LPK: %6d\n", lig_lp.num_gates() );
+      boptimize_klut<PV3, K, K>( lig_lp, rps, &rst );
+      lig_lp = cleanup_luts( lig_lp );
+      
+      printf("PV3[4,4]: %6d\n", lig_lp.num_gates() );
+      if( lig_lp.num_gates() == nOldLP )
+      {
+        abc_lutpack( lig_lp, benchmark );
+        lig_lp = cleanup_dangling( lig_lp );
+        printf("LPK: %6d\n", lig_lp.num_gates() );
+      }
+
     }
     
     depth_view<lig_network> dlig_lp{lig_lp};
@@ -569,30 +603,34 @@ int main()
 
     boptimizer_stats rst_p1;
     nOld = lig_p1.num_gates()+1;
-    while( lig_p1.num_gates() < nOld )
+
+    while ( lig_p1.num_gates() < nOld )
     {
       nOld = lig_p1.num_gates();
-      boptimize_klut<GREEDY, 4u, 4u>( lig_p1, rps, &rst_p1 );
-      lig_p1 = cleanup_dangling( lig_p1 );
-      printf("GRE[4,4]: %6d [%6d]\n", lig_p1.num_gates(), lig_p1.max_num_fanins);
-      if( nOld == lig_p1.num_gates() )
+      boptimize_klut<PV3, K, K>( lig_p1, rps, &rst );
+      lig_p1 = cleanup_luts( lig_p1 );
+      printf("PV3[4,4]: %6d [%6d]\n", lig_p1.num_gates(), lig_p1.max_num_fanins);
+
+      if( lig_p1.num_gates() == nOld )
       {
-        boptimize_klut<GREEDY, 7u, 4u>( lig_p1, rps, &rst_p1 );
+        abc_lutpack( lig_p1, benchmark );
         lig_p1 = cleanup_dangling( lig_p1 );
-        printf("GRE[7,4]: %6d [%6d]\n", lig_p1.num_gates(), lig_p1.max_num_fanins);
+        printf("LPK: %6d\n", lig_p1.num_gates() );
       }
-      if( nOld == lig_p1.num_gates() )
+
+      if( lig_p1.num_gates() == nOld )
       {
-        boptimize_klut<PIVOT, 4u, 4u>( lig_p1, rps, &rst_p1 );
-        lig_p1 = cleanup_dangling( lig_p1 );
-        printf("PIV[4,4]: %6d [%6d]\n", lig_p1.num_gates(), lig_p1.max_num_fanins);
+        boptimize_klut<PV3, K+1, K>( lig_p1, rps, &rst );
+        lig_p1 = cleanup_luts( lig_p1 );
+        printf("PV3[5,4]: %6d [%6d]\n", lig_p1.num_gates(), lig_p1.max_num_fanins);
+        if( lig_p1.num_gates() == nOld )
+        {
+          boptimize_klut<PV3, K+2, K>( lig_p1, rps, &rst );
+          lig_p1 = cleanup_luts( lig_p1 );
+          printf("PV3[6,4]: %6d [%6d]\n", lig_p1.num_gates(), lig_p1.max_num_fanins);
+        }
       }
-      if( nOld == lig_p1.num_gates() )
-      {
-        boptimize_klut<PIVOT, 7u, 4u>( lig_p1, rps, &rst_p1 );
-        lig_p1 = cleanup_dangling( lig_p1 );
-        printf("PIV[7,4]: %6d [%6d]\n", lig_p1.num_gates(), lig_p1.max_num_fanins);
-      }
+
     }
 
     depth_view<lig_network> lig_p1_d{ lig_p1 };
@@ -695,3 +733,16 @@ int main()
 
   return 0;
 }
+
+//| benchmark | a(map) | a(mfs) | a(mfs2) | a(g,1) | a(p,1) | d(map) | d(mfs) | d(mfs2) | d(g,1) | d(p,1) | t(mfs) | t(mfs2) | t(g,1) | t(p,1) |
+//|       c17 |      2 |      2 |       2 |      2 |      2 |      1 |      1 |       1 |      1 |      1 |   0.00 |    0.00 |   0.00 |   2.66 |
+//|      c432 |     66 |     64 |      64 |     66 |     64 |     14 |     14 |      14 |     14 |     15 |   0.00 |    0.00 |   0.00 |   2.65 |
+//|      c499 |     78 |     78 |      78 |     78 |     78 |      7 |      7 |       7 |      7 |      8 |   0.00 |    0.00 |   0.00 |   2.74 |
+//|      c880 |    112 |    112 |     112 |    111 |    107 |     15 |     15 |      15 |     15 |     16 |   0.00 |    0.00 |   0.00 |   2.73 |
+//|     c1355 |     78 |     78 |      78 |     78 |     78 |      7 |      7 |       7 |      7 |      8 |   0.00 |    0.00 |   0.00 |   3.33 |
+//|     c1908 |     90 |     84 |      84 |     90 |     85 |     12 |     10 |      10 |     12 |     10 |   0.00 |    0.00 |   0.00 |   2.96 |
+//|     c2670 |    174 |    173 |     172 |    155 |    170 |      9 |      9 |       9 |     16 |     10 |   0.00 |    0.00 |   0.00 |   2.70 |
+//|     c3540 |    343 |    342 |     322 |    329 |    340 |     18 |     18 |      18 |     18 |     19 |   0.00 |    0.00 |   0.00 |   2.79 |
+//|     c5315 |    471 |    455 |     447 |    452 |    433 |     14 |     14 |      14 |     13 |     15 |   0.00 |    0.00 |   0.00 |   2.87 |
+//|     c6288 |    495 |    495 |     495 |    495 |    495 |     30 |     30 |      30 |     30 |     57 |   0.00 |    0.00 |   0.00 |   3.16 |
+//|     c7552 |    444 |    431 |     431 |    410 |    420 |     15 |     17 |      17 |     19 |     34 |   0.00 |    0.00 |   0.00 |   3.00 |

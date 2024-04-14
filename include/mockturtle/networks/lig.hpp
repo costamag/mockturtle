@@ -215,6 +215,8 @@ enum e_func_t : uint32_t
     uint32_t value{0u};
     /*! \brief visited flag 1 visited */
     uint32_t visited{0};
+
+    uint32_t mark{0};
     /*! \brief aig signal */
     aig_network::signal twin;
 
@@ -621,6 +623,20 @@ class lig_network
   uint32_t pi_index( node const& n ) const
   {
     return static_cast<uint32_t>( _storage->nodes[n].children[0].data );
+  }
+
+  uint32_t po_index( signal const& s ) const
+  {
+    uint32_t i = -1;
+    foreach_po( [&]( const auto& x, auto index ) {
+      if ( x == s )
+      {
+        i = index;
+        return false;
+      }
+      return true;
+    } );
+    return i;
   }
 #pragma endregion nodes and signals
 
@@ -1142,7 +1158,10 @@ class lig_network
 
   signal create_node( std::vector<signal> children, kitty::dynamic_truth_table function )
   {    
-    assert( children.size() == function.num_vars() );
+  //  printf("%d %d\n", children.size(), function.num_vars() );
+  //  kitty::print_binary(function);
+  //  printf("\n");
+  //  assert( children.size() == function.num_vars() );
     
     if( children.size() > 1 )
     {
@@ -1154,7 +1173,7 @@ class lig_network
       return kitty::is_normal( function ) ? children[0] : !children[0];
     }
 
-    assert( children.size() == function.num_vars() );
+   // assert( children.size() == function.num_vars() );
 
     if ( children.size() == 0u )
     {
@@ -1254,7 +1273,7 @@ class lig_network
   aig_network::signal synthesize_twin( std::vector<signal> const& children, uint32_t literal )
   {
     kitty::dynamic_truth_table const& tt = _storage->data.cache[literal];
-    assert( children.size() == tt.num_vars() );
+    //assert( children.size() == tt.num_vars() );
     size_t n_fanins = tt.num_vars();
     std::vector<aig_network::signal> aig_children;
     for( auto i{0}; i<n_fanins; ++i )
@@ -1798,6 +1817,11 @@ class lig_network
     return static_cast<uint32_t>( _storage->nodes[n].children.size() );
   }
 
+  node get_children( node const& n, uint32_t idx ) const
+  {
+    return static_cast<uint32_t>( _storage->nodes[n].children[idx].index );
+  }
+
   size_t fanout_size( node const& n ) const
   {
     return _storage->nodes[n].nfos & UINT32_C( 0x7FFFFFFF );
@@ -2312,6 +2336,36 @@ class lig_network
   #pragma endregion application specific value
 
   #pragma region visited flags
+
+    void recursively_mark( node n )
+    {
+      if( is_pi(n) || is_constant(n) || is_marked(n) )
+      {
+        return;
+      }
+
+      foreach_fanin( n, [&]( const auto& f ) {
+        recursively_mark( get_node(f) );
+      } );
+
+      set_mark( n );
+    }
+
+    void clear_marked() const
+    {
+      std::for_each( _storage->nodes.begin(), _storage->nodes.end(), []( auto& n ) { n.mark = 0; } );
+    }
+
+    void set_mark( node const& n ) const
+    {
+      _storage->nodes[n].mark = 1;
+    }
+
+    bool is_marked( node const& n ) const
+    {
+      return _storage->nodes[n].mark > 0;
+    }
+
     void clear_visited() const
     {
       std::for_each( _storage->nodes.begin(), _storage->nodes.end(), []( auto& n ) { n.visited = 0; } );

@@ -109,7 +109,7 @@ int main()
   using namespace experiments;
   using namespace mockturtle;
 
-  experiment<std::string, double, double, double, double, double, double, double, double, bool> exp( "SCOPT", "benchmark", "a(map)", "a(opt1)", "a(optN)", "d(map)", "d(opt1)", "d(optN)", "t(opt1)", "t(optN)", "cec");
+  experiment<std::string, double, double, double, double, double, double, double, double, double, double, uint32_t, bool> exp( "SCOPT", "benchmark", "a(map)", "a(opt1)", "a(optN)", "da(opt1)", "da(optN)", "d(map)", "d(opt1)", "d(optN)", "dd(opt1)", "dd(optN)", "t(opt1)", "t(optN)", "n(iters)", "cec");
 
   fmt::print( "[i] processing technology library\n" );
 
@@ -126,21 +126,30 @@ int main()
   tech_library_params tps;
   tech_library<5, classification_type::np_configurations> tech_lib( gates, tps );
 
-  for ( auto const& benchmark : epfl_benchmarks( ) )
+  double N{0};
+  double rarea1{0};
+  double rareaN{0};
+  double rdept1{0};
+  double rdeptN{0};
+
+  for ( auto const& benchmark : all_benchmarks(  ) )
   {
     if( benchmark == "hyp" ) continue;
-
+    N+=1;
 
     fmt::print( "[i] processing {}\n", benchmark );
 
     bool start=true;
     bool close=false;
 
-    aig_network aig;//
+    aig_network aig;//experiments::benchmark_path(benchmark)
     if ( lorina::read_aiger( experiments::benchmark_path(benchmark), aiger_reader( aig ) ) != lorina::return_code::success )
     {
       continue;
     }
+
+    if( aig.num_gates() > 300000 )  continue;
+
     auto aaig_old = aig.num_gates()+1;
     auto aaig_new = aig.num_gates();
     depth_view<aig_network> daig{aig};
@@ -153,8 +162,7 @@ int main()
     aig = abc_opto( aig, benchmark, "rw; rs;" );
     aig = abc_opto( aig, benchmark, "rw; rs;" );
     aig = abc_opto( aig, benchmark, "rw; rs;" );
-    aig = abc_opto( aig, benchmark, "resyn2rs" );
-    aig = abc_opto( aig, benchmark, "compress2rs" );
+
     while( daig_new < daig_old )
     {
       aig = abc_opto( aig, benchmark, "resyn2rs" );
@@ -166,15 +174,14 @@ int main()
       daig_new = daig.depth();
       printf("%d\n", daig_new);
     }
-
-    //write_aiger(aig, "ERR.aig");
+//
+  //  write_aiger(aig, "ERR.aig");
    // const auto cec = benchmark == "hyp" ? true : abc_cec( aig, benchmark );
    // assert( cec && "[e] not equivalent" );
 
     scopt::emap2_params ps;
-    ps.cut_enumeration_ps.minimize_truth_table = true;
-    ps.cut_enumeration_ps.cut_limit = 24;
-    ps.area_flow_rounds=2;
+    //ps.cut_enumeration_ps.minimize_truth_table = true;
+    //ps.cut_enumeration_ps.cut_limit = 24;
     ps.area_oriented_mapping = false;
     scopt::emap2_stats st;
 
@@ -182,6 +189,9 @@ int main()
 
     scopt::scg_network scg = emap2_klut( aig, tech_lib, ps, &st );
     scg = cleanup_scg( scg );
+
+    if( scg.compute_area() > 400000 )  continue;
+
 
     double const aold = scg.compute_area();
     double const dold = scg.compute_worst_delay();
@@ -194,12 +204,13 @@ int main()
     boptimizer_params rps;
     rps.progress =true;
     rps.max_inserts = 300;
-    rps.max_trials = 5;
-    rps.max_pis = 16;
+    rps.max_trials = 10;
+    rps.max_pis = 8;
     rps.verbose = false;
-    rps.max_divisors = 128;
+    rps.max_divisors = 64;
 
     boptimizer_stats rst_p1;
+    rps.use_delay_constraints = true;
 
     double aold1 = scg.compute_area();
     double dold1 = scg.compute_worst_delay();
@@ -208,8 +219,16 @@ int main()
     std::clock_t begin1 = clock();
     std::clock_t beginN = clock();
 
-    boptimize_sc<scopt::support_selection_t::NGREEDY, 4u, 4u>( scg, rps, &rst_p1 );
-    scg = cleanup_scg( scg );
+    scopt::scg_network scg_copy1=scg;
+
+
+    boptimize_sc<support_selection_t::EX1, 4u, 4u>( scg, rps, &rst_p1 );
+    //scg = cleanup_scg( scg );
+    if( scg.compute_worst_delay() > dold1 )
+    {
+      scg=scg_copy1;
+    }
+
     std::clock_t end1 = clock();
 
     double aopt1 = scg.compute_area();
@@ -219,17 +238,23 @@ int main()
     printf("[d]%6f ", dold );
     printf("-> %6f ", scg.compute_worst_delay() );
 
+    rarea1 = rarea1*(N-1)/N+(scg.compute_area()-aold)/(N*aold);
+    rdept1 = rdept1*(N-1)/N+(scg.compute_worst_delay()-dold)/(N*dold);
+
     std::cout << std::endl;
 
     scopt::scg_network scg_copy=scg;
 
-    int it = 0;
-    while( scg.compute_area() < aold1 && it < 5 )
+    double aoldN = scg.compute_area()+1;
+    double doldN = scg.compute_worst_delay()+1;
+
+    int it = 1;
+    while( scg.compute_area() < aoldN && scg.compute_worst_delay() <= dold && it < 5u )
     {
       it++;
-      aold1 = scg.compute_area();
-      boptimize_sc<scopt::support_selection_t::NGREEDY, 4u, 4u>( scg, rps, &rst_p1 );
-      scg = cleanup_scg( scg );
+      aoldN = scg.compute_area();
+      boptimize_sc<support_selection_t::EX1, 4u, 4u>( scg, rps, &rst_p1 );
+//      scg = cleanup_scg( scg );
 //      if( aold1 == scg.compute_area() )
 //      {
 //        boptimize_sc<scopt::support_selection_t::PIVOT, 4u, 4u>( scg, rps, &rst_p1 );
@@ -240,9 +265,17 @@ int main()
       printf("[d]%6f ", dold );
       printf("-> %6f ", scg.compute_worst_delay() );
       std::cout << std::endl;
+      if( scg.compute_worst_delay() <= dold )
+        scg_copy=scg;
     }
+    scg=scg_copy;
 
-//    printf("{a}%6f ", aold );
+    rareaN = rareaN*(N-1)/N+(scg.compute_area()-aold)/(N*aold);
+    rdeptN = rdeptN*(N-1)/N+(scg.compute_worst_delay()-dold)/(N*dold);
+
+
+    printf("<a1>%6f <d1>%6f\n", rarea1, rdept1 );
+    printf("<aN>%6f <dN>%6f\n", rareaN, rdeptN );
 //    printf("-> %6f ", scg.compute_area() );
 //    printf("{d}%6f ", dold );
 //    printf("-> %6f ", scg.compute_worst_delay() );
@@ -264,7 +297,7 @@ int main()
       printf("ERROR\n");
     std::cout << std::endl;
 
-    exp( benchmark, aold, aopt1, scg.compute_area(), dold, dopt1, scg.compute_worst_delay(), time1, timeN, cecMP );
+    exp( benchmark, aold, aopt1, scg.compute_area(), dold, dopt1, scg.compute_worst_delay(), time1, timeN, it, cecMP );
 
 
   }
@@ -317,8 +350,30 @@ int main()
 //   priority & $   3963.30 $ & $   3929.52 $ & $   3920.76 $ & $    603.74 $ & $    603.74 $ & $    603.74 $ & $    0.43 $ & $    1.30 $\\
 //     router & $   1165.01 $ & $   1165.01 $ & $   1165.01 $ & $    552.01 $ & $    552.01 $ & $    552.01 $ & $    0.35 $ & $    0.42 $\\
 //      voter & $  96837.03 $ & $  96457.90 $ & $  95976.22 $ & $   2534.20 $ & $   2534.20 $ & $   2534.20 $ & $    6.07 $ & $   35.48 $\\
+
+//       ac97_ctrl & $  68035.37 $ & $  67490.99 $ & $  65726.26 $ & $  449.04 $ & $  449.04 $ & $  449.04 $ & $    1.54 $ & $    9.74 \\
+//        aes_core & $ 138505.59 $ & $ 137873.64 $ & $ 136816.06 $ & $  964.26 $ & $  964.26 $ & $  964.26 $ & $    8.90 $ & $   43.08 \\
+//        des_area & $  31261.40 $ & $  31122.49 $ & $  30931.04 $ & $ 1261.47 $ & $ 1261.47 $ & $ 1261.47 $ & $    2.25 $ & $   10.95 \\
+//             DMA & $ 136259.86 $ & $ 135959.55 $ & $ 130898.91 $ & $  841.34 $ & $  841.34 $ & $ 1144.94 $ & $    5.80 $ & $   35.32 \\
+//             DSP & $ 222689.50 $ & $ 221390.69 $ & $ 218960.80 $ & $ 1848.97 $ & $ 1848.97 $ & $ 1848.97 $ & $    9.76 $ & $   46.11 \\
+//        ethernet & $ 342269.50 $ & $ 341303.66 $ & $ 339139.09 $ & $  767.53 $ & $  767.53 $ & $  767.53 $ & $   38.70 $ & $  208.20 \\
+//      iwls05_i2c & $   6464.83 $ & $   6408.51 $ & $   6399.74 $ & $  453.34 $ & $  453.34 $ & $  453.34 $ & $    0.45 $ & $    1.47 \\
+// iwls05_mem_ctrl & $  44006.05 $ & $  43799.61 $ & $  43533.09 $ & $  965.52 $ & $  965.52 $ & $  965.52 $ & $    1.57 $ & $    7.18 \\
+//    pci_bridge32 & $ 108588.46 $ & $ 107849.12 $ & $ 106132.57 $ & $  854.12 $ & $  854.12 $ & $  854.12 $ & $    4.17 $ & $   22.09 \\
+//            RISC & $ 345506.94 $ & $ 344341.97 $ & $ 341546.38 $ & $ 1858.51 $ & $ 1858.51 $ & $ 1858.51 $ & $   13.91 $ & $   67.32 \\
+//            sasc & $   4496.33 $ & $   4463.79 $ & $   4435.00 $ & $  375.74 $ & $  375.74 $ & $  375.74 $ & $    0.40 $ & $    1.40 \\
+//      simple_spi & $   4955.49 $ & $   4936.71 $ & $   4936.71 $ & $  475.81 $ & $  475.81 $ & $  475.81 $ & $    0.49 $ & $    0.98 \\
+//             spi & $  24766.01 $ & $  24553.30 $ & $  24150.46 $ & $  931.73 $ & $  931.73 $ & $  931.73 $ & $    1.48 $ & $    6.44 \\
+//          ss_pcm & $   3208.64 $ & $   3196.13 $ & $   3156.09 $ & $  315.55 $ & $  315.55 $ & $  315.55 $ & $    0.37 $ & $    1.61 \\
+//      systemcaes & $  57760.39 $ & $  57433.80 $ & $  56774.44 $ & $ 1450.12 $ & $ 1450.12 $ & $ 1450.07 $ & $    3.04 $ & $   13.53 \\
+//      systemcdes & $  20267.15 $ & $  20069.48 $ & $  19946.87 $ & $ 1086.82 $ & $ 1086.82 $ & $ 1086.82 $ & $    1.10 $ & $    4.17 \\
+//            tv80 & $  42871.13 $ & $  42466.99 $ & $  41927.76 $ & $ 1607.90 $ & $ 1607.90 $ & $ 1607.90 $ & $    2.48 $ & $   11.89 \\
+//       usb_funct & $  79712.68 $ & $  79468.62 $ & $  78919.25 $ & $  873.86 $ & $  873.86 $ & $  873.86 $ & $    2.48 $ & $   12.68 \\
+//         usb_phy & $   2749.13 $ & $   2737.87 $ & $   2737.87 $ & $  370.37 $ & $  370.37 $ & $  370.37 $ & $    0.37 $ & $    0.80 \\
+//       wb_conmax & $ 180592.08 $ & $ 180092.83 $ & $ 179144.38 $ & $  891.71 $ & $  891.71 $ & $  891.71 $ & $    7.33 $ & $   36.94 \\
 //
 //
-//amap=np.array([12624.30,23026.63,380682.81,274103.12,35189.79,242398.56,53272.17,206527.38,163537.81,44021.13,3853.12,710.83,2125.58,7004.07,1336.51,191124.98,3963.30,1165.01,96837.03])
-//aopt1=np.array([12542.97,23012.86,377828.59,272010.88,34925.75,240603.00,52781.70,204353.75,162794.62,43976.09,3820.59,699.57,2125.58,7001.57,1306.48,188287.05,3929.52,1165.01,96457.90])
-//aoptN=np.array([12432.85,23012.86,371708.44,267996.66,34730.55,236612.64,51714.34,200419.62,161238.19,43717.11,3790.57,699.57,2125.58,7001.57,1300.23,179819.34,3920.76,1165.01,95976.22])
+//amap=np.array([12624.30,23026.63,380682.81,274103.12,35189.79,242398.56,53272.17,206527.38,163537.81,44021.13,3853.12,710.83,2125.58,7004.07,1336.51,191124.98,3963.30,1165.01,96837.03,  68035.37, 138505.59,  31261.40, 136259.86, 222689.50, 342269.50,   6464.83,  44006.05, 108588.46, 345506.94,   4496.33,   4955.49,  24766.01,   3208.64,  57760.39,  20267.15,  42871.13,  79712.68,   2749.13, 180592.08])
+//aopt1=np.array([12542.97,23012.86,377828.59,272010.88,34925.75,240603.00,52781.70,204353.75,162794.62,43976.09,3820.59,699.57,2125.58,7001.57,1306.48,188287.05,3929.52,1165.01,96457.90,  67490.99, 137873.64,  31122.49, 135959.55, 221390.69, 341303.66,   6408.51,  43799.61, 107849.12, 344341.97,   4463.79,   4936.71,  24553.30,   3196.13,  57433.80,  20069.48,  42466.99,  79468.62,   2737.87, 180092.83])
+//aoptN=np.array([12432.85,23012.86,371708.44,267996.66,34730.55,236612.64,51714.34,200419.62,161238.19,43717.11,3790.57,699.57,2125.58,7001.57,1300.23,179819.34,3920.76,1165.01,95976.22,  65726.26, 136816.06,  30931.04, 130898.91, 218960.80, 339139.09,   6399.74,  43533.09, 106132.57, 341546.38,   4435.00,   4936.71,  24150.46,   3156.09,  56774.44,  19946.87,  41927.76,  78919.25,   2737.87, 179144.38])
+

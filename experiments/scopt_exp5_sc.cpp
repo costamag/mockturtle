@@ -97,7 +97,7 @@ int main()
   tech_library_params tps;
   tech_library<5, classification_type::np_configurations> tech_lib( gates, tps );
 
-  for ( auto const& benchmark : epfl_benchmarks( experiments::sin ) )
+  for ( auto const& benchmark : epfl_benchmarks( experiments::mem_ctrl ) )
   {
     fmt::print( "[i] processing {}\n", benchmark );
 
@@ -123,7 +123,7 @@ int main()
     ps.cut_enumeration_ps.minimize_truth_table = true;
     ps.cut_enumeration_ps.cut_limit = 24;
     ps.area_flow_rounds=2;
-    ps.area_oriented_mapping = true;
+    ps.area_oriented_mapping = false;
     scopt::emap2_stats st;
 
     scopt::scg_network scg = emap2_klut( aig, tech_lib, ps, &st );
@@ -141,7 +141,7 @@ int main()
     boptimizer_params rps;
     rps.progress =true;
     rps.max_inserts = 300;
-    rps.max_trials = 1;
+    rps.max_trials = 5;
     rps.max_pis = 16;
     rps.verbose = false;
     rps.max_divisors = 256; 
@@ -152,7 +152,7 @@ int main()
     {
       aOld = scg.compute_area();
 
-      boptimize_sc<scopt::support_selection_t::GREEDY, 6u, 4u>( scg, rps, &rst_p1 );
+      boptimize_sc<scopt::support_selection_t::NGREEDY, 4u, 4u>( scg, rps, &rst_p1 );
       scg = cleanup_dangling( scg );
       printf("GRE[6,4]: %6f ", scg.compute_area() );
 
@@ -244,7 +244,7 @@ int main()
           boptimizer_params rps;
           rps.progress =true;
           rps.max_inserts = 300;
-          rps.max_trials = 1;
+          rps.max_trials = 5;
           rps.max_pis = 16;
           rps.verbose = false;
           rps.max_divisors = 256; 
@@ -253,7 +253,7 @@ int main()
           while( aOld > scg.compute_area() )
           {
             aOld = scg.compute_area();
-            boptimize_sc<scopt::support_selection_t::GREEDY, 6u, 4u>( scg, rps, &rst_p1 );
+            boptimize_sc<scopt::support_selection_t::NGREEDY, 4u, 4u>( scg, rps, &rst_p1 );
             scg = cleanup_dangling( scg );
             printf("GRE[6,4]: %6f ", scg.compute_area() );
 

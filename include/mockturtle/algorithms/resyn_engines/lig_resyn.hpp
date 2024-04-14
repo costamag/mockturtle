@@ -57,11 +57,13 @@ namespace rils
 
 bool VERBOSE{ false };
 
-enum support_selection_t
-{
-  GREEDY,
-  PIVOT,
-};
+//enum support_selection_t
+//{
+//  GRE,
+//  PIVOT,
+//  ENUMERATE,
+//  PRECOMPUTED
+//};
 
 std::mt19937 RIGRNG( 5 );
 
@@ -88,7 +90,7 @@ struct lig_resyn_static_params
   static constexpr bool accept_worse{ false };
   static constexpr bool map{ false };
 
-  static constexpr support_selection_t support_selection{ GREEDY };
+  static constexpr support_selection_t support_selection{ GRE };
 
   using truth_table_storage_type = void;
   using node_type = void;
@@ -107,6 +109,7 @@ struct lig_resyn_static_params_for_sim_resub : public lig_resyn_static_params
   using truth_table_storage_type = incomplete_node_map<kitty::partial_truth_table, Ntk>;
   using node_type = typename Ntk::node;
   static constexpr support_selection_t support_selection = SUP_SEL;
+
   static constexpr uint32_t max_support_size = SUPP_SIZE;
   static constexpr int max_fanin_size = K;
   static constexpr bool accept_worse = NRELAX > 0;
@@ -118,6 +121,7 @@ struct lig_resyn_static_params_for_sim_resub_static : public lig_resyn_static_pa
   using truth_table_storage_type = incomplete_node_map<kitty::static_truth_table<NumVars>, Ntk>;
   using node_type = typename Ntk::node;
   static constexpr support_selection_t support_selection = SUP_SEL;
+
   static constexpr uint32_t max_support_size = SUPP_SIZE;
   static constexpr int max_fanin_size = K;
   static constexpr bool accept_worse = NRELAX > 0;
@@ -184,7 +188,7 @@ struct lig_resyn_stats
    \endverbatim
  */
 
-template<class TT, class static_params = lig_resyn_static_params_default<TT>, support_selection_t SUP_SEL = GREEDY>
+template<class NTK, class TT, class static_params = lig_resyn_static_params_default<TT>, support_selection_t SUP_SEL = GRE>
 class lig_resyn_decompose
 {
 
@@ -247,7 +251,7 @@ private:
 
 public:
   explicit lig_resyn_decompose( std::vector<gate> const& gates, stats& st ) noexcept
-      : st( st ), _lps(true), _lib( _resyn, _lps ), _tech_lib( gates, _tps )
+      : st( st ), _lps( false ), _lib( _resyn, _lps ), _supportor( static_params::support_selection, static_params::max_support_size )
   {
     exact_library_params lps;
     lps.compute_dc_classes = true;
@@ -271,10 +275,61 @@ public:
    * \param max_size Maximum number of nodes allowed in the dependency circuit.
    */
   template<class iterator_type,
-           bool enabled = static_params::uniform_div_cost && !static_params::preserve_depth, typename = std::enable_if_t<enabled>>
+            bool enabled = static_params::uniform_div_cost && !static_params::preserve_depth, 
+            typename = std::enable_if_t<enabled>>
   std::optional<index_list_t> operator()( TT const& target, TT const& care, iterator_type begin, iterator_type end, typename static_params::truth_table_storage_type const& tts, double max_size )
   {
     static_assert( static_params::copy_tts || std::is_same_v<typename std::iterator_traits<iterator_type>::value_type, typename static_params::node_type>, "iterator_type does not dereference to static_params::node_type" );
+    auto fsup = _supportor( target, care, begin, end, tts );
+    _fsupp.clear();
+    if( fsup ) _fsupp = *fsup;
+    //_sref=0;
+    ptts = &tts;
+    on_off_sets[0] = ~target & care;
+    on_off_sets[1] = target & care;
+
+    _uSPFD.init( target, care );
+
+    // divisors.resize( 1 ); /* clear previous data and reserve 1 dummy node for constant */
+    divisors.clear();
+    scored_divs.clear();
+
+    while ( begin != end )
+    {
+      if constexpr ( static_params::copy_tts )
+      {
+        divisors.emplace_back( ( *ptts )[*begin] );
+        scored_divs.emplace_back( divisors.size() - 1, _uSPFD.evaluate( get_div( divisors.size() - 1 ) ) );
+      }
+      else
+      {
+        divisors.emplace_back( *begin );
+        scored_divs.emplace_back( divisors.size() - 1, _uSPFD.evaluate( get_div( divisors.size() - 1 ) ) );
+      }
+      ++begin;
+    }
+
+    call_with_stopwatch( st.time_sort, [&]() {
+      std::sort( scored_divs.begin(), scored_divs.end() );
+    } );
+
+    return compute_function( max_size );
+    //return std::nullopt;
+  }
+
+  template<class iterator_type,
+            bool enabled = static_params::uniform_div_cost && !static_params::preserve_depth, 
+            typename = std::enable_if_t<enabled>>
+  std::optional<index_list_t> operator()( TT const& target, TT const& care, iterator_type begin, iterator_type end, iterator_type dbegin, iterator_type dend, typename static_params::truth_table_storage_type const& tts, double max_size )
+  {
+    static_assert( static_params::copy_tts || std::is_same_v<typename std::iterator_traits<iterator_type>::value_type, typename static_params::node_type>, "iterator_type does not dereference to static_params::node_type" );
+    _fsupp.clear();
+    if ( max_size > 0 )
+    {
+      auto fsup = _supportor( target, care, begin, end, tts );
+      if( fsup ) _fsupp=*fsup;
+    }
+//    _sref=0;
 
     ptts = &tts;
     on_off_sets[0] = ~target & care;
@@ -282,7 +337,8 @@ public:
 
     _uSPFD.init( target, care );
 
-    divisors.resize( 1 ); /* clear previous data and reserve 1 dummy node for constant */
+    // divisors.resize( 1 ); /* clear previous data and reserve 1 dummy node for constant */
+    divisors.clear();
     scored_divs.clear();
 
     while ( begin != end )
@@ -309,22 +365,23 @@ public:
 
   template<class iterator_type, class Fn,
            bool enabled = !static_params::uniform_div_cost && !static_params::preserve_depth, typename = std::enable_if_t<enabled>>
-  std::optional<index_list_t> operator()( TT const& target, TT const& care, iterator_type begin, iterator_type end, typename static_params::truth_table_storage_type const& tts, Fn&& size_cost, uint32_t max_size = std::numeric_limits<uint32_t>::max() )
+  std::optional<index_list_t> operator()( TT const& target, TT const& care, iterator_type begin, iterator_type end, typename static_params::truth_table_storage_type const& tts, Fn&& size_cost, double max_size = std::numeric_limits<double>::max() )
   {}
 
   template<class iterator_type, class Fn,
            bool enabled = !static_params::uniform_div_cost && static_params::preserve_depth, typename = std::enable_if_t<enabled>>
-  std::optional<index_list_t> operator()( TT const& target, TT const& care, iterator_type begin, iterator_type end, typename static_params::truth_table_storage_type const& tts, Fn&& size_cost, Fn&& depth_cost, uint32_t max_size = std::numeric_limits<uint32_t>::max(), uint32_t max_depth = std::numeric_limits<uint32_t>::max() )
+  std::optional<index_list_t> operator()( TT const& target, TT const& care, iterator_type begin, iterator_type end, typename static_params::truth_table_storage_type const& tts, Fn&& size_cost, Fn&& depth_cost, double max_size = std::numeric_limits<double>::max(), uint32_t max_depth = std::numeric_limits<uint32_t>::max() )
   {}
 
-private:
+public:
   std::optional<index_list_t> compute_function( double num_inserts )
   {
+    //printf( "compute functions\n" );
     index_list.clear();
     index_list.reset_area();
-    index_list.add_inputs( divisors.size() - 1 );
+    index_list.add_inputs( divisors.size() );
     auto const lit = compute_function_rec( num_inserts );
-    if ( lit )
+    if ( lit  )
     {
       index_list.add_output( *lit );
       return index_list;
@@ -349,14 +406,11 @@ private:
       return std::nullopt;
     }
 
-    auto const supp = call_with_stopwatch( st.time_supp, [&]() {
-      return find_support();
-    } );
-
     /* try n-resub */
     auto const resn = call_with_stopwatch( st.time_resub, [&]() {
       return try_nresub( num_inserts );
     } );
+    //printf("done\n");
     if ( resn )
     {
       return *resn;
@@ -370,7 +424,7 @@ private:
      2. Collect unate literals
      3. Find 0-resub (both positive unate and negative unate) and collect binate (neither pos nor neg unate) divisors
    */
-  std::optional<uint32_t> try_0resub( uint32_t max_inserts = 0 )
+  std::optional<uint32_t> try_0resub( double max_inserts = 0 )
   {
     num_bits[0] = kitty::count_ones( on_off_sets[0] ); /* off-set */
     num_bits[1] = kitty::count_ones( on_off_sets[1] ); /* on-set */
@@ -383,7 +437,7 @@ private:
       return 0;
     }
 
-    for ( auto v = 1u; v < divisors.size(); ++v )
+    for ( auto v = 0u; v < divisors.size(); ++v )
     {
       bool unateness[4] = { false, false, false, false };
       /* check intersection with off-set */
@@ -409,11 +463,11 @@ private:
       /* 0-resub */
       if ( unateness[0] && unateness[3] )
       {
-        return ( v << 1 );
+        return ( (v+1) << 1 );
       }
       if ( unateness[1] && unateness[2] )
       {
-        return ( v << 1 ) + 1u;
+        return ( (v+1) << 1 ) + 1u;
       }
     }
     return std::nullopt;
@@ -421,13 +475,19 @@ private:
 
   /* See if we cna define a new function of the other divisors
    */
-  std::optional<uint32_t> try_nresub( uint32_t max_inserts )
+  std::optional<uint32_t> try_nresub( double max_inserts )
   {
     auto supp = find_support();
 
     if ( supp )
     {
+    //  for( auto x : *supp )
+    //    printf("%d ", x );
+    //  printf(".<\n");
+
       auto const [func, care] = extract_functionality_from_signatures( *supp );
+      //kitty::print_binary(func);printf("\n");
+      //kitty::print_binary(care);printf("\n");
       if ( static_params::map )
         return _map_on_the_fly( *supp, func, care, max_inserts );
       else
@@ -493,16 +553,19 @@ private:
 
 #pragma region synthesis
 
-  std::optional<uint32_t> _1_node_synthesis( std::vector<uint32_t> const& supp, kitty::dynamic_truth_table const& func, kitty::dynamic_truth_table const& care, uint32_t max_inserts )
+  std::optional<uint32_t> _1_node_synthesis( std::vector<uint32_t> const& supp, kitty::dynamic_truth_table const& func, kitty::dynamic_truth_table const& care, double max_inserts )
   {
     std::vector<uint32_t> lits;
     for ( uint32_t x : supp )
-      lits.push_back( x << 1u );
+      lits.push_back( (x+1) << 1u );
 
     _decomposer.clear();
-    auto lit_out = _decomposer.decompose( func, care, max_inserts );
+    auto lit_out = _decomposer.decompose( func, care, max_inserts, 0.0 );
+
     if ( lit_out && _decomposer.num_luts() <= max_inserts )
     {
+      //printf("%f ", ((double)kitty::count_ones(care))/((double)care.num_bits())  );
+      if(_decomposer.num_luts()==0) return lit_out;
       return _decomposer.to_index_list( index_list, lits );
     }
 
@@ -520,12 +583,12 @@ private:
   aig_network::signal synthesize_aig_rec( aig_network& aig, std::vector<signal<aig_network>> pis, kitty::dynamic_truth_table const& tt, kitty::dynamic_truth_table const& mk )
   {
     if ( kitty::is_const0( ( tt & mk ) ) )
-      return aig.get_constant(false);
+      return aig.get_constant( false );
     if ( kitty::equal( tt & mk, mk ) )
-      return aig.get_constant(true);
+      return aig.get_constant( true );
     if ( pis.size() == 1u )
       return kitty::is_normal( tt ) ? pis[0] : !pis[0];
-    if( pis.size() <= 4u )
+    if ( pis.size() <= 4u )
     {
       return match_aig( aig, pis, tt, mk );
     }
@@ -571,52 +634,50 @@ private:
 
     bool phase = ( neg >> 4 == 1 ) ? true : false;
 
-    for( auto i{0}; i<vars.size(); ++i )
+    for ( auto i{ 0 }; i < vars.size(); ++i )
     {
-      if( ( neg >> i ) & 0x1 == 0x1 )
+      if ( ( neg >> i ) & 0x1 == 0x1 )
         vars[i] = !vars[i];
     }
-    std::array<signal<aig_network>, 4> leaves {aig.get_constant(false)};
+    std::array<signal<aig_network>, 4> leaves{ aig.get_constant( false ) };
 
-    for( auto i{0}; i<4; ++i )
+    for ( auto i{ 0 }; i < 4; ++i )
     {
-      if( perm[i]<vars.size() )
+      if ( perm[i] < vars.size() )
         leaves[i] = vars[perm[i]];
     }
-    auto & db = _lib.get_database();
+    auto& db = _lib.get_database();
     index_list_t mapped_index_list = index_list;
 
-    auto res = create_aig( aig, db.get_node( structures->at(0).root ), leaves );
+    auto res = create_aig( aig, db.get_node( structures->at( 0 ).root ), leaves );
 
-    bool is_output_negated = ( phase != db.is_complemented( structures->at(0).root ) );
+    bool is_output_negated = ( phase != db.is_complemented( structures->at( 0 ).root ) );
 
     return is_output_negated ? !res : res;
-
   }
 
-  template< class node_t >
+  template<class node_t>
   signal<aig_network> create_aig( aig_network& aig, node_t const& n, std::array<signal<aig_network>, 4u> const& leaves )
   {
     return create_aig_rec( aig, n, leaves );
   }
 
-  template< class node_t >
+  template<class node_t>
   signal<aig_network> create_aig_rec( aig_network& aig, node_t const& n, std::array<signal<aig_network>, 4u> const& leaves )
   {
     auto& db = _lib.get_database();
- 
+
     std::array<signal<aig_network>, 2u> node_data;
 
-    int i{0};
-    db.foreach_fanin( n, [&]( auto const& f, auto i ) 
-    {
+    int i{ 0 };
+    db.foreach_fanin( n, [&]( auto const& f, auto i ) {
       node<aig_network> g = db.get_node( f );
-      if( db.is_pi( g ) )
+      if ( db.is_pi( g ) )
       {
-        node_data[i] = db.is_complemented( f ) ? !leaves[f.index-1] : leaves[f.index-1];
+        node_data[i] = db.is_complemented( f ) ? !leaves[f.index - 1] : leaves[f.index - 1];
         return;
       }
-      if( db.is_and( g ) )
+      if ( db.is_and( g ) )
       {
         auto res = create_aig_rec( aig, g, leaves );
         node_data[i] = db.is_complemented( f ) ? !res : res;
@@ -624,18 +685,18 @@ private:
       }
     } );
 
-    if( db.is_and( n ) )
+    if ( db.is_and( n ) )
     {
       signal<aig_network> new_sig = aig.create_and( node_data[0], node_data[1] );
       return new_sig;
     }
-    
-    return aig.get_constant(false);
+
+    return aig.get_constant( false );
   }
 
 #pragma endregion synthesize aig
 
-  std::optional<uint32_t> _map_on_the_fly( std::vector<uint32_t> const& supp, kitty::dynamic_truth_table const& func, kitty::dynamic_truth_table const& care, uint32_t max_inserts )
+  std::optional<uint32_t> _map_on_the_fly( std::vector<uint32_t> const& supp, kitty::dynamic_truth_table const& func, kitty::dynamic_truth_table const& care, double max_inserts )
   {
 
     std::vector<uint32_t> lits;
@@ -643,7 +704,7 @@ private:
     std::vector<signal<aig_network>> pis;
     for ( uint32_t x : supp )
     {
-      lits.push_back( x << 1u );
+      lits.push_back( (x+1) << 1u );
       pis.push_back( aig.create_pi() );
     }
 
@@ -658,25 +719,23 @@ private:
     scopt::lut_map2_stats st2;
     lig_network lig = scopt::lut_map2( aig, ps2, &st2 );
 
-    if( lig.num_gates() <= max_inserts )
+    if ( lig.num_gates() <= max_inserts )
     {
-      //index_list.clear();
+      // index_list.clear();
 
-      
-      lig.foreach_pi( [&]( auto n, auto i ) { 
+      lig.foreach_pi( [&]( auto n, auto i ) {
         lig.set_value( n, lits[i] );
       } );
 
       std::vector<uint32_t> children;
       uint32_t lit_out;
-      lig.foreach_gate( [&]( auto n ) 
-      { 
+      lig.foreach_gate( [&]( auto n ) {
         children.clear();
         lig.foreach_fanin( n, [&]( auto const& fi ) {
-          if( lig.is_complemented(fi) )
-            children.push_back( lig.value( lig.get_node(fi) ) ^ 0x1 );
+          if ( lig.is_complemented( fi ) )
+            children.push_back( lig.value( lig.get_node( fi ) ) ^ 0x1 );
           else
-            children.push_back( lig.value( lig.get_node(fi) ) );
+            children.push_back( lig.value( lig.get_node( fi ) ) );
         } );
         lit_out = index_list.add_function( children, lig.node_function( n ) );
 
@@ -729,7 +788,7 @@ private:
       best_cost = std::numeric_limits<uint32_t>::max();
       if ( uSPFD.is_saturated() )
         break;
-      for ( uint32_t iCnd{ 1 }; iCnd < divs.size(); ++iCnd )
+      for ( uint32_t iCnd{ 0 }; iCnd < divs.size(); ++iCnd )
       {
         cost = uSPFD.evaluate( ( *pTts )[divs[iCnd]] );
         if ( cost < best_cost )
@@ -827,9 +886,23 @@ private:
 
   std::optional<std::vector<uint32_t>> find_support()
   {
-    if ( static_params::support_selection == support_selection_t::GREEDY )
+    //if ( _supportor._results.size() > 0 && _sref<_supportor._results.size() )
+    //{
+    //  printf("%d/%d\n", _sref, _supportor._results.size() );
+    //  return _supportor._results[_sref++];
+    //}
+
+    if( _fsupp.size() > 0 )
     {
-      auto supp = find_support_greedy( 1 );
+      return _fsupp;
+    }
+
+    return std::nullopt;
+    /*
+    if ( static_params::support_selection == support_selection_t::GRE )
+    {
+      auto supp = find_support_greedy( 0 );
+
       if ( supp )
       {
         return *supp;
@@ -851,10 +924,37 @@ private:
 
       return std::nullopt;
     }
+    if ( static_params::support_selection == support_selection_t::ENUMERATE )
+    {
+
+  //    auto supp = find_support_greedy();
+  //    if ( supp )
+  //      return *supp;
+
+      if ( _fsupp.size() > 0 )
+        return _fsupp;
+
+      return std::nullopt;
+    }
+    */
+
   }
 
   /*! \brief find support greedy */
-  std::optional<std::vector<uint32_t>> find_support_greedy( uint32_t start = 1, std::vector<uint32_t> supp0 = {} )
+  std::optional<std::vector<uint32_t>> find_support_enum()
+  {
+  //  for( auto div : scored_divs )
+  //  {
+  //    printf("%d %d|", div.div, div.score );
+  //  }
+  //  printf("\n");
+
+    return std::nullopt;
+  }
+
+
+  /*! \brief find support greedy */
+  std::optional<std::vector<uint32_t>> find_support_greedy( uint32_t start = 0, std::vector<uint32_t> supp0 = {} )
   {
     uint32_t cost, best_cost;
     std::vector<uint32_t> best_candidates;
@@ -903,6 +1003,8 @@ private:
     }
     return std::nullopt;
   }
+
+
 
   /*! \brief find support from unbalancing */
   std::optional<std::vector<uint32_t>> find_from_unbalancing( uint32_t pivot )
@@ -956,7 +1058,7 @@ private:
       best_cost = std::numeric_limits<uint32_t>::max();
       if ( _uSPFD.is_saturated() )
         break;
-      for ( uint32_t iCnd{ pivot + 1 }; iCnd < divisors.size(); ++iCnd )
+      for ( uint32_t iCnd{ pivot }; iCnd < divisors.size(); ++iCnd )
       {
         cost = _uSPFD.evaluate( get_div( iCnd ) );
         if ( cost < best_cost )
@@ -1014,9 +1116,9 @@ private:
 
   const typename static_params::truth_table_storage_type* ptts;
   std::vector<std::conditional_t<static_params::copy_tts, TT, typename static_params::node_type>> divisors;
+  std::vector<typename static_params::node_type> desperados;
 
   spfd_covering_manager_t<truth_table_t, 1 << static_params::max_support_size> _uSPFD;
-  lut_resynthesis_t<static_params::max_fanin_size, static_params::max_support_size> _decomposer;
 
   index_list_t index_list;
 
@@ -1025,21 +1127,24 @@ private:
   std::vector<scored_div> scored_divs;
   std::vector<fscored_div> fscored_divs;
 
+  std::vector<uint32_t> _fsupp;
+
   stats& st;
 
   std::default_random_engine::result_type _seed = 1;
+  lut_resynthesis_t<static_params::max_fanin_size, static_params::max_support_size> _decomposer;
 
   xag_npn_resynthesis<aig_network, aig_network, xag_npn_db_kind::aig_complete> _resyn;
 
   exact_library_params _lps;
   exact_library<aig_network> _lib;
 
-  tech_library_params _tps;
-  tech_library<5, classification_type::np_configurations> _tech_lib;
+  support_selector<TT, NTK, static_params::max_support_size> _supportor;
+  uint32_t _sref{0};
+
 
 }; /* xag_resyn_decompose */
 
 }; /* namespace rils */
 
 } /* namespace mockturtle */
-

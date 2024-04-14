@@ -190,5 +190,200 @@
       }
     ],
     "version": "6063e8d4"
+  },
+  {
+    "entries": [
+      {
+        "a(flow1)": 255,
+        "a(flow2)": 255,
+        "a(map)": 255,
+        "benchmark": "adder",
+        "d(flow1)": 127,
+        "d(flow2)": 127,
+        "t(flow1)": 0.0,
+        "t(flow2)": 2.0
+      },
+      {
+        "a(flow1)": 896,
+        "a(flow2)": 896,
+        "a(map)": 1152,
+        "benchmark": "bar",
+        "d(flow1)": 7,
+        "d(flow2)": 7,
+        "t(flow1)": 1.0,
+        "t(flow2)": 9.0
+      },
+      {
+        "a(flow1)": 4323,
+        "a(flow2)": 4268,
+        "a(map)": 4335,
+        "benchmark": "div",
+        "d(flow1)": 2121,
+        "d(flow2)": 2118,
+        "t(flow1)": 1.0,
+        "t(flow2)": 177.0
+      },
+      {
+        "a(flow1)": 9752,
+        "a(flow2)": 9613,
+        "a(map)": 9777,
+        "benchmark": "log2",
+        "d(flow1)": 144,
+        "d(flow2)": 150,
+        "t(flow1)": 88.0,
+        "t(flow2)": 629.0
+      },
+      {
+        "a(flow1)": 949,
+        "a(flow2)": 928,
+        "a(map)": 1006,
+        "benchmark": "max",
+        "d(flow1)": 111,
+        "d(flow2)": 111,
+        "t(flow1)": 1.0,
+        "t(flow2)": 11.0
+      },
+      {
+        "a(flow1)": 7231,
+        "a(flow2)": 7116,
+        "a(map)": 7231,
+        "benchmark": "multiplier",
+        "d(flow1)": 130,
+        "d(flow2)": 130,
+        "t(flow1)": 1.0,
+        "t(flow2)": 396.0
+      },
+      {
+        "a(flow1)": 1849,
+        "a(flow2)": 1718,
+        "a(map)": 1853,
+        "benchmark": "sin",
+        "d(flow1)": 81,
+        "d(flow2)": 94,
+        "t(flow1)": 6.0,
+        "t(flow2)": 634.0
+      },
+      {
+        "a(flow1)": 6506,
+        "a(flow2)": 5246,
+        "a(map)": 6601,
+        "benchmark": "sqrt",
+        "d(flow1)": 2558,
+        "d(flow2)": 2118,
+        "t(flow1)": 3.0,
+        "t(flow2)": 616.0
+      },
+      {
+        "a(flow1)": 5310,
+        "a(flow2)": 4897,
+        "a(map)": 5312,
+        "benchmark": "square",
+        "d(flow1)": 123,
+        "d(flow2)": 123,
+        "t(flow1)": 7.0,
+        "t(flow2)": 611.0
+      },
+      {
+        "a(flow1)": 4139,
+        "a(flow2)": 4138,
+        "a(map)": 4139,
+        "benchmark": "arbiter",
+        "d(flow1)": 31,
+        "d(flow2)": 30,
+        "t(flow1)": 5.0,
+        "t(flow2)": 13.0
+      },
+      {
+        "a(flow1)": 261,
+        "a(flow2)": 244,
+        "a(map)": 288,
+        "benchmark": "cavlc",
+        "d(flow1)": 9,
+        "d(flow2)": 10,
+        "t(flow1)": 3.0,
+        "t(flow2)": 33.0
+      },
+      {
+        "a(flow1)": 47,
+        "a(flow2)": 45,
+        "a(map)": 48,
+        "benchmark": "ctrl",
+        "d(flow1)": 5,
+        "d(flow2)": 5,
+        "t(flow1)": 0.0,
+        "t(flow2)": 4.0
+      },
+      {
+        "a(flow1)": 288,
+        "a(flow2)": 288,
+        "a(map)": 288,
+        "benchmark": "dec",
+        "d(flow1)": 2,
+        "d(flow2)": 2,
+        "t(flow1)": 0.0,
+        "t(flow2)": 1.0
+      },
+      {
+        "a(flow1)": 381,
+        "a(flow2)": 351,
+        "a(map)": 400,
+        "benchmark": "i2c",
+        "d(flow1)": 10,
+        "d(flow2)": 10,
+        "t(flow1)": 1.0,
+        "t(flow2)": 17.0
+      },
+      {
+        "a(flow1)": 74,
+        "a(flow2)": 76,
+        "a(map)": 88,
+        "benchmark": "int2float",
+        "d(flow1)": 8,
+        "d(flow2)": 8,
+        "t(flow1)": 1.0,
+        "t(flow2)": 8.0
+      },
+      {
+        "a(flow1)": 13065,
+        "a(flow2)": 11513,
+        "a(map)": 15940,
+        "benchmark": "mem_ctrl",
+        "d(flow1)": 58,
+        "d(flow2)": 53,
+        "t(flow1)": 59.0,
+        "t(flow2)": 618.0
+      },
+      {
+        "a(flow1)": 183,
+        "a(flow2)": 187,
+        "a(map)": 205,
+        "benchmark": "priority",
+        "d(flow1)": 30,
+        "d(flow2)": 30,
+        "t(flow1)": 1.0,
+        "t(flow2)": 5.0
+      },
+      {
+        "a(flow1)": 55,
+        "a(flow2)": 56,
+        "a(map)": 62,
+        "benchmark": "router",
+        "d(flow1)": 12,
+        "d(flow2)": 12,
+        "t(flow1)": 1.0,
+        "t(flow2)": 4.0
+      },
+      {
+        "a(flow1)": 2475,
+        "a(flow2)": 2028,
+        "a(map)": 2475,
+        "benchmark": "voter",
+        "d(flow1)": 19,
+        "d(flow2)": 22,
+        "t(flow1)": 4.0,
+        "t(flow2)": 387.0
+      }
+    ],
+    "version": "ded32657"
   }
 ]
