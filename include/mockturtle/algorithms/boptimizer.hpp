@@ -91,6 +91,8 @@ struct boptimizer_params
 
   bool timing_aware{false};
 
+  bool use_wings{true};
+
   /****** window-based resub engine ******/
 
   /*! \brief Use don't cares for optimization. Only used by window-based resub engine. */
@@ -101,7 +103,7 @@ struct boptimizer_params
   /*! \brief Window size for don't cares calculation. Only used by window-based resub engine. */
   uint32_t window_size{ 12u };
 
-  bool use_delay_constraints{true};
+  bool use_delay_constraints{false};
   bool high_effort_delay{false};
 
   /*! \brief Whether to prevent from increasing depth. Currently only used by window-based resub engine. */
@@ -367,72 +369,75 @@ private:
     }
     uint32_t limit = ps.max_divisors - ps.max_pis - mffc.size() + leaves.size();
 
-    /* explore the fanouts, which are not in the MFFC */
-    bool quit = false;
-    for ( auto i = 0u; i < divs.size(); ++i )
+    if( ps.use_wings )
     {
-      auto const d = divs.at( i );
-
-      if ( ntk.fanout_size( d ) > ps.skip_fanout_limit_for_divisors )
+      /* explore the fanouts, which are not in the MFFC */
+      bool quit = false;
+      for ( auto i = 0u; i < divs.size(); ++i )
       {
-        continue;
-      }
-      if ( divs.size() >= limit )
-      {
-        break;
-      }
+        auto const d = divs.at( i );
 
-      /* if the fanout has all fanins in the set, add it */
-      ntk.foreach_fanout( d, [&]( node const& p ) {
-        if ( ntk.visited( p ) == ntk.trav_id() || ntk.level( p ) > max_depth )
+        if ( ntk.fanout_size( d ) > ps.skip_fanout_limit_for_divisors )
         {
-          return true; /* next fanout */
+          continue;
         }
-
-        bool all_fanins_visited = true;
-        ntk.foreach_fanin( p, [&]( const auto& g ) {
-          if ( ntk.visited( ntk.get_node( g ) ) != ntk.trav_id() )
-          {
-            all_fanins_visited = false;
-            return false; /* terminate fanin-loop */
-          }
-          return true; /* next fanin */
-        } );
-
-        if ( !all_fanins_visited )
-          return true; /* next fanout */
-
-        bool has_root_as_child = false;
-        ntk.foreach_fanin( p, [&]( const auto& g ) {
-          if ( ntk.get_node( g ) == root )
-          {
-            has_root_as_child = true;
-            return false; /* terminate fanin-loop */
-          }
-          return true; /* next fanin */
-        } );
-
-        if ( has_root_as_child )
-        {
-          return true; /* next fanout */
-        }
-
-        divs.emplace_back( p );
-        ntk.set_visited( p, ntk.trav_id() );
-
-        /* quit computing divisors if there are too many of them */
         if ( divs.size() >= limit )
         {
-          quit = true;
-          return false; /* terminate fanout-loop */
+          break;
         }
 
-        return true; /* next fanout */
-      } );
+        /* if the fanout has all fanins in the set, add it */
+        ntk.foreach_fanout( d, [&]( node const& p ) {
+          if ( ntk.visited( p ) == ntk.trav_id() || ntk.level( p ) > max_depth )
+          {
+            return true; /* next fanout */
+          }
 
-      if ( quit )
-      {
-        break;
+          bool all_fanins_visited = true;
+          ntk.foreach_fanin( p, [&]( const auto& g ) {
+            if ( ntk.visited( ntk.get_node( g ) ) != ntk.trav_id() )
+            {
+              all_fanins_visited = false;
+              return false; /* terminate fanin-loop */
+            }
+            return true; /* next fanin */
+          } );
+
+          if ( !all_fanins_visited )
+            return true; /* next fanout */
+
+          bool has_root_as_child = false;
+          ntk.foreach_fanin( p, [&]( const auto& g ) {
+            if ( ntk.get_node( g ) == root )
+            {
+              has_root_as_child = true;
+              return false; /* terminate fanin-loop */
+            }
+            return true; /* next fanin */
+          } );
+
+          if ( has_root_as_child )
+          {
+            return true; /* next fanout */
+          }
+
+          divs.emplace_back( p );
+          ntk.set_visited( p, ntk.trav_id() );
+
+          /* quit computing divisors if there are too many of them */
+          if ( divs.size() >= limit )
+          {
+            quit = true;
+            return false; /* terminate fanout-loop */
+          }
+
+          return true; /* next fanout */
+        } );
+
+        if ( quit )
+        {
+          break;
+        }
       }
     }
 

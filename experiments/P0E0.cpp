@@ -168,12 +168,12 @@ int main()
     auto const lig_cec = benchmark == "hyp" ? true : abc_cec( lig, benchmark );
 
     uint32_t map_num_gates = lig.num_gates();
-    //printf("MP : %6d\n", map_num_gates );
+    printf("MP : %6d\n", map_num_gates );
     uint32_t map_depth = lig_d.depth();
 
     boptimize_klut<ENU, K, K>( lig, rps, &rst );
     lig = cleanup_luts( lig );
-    //printf("GRE[4,4]: %6d [%6d]\n", lig.num_gates(), lig.max_num_fanins);
+    printf("ENU[4,4]: %6d [%6d]\n", lig.num_gates(), lig.max_num_fanins);
 
     depth_view<lig_network> lig1_d{ lig };
 

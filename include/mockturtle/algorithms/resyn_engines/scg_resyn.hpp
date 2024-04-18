@@ -89,7 +89,7 @@ struct scg_resyn_static_params
 
   static constexpr int max_fanin_size = -1;
   static constexpr bool accept_worse{ false };
-  static constexpr bool on_the_fly{ false };
+  static constexpr bool on_the_fly{ true };
 
   static constexpr uint32_t nBest{ 2 };
 

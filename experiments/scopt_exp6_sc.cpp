@@ -109,7 +109,7 @@ int main()
   using namespace experiments;
   using namespace mockturtle;
 
-  experiment<std::string, double, double, double, double, double, double, double, double, double, double, uint32_t, bool> exp( "SCOPT", "benchmark", "a(map)", "a(opt1)", "a(optN)", "da(opt1)", "da(optN)", "d(map)", "d(opt1)", "d(optN)", "dd(opt1)", "dd(optN)", "t(opt1)", "t(optN)", "n(iters)", "cec");
+  experiment<std::string, double, double, double, double, double, double, double, double, double, double, double, double, uint32_t, bool> exp( "SCOPT", "benchmark", "a(map)", "a(opt1)", "a(optN)", "da(opt1)", "da(optN)", "d(map)", "d(opt1)", "d(optN)", "dd(opt1)", "dd(optN)", "t(opt1)", "t(optN)", "n(iters)", "cec");
 
   fmt::print( "[i] processing technology library\n" );
 
@@ -132,7 +132,7 @@ int main()
   double rdept1{0};
   double rdeptN{0};
 
-  for ( auto const& benchmark : all_benchmarks(  ) )
+  for ( auto const& benchmark : all_benchmarks( iwls ) )
   {
     if( benchmark == "hyp" ) continue;
     N+=1;
@@ -141,6 +141,11 @@ int main()
 
     bool start=true;
     bool close=false;
+
+    double darea1;
+    double dareaN;
+    double ddept1;
+    double ddeptN;
 
     aig_network aig;//experiments::benchmark_path(benchmark)
     if ( lorina::read_aiger( experiments::benchmark_path(benchmark), aiger_reader( aig ) ) != lorina::return_code::success )
@@ -158,12 +163,13 @@ int main()
 
     //if( benchmark != "hyp" )
     //{
-    aig = abc_opto( aig, benchmark, "rw; rs;" );
-    aig = abc_opto( aig, benchmark, "rw; rs;" );
-    aig = abc_opto( aig, benchmark, "rw; rs;" );
-    aig = abc_opto( aig, benchmark, "rw; rs;" );
+    //aig = abc_opto( aig, benchmark, "rw; rs;" );
+    //aig = abc_opto( aig, benchmark, "rw; rs;" );
+    //aig = abc_opto( aig, benchmark, "rw; rs;" );
+    //aig = abc_opto( aig, benchmark, "rw; rs;" );
 
-    while( daig_new < daig_old )
+    int it2{0};
+    while( it2++<3 )
     {
       aig = abc_opto( aig, benchmark, "resyn2rs" );
       aig = cleanup_dangling( aig );
@@ -205,9 +211,9 @@ int main()
     rps.progress =true;
     rps.max_inserts = 300;
     rps.max_trials = 10;
-    rps.max_pis = 8;
+    rps.max_pis = 12;
     rps.verbose = false;
-    rps.max_divisors = 64;
+    rps.max_divisors = 128;
 
     boptimizer_stats rst_p1;
     rps.use_delay_constraints = true;
@@ -223,7 +229,7 @@ int main()
 
 
     boptimize_sc<support_selection_t::EX1, 4u, 4u>( scg, rps, &rst_p1 );
-    //scg = cleanup_scg( scg );
+    scg = cleanup_scg( scg );
     if( scg.compute_worst_delay() > dold1 )
     {
       scg=scg_copy1;
@@ -238,8 +244,12 @@ int main()
     printf("[d]%6f ", dold );
     printf("-> %6f ", scg.compute_worst_delay() );
 
-    rarea1 = rarea1*(N-1)/N+(scg.compute_area()-aold)/(N*aold);
-    rdept1 = rdept1*(N-1)/N+(scg.compute_worst_delay()-dold)/(N*dold);
+
+    darea1=(scg.compute_area()-aold)/(aold);
+    ddept1=(scg.compute_worst_delay()-dold)/(dold);
+
+    rarea1 = rarea1*(N-1)/N+darea1/N;
+    rdept1 = rdept1*(N-1)/N+ddept1/N;
 
     std::cout << std::endl;
 
@@ -249,12 +259,12 @@ int main()
     double doldN = scg.compute_worst_delay()+1;
 
     int it = 1;
-    while( scg.compute_area() < aoldN && scg.compute_worst_delay() <= dold && it < 5u )
+    //while( scg.compute_area() < aoldN && scg.compute_worst_delay() <= dold && it < 2u )
     {
       it++;
       aoldN = scg.compute_area();
       boptimize_sc<support_selection_t::EX1, 4u, 4u>( scg, rps, &rst_p1 );
-//      scg = cleanup_scg( scg );
+      scg = cleanup_scg( scg );
 //      if( aold1 == scg.compute_area() )
 //      {
 //        boptimize_sc<scopt::support_selection_t::PIVOT, 4u, 4u>( scg, rps, &rst_p1 );
@@ -270,12 +280,16 @@ int main()
     }
     scg=scg_copy;
 
-    rareaN = rareaN*(N-1)/N+(scg.compute_area()-aold)/(N*aold);
-    rdeptN = rdeptN*(N-1)/N+(scg.compute_worst_delay()-dold)/(N*dold);
+    dareaN=(scg.compute_area()-aold)/(aold);
+    ddeptN=(scg.compute_worst_delay()-dold)/(dold);
 
+    rareaN = rareaN*(N-1)/N+dareaN/N;
+    rdeptN = rdeptN*(N-1)/N+ddeptN/N;
 
-    printf("<a1>%6f <d1>%6f\n", rarea1, rdept1 );
-    printf("<aN>%6f <dN>%6f\n", rareaN, rdeptN );
+    printf(" a1 %6f  d1 %6f\n", 100*darea1, 100*ddept1 );
+    printf(" aN %6f  dN %6f\n", 100*dareaN, 100*ddeptN );
+    printf("<a1>%6f <d1>%6f\n", 100*rarea1, 100*rdept1 );
+    printf("<aN>%6f <dN>%6f\n", 100*rareaN, 100*rdeptN );
 //    printf("-> %6f ", scg.compute_area() );
 //    printf("{d}%6f ", dold );
 //    printf("-> %6f ", scg.compute_worst_delay() );
@@ -297,7 +311,7 @@ int main()
       printf("ERROR\n");
     std::cout << std::endl;
 
-    exp( benchmark, aold, aopt1, scg.compute_area(), dold, dopt1, scg.compute_worst_delay(), time1, timeN, it, cecMP );
+    exp( benchmark, aold, aopt1, scg.compute_area(), 100*darea1, 100*dareaN, dold, dopt1, scg.compute_worst_delay(), 100*ddept1, 100*ddeptN, time1, timeN, it, cecMP );
 
 
   }

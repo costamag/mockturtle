@@ -132,7 +132,7 @@ int main()
   double rareaN{0};
   double rdept1{0};
   double rdeptN{0};
-  for ( auto const& benchmark : all_benchmarks( iscas | epfl | iwls ) )
+  for ( auto const& benchmark : all_benchmarks( iscas ) )
   {
     if( benchmark == "hyp" ) continue;
 
@@ -202,7 +202,7 @@ int main()
     rps.max_trials = 10;
     rps.max_pis = 8;
     rps.verbose = false;
-    rps.use_delay_constraints = false;
+    rps.use_delay_constraints = true;
     rps.max_divisors = 64u;
 
     boptimizer_stats rst_p1;
@@ -237,7 +237,7 @@ int main()
     double aold_N = scg.compute_area()+1;
 
     double time_now=0;
-    while( time_now < 600 && aold_N > scg.compute_area() )
+    while( time_now < 0 && aold_N > scg.compute_area() )
     {
       aold_N = scg.compute_area();
       it++;

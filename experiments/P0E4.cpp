@@ -372,7 +372,7 @@ int main()
 
     printf("|lig1|=%d  ", lig1.num_gates());
 
-    std::string tmp1 = benchmark + "_dse9.blif";
+    std::string tmp1 = benchmark + experiments/P0E5.cpp"_dse9.blif";
     write_blif( lig1, tmp1 );
 
     const auto cec1 = true;//(benchmark == "hyp" || benchmark == "log2") ? true : abc_cec( lig1, benchmark );
