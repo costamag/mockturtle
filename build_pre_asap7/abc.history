@@ -1,0 +1,17 @@
+read_bench log2tmp0.bench
+read log2tmp0.bench
+read_blif log2_dse1
+read_blif log2_dse1.blif
+&get -mn
+lutpack -h
+&satlut -h
+read_bench ctrltmp0.bench
+&get
+&if -K 4
+&satlut
+source -s abc.rc
+read_blif hyp_dse9.blif
+&get -mn ps
+read_blif square_dse9.blif
+&get -mn &ps
+read_blif log2_dse9.blif

@@ -66,6 +66,12 @@ std::mt19937 rng_opt(2);
  */
 struct boptimizer_params
 {
+  boptimizer_params()
+  {
+    /* 0 < Cut limit < 16 */
+    cut_enumeration_ps.cut_limit = 8;
+    cut_enumeration_ps.minimize_truth_table = true;
+  }
   /*! \brief Maximum number of PIs of reconvergence-driven cuts. */
   uint32_t max_pis{ 8 };
 
@@ -625,8 +631,9 @@ public:
   }
 
   explicit window_boptimizer( Ntk& ntk, boptimizer_params const& ps, stats& st, std::vector<gate> const& gates )
-      : ntk( ntk ), ps( ps ), st( st ), tts( ntk ), tt6( ntk ), _lSim( ntk, ps.max_divisors, ps.max_pis ), engine( st.resyn_st, gates ), validator( ntk, { ps.max_clauses, ps.odc_levels, ps.conflict_limit, ps.random_seed } )//, _cuts( ntk.size() + ( ntk.size() >> 1 ) ),
-        //_cut_manager( ntk, ps.cut_enumeration_ps, _cst, _cuts )
+      : ntk( ntk ), ps( ps ), st( st ), tts( ntk ), tt6( ntk ), _lSim( ntk, ps.max_divisors, ps.max_pis ), engine( st.resyn_st, gates ), validator( ntk, { ps.max_clauses, ps.odc_levels, ps.conflict_limit, ps.random_seed } )
+      //, _cuts( ntk.size() + ( ntk.size() >> 1 ) ),
+      //  _cut_manager( ntk, ps.cut_enumeration_ps, _cst, _cuts )
   {
     add_event = ntk.events().register_add_event( [&]( const auto& n ) {
       tts.resize();
@@ -976,15 +983,21 @@ public:
     /* compute the observability don't cares */
     kitty::static_truth_table<nPisGlb> const care = _gSim.compute_constant( true );//~observability_dont_cares( ntk, n, _gSim, tts, 10 );
 
-    std::vector<double> divs_delays;
+    std::vector<double> divs_delays, divs_delays2;
     divs_delays.push_back(0);
+    divs_delays2.push_back(0);
     _arr_times[0]=0;
     int i=0;
     //printf("%d|%d|%f\n", i++, 0, _arr_times[0] );
     for( auto div : divs )
     {
       divs_delays.push_back( _arr_times[div] );
+      divs_delays2.push_back( _arr_times[div] );
      // printf("%d %f\n", div, _arr_times[div] );
+    }
+    for( auto div : desps )
+    {
+      divs_delays2.push_back( _arr_times[div] );
     }
     //printf("\n");
 
@@ -998,68 +1011,48 @@ public:
 
 
 
-//      _cut_manager.clear_cuts( n );
-//      _cut_manager.compute_cuts( n );
+  //  _cut_manager.clear_cuts( n );
+  //  _cut_manager.compute_cuts( n );
 //
-//      uint32_t cut_index = 0;
-//      for ( auto& cut : _cuts.cuts( ntk.node_to_index( n ) ) )
-//      {
-//        /* skip trivial cut */
-//        if ( ( cut->size() == 1 && *cut->begin() == ntk.node_to_index( n ) ) )
-//        {
-//          ++cut_index;
-//          continue;
-//        }
-//
-//        /* Boolean matching */
-//       // auto config = kitty::exact_npn_canonization( cuts.truth_table( *cut ) );
-//      }
-/////////////////////////////////////////////////////////////
+  //  uint32_t cut_index = 0;
+  //  for ( auto& cut : _cuts.cuts( ntk.node_to_index( n ) ) )
+  //  {
+  //    /* skip trivial cut */
+  //    if ( ( cut->size() == 1 && *cut->begin() == ntk.node_to_index( n ) ) )
+  //    {
+  //      ++cut_index;
+  //      continue;
+  //    }
+  //    printf("we have a structural cut\n");
+  //    /* Boolean matching */
+  //    kitty::print_binary( _cuts.truth_table( *cut ) ); //printf("\n");
+  //    /* measure the MFFC contained in the cut */
+  //    double mffc_size = measure_mffc_deref( n, cut );
+  //    double gain = mffc_size;// - nodes_added;
+  //    printf("->%f\n", gain );
+  //    const auto res_struct = call_with_stopwatch( st.time_resyn, [&]() {
+  //      ++st.num_resyn;
+  //      return engine( _cuts. _cuts.truth_table( *cut ), std::min( struct_gain, ps.max_inserts ) );
+  //    } );
+  //        measure_mffc_ref( n, cut );
+  //  }
 
     for ( auto j = 0u; j < ps.max_trials; ++j )
     {
       /* do resynthesis */
       const auto res = call_with_stopwatch( st.time_resyn, [&]() {
         ++st.num_resyn;
-        //kitty::create_random( rnd_tt1, _seed++ );
-        //kitty::create_random( rnd_tt2, _seed+j+1 );&( rnd_tt1 | rnd_tt2 )
-       // if( ps.timing_aware )
-       //   return engine( tts[n], care, std::begin( divs ), std::end( divs ), divs_delays, tts, std::min( potential_gain, ps.max_inserts ) );     
-       // else
-
-       /* find a valid support */
-          
-          //if( fsup )
-          //{
-          //  for( auto x : *fsup )
-          //  {
-          //    std::cout << x << " ";
-          //  }
-          //  std::cout << std::endl;
-          //}
-          //if( fsup )
-          //  return engine( *fsup, tts[n], care, std::begin( divs ), std::end( divs ), tts, std::min( potential_gain, ps.max_inserts ) );
-          //else
-          //  return engine( tts[n], care, std::begin( divs ), std::end( divs ), tts, std::min( potential_gain, ps.max_inserts ) );
-           
-           // return engine( tts[n], care, std::begin( divs ), std::end( divs ), std::begin( desps ), std::end( desps ), tts, std::min( potential_gain, ps.max_inserts ) );
-          return engine( tts[n], care, std::begin( divs ), std::end( divs ), std::begin( desps ), std::end( desps ), tts, std::min( potential_gain, ps.max_inserts ) );
-
+        return engine( tts[n], care, std::begin( divs ), std::end( divs ), tts, std::min( potential_gain, ps.max_inserts ), j );
       } );
       if( res )
       {
-        //std::cout << "a"<<(*res).get_area() << std::endl;
-        //std::cout << to_index_list_string(*res) << std::endl;
-
         auto const& id_list = *res;
         assert( id_list.num_pos() == 1u );
         last_gain = potential_gain - id_list.get_area();
 
         double delay_candidate = ps.use_delay_constraints ? compute_worst_delay( id_list, divs_delays, ntk.get_library() ) : 0;
-        //printf("del cand%f req rtime%f\n", delay_candidate, _req_times[n]);
         if( !ps.use_delay_constraints || delay_candidate < _req_times[n] )
         {
-
           auto valid = call_with_stopwatch( st.time_sat, [&]() {
             return validator.validate( n, divs, id_list );
           } );
@@ -1067,13 +1060,8 @@ public:
           {
             if ( *valid )
             {
-               //printf("%d 1\n", id_list.num_gates());
               _stats_gen1[id_list.num_gates()]++;
               _stats_genT[id_list.num_gates()]++;
-              //if( id_list.num_gates() > 0 )
-              //  printf("1\n");
-              //continue;
-
               ++st.num_resub;
 
               signal out_sig;
@@ -1094,27 +1082,16 @@ public:
               {
                 recursively_mark( ntk.get_node(out_sig) );
               }
-
               _DELAY_NEW = delay_candidate;
-
               return out_sig;
-
             }
             else
             {
               _stats_genT[id_list.num_gates()]++;
-              //printf("%d 0\n", id_list.num_gates());
-
-            //  if( id_list.num_gates() > 0 )
-            //    printf("0\n");
               found_cex();
               continue;
             }
           }
-//          else
-//          {
-//            printf("%d 2\n", id_list.num_gates());
-//          }
         }
         else
         {
@@ -1127,6 +1104,86 @@ public:
         return std::nullopt;
       }
     }
+
+    bool try_desp = false;
+    if( try_desp )
+    {
+      auto divs2 = divs;
+      uint32_t nZero = divs.size();
+      for( auto desp : desps )
+      {
+        divs2.push_back( desp );
+      }
+
+      for ( auto j = 0u; j < ps.max_trials; ++j )
+      {
+        /* do resynthesis */
+        const auto res = call_with_stopwatch( st.time_resyn, [&]() {
+          ++st.num_resyn;
+          return engine( tts[n], care, std::begin( divs2 ), std::end( divs2 ), nZero, tts, std::min( potential_gain, ps.max_inserts ) );
+        } );
+        if( res )
+        {
+          auto const& id_list = *res;
+          assert( id_list.num_pos() == 1u );
+          last_gain = potential_gain - id_list.get_area();
+
+          double delay_candidate = ps.use_delay_constraints ? compute_worst_delay( id_list, divs_delays2, ntk.get_library() ) : 0;
+          if( !ps.use_delay_constraints || delay_candidate < _req_times[n] )
+          {
+            auto valid = call_with_stopwatch( st.time_sat, [&]() {
+              return validator.validate( n, divs2, id_list );
+            } );
+            if ( valid )
+            {
+              if ( *valid )
+              {
+                _stats_gen1[id_list.num_gates()]++;
+                _stats_genT[id_list.num_gates()]++;
+                ++st.num_resub;
+
+                signal out_sig;
+                std::vector<signal> divs_sig( divs2.size() );
+                std::vector<node> upd_req_nodes;
+                call_with_stopwatch( st.time_interface, [&]() {
+                  std::transform( divs2.begin(), divs2.end(), divs_sig.begin(), [&]( const node n ) {
+                    return ntk.make_signal( n );
+                  } );
+
+                    insert( ntk, divs_sig.begin(), divs_sig.end(), id_list, [&]( signal const& s ) {
+                    out_sig = s;
+                    _NNEW = ntk.get_node(out_sig);
+                  } );
+                } );
+                
+                if( ps.use_delay_constraints )
+                {
+                  recursively_mark( ntk.get_node(out_sig) );
+                }
+                _DELAY_NEW = delay_candidate;
+                return out_sig;
+              }
+              else
+              {
+                _stats_genT[id_list.num_gates()]++;
+                found_cex();
+                continue;
+              }
+            }
+          }
+          else
+          {
+            continue;
+          }
+
+        }
+        else /* functor can not find any potential resubstitution */
+        {
+          return std::nullopt;
+        }
+      }
+    }
+
     return std::nullopt;
   }
 
@@ -1151,18 +1208,15 @@ public:
   void found_cex()
   {
     sig_pointer = (sig_pointer+1)%(1<<nPisGlb);
-
     ++st.num_cex;
 
     _6Sim.add_pattern( validator.cex );
     if ( sig_pointer % 64 == 0 )
     {
-
       tt6.reset();
       call_with_stopwatch( st.time_sim, [&]() {
         simulate_nodes_static<Ntk>( ntk, tt6, _6Sim, true );
       } );
-
       ntk.foreach_pi( [&]( auto const& n, auto i ) {
         *(tts[n].begin() + _block) = *(tt6[n].begin());
       } );
@@ -1170,7 +1224,8 @@ public:
       ntk.foreach_gate( [&]( auto const& n, auto i ) {
         *(tts[n].begin() + _block) = *(tt6[n].begin());
       } );
-      _block = ( _block + 1 ) % ( ( 1 << ( nPisGlb - 6 ) ) - 1u ) ;
+
+      _block = nPisGlb == 6u ? 0u : ( _block + 1u ) % ( ( 1u << ( nPisGlb - 6u ) ) - 1u ) ;
     }
   }
 
@@ -1217,6 +1272,78 @@ private:
         simulate_node_static<Ntk, nPisGlb>( ntk, n, tts, _gSim );
       } );
     }
+  }
+
+  double measure_mffc_ref( node const& n, cut_t const* cut )
+  {
+    /* reference cut leaves */
+    for ( auto leaf : *cut )
+    {
+      ntk.incr_fanout_size( ntk.index_to_node( leaf ) );
+    }
+
+    double mffc_size = static_cast<double>( recursive_ref( n ) );
+
+    /* dereference leaves */
+    for ( auto leaf : *cut )
+    {
+      ntk.decr_fanout_size( ntk.index_to_node( leaf ) );
+    }
+
+    return mffc_size;
+  }
+
+  double measure_mffc_deref( node const& n, cut_t const* cut )
+  {
+    /* reference cut leaves */
+    for ( auto leaf : *cut )
+    {
+      ntk.incr_fanout_size( ntk.index_to_node( leaf ) );
+    }
+
+    double mffc_size = static_cast<double>( recursive_deref( n ) );
+
+    /* dereference leaves */
+    for ( auto leaf : *cut )
+    {
+      ntk.decr_fanout_size( ntk.index_to_node( leaf ) );
+    }
+
+    return mffc_size;
+  }
+
+  double recursive_deref( node const& n )
+  {
+    /* terminate? */
+    if ( ntk.is_constant( n ) || ntk.is_pi( n ) )
+      return 0;
+
+    /* recursively collect nodes */
+    double value{ ntk.get_area( n ) };
+    ntk.foreach_fanin( n, [&]( auto const& s ) {
+      if ( ntk.decr_fanout_size( ntk.get_node( s ) ) == 0 )
+      {
+        value += recursive_deref( ntk.get_node( s ) );
+      }
+    } );
+    return value;
+  }
+
+  double recursive_ref( node const& n )
+  {
+    /* terminate? */
+    if ( ntk.is_constant( n ) || ntk.is_pi( n ) )
+      return 0;
+
+    /* recursively collect nodes */
+    double value{ ntk.get_area( n ) };
+    ntk.foreach_fanin( n, [&]( auto const& s ) {
+      if ( ntk.incr_fanout_size( ntk.get_node( s ) ) == 0 )
+      {
+        value += recursive_ref( ntk.get_node( s ) );
+      }
+    } );
+    return value;
   }
 
 public:

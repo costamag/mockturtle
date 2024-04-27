@@ -2226,7 +2226,7 @@ public:
 
     spfd_covering_manager_t<truth_table_t, 1 << IGCAP> _igraph;
     uint32_t nMax = std::numeric_limits<uint32_t>::max();
-    uint32_t nIters=100;
+    uint32_t nIters=10;
     uint32_t _max_support_size;
     std::vector<scored_div> scored_divs;
     support_selection_t _algo;

@@ -82,7 +82,7 @@ template<class Ntk>
 Ntk abc_opto( Ntk const& ntk, std::string str_code, std::string abc_script = "resyn2rs" )
 {
   write_aiger( ntk, "/tmp/"+str_code+".aig" );
-  std::string command = "abc -q \"r /tmp/"+str_code+".aig;" + abc_script + "; write_aiger /tmp/" + str_code + ".aig\"";
+  std::string command = "abc -q \"r /tmp/"+str_code+".aig; fraig; " + abc_script + "; write_aiger /tmp/" + str_code + ".aig\"";
 
   std::array<char, 128> buffer;
   std::string result;
@@ -116,7 +116,7 @@ int main()
 
   /* library to map to technology */
   std::vector<gate> gates;
-  std::ifstream in( cell_libraries_path( "sky130" ) );
+  std::ifstream in( cell_libraries_path( "asap7" ) );//sky130
 
   if ( lorina::read_genlib( in, genlib_reader( gates ) ) != lorina::return_code::success )
   {
@@ -132,9 +132,8 @@ int main()
   double rareaN{0};
   double rdept1{0};
   double rdeptN{0};
-  for ( auto const& benchmark : all_benchmarks( iscas ) )
+  for ( auto const& benchmark : all_benchmarks( epfl | iwls ) )
   {
-    if( benchmark == "hyp" ) continue;
 
 
     fmt::print( "[i] processing {}\n", benchmark );
@@ -153,9 +152,9 @@ int main()
     uint32_t daig_old = daig.depth()+1;
     uint32_t daig_new = daig.depth();
 
-    if( aig.num_gates()>300000 ) continue;
+    if( aig.num_gates()>300000 || benchmark == "hyp"  ) continue;
 
-    //if( benchmark != "hyp" )
+    if( benchmark != "hyp" )
     {
 
       while( aaig_new < aaig_old )
@@ -199,11 +198,11 @@ int main()
     boptimizer_params rps;
     rps.progress =true;
     rps.max_inserts = 300;
-    rps.max_trials = 10;
-    rps.max_pis = 8;
+    rps.max_trials = 1;
+    rps.max_pis = 16;
     rps.verbose = false;
     rps.use_delay_constraints = true;
-    rps.max_divisors = 64u;
+    rps.max_divisors = 128u;
 
     boptimizer_stats rst_p1;
 
@@ -237,7 +236,7 @@ int main()
     double aold_N = scg.compute_area()+1;
 
     double time_now=0;
-    while( time_now < 0 && aold_N > scg.compute_area() )
+    while( time_now < 300 && aold_N > scg.compute_area() )
     {
       aold_N = scg.compute_area();
       it++;

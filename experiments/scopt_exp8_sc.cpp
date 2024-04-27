@@ -113,7 +113,7 @@ int main()
 
   /* library to map to technology */
   std::vector<gate> gates;
-  std::ifstream in( cell_libraries_path( "sky130" ) );
+  std::ifstream in( cell_libraries_path( "asap7" ) );
 
   if ( lorina::read_genlib( in, genlib_reader( gates ) ) != lorina::return_code::success )
   {
