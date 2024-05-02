@@ -1749,6 +1749,7 @@ void insert( Ntk& ntk, BeginIter begin, EndIter end, lig_index_list<separate_hea
     ntk.recursively_mark(nnew);
     ntk.add_binding( nnew, indices.ids[function_location] );
     signals.push_back( fnew );
+    //std::cout << "new sig " << fnew << std::endl;
   } );
 
   indices.foreach_po( [&]( uint32_t lit ) {

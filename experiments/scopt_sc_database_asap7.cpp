@@ -30,7 +30,7 @@
 #include <fmt/format.h>
 #include <lorina/aiger.hpp>
 #include <lorina/genlib.hpp>
-#include <mockturtle/algorithms/mapper2.hpp>
+#include <mockturtle/algorithms/emap2.hpp>
 #include <mockturtle/algorithms/node_resynthesis.hpp>
 #include <mockturtle/algorithms/node_resynthesis/mig_npn.hpp>
 #include <mockturtle/io/aiger_reader.hpp>
@@ -88,11 +88,11 @@ int main()
     kitty::next_inplace( tt );
   } while ( !kitty::is_const0( tt ) );
 
-    map_params ps2;
-    map_stats st2;
-    ps2.skip_delay_round= true;
-    ps2.cut_enumeration_ps.cut_limit = 24;
+    scopt::emap2_params ps2;
+    scopt::emap2_stats st2;
     ps2.required_time = std::numeric_limits<float>::max();
+    ps2.area_oriented_mapping= true;
+    //ps2.cut_enumeration_ps.cut_limit = 24;
 
     std::vector<TT> tts;
     std::vector<double> areas;
@@ -118,7 +118,14 @@ int main()
         return aig.create_po(f_new);
         });
 
-        scopt::scg_network scg = map( aig, tech_lib, ps2, &st2 );
+        scopt::scg_network scg = scopt::emap2_klut( aig, tech_lib, ps2, &st2 );
+
+        default_simulator<kitty::dynamic_truth_table> sim( 4 );
+        const auto tt = simulate<kitty::dynamic_truth_table>( scg, sim )[0];
+        if( tt._bits[0] != entry._bits[0] )
+        {
+          printf("ERROR\n");
+        }
 
         std::vector<uint32_t> idlist;
         scg.foreach_gate( [&]( auto n ) 
@@ -144,7 +151,7 @@ int main()
     }
 
     std::ofstream fTt;
-    fTt.open ("asap7.tts");
+    fTt.open ("asap7_2.tts");
     for( auto tt : tts )
     {
         fTt << kitty::to_binary(tt)+ "\n";
@@ -152,7 +159,7 @@ int main()
     fTt.close();
 
     std::ofstream fList;
-    fList.open ("asap7.list");
+    fList.open ("asap7_2.list");
     for( auto list : id_lists )
     {
         for( auto lit : list )
@@ -164,7 +171,7 @@ int main()
     fList.close();
 
     std::ofstream fArea;
-    fArea.open ("asap7.area");
+    fArea.open ("asap7_2.area");
     for( auto area : areas )
     {
         fArea << area << "\n";

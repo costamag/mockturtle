@@ -44,7 +44,7 @@
 #include <mockturtle/views/binding_view.hpp>
 #include <mockturtle/views/depth_view.hpp>
 #include <mockturtle/algorithms/cleanup.hpp>
-#include <mockturtle/algorithms/boptimizer.hpp>
+#include <mockturtle/algorithms/boptimizer2.hpp>
 #include <ctime>
 #include <experiments.hpp>
 
@@ -82,7 +82,7 @@ template<class Ntk>
 Ntk abc_opto( Ntk const& ntk, std::string str_code, std::string abc_script = "resyn2rs" )
 {
   write_aiger( ntk, "/tmp/"+str_code+".aig" );
-  std::string command = "abc -q \"r /tmp/"+str_code+".aig; fraig; " + abc_script + "; write_aiger /tmp/" + str_code + ".aig\"";
+  std::string command = "abc -q \"r /tmp/"+str_code+".aig; dfraig; " + abc_script + "; write_aiger /tmp/" + str_code + ".aig\"";
 
   std::array<char, 128> buffer;
   std::string result;
@@ -116,7 +116,9 @@ int main()
 
   /* library to map to technology */
   std::vector<gate> gates;
-  std::ifstream in( cell_libraries_path( "asap7" ) );//sky130
+  std::ifstream in( cell_libraries_path( "mcnc" ) );//sky130
+
+  pLibrary_t database( "mcnc" );
 
   if ( lorina::read_genlib( in, genlib_reader( gates ) ) != lorina::return_code::success )
   {
@@ -132,7 +134,7 @@ int main()
   double rareaN{0};
   double rdept1{0};
   double rdeptN{0};
-  for ( auto const& benchmark : all_benchmarks( epfl | iwls ) )
+  for ( auto const& benchmark : all_benchmarks( iscas ) )
   {
 
 
@@ -157,27 +159,26 @@ int main()
     if( benchmark != "hyp" )
     {
 
-      while( aaig_new < aaig_old )
+    //  while( aaig_new < aaig_old )
       {
-        aig = abc_opto( aig, benchmark, "resyn2rs" );
-        aig = cleanup_dangling( aig );
+      //  aig = abc_opto( aig, benchmark, "resyn2rs" );
+      //  aig = cleanup_dangling( aig );
         aig = abc_opto( aig, benchmark, "compress2rs" );
         aig = cleanup_dangling( aig );
-
-        aaig_old = aaig_new;
-        aaig_new = aig.num_gates();
-        printf("%d\n", aaig_new);
-
+//
+      //  aaig_old = aaig_new;
+      //  aaig_new = aig.num_gates();
+      //  printf("%d\n", aaig_new);
+//
       }
     }
 
     const auto cec = benchmark == "hyp" ? true : abc_cec( aig, benchmark );
+    if(!cec)
+      printf("ERROR\n");
     assert( cec && "[e] not equivalent" );
 
     scopt::emap2_params ps;
-    ps.cut_enumeration_ps.minimize_truth_table = true;
-    ps.cut_enumeration_ps.cut_limit = 24;
-    ps.area_flow_rounds=2;
     ps.required_time = std::numeric_limits<float>::max();
     ps.area_oriented_mapping = true;
     scopt::emap2_stats st;
@@ -195,16 +196,8 @@ int main()
     printf("d0)%6f ", dold );
     std::cout << std::endl;
 
-    boptimizer_params rps;
-    rps.progress =true;
-    rps.max_inserts = 300;
-    rps.max_trials = 1;
-    rps.max_pis = 16;
-    rps.verbose = false;
-    rps.use_delay_constraints = true;
-    rps.max_divisors = 128u;
-
-    boptimizer_stats rst_p1;
+    rewrub_sc_params rps;
+    rewrub_sc_stats rst_p1;
 
     double aold1 = scg.compute_area();
     double dold1 = scg.compute_worst_delay();
@@ -213,8 +206,7 @@ int main()
     std::clock_t begin1 = clock();
     std::clock_t beginN = clock();
 
-    boptimize_sc<EX2, 4u, 4u>( scg, rps, &rst_p1 );
-    scg = cleanup_scg( scg );
+    rewrub_sc( scg, database, rps, &rst_p1 );
     std::clock_t end1 = clock();
 
     double aopt1 = scg.compute_area();
@@ -228,7 +220,6 @@ int main()
 
     scopt::scg_network scg_copy=scg;
 
-    int it = 0;
 
   //  rps.max_trials = 10;
   //  rps.max_pis = 8;
@@ -236,14 +227,15 @@ int main()
     double aold_N = scg.compute_area()+1;
 
     double time_now=0;
-    while( time_now < 300 && aold_N > scg.compute_area() )
+    
+    printf("4 iters\n");
+    int it = 0;
+    while( it<2 && aold_N > scg.compute_area() )
     {
       aold_N = scg.compute_area();
       it++;
       aold1 = scg.compute_area();
-      boptimize_sc<EX2, 4u, 4u>( scg, rps, &rst_p1 );
-      scg = cleanup_scg( scg );
-
+      rewrub_sc( scg, database, rps, &rst_p1 );
       
       printf("[a]%6f ", aold );
       printf("-> %6f ", scg.compute_area() );
@@ -252,11 +244,6 @@ int main()
 
       std::clock_t end_now = clock();
       time_now = double(end_now - beginN) / CLOCKS_PER_SEC;
-      if( (aold_N-scg.compute_area() )/aold_N < 0.01 )
-      {
-        rps.max_pis = std::min( 16u, rps.max_pis + 1 );
-        rps.max_divisors = std::min( 300u, 2*rps.max_divisors );
-      }
 
       std::cout << std::endl;
     }

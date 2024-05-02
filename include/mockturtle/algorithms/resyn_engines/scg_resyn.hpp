@@ -271,7 +271,7 @@ public:
     kitty::static_truth_table<4u> tt;
     int i{0};
     std::string line;
-    std::ifstream fTts ("asap7.tts");
+    std::ifstream fTts ("mcnc2.tts");
     if (fTts.is_open())
     {
       while ( std::getline (fTts,line) )
@@ -286,7 +286,7 @@ public:
       printf("not found\n");
     }
 
-    std::ifstream fAreas ("asap7.area");
+    std::ifstream fAreas ("mcnc2.area");
     if (fAreas.is_open())
     {
       while ( std::getline (fAreas,line) )
@@ -301,7 +301,7 @@ public:
     }
 
 
-    std::ifstream fLists ("asap7.list");
+    std::ifstream fLists ("mcnc2.list");
     if (fLists.is_open())
     {
       while ( std::getline (fLists,line) )
@@ -390,7 +390,7 @@ public:
 //    {
 //      _supset.clear();
 //    }
-//
+////
     _fsupp.clear();
     if ( max_size > 0 )
     {
@@ -436,12 +436,12 @@ public:
   std::optional<index_list_t> operator()( TT const& target, TT const& care, iterator_type begin, iterator_type end, std::vector<double> const& idelays, typename static_params::truth_table_storage_type const& tts, double max_size )
   {
     static_assert( static_params::copy_tts || std::is_same_v<typename std::iterator_traits<iterator_type>::value_type, typename static_params::node_type>, "iterator_type does not dereference to static_params::node_type" );
-    _fsupp.clear();
-    if ( max_size > 0 )
-    {
-      auto fsup = _supportor( target, care, begin, end, tts );
-      if( fsup ) _fsupp=*fsup;
-    }
+  //  _fsupp.clear();
+  //  if ( max_size > 0 )
+  //  {
+  //    auto fsup = _supportor( target, care, begin, end, tts );
+  //    if( fsup ) _fsupp=*fsup;
+  //  }
     ptts = &tts;
     on_off_sets[0] = ~target & care;
     on_off_sets[1] = target & care;
@@ -480,12 +480,12 @@ public:
   std::optional<index_list_t> operator()( TT const& target, TT const& care, iterator_type begin, iterator_type end, uint32_t nZero, typename static_params::truth_table_storage_type const& tts, double max_size )
   {
     static_assert( static_params::copy_tts || std::is_same_v<typename std::iterator_traits<iterator_type>::value_type, typename static_params::node_type>, "iterator_type does not dereference to static_params::node_type" );
-    _fsupp.clear();
-    if ( max_size > 0 )
-    {
-      auto fsup = _supportor( target, care, begin, end, tts );
-      if( fsup ) _fsupp=*fsup;
-    }
+  //  _fsupp.clear();
+  //  if ( max_size > 0 )
+  //  {
+  //    auto fsup = _supportor( target, care, begin, end, tts );
+  //    if( fsup ) _fsupp=*fsup;
+  //  }
     ptts = &tts;
     on_off_sets[0] = ~target & care;
     on_off_sets[1] = target & care;
@@ -948,9 +948,11 @@ private:
 
     for( auto i{0}; i<4; ++i )
     {
+     // printf("%d ", perm[i]);
       if( perm[i]<vars.size() )
         leaves[i] = vars[perm[i]];
     }
+   // printf("\n");
     auto & db = _lib.get_database();
     index_list_t mapped_index_list = index_list;
 
@@ -1098,11 +1100,11 @@ private:
       std::vector<uint32_t> lits = {0,0,0,0,0};
       for( auto i{0}; i<4; ++i )
       {
-        //printf("p[%d]=%d\n", i, best_perm[i]);
+        //printf("p[%d]=%d ", i, best_perm[i]);
         lits[i+1] = lits0[best_perm[i]];
         //printf("V[%d]=%d\n", i, lits0[best_perm[i]]);
       }
-
+      //printf("\n");
       //printf( "try match %f %f\n", best_area, max_inserts );
       auto entry = _idlists[ best_key ];
       int type = 0;
@@ -1355,40 +1357,40 @@ private:
     {
       return _fsupp;
     }
-  
+//  
     return std::nullopt;
 
   //  if ( static_params::support_selection == support_selection_t::GREEDY )
   //  {
       //if( _idelays.size() > 0 )
   //    {
+    for( int iter{0}; iter<4; iter++ )
+    {
+        auto supp = find_support_greedy( 0, {} );
+        if ( supp )
+        {
+          return *supp;
+        }
+    }
+
+  //  auto supp = find_support_greedy( );
+  //  if ( supp )
+  //  {
+  //    return *supp;
+  //  }
+
   //  for( int iter{0}; iter<4; iter++ )
   //  {
-  //      auto supp = find_support_greedy( 0, {} );
+  //      auto supp = find_support_greedy( );
   //      if ( supp )
   //      {
   //        return *supp;
   //      }
   //  }
-
-    auto supp = find_support_greedy_fast( );
-    if ( supp )
-    {
-      return *supp;
-    }
-
-//    for( int iter{0}; iter<2; iter++ )
-//    {
-//        auto supp = find_support_greedy( 0, {}, divisors.size() );
-//        if ( supp )
-//        {
-//          return *supp;
-//        }
-//    }
-    return std::nullopt;
+  //  return std::nullopt;
 
 
-  //      auto supp = find_support_greedy( 0 );
+  //      auto supp = find_support_greedy_fast();
   //      if ( supp )
   //      {
   //        return *supp;
@@ -1399,13 +1401,15 @@ private:
   //    }
   //    else
   //    {
-  //      auto supp = find_support_greedy( 0 );
-  //      if ( supp )
-  //      {
-  //        return *supp;
-  //      }
-  //    }
-  //    return std::nullopt;
+  // /      for( int i {0}; i<10;++i )
+  // /      {
+  // /      auto supp = find_support_greedy();
+  // /      if ( supp )
+  // /      {
+  // /        return *supp;
+  // /      }
+  // /      }
+  // /    return std::nullopt;
   //  }
   //  if ( static_params::support_selection == support_selection_t::NGREEDY )
   //  {
@@ -1419,16 +1423,16 @@ private:
   //    }
   //    else
   //    {
-    for( int iter{0}; iter<4; iter++ )
-    {
-        auto supp = find_support_ngreedy( 0 );
-        if ( supp )
-        {
-          return *supp;
-        }
-    }
+    //for( int iter{0}; iter<4; iter++ )
+//  {
+//      auto supp = find_support_senu( );
+//      if ( supp )
+//      {
+//        return *supp;
+//      }
+//  }
   //    }
-  ////    return std::nullopt;
+      return std::nullopt;
   //  }
   //  if ( static_params::support_selection == support_selection_t::PIVOT )
   //  {
@@ -1526,6 +1530,7 @@ private:
       sdivs0.emplace_back( v, _uSPFD.evaluate( get_div( v ) ) );
     }
     std::sort( sdivs0.begin(), sdivs0.end() );
+
 
     for( int i0{0}; i0<DxL[0]; i0++ )
     {

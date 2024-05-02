@@ -227,7 +227,7 @@ enum e_func_t : uint32_t
 
     bool operator==( e_gate_t const& other ) const
     {
-      return (func == other.func) && (children == other.children) && ( binding == other.binding ) && ( value == other.value );
+      return (func == other.func) && (children == other.children) && ( binding == other.binding );// && ( value == other.value );
     }
   };
 

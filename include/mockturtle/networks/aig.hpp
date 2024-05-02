@@ -241,6 +241,11 @@ public:
     return _storage->nodes[n].data[1].h2 == 1 && !is_constant( n );
   }
 
+  bool is_function( node const& n ) const
+  {
+    return false;
+  }
+
   bool constant_value( node const& n ) const
   {
     (void)n;

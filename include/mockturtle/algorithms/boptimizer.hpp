@@ -109,7 +109,7 @@ struct boptimizer_params
   /*! \brief Window size for don't cares calculation. Only used by window-based resub engine. */
   uint32_t window_size{ 12u };
 
-  bool use_delay_constraints{false};
+  bool use_delay_constraints{true};
   bool high_effort_delay{false};
 
   /*! \brief Whether to prevent from increasing depth. Currently only used by window-based resub engine. */
@@ -174,7 +174,7 @@ struct boptimizer_stats
   uint64_t num_total_divisors{ 0 };
 
   /*! \brief Total number of gain. */
-  int estimated_gain{ 0 };
+  double estimated_gain{ 0 };
 
   /*! \brief Initial network size (before resubstitution). */
   uint64_t initial_size{ 0 };
@@ -329,7 +329,8 @@ private:
     } );
 
     /* collect the internal nodes */
-    if ( ntk.value( n ) == 0 && n != 0 ) /* ntk.fanout_size( n ) */
+    //if ( ntk.value( n ) == 0 && n != 0 ) /* ntk.fanout_size( n ) */
+    if ( ntk.fanout_size( n ) != 0 && ntk.visited(n) != ntk.trav_id() ) /* ntk.fanout_size( n ) */
     {
       divs.emplace_back( n );
     }
@@ -992,13 +993,14 @@ public:
     for( auto div : divs )
     {
       divs_delays.push_back( _arr_times[div] );
-      divs_delays2.push_back( _arr_times[div] );
+      //divs_delays2.push_back( _arr_times[div] );
      // printf("%d %f\n", div, _arr_times[div] );
     }
-    for( auto div : desps )
-    {
-      divs_delays2.push_back( _arr_times[div] );
-    }
+
+  //  for( auto div : desps )
+  //  {
+  //    divs_delays2.push_back( _arr_times[div] );
+  //  }
     //printf("\n");
 
     //for( int i{0}; i<divs_delays.size(); ++i )
@@ -1042,7 +1044,7 @@ public:
       /* do resynthesis */
       const auto res = call_with_stopwatch( st.time_resyn, [&]() {
         ++st.num_resyn;
-        return engine( tts[n], care, std::begin( divs ), std::end( divs ), tts, std::min( potential_gain, ps.max_inserts ), j );
+        return engine( tts[n], care, std::begin( divs ), std::end( divs ), tts,  potential_gain, j );
       } );
       if( res )
       {
@@ -1060,6 +1062,8 @@ public:
           {
             if ( *valid )
             {
+              //std::cout << to_index_list_string(id_list) << std::endl;
+
               _stats_gen1[id_list.num_gates()]++;
               _stats_genT[id_list.num_gates()]++;
               ++st.num_resub;
@@ -1138,6 +1142,7 @@ public:
             {
               if ( *valid )
               {
+                std::cout << to_index_list_string(id_list) << std::endl;
                 _stats_gen1[id_list.num_gates()]++;
                 _stats_genT[id_list.num_gates()]++;
                 ++st.num_resub;
@@ -1444,7 +1449,7 @@ public:
       resub_engine.init( );
     } );
 
-    progress_bar pbar{ ntk.size(), "resub |{0}| node = {1:>4}   cand = {2:>4}   est. gain = {3:>5}", ps.progress };
+    progress_bar pbar{ ntk.size(), "resub |{0}| node = {1:>4}   cand = {2:>4}   est. gain = {3:>4}", ps.progress };
 
     auto const size = ntk.num_gates();
     ntk.foreach_gate( [&]( auto const& n, auto i ) {
@@ -1452,10 +1457,10 @@ public:
       {
         return false; /* terminate */
       }
-      if ( (ntk.fanin_size(n) == 1) && ntk.po_index(n) != -1 )
-      {
-        return true; /* terminate */
-      }
+    //  if ( (ntk.fanin_size(n) == 1) && ntk.po_index(n) != -1 )
+    //  {
+    //    return true; /* terminate */
+    //  }
 
       if ( ntk.is_constant(n) )
       {
@@ -1670,7 +1675,7 @@ void boptimize_sc( scopt::scg_network& ntk, boptimizer_params const& ps = {}, bo
 {
   using Ntk = scopt::scg_network;
   static constexpr uint32_t nPisLoc = 16u;
-  static constexpr uint32_t nPisGlb = 11u;
+  static constexpr uint32_t nPisGlb = 10u;
 
   using bopt_view_t = fanout_view<depth_view<Ntk>>;
   depth_view<Ntk> depth_view{ ntk };
@@ -1697,7 +1702,7 @@ void boptimize_sc( scopt::scg_network& ntk, boptimizer_params const& ps = {}, bo
     typename bopt_impl_t::engine_st_t engine_st;
     typename bopt_impl_t::collector_st_t collector_st;
 
-    bopt_impl_t p( bopt_view ,ps, st, engine_st, collector_st );
+    bopt_impl_t p( bopt_view, ps, st, engine_st, collector_st );
     p.run();
     st.time_resub -= engine_st.time_patgen;
     st.time_total -= engine_st.time_patgen + engine_st.time_patsave;
@@ -1724,5 +1729,4 @@ void boptimize_sc( scopt::scg_network& ntk, boptimizer_params const& ps = {}, bo
 //} /* namespace rils */
 
 } /* namespace mockturtle */
-
 
