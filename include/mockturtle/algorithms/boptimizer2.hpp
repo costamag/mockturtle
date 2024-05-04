@@ -25,7 +25,7 @@
 
 /*!
   \file rewrub.hpp
-  \brief Inplace rewrub
+  \brief Rewrub for mapped networks
 
   \author Andrea Costamagna
 */
@@ -48,6 +48,8 @@
 #include "cut_enumeration/rewrite_cut.hpp"
 #include "reconv_cut.hpp"
 #include "simulation.hpp"
+#include "pattern_generation.hpp"
+#include "circuit_validator.hpp"
 
 #include <fmt/format.h>
 #include <kitty/dynamic_truth_table.hpp>
@@ -59,7 +61,7 @@ namespace mockturtle
 {
 
 std::mt19937 RNGRWS( 5 );
-
+bool VERBOSE{false};
 
 struct pLibrary_t
 {
@@ -130,7 +132,7 @@ struct pLibrary_t
   }
 
   template<class TT>
-  std::optional<float> get_area( TT const& tt )
+  std::optional<double> get_area( TT const& tt )
   {
     auto key = get_key( tt );
     if( key ) 
@@ -140,7 +142,7 @@ struct pLibrary_t
 
   /* objects */
   std::vector<std::vector<uint32_t>> _idlists;
-  std::vector<float> _areas;
+  std::vector<double> _areas;
   std::unordered_map<uint64_t, uint32_t> _pClassMap;
 };
 
@@ -162,7 +164,7 @@ struct rewrub_sc_params
   cut_enumeration_params cut_enumeration_ps{};
 
   /*! \brief If true, candidates are only accepted if they do not increase logic depth. */
-  bool preserve_depth{ false };
+  bool preserve_depth{ true };
 
   /*! \brief Allow rewrub with multiple structures */
   bool allow_multiple_structures{ true };
@@ -174,16 +176,16 @@ struct rewrub_sc_params
   bool use_dont_cares{ false };
 
   /*! \brief Window size for don't cares calculation. */
-  uint32_t window_size{ 16u };
 
   /*! \brief Maximum number of PIs of reconvergence-driven cuts. */
-  uint32_t max_pis{ 16 };
 
   /*! \brief Maximum number of divisors to consider. */
-  uint32_t max_divisors{ 150 };
+  uint32_t max_divisors{ 256 };
 
   /*! \brief Maximum number of nodes added by resubstitution. */
   uint32_t max_inserts{ 2 };
+
+  double required_time{ std::numeric_limits<double>::max() };
 
   /*! \brief Maximum fanout of a node to be considered as root. */
   uint32_t skip_fanout_limit_for_roots{ 1000 };
@@ -196,6 +198,21 @@ struct rewrub_sc_params
 
   /*! \brief Be verbose. */
   bool verbose{ false };
+
+  double eps_str{0.001};
+  double eps_fun{0.001};
+  double eps_time{0.001};
+
+  bool try_struct{true};
+  bool try_window{true};
+  bool try_simula{true};
+  bool delay_awareness{true};
+
+  uint32_t max_clauses{ 1000 };
+  int32_t odc_levels{ 0 };
+  uint32_t conflict_limit{ 1000 };
+  uint32_t random_seed{5};
+
 };
 
 /*! \brief Statistics for rewrub.
@@ -254,7 +271,7 @@ struct collector_stats
   }
 };
 
-template<typename Ntk>
+template<typename Ntk, uint32_t W>
 class node_mffc_inside2
 {
 public:
@@ -277,21 +294,18 @@ public:
   }
 
   template<typename Fn>
-  float call_on_mffc_and_count( node const& n, std::vector<node> const& leaves, Fn&& fn )
+  double call_on_mffc_and_count( node const& n, std::vector<node> const& leaves, Fn&& fn )
   {
     /* increment the fanout counters for the leaves */
     ntk.incr_trav_id();
-    //printf("TRAVID %d\n", ntk.trav_id());
     for ( const auto& l : leaves )
     {
       ntk.incr_fanout_size( l );
       ntk.set_visited( l, ntk.trav_id() ); 
     }
 
-    //printf("DEREF: ");
     /* dereference the node */
     auto count1 = node_deref_rec( n );
-    //printf("\n");
 
     /* call `fn` on MFFC nodes */
     node_mffc_cone_rec( n, true, fn );
@@ -300,7 +314,7 @@ public:
     auto count2 = node_ref_rec( n );
     (void)count2;
 
-    float eps = 0.1;
+    double eps = 0.1;
     assert( abs(count1-count2) <= eps );
 
     for ( const auto& l : leaves )
@@ -309,27 +323,23 @@ public:
     return count1;
   }
 
-  float run( node const& n, std::vector<node> const& leaves, std::vector<node>& inside )
+  double run( node const& n, std::vector<node> const& leaves, std::vector<node>& inside )
   {
-    //printf("COLLECTING..\n");
     inside.clear();
     return call_on_mffc_and_count( n, leaves, [&]( node const& m ) { inside.push_back( m ); } );
   }
 
 private:
   /* ! \brief Dereference the node's MFFC */
-  float node_deref_rec( node const& n )
+  double node_deref_rec( node const& n )
   {
-    //printf("REC @ %d ", n );
     if ( ntk.is_pi( n ) )
       return 0;
 
-    float counter = ntk.get_area( n );
+    double counter = ntk.get_area( n );
     ntk.foreach_fanin( n, [&]( const auto& f ) {
       auto const& p = ntk.get_node( f );
-      //printf( "fanin %d FO[0]=%d", p, ntk.fanout_size( p ) );
       ntk.decr_fanout_size( p );
-      //printf( "=>FO[1]=%d\n", ntk.fanout_size( p ) );
 
       if ( ntk.fanout_size( p ) == 0 )
       {
@@ -337,16 +347,16 @@ private:
       }
     } );
 
-    return counter;
+    return std::ceil(counter*100.0)/100.0;
   }
 
   /* ! \brief Reference the node's MFFC */
-  float node_ref_rec( node const& n )
+  double node_ref_rec( node const& n )
   {
     if ( ntk.is_pi( n ) )
       return 0;
 
-    float counter = ntk.get_area( n );
+    double counter = ntk.get_area( n );
     ntk.foreach_fanin( n, [&]( const auto& f ) {
       auto const& p = ntk.get_node( f );
 
@@ -358,7 +368,7 @@ private:
       }
     } );
 
-    return counter;
+    return std::ceil(counter*100.0)/100.0;
   }
 
   template<typename Fn>
@@ -389,7 +399,7 @@ private:
   Ntk const& ntk;
 }; /* rils_node_mffc_inside */
 
-template<class Ntk, class MffcMgr = node_mffc_inside2<Ntk>, typename MffcRes = float, typename cut_comp = detail::reconvergence_driven_cut_impl<Ntk>>
+template<class Ntk, uint32_t W, class MffcMgr = node_mffc_inside2<Ntk,W>, typename MffcRes = double, typename cut_comp = detail::reconvergence_driven_cut_impl<Ntk>>
 class divisor_collector2_t
 {
 public:
@@ -401,8 +411,8 @@ public:
   using cut_comp_statistics_type = typename cut_comp::statistics_type;
 
 public:
-  explicit divisor_collector2_t( Ntk const& ntk, rewrub_sc_params const& ps, stats& st )
-      : ntk( ntk ), ps( ps ), st( st ), cuts( ntk, cut_comp_parameters_type{ ps.max_pis }, cuts_st )
+  explicit divisor_collector2_t( Ntk const& ntk, unordered_node_map<double, Ntk> const& arrivals, unordered_node_map<double, Ntk> const& required, rewrub_sc_params const& ps, stats& st )
+      : ntk( ntk ), _arrival(arrivals), _required(required), ps( ps ), st( st ), cuts( ntk, cut_comp_parameters_type{ W }, cuts_st )
   {
   }
 
@@ -420,39 +430,16 @@ public:
     } );
     st.num_total_leaves += leaves.size();
 
-  //  std::cout << "L: " << std::endl;
-  //  for( auto x : leaves )
-  //  {
-  //    printf("l) %d ", x );
-  //    std::cout << " F" << ntk.get_binding(x).id << "(";
-  //    ntk.foreach_fanin( x, [&]( auto const& f ) {
-  //      std::cout << " " << ntk.get_node(f);
-  //    } );
-  //
-  //    printf(")\n");
-  //  }
-
     /* collect the MFFC */
     MffcMgr mffc_mgr( ntk );
     potential_gain = call_with_stopwatch( st.time_mffc, [&]() {
       return mffc_mgr.run( n, leaves, mffc );
     } );
 
-//    std::cout << "M: " << std::endl;
-//    for( auto x : mffc )
-//    {
-//      printf("l) %d ", x );
-//      std::cout << " F" << ntk.get_binding(x).id << "(";
-//      ntk.foreach_fanin( x, [&]( auto const& f ) {
-//        std::cout << " " << ntk.get_node(f);
-//      } );
-//
-//      printf(")\n");
-//    }
-
     /* collect the divisor nodes in the cut */
     bool div_comp_success = collect_divisors( n );
-
+    ntk.clear_visited();
+    ntk.clear_values();
     if ( !div_comp_success )
     {
       return false;
@@ -464,11 +451,16 @@ public:
 private:
   void collect_divisors_rec( node const& n )
   {
+    if(VERBOSE)
+      printf("r%d visied=%d value=%d\n",n, ntk.visited(n), ntk.value(n));
     /* skip visited nodes */
     if ( ntk.visited( n ) == ntk.trav_id() )
     {
+      if( VERBOSE )
+        printf("visited\n");
       return;
     }
+
     ntk.set_visited( n, ntk.trav_id() );
 
     ntk.foreach_fanin( n, [&]( const auto& f ) {
@@ -476,19 +468,28 @@ private:
     } );
 
     /* collect the internal nodes */
-    if ( ntk.value( n ) != ntk.trav_id() ) /*  */
+    if ( ntk.value( n ) != 3 ) /*  */
     {
+      if( VERBOSE )
+        printf("%d not in mffc\n", n);
       divs.emplace_back( n );
     }
+    else if( VERBOSE )
+      printf("%d was in mffc\n", n);
+
   }
 
   bool collect_divisors( node const& root )
   {
-    auto max_depth = std::numeric_limits<uint32_t>::max();
+    ntk.clear_visited();
+    ntk.clear_values();
+
+    double max_delay = std::numeric_limits<double>::max();
     if ( ps.preserve_depth )
     {
-      max_depth = ntk.level( root ) - 1;
+      max_delay = _arrival[root];
     }
+
     /* add the leaves of the cuts to the divisors */
     divs.clear();
     desp.clear();
@@ -498,31 +499,31 @@ private:
     {
       divs.emplace_back( l );
       ntk.set_visited( l, ntk.trav_id() );
+      ntk.set_value( l, 1 );
+      if(VERBOSE)
+      printf("%d value set to 1 visited set to %d(leaves)\n", l, ntk.trav_id());
     }
 
     /* mark nodes in the MFFC */
     for ( const auto& t : mffc )
     {
-      ntk.set_value( t, ntk.trav_id() );
+      ntk.set_visited( t, 0 );
+      ntk.set_value( t, 3 );
+      if(VERBOSE)
+      printf("%d value set to 3 visited set to 0(mffc)\n", t );
+
     }
 
     /* collect the cone (without MFFC) */
     collect_divisors_rec( root );
 
-    /* unmark the current MFFC */
-    for ( const auto& t : mffc )
-    {
-      ntk.set_value( t, 0 );
-    }
-
     /* check if the number of divisors is not exceeded */
-    if ( divs.size() + mffc.size() - leaves.size() > ps.max_divisors - ps.max_pis )
+    if ( divs.size() + mffc.size() - leaves.size() > ps.max_divisors - W )
     {
       return false;
     }
-    uint32_t limit = ps.max_divisors - ps.max_pis - mffc.size() + leaves.size();
+    uint32_t limit = ps.max_divisors - W - mffc.size() + leaves.size();
 
-    //if( ps.use_wings )
     {
       /* explore the fanouts, which are not in the MFFC */
       bool quit = false;
@@ -541,9 +542,14 @@ private:
 
         /* if the fanout has all fanins in the set, add it */
         ntk.foreach_fanout( d, [&]( node const& p ) {
-          if ( ntk.visited( p ) == ntk.trav_id() || ntk.level( p ) > max_depth )
+          if ( ntk.visited( p ) == ntk.trav_id() || ( ps.preserve_depth && _arrival[p] > max_delay ) )
           {
             return true; /* next fanout */
+          }
+
+          if( ntk.is_dead(p) )
+          {
+            return true;
           }
 
           bool all_fanins_visited = true;
@@ -597,7 +603,7 @@ private:
     /* note: different from the previous version, now we do not add MFFC nodes into divs */
     assert( root == mffc.at( mffc.size() - 1u ) );
     /* note: this assertion makes sure window_simulator does not go out of bounds */
-    assert( divs.size() + mffc.size() - leaves.size() <= ps.max_divisors - ps.max_pis );
+    assert( divs.size() + mffc.size() - leaves.size() <= ps.max_divisors - W );
 
     for( auto nd : mffc )
     {
@@ -638,18 +644,27 @@ public:
   std::vector<node> divs;
   std::vector<node> mffc;
   std::vector<node> desp;
+
+  unordered_node_map<double, Ntk> const& _required;
+  unordered_node_map<double, Ntk> const& _arrival;
+
 };
 
-template<class Ntk, uint32_t W>
+template<class Ntk, uint32_t W, uint32_t S>
 class rewrub_sc_impl
 {
   static constexpr uint32_t num_vars = 4u;
   using node = typename Ntk::node;
   using signal = typename Ntk::signal;
 
-  using DivCollector = detail::divisor_collector2_t<Ntk>;
+  using DivCollector = detail::divisor_collector2_t<Ntk, W>;
   using collector_st_t = typename DivCollector::stats;
-  using mffc_result_t = float;
+  using mffc_result_t = double;
+
+  using signature_t = kitty::static_truth_table<S>;
+  using word_t = kitty::static_truth_table<6u>;
+  using validator_t = circuit_validator<Ntk, bill::solvers::bsat2, false, true, false>;//last is false
+
 
   using network_cuts_t = dynamic_network_cuts<Ntk, num_vars, true, cut_enumeration_rewrite_cut>;
   using cut_manager_t = detail::dynamic_cut_enumeration_impl<Ntk, num_vars, true, cut_enumeration_rewrite_cut>;
@@ -658,7 +673,7 @@ class rewrub_sc_impl
 
 public:
   rewrub_sc_impl( Ntk& ntk, pLibrary_t& database, rewrub_sc_params const& ps, rewrub_sc_stats& st )// Library&& library, NodeCostFn const& cost_fn
-      : ntk( ntk ), _database(database), ps( ps ), st( st ), _required( ntk, std::numeric_limits<float>::max() ), _arrival( ntk, 0 ), _ttW(ntk) //library( library ), cost_fn( cost_fn ),
+      : ntk( ntk ), _database(database), ps( ps ), st( st ), _required( ntk ), _arrival( ntk ), _ttW(ntk), _ttG(ntk), _ttC(ntk), _validator( ntk, { ps.max_clauses, ps.odc_levels, ps.conflict_limit, ps.random_seed } ) //library( library ), cost_fn( cost_fn ),
   {
     // initialize reference simulation patterns
     for( int i{0}; i<W; ++i )
@@ -669,69 +684,84 @@ public:
     {
       kitty::create_nth_var( _xs4[i], i );
     }
-    //_tts[0] = _xsW[0].construct();
 
     /* timing information */
-    _max_delay = ps.preserve_depth ? ntk.compute_worst_delay() : std::numeric_limits<float>::max();
+    if( ps.preserve_depth )
+    {
+      _max_delay = ps.required_time == std::numeric_limits<double>::max() ? ntk.compute_worst_delay() : ps.required_time;
+    }
+    else
+    {
+      _max_delay = std::numeric_limits<double>::max();
+    }
+
+    /* initialize the simulators */
+    _gSim = static_simulator<S>( ntk.num_pis() );
+    _cSim = static_simulator<6>( ntk.num_pis() );
+    simulate_nodes_static<Ntk, S>( ntk, _ttG, _gSim, true );
+    simulate_nodes_static<Ntk, 6>( ntk, _ttC, _cSim, true );
+
+    add_event = ntk.events().register_add_event( [&]( const auto& n ) {
+      _ttG.resize();
+      _ttC.resize();
+      //_arrival.resize();
+      //_required.resize();
+      simulate_node_static<Ntk, S>( ntk, n, _ttG, _gSim );
+      simulate_node_static<Ntk, 6>( ntk, n, _ttC, _cSim );
+    } );
   }
 
   ~rewrub_sc_impl()
   {
+    if ( add_event )
+    {
+      ntk.events().release_add_event( add_event );
+    }
   }
 
   void run()
   {
     stopwatch t( st.time_total );
 
-    if ( ps.preserve_depth )
-    {
-      compute_arrival();
-      compute_required( _max_delay );
-    }
-
     perform_rewrubbing();
 
+
+    printf("struct %f\n", aStr );
+    printf("window %f\n", aWin );
+    printf("simula %f\n", aSim );
     st.estimated_gain = _estimated_gain;
     st.candidates = _candidates;
   }
 
   #pragma region timing 
 
-  float compute_arrival_rec( node n )
+  double compute_arrival_rec( node n )
   {
-    if( ntk.visited(n) > 0 )
+    if( _arrival.has(n) && ( ntk.visited( n ) == 1u ) )
     {
       return _arrival[n];
     }
 
+    auto const& g = ntk.get_binding( n );
+    double arrival = 0;
 
-    if ( ntk.has_binding( n ) )
-    {
-      auto const& g = ntk.get_binding( n );
-      float gate_delay = 0;
-      ntk.foreach_fanin( n, [&]( auto const& f, auto i ) {
-        float arr_fanin = compute_arrival_rec( ntk.get_node(f) );
-        gate_delay = std::max( gate_delay, (float)( arr_fanin + std::max( g.pins[i].rise_block_delay, g.pins[i].fall_block_delay ) ) );
-      } );
-      _arrival[n] = gate_delay;
-    }
-    else
-    {
-      float gate_delay = 1;
-      ntk.foreach_fanin( n, [&]( auto const& f, auto i ) {
-        float arr_fanin = compute_arrival_rec( ntk.get_node(f) );
-        gate_delay = std::max( gate_delay, (float)( arr_fanin + 1u ) );
-      } );
-      _arrival[n] = gate_delay;
-    }
+    ntk.foreach_fanin( n, [&]( auto const& f, auto i ) {
+      double arr_fanin = compute_arrival_rec( ntk.get_node(f) ); // normalized by default
+      double pin_delay = std::max( g.pins[i].rise_block_delay, g.pins[i].fall_block_delay );
+      pin_delay = std::ceil(pin_delay * 100.0) / 100.0;
+      arrival = std::max( arrival, (double)( arr_fanin + pin_delay ) );
+    } );
+    _arrival[n] = std::ceil( arrival * 100.0) / 100.0;
     ntk.set_visited( n, 1u );
+
     return _arrival[n];
   }
 
-  float compute_arrival()
+  double compute_arrival()
   {
     ntk.clear_visited();
     _arrival.reset();
+
     ntk.foreach_pi( [&]( auto const& n, auto i ) {
       _arrival[n]=0.0;
       ntk.set_visited( n, 1u );
@@ -739,10 +769,10 @@ public:
     _arrival[0]=0.0;
     ntk.set_visited( 0, 1u );
 
-
-    float max_delay=0;
-    ntk.foreach_po( [&]( auto const& no, auto i ) {
-      auto out_del = compute_arrival_rec( ntk.get_node(no) );
+    double max_delay=0;
+    ntk.foreach_po( [&]( auto const& fo, auto i ) {
+      node no = ntk.get_node(fo);
+      double out_del = compute_arrival_rec( no );
       if( out_del > max_delay )
       {
         max_delay = out_del;
@@ -750,74 +780,58 @@ public:
     } );
     
     ntk.clear_visited();
-
     return max_delay;
   }
 
-  float compute_required_rec( node n, float max_delay )
+  double compute_required_rec( node n, double max_delay )
   {
-    if( ntk.visited(n) > 0  )
+    if( _required.has(n) && ( ntk.visited(n) == 1u ) )
     {
-      //std::cout << n << " " << _required[n] << std::endl;
       return _required[n];
     }
 
-    if ( ntk.has_binding( n ) )
-    {
-      float gate_required = max_delay;
+    double gate_required = max_delay;
 
-      ntk.foreach_fanout( n, [&]( auto const& f, auto i ) {
-        float req_fanout = compute_required_rec( ntk.get_node(f), max_delay );
-        auto nfo = ntk.get_node(f);
-        auto const& g = ntk.get_binding( nfo );
+    ntk.foreach_fanout( n, [&]( auto const& f, auto i ) {
+      auto nfo = ntk.get_node(f);
+      double req_fanout = compute_required_rec( nfo, max_delay );
+      auto const& g = ntk.get_binding( nfo );
 
-        uint32_t ig;
-        ntk.foreach_fanin( nfo, [&]( auto const& fo, auto io ) {
-          if( ntk.get_node(fo) == n )
-          {
-            ig = io;
-            return;
-          }
-        });
+      uint32_t ig;
+      ntk.foreach_fanin( nfo, [&]( auto const& fi, auto ii ) {
+        if( ntk.get_node(fi) == n )
+        {
+          ig = ii;
+          return;
+        }
+      });
 
-        //std::cout << "[" << n << "]@fo" << ntk.get_node(f) << " " << req_fanout << std::endl;
-        gate_required = std::min( gate_required, (float)( req_fanout - std::max( g.pins[ig].rise_block_delay, g.pins[ig].fall_block_delay ) ) );
-      } );
-      _required[n] = gate_required;
-    }
-    else
-    {
-      float gate_required = max_delay;
-      ntk.foreach_fanout( n, [&]( auto const& f, auto i ) {
-        float req_fanout = compute_required_rec( ntk.get_node(f), max_delay );
-        gate_required = std::min( gate_required, (float)( req_fanout - 1u ) );
-      } );
-      _required[n] = gate_required;
-    }
+      gate_required = std::min( gate_required, (double)( req_fanout - std::max( g.pins[ig].rise_block_delay, g.pins[ig].fall_block_delay ) ) );
+    } );
+    _required[n] = std::ceil(gate_required * 100.0) / 100.0;
+ 
     ntk.set_visited( n, 1u );
 
-    //std::cout << "r " << n << " " << _required[n] << std::endl;
     return _required[n];
   }
 
-  void compute_required( float max_delay )
+  void compute_required( double max_delay )
   {
-
-    //ntk.print();
-    //std::cout << "max del " <<max_delay << std::endl;
-
     ntk.clear_visited();
     _required.reset();
-    ntk.foreach_po( [&]( auto const& fo, auto i ) {
-      auto n = ntk.get_node(fo);
-      _required[n]=max_delay;
-      ntk.set_visited( n, 1u );
-    } );
 
+    ntk.foreach_po( [&]( auto const& fo, auto i ) 
+    {
+      node no = ntk.get_node(fo);
+      if( ntk.fanout_size(no) == 1 )
+      {
+        _required[no]= std::ceil(max_delay * 100.0) / 100.0;
+        ntk.set_visited( no, 1u );
+      }
+    });
 
     ntk.foreach_pi( [&]( auto const& ni, auto i ) {
       auto req = compute_required_rec( ntk.get_node(ni), max_delay );
-      //std::cout << "PI" << ni << " " << req << std::endl;
     } );
     
     ntk.clear_visited();
@@ -827,7 +841,14 @@ public:
   void print_slack()
   {
     ntk.foreach_gate( [&]( auto const& n, auto i ) { 
-      printf("%4d %f\n", n, _required[n]-_arrival[n]);
+      if( ntk.po_index(n) != -1 )
+        printf("po %4d a=%f r=%f s=%f\n", n, _arrival[n], _required[n], _required[n]-_arrival[n]);
+      else if( ntk.is_pi(n) )
+        printf("pi %4d a=%f r=%f s=%f\n", n, _arrival[n], _required[n], _required[n]-_arrival[n]);
+      else
+        printf("nd %4d a=%f r=%f s=%f\n", n, _arrival[n], _required[n], _required[n]-_arrival[n]);
+
+
     });
   }
 
@@ -839,10 +860,10 @@ public:
     uint32_t id;
     std::array<signal, num_vars> leaves;
     std::array<uint8_t, num_vars> permutation;
-    float reward;
+    double reward;
   };
 
-  float measure_mffc_ref( node const& n, std::array<signal,num_vars> const& cut )
+  double measure_mffc_ref( node const& n, std::array<signal,num_vars> const& cut )
   {
     /* reference cut leaves */
     for ( auto leaf : cut )
@@ -850,7 +871,7 @@ public:
       ntk.incr_fanout_size( ntk.get_node(leaf) );
     }
 
-    float mffc_size = static_cast<float>( recursive_ref( n ) );
+    double mffc_size = static_cast<double>( recursive_ref( n ) );
 
     /* dereference leaves */
     for ( auto leaf : cut )
@@ -858,10 +879,10 @@ public:
       ntk.decr_fanout_size( ntk.get_node(leaf) );
     }
 
-    return mffc_size;
+    return std::ceil(mffc_size*100.0)/100.0;
   }
 
-  float measure_mffc_deref( node const& n, std::array<signal,num_vars> const& cut )
+  double measure_mffc_deref( node const& n, std::array<signal,num_vars> const& cut )
   {
     /* reference cut leaves */
     for ( auto leaf : cut )
@@ -869,7 +890,7 @@ public:
       ntk.incr_fanout_size( ntk.get_node(leaf) );
     }
 
-    float mffc_size = static_cast<float>( recursive_deref( n ) );
+    double mffc_size = static_cast<double>( recursive_deref( n ) );
 
     /* dereference leaves */
     for ( auto leaf : cut )
@@ -877,62 +898,69 @@ public:
       ntk.decr_fanout_size( ntk.get_node(leaf) );
     }
 
-    return mffc_size;
+    return std::ceil(mffc_size*100.0)/100.0;
   }
 
-  float recursive_deref( node const& n )
+  double recursive_deref( node const& n )
   {
     /* terminate? */
     if ( ntk.is_constant( n ) || ntk.is_pi( n ) )
       return 0;
 
     /* recursively collect nodes */
-    float value{ ntk.get_area( n ) };
+    double value{ ntk.get_area( n ) };
     ntk.foreach_fanin( n, [&]( auto const& s ) {
       if ( ntk.decr_fanout_size( ntk.get_node( s ) ) == 0 )
       {
         value += recursive_deref( ntk.get_node( s ) );
       }
     } );
-    return value;
+    return std::ceil(value*100.0)/100.0;
   }
 
-  float recursive_ref( node const& n )
+  double recursive_ref( node const& n )
   {
     /* terminate? */
     if ( ntk.is_constant( n ) || ntk.is_pi( n ) )
       return 0;
 
     /* recursively collect nodes */
-    float value{ ntk.get_area( n ) };
+    double value{ ntk.get_area( n ) };
     ntk.foreach_fanin( n, [&]( auto const& s ) {
       if ( ntk.incr_fanout_size( ntk.get_node( s ) ) == 0 )
       {
         value += recursive_ref( ntk.get_node( s ) );
       }
     } );
-    return value;
+    return std::ceil(value*100.0)/100.0;
   }
 
-  float area_contained_mffc( node n, std::array<signal, num_vars> const& leaves )
+  double area_contained_mffc( node n, std::array<signal, num_vars> const& leaves )
   {
     /* measure the MFFC contained in the cut */
-    float mffc_size = measure_mffc_deref( n, leaves );
+    double mffc_size = measure_mffc_deref( n, leaves );
     /* restore contained MFFC */
     measure_mffc_ref( n, leaves );
 
-    return mffc_size;
+    return std::ceil(mffc_size*100.0)/100.0;
   }  
 
   std::optional<opto_candidate_t> find_structural_rewriting( cut_manager_t & cut_manager, network_cuts_t & cuts, node const& n )
   {
+
+    if( !ps.try_struct )
+    {
+      return std::nullopt;
+    }
+
     cut_manager.clear_cuts( n );
     cut_manager.compute_cuts( n );
 
     std::vector<opto_candidate_t> cands;
-    float best_reward = std::numeric_limits<float>::min();
 
     uint32_t cut_index = 0;
+    double best_reward = -1;
+
     for ( auto& cut : cuts.cuts( ntk.node_to_index( n ) ) )
     {
       opto_candidate_t cand;
@@ -948,54 +976,58 @@ public:
       auto repr = std::get<0>( config );
       auto nega = std::get<1>( config );
       auto perm = std::get<2>( config );
-      std::array<uint8_t, num_vars> permutation;
 
-      assert( nega == 0u );
-      for ( auto j = 0u; j < num_vars; ++j )
+
+      auto key = _database.get_key( repr );
+
+      if( key )
       {
-        permutation[perm[j]] = j;
-      }
+        std::array<uint8_t, num_vars> permutation;
 
-      /* save output negation to apply */
-
-      {
-        auto j = 0u;
-        for ( auto const leaf : *cut )
+        assert( nega == 0u );
+        for ( auto j = 0u; j < num_vars; ++j )
         {
-          cand.leaves[permutation[j++]] = ntk.make_signal( ntk.index_to_node( leaf ) );
+          permutation[perm[j]] = j;
         }
 
-        while ( j < num_vars )
-          cand.leaves[permutation[j++]] = ntk.get_constant( false );
-      }
+        /* save output negation to apply */
 
-      /* resynthesis cost */
-      auto cost = _database.get_area( repr );
-      if( !cost )
-      {
-        continue;
-      }
-      else
-      {
-        cand.id = *_database.get_key( repr );
-      }
-
-      /* resynthesis reward */
-      float area_mffc = area_contained_mffc( n, cand.leaves );
-      //std::cout << "S(amffc " << area_mffc << std::endl;
-
-      cand.reward = area_mffc - *cost;
-      if( cand.reward > 0 && *cost > 0 )
-      {
-      //  std::cout << "cost:" << *cost << "removed:" << area_mffc << "=> reward " << cand.reward << std::endl;
-        if( cand.reward > best_reward )
         {
-          best_reward = cand.reward;
-          cands = {cand};
+          auto j = 0u;
+          for ( auto const leaf : *cut )
+          {
+            cand.leaves[permutation[j++]] = ntk.make_signal( ntk.index_to_node( leaf ) );
+          }
+
+          while ( j < num_vars )
+            cand.leaves[permutation[j++]] = ntk.get_constant( false );
         }
-        else if( cand.reward == best_reward )
+
+        /* resynthesis cost */
+        auto cost = _database.get_area( repr );
+        if( cost )
         {
-          cands.push_back( cand );
+          cand.id = *_database.get_key( repr );
+          double area_mffc = area_contained_mffc( n, cand.leaves );
+          if( cand.id == _BUF_ID )
+            cand.reward = area_mffc;
+          else
+            cand.reward = area_mffc - *cost;
+
+          
+          if( cand.reward > ps.eps_str )
+          {
+            //std::cout << "cost:" << *cost << "removed:" << area_mffc << "=> reward " << cand.reward << std::endl;
+            if( cand.reward > best_reward )
+            {
+              best_reward = cand.reward;
+              cands = {cand};
+            }
+            else if( cand.reward == best_reward )
+            {
+              cands.push_back( cand );
+            }
+          }
         }
       }
     }
@@ -1018,9 +1050,14 @@ public:
     for( auto l : leaves )
     {
       _ttW[l] = _xsW[i++];
-      //printf("l %3d:",l); kitty::print_binary(_ttW[l]); printf("\n");
+      if( VERBOSE )
+      {
+        printf("[l %3d]",l); kitty::print_binary(_ttW[l]); 
+      }
 
     }
+    if(VERBOSE)
+        printf("\n");
 
     std::vector<kitty::static_truth_table<W>> children; 
     for( auto d : divs )
@@ -1032,12 +1069,15 @@ public:
           children.push_back( _ttW[ntk.get_node(f)] );
         } );
         _ttW[d] = ntk.compute( d, children.begin(), children.end() );
-        //printf("d %3d:",d); kitty::print_binary(_ttW[d]); 
-//        ntk.foreach_fanin( d, [&]( auto const& f ) {
-//          std::cout << " " << ntk.get_node(f);
-//        } );
-//        std::cout << " id" << ntk.get_binding(d).id;
-//        printf("\n");
+        if( VERBOSE )
+        {
+          printf("d %3d:",d); kitty::print_binary(_ttW[d]); 
+          ntk.foreach_fanin( d, [&]( auto const& f ) {
+            std::cout << " " << ntk.get_node(f);
+          } );
+          std::cout << " id" << ntk.get_binding(d).id;
+          printf("\n");
+        }
       }
     }
 
@@ -1052,13 +1092,16 @@ public:
 
         _ttW[d] = ntk.compute( d, children.begin(), children.end() );
 
-//        printf("m %3d:",d); kitty::print_binary(_ttW[d]); 
-//        ntk.foreach_fanin( d, [&]( auto const& f ) {
-//          std::cout << " " << ntk.get_node(f);
-//        } );
-//        std::cout << " id" << ntk.get_binding(d).id;
-//
-//        printf("\n");
+          if( VERBOSE )
+          {
+            printf("m %3d:",d); kitty::print_binary(_ttW[d]); 
+            ntk.foreach_fanin( d, [&]( auto const& f ) {
+              std::cout << " " << ntk.get_node(f);
+            } );
+            std::cout << " id" << ntk.get_binding(d).id;
+
+            printf("\n");
+          }
 
       }
     }
@@ -1068,29 +1111,31 @@ public:
     } );
 
     _ttW[n] = ntk.compute( n, children.begin(), children.end() );
-//    printf("n %3d:",n); kitty::print_binary(_ttW[n]); printf("\n");
-
+    if( VERBOSE )
+    {
+      printf("n %3d:",n); kitty::print_binary(_ttW[n]); printf("\n");
+    }
 
   }
 
-  template<class SIM>
-  std::optional<std::vector<node>> find_support_greedy( std::vector<node> const& divs, SIM const& tts )
+  template<class SIM, class SPFD>
+  std::optional<std::vector<node>> find_support_greedy( std::vector<node> const& divs, SIM const& tts, SPFD & spfd )
   {
     uint32_t cost, best_cost;
     std::vector<node> best_candidates;
     std::vector<node> supp;
-    _spfd.reset();
-
+    spfd.reset();
 
     /* add recomputation of the support */
-    while ( !_spfd.is_covered() && supp.size() < 4u )
+    while ( !spfd.is_covered() && supp.size() < 4u )
     {
       best_cost = std::numeric_limits<uint32_t>::max();
-      if ( _spfd.is_saturated() )
+      if ( spfd.is_saturated() )
         return std::nullopt;
       for ( uint32_t v{0}; v < divs.size(); ++v )
       {
-        cost = _spfd.evaluate( tts[divs[v]] );
+        cost = spfd.evaluate( tts[divs[v]] );
+
         if ( cost < best_cost )
         {
           best_cost = cost;
@@ -1103,13 +1148,14 @@ public:
       }
       if ( best_candidates.size() == 0 )
         return std::nullopt;
+
       std::uniform_int_distribution<> distrib( 0, best_candidates.size() - 1 );
       int idx = distrib( RNGRWS );
       supp.push_back( best_candidates[idx] );
-      _spfd.update( tts[best_candidates[idx]] );
+      spfd.update( tts[best_candidates[idx]] );
     }
 
-    if ( _spfd.is_covered() && supp.size() <= 4u )
+    if ( spfd.is_covered() && supp.size() <= 4u )
     {
       std::sort( supp.begin(), supp.end() );
       return supp;
@@ -1117,11 +1163,59 @@ public:
     return std::nullopt;
   }
 
-  template<class SIM>
-  std::optional<std::vector<node>> find_support( std::vector<node> const& divs, node n, SIM const& tts )
+  template<class SIM, class SPFD>
+  std::optional<std::vector<node>> find_support_greedy_delay( std::vector<node> const& divs, SIM const& tts, SPFD & spfd )
   {
-    _spfd.init( tts[n] );
-    auto supp = find_support_greedy( divs, tts );
+    uint32_t cost, best_cost;
+    std::vector<node> best_candidates;
+    std::vector<node> supp;
+    spfd.reset();
+
+    /* add recomputation of the support */
+    while ( !spfd.is_covered() && supp.size() < 4u )
+    {
+      double best_delay = std::numeric_limits<double>::max();
+
+      best_cost = std::numeric_limits<uint32_t>::max();
+      if ( spfd.is_saturated() )
+        return std::nullopt;
+      for ( uint32_t v{0}; v < divs.size(); ++v )
+      {
+        cost = spfd.evaluate( tts[divs[v]] );
+
+        if ( cost < best_cost || ( cost == best_cost && _arrival[divs[v]]<best_delay ) )
+        {
+          best_cost = cost;
+          best_delay = _arrival[divs[v]];
+          best_candidates = { divs[v] };
+        }
+        else if ( cost == best_cost && _arrival[divs[v]] == best_delay )
+        {
+          best_candidates.push_back( divs[v] );
+        }
+      }
+      if ( best_candidates.size() == 0 )
+        return std::nullopt;
+
+      std::uniform_int_distribution<> distrib( 0, best_candidates.size() - 1 );
+      int idx = distrib( RNGRWS );
+      supp.push_back( best_candidates[idx] );
+      spfd.update( tts[best_candidates[idx]] );
+    }
+
+    if ( spfd.is_covered() && supp.size() <= 4u )
+    {
+      std::sort( supp.begin(), supp.end() );
+      return supp;
+    }
+    return std::nullopt;
+  }
+
+  template<class SIM, class SPFD>
+  std::optional<std::vector<node>> find_support( std::vector<node> const& divs, node n, SIM const& tts, SPFD & spfd )
+  {
+    spfd.init( tts[n] );
+    auto supp = ps.delay_awareness ? find_support_greedy_delay( divs, tts, spfd ) : find_support_greedy( divs, tts, spfd );
     return supp;
   }
 
@@ -1170,54 +1264,48 @@ public:
     return std::make_tuple( tt, mk );
   }
 
-  std::optional<opto_candidate_t> find_functional_rewriting( node const& n )
+  std::optional<opto_candidate_t> find_functional_rewriting_exhaustive( node const& n )
   {
-    float mffc_area;
+
+    if( !ps.try_window )
+    {
+      return std::nullopt;
+    }
+    
+    double mffc_area;
     collector_st_t collector_st;
 
-    DivCollector collector( ntk, ps, collector_st );
+    DivCollector collector( ntk, _arrival, _required, ps, collector_st );
     const auto collector_success = collector.run( n, mffc_area );
     if ( !collector_success )
     {
       return std::nullopt; /* next */
     }
 
-    //std::cout << "F(amffc " << area_mffc << std::endl;
     std::vector<signal> leaves_sig(collector.leaves.size());
     std::transform( collector.leaves.begin(), collector.leaves.end(), leaves_sig.begin(), [&]( const node n ) {
       auto f = ntk.make_signal( n );
       return f;
     } );
 
-//    std::cout << "RC:";
-//    for( auto x : collector.leaves )
-//    {
-//      std::cout << x << " ";
-//    }
-//    std::cout << std::endl;
-
-    //collect_mffc( mffc, n, leaves_sig );
-
     simulate_window( collector.leaves, collector.divs, collector.mffc, n );
 
     // find functional cut
-    auto supp = find_support( collector.divs, n, _ttW );
+    auto supp = find_support( collector.divs, n, _ttW, _wSpfd );
     if( supp )
     {
-//      std::cout << "SUPP:";
-//      for( auto x : *supp )
-//      {
-//        std::cout << x << " ";
-//      }
-//      std::cout << std::endl;
+      if( VERBOSE )
+      {
+        std::cout << "SUPP|w:";
+        for( auto x : *supp )
+        {
+          std::cout << x << " ";
+        }
+        std::cout << std::endl;
+      }
 
       auto [func, care] = extract_functionality( *supp, n, _ttW );
       auto dontcare = ~care;
-
-//      kitty::print_binary( func );
-//      printf("\n");
-//      kitty::print_binary( care );
-//      printf("\n");
 
       std::vector<uint32_t> dcs;
       for( int bit{0}; bit<16; ++bit )
@@ -1229,7 +1317,7 @@ public:
       }
 
       uint64_t best_key;
-      float best_area = mffc_area;
+      double best_area = mffc_area;
       std::vector<uint8_t> best_perm;
 
 
@@ -1252,25 +1340,24 @@ public:
         auto neg = std::get<1>( config );
         auto perm = std::get<2>( config );
 
-        //kitty::print_binary(func_p);
-        //printf("\n");
-
         auto key = _database.get_key( repr );
-//        printf("%f <? %f\n", _database._areas[*key], mffc_area );
-        if( _database._areas[*key] < best_area )
+
+        if( key )
         {
-          best_key = *key;
-          best_area = _database._areas[*key];
-          best_perm = perm;
+          double area = _database._areas[*key];
+          if( *key == _BUF_ID )
+            area = 0;
+          if( area < best_area )
+          {
+            best_key = *key;
+            best_area = _database._areas[*key];
+            best_perm = perm;
+          }
         }
       }
 
-      //printf("%f >? %f\n", max_inserts, best_area);
-      if( best_area < mffc_area )
+      if( mffc_area - best_area > ps.eps_fun )
       {
-//        printf("]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]\n");
-//        printf("]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]\n");
-//        printf("]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]\n");
         opto_candidate_t cand;
 
         std::array<uint8_t, num_vars> permutation;
@@ -1297,10 +1384,9 @@ public:
         cand.id = best_key;
 
         /* resynthesis reward */
-        float area_mffc = area_contained_mffc( n, cand.leaves );
-        //std::cout << "S(amffc " << area_mffc << std::endl;
+        double area_mffc = area_contained_mffc( n, cand.leaves );
 
-        //cand.reward = area_mffc - *cost;
+        cand.reward = area_mffc - best_area;
         return cand;
       }
 
@@ -1309,6 +1395,158 @@ public:
     return std::nullopt;
   }
 
+  void check_tts( node const& n )
+  {
+    if( !_ttG.has(n) )
+    {
+      _ttG.resize();
+      _ttC.resize();
+      simulate_node_static<Ntk, S>( ntk, n, _ttG, _gSim );
+      simulate_node_static<Ntk, 6>( ntk, n, _ttC, _cSim );
+    }
+    else if ( _ttG[n].num_bits() != _gSim.num_bits() )
+    {
+      simulate_node_static<Ntk, S>( ntk, n, _ttG, _gSim );
+      simulate_node_static<Ntk, 6>( ntk, n, _ttC, _cSim );
+    }
+  }
+
+  std::optional<opto_candidate_t> find_functional_rewriting_signatures( node const& n )
+  {
+
+    if( !ps.try_simula )
+    {
+      return std::nullopt;
+    }
+
+    double mffc_area;
+    collector_st_t collector_st;
+
+    DivCollector collector( ntk, _arrival, _required, ps, collector_st );
+    const auto collector_success = collector.run( n, mffc_area );
+    if ( !collector_success )
+    {
+      return std::nullopt; /* next */
+    }
+
+    std::vector<signal> leaves_sig(collector.leaves.size());
+    std::transform( collector.leaves.begin(), collector.leaves.end(), leaves_sig.begin(), [&]( const node n ) {
+      auto f = ntk.make_signal( n );
+      return f;
+    } );
+
+    // verify that all the signatures are valid
+    check_tts(n);
+    for( auto d : collector.divs )
+    {
+      check_tts(d);
+    }
+
+    // find functional cut
+    auto supp = find_support( collector.divs, n, _ttG, _gSpfd );
+    if( supp )
+    {
+      if( VERBOSE )
+      {
+        std::cout << "SUPP|s:";
+        for( auto x : *supp )
+        {
+          std::cout << x << " ";
+        }
+        std::cout << std::endl;
+      }
+      std::nullopt;
+
+      auto [func, care] = extract_functionality( *supp, n, _ttG );
+      auto dontcare = ~care;
+
+      std::vector<uint32_t> dcs;
+      for( int bit{0}; bit<16; ++bit )
+      {
+        if( kitty::get_bit( dontcare, bit ) > 0 )
+        {
+          dcs.push_back(bit);
+        }
+      }
+
+      uint64_t best_key;
+      double best_area = mffc_area;
+      std::vector<uint8_t> best_perm;
+
+
+      for( uint32_t m{0}; m< (1<<dcs.size()); ++m )
+      {
+        auto tt = func;
+
+        for( int i{0}; i<dcs.size(); ++i )
+        {
+          if( (m >> i)&0x1 == 0x1 )
+          {
+            kitty::flip_bit( tt, dcs[i] );
+          }
+        }
+
+        /* p-canonize */
+        auto config = kitty::exact_p_canonization( tt );
+
+        auto repr = std::get<0>( config );
+        auto neg = std::get<1>( config );
+        auto perm = std::get<2>( config );
+
+        auto key = _database.get_key( repr );
+
+        if( key )
+        {
+          double area = _database._areas[*key];
+          if( *key == _BUF_ID )
+            area = 0;
+          if( area < best_area )
+          {
+            best_key = *key;
+            best_area = _database._areas[*key];
+            best_perm = perm;
+          }
+        }
+      }
+
+      if( mffc_area - best_area > ps.eps_fun )
+      {
+        opto_candidate_t cand;
+
+        std::array<uint8_t, num_vars> permutation;
+
+        for ( auto j = 0u; j < num_vars; ++j )
+        {
+          permutation[best_perm[j]] = j;
+        }
+
+        /* save output negation to apply */
+
+        {
+          auto j = 0u;
+          for ( auto const leaf : *supp )
+          {
+            cand.leaves[permutation[j++]] = ntk.make_signal( leaf );
+          }
+
+          while ( j < num_vars )
+            cand.leaves[permutation[j++]] = ntk.get_constant( false );
+        }
+
+        /* resynthesis cost */
+        cand.id = best_key;
+
+        /* resynthesis reward */
+        double area_mffc = area_contained_mffc( n, cand.leaves );
+
+        cand.reward = area_mffc - best_area;
+        return cand;
+      }
+
+      }
+
+    return std::nullopt;
+  }
 
   large_lig_index_list resynthesize_index_list( opto_candidate_t const& cand )
   {
@@ -1343,13 +1581,11 @@ public:
         type = 0;
         sc_id = entry[i];
         lit = index_list.add_function( children, ntk._library[sc_id].function, ntk._library[sc_id].area, ntk._library[sc_id].id );
-//        std::cout << lit << std::endl;
         lits.push_back( lit );
         children.clear();
       }
     }
     index_list.add_output( lit );
-//    std::cout << "id list area " << index_list.get_area() << std::endl;
     return index_list;
   }
 
@@ -1360,16 +1596,58 @@ public:
     {
       divs_sig.push_back( leaves[i] );
     }
-//    std::transform( leaves.begin(), leaves.end(), divs_sig.begin(), [&]( const node n ) {
-//      auto f = ntk.make_signal( n );
-//      return f;
-//    } );
 
     signal res;
     insert( ntk, divs_sig.begin(), divs_sig.end(), index_list, [&]( signal const& s ) {
       res = s;
     } );
     return res;
+  }
+
+  bool is_timing_acceptable( std::array<signal, 4u> const& leaves, signal fnew, node nold )
+  {
+
+    node nnew = ntk.get_node( fnew );
+
+    /* necessary setup for evaluating arrival time */
+    ntk.clear_visited();
+    for( auto x : leaves )
+    {
+      ntk.set_visited( ntk.get_node(x), 1u );
+    }
+    double new_arrival = compute_arrival_rec( nnew );
+    double new_required = _required.has(nnew) ? _required[nnew] : std::numeric_limits<double>::max();
+
+    ntk.clear_visited();
+
+    if( ( new_arrival < (_required[nold]-ps.eps_time) ) && ( new_arrival < (new_required-ps.eps_time) ) && (new_arrival < (_max_delay-ps.eps_time) ) )// && (new_arrival < _max_delay ) && new_required  _required[nold] )
+    {
+      return true;
+    }
+
+    return false;
+  }
+
+  void found_cex()
+  {
+    sig_pointer = (sig_pointer+1)%(1<<S);
+
+    _cSim.add_pattern( _validator.cex );
+    if ( sig_pointer % 64 == 0 )
+    {
+      _ttC.reset();
+      simulate_nodes_static<Ntk>( ntk, _ttC, _cSim, true );
+
+      ntk.foreach_pi( [&]( auto const& n, auto i ) {
+        *(_ttG[n].begin() + _block) = *(_ttC[n].begin());
+      } );
+
+      ntk.foreach_gate( [&]( auto const& n, auto i ) {
+        *(_ttG[n].begin() + _block) = *(_ttC[n].begin());
+      } );
+
+      _block = S == 6u ? 0u : ( _block + 1u ) % ( ( 1u << ( S - 6u ) ) - 1u ) ;
+    }
   }
 
   void perform_rewrubbing()
@@ -1389,20 +1667,29 @@ public:
     std::array<signal, num_vars> leaves;
     std::array<signal, num_vars> best_leaves;
     std::array<uint8_t, num_vars> permutation;
-    //signal best_signal;
 
 
-    /*
-    auto& db = library.get_database();*/
+    tech_library_params tps;
+    tech_library<5, classification_type::np_configurations> tech_lib( ntk._library, tps );
+    auto [buf_area, buf_delay, buf_id] = tech_lib.get_buffer_info();
+    auto [inv_area, inv_delay, inv_id] = tech_lib.get_inverter_info();
 
+    
     const auto size = ntk.size(); 
+
+    if ( ps.preserve_depth )
+    {
+      compute_arrival();
+      compute_required( _max_delay );
+    }
+
     ntk.foreach_gate( [&]( auto const& n, auto i ) {
 
       /* exit condition */
       if (  i >= size ) //ntk.fanout_size( n ) == 0u ||
         return false;
 
-      if ( ntk.is_constant(n) )
+      if ( ntk.is_constant(n) || ntk.is_dead(n) )
       {
         return true; /* terminate */
       }
@@ -1415,65 +1702,136 @@ public:
       /* verify if there is the need to update the required times */
       if( ps.preserve_depth && ntk.is_marked( n ) )
       {
+        compute_arrival();
         compute_required( _max_delay );
-        ntk.clear_marked();
       }
 
       /* find structural optimization opportunities */
+      auto win_opto = find_functional_rewriting_exhaustive( n );
       auto str_opto = find_structural_rewriting( cut_manager, cuts, n );
 
-      /* best resub is structural */
+      int choice{-1};
+
+      if( ps.try_struct && str_opto )
       {
-        if( str_opto )
+        bool win_window = ps.try_window && ( (*str_opto).reward > (*win_opto).reward );
+        //bool win_simula = ps.try_simula && ( (*str_opto).reward > (*sim_opto).reward );
+        if( win_window )//&& win_simula )
+          choice=0;
+      }
+      
+      if( choice == -1 && ps.try_window && win_opto )
+      {
+        bool win_struct = ps.try_struct && ( (*win_opto).reward >= (*str_opto).reward );
+        //bool win_simula = ps.try_simula && ( (*win_opto).reward > (*sim_opto).reward );
+        if( win_struct )//&& win_simula )
+          choice=1;
+      }
+
+      /* best resub is structural */
+      if( choice == 0 )
+      {
         {
           auto index_list = resynthesize_index_list( *str_opto );
-//          std::cout << "idlist string = " << to_index_list_string( index_list ) << std::endl;
-//          std::cout << "idlist weird  = " ;
-//          for( auto x : _database._idlists[(*str_opto).id] )
-//            std::cout << x << " ";
-//          std::cout << std::endl;
-
           auto fnew = resynthesize_sub_network( index_list, (*str_opto).permutation, (*str_opto).leaves );
-//          std::cout << fnew <<std::endl;
-          ntk.substitute_node( n, fnew );
-
-          if( ps.preserve_depth )
+          if( index_list.num_gates() == 1 && index_list.ids[0]==buf_id )
           {
-            compute_arrival();
+            fnew = ntk.get_children_signal( ntk.get_node(fnew), 0 );
           }
-          return true;
+          
+          if( !ps.preserve_depth || is_timing_acceptable( (*str_opto).leaves, fnew, n ) )
+          {
+            ntk.substitute_node( n, fnew );
+            if( ps.preserve_depth )
+            {
+              compute_arrival();
+              compute_required( _max_delay );
+            }
+            aStr += (*str_opto).reward;
+          }
         }
       }
-
-
-      auto fun_opto = find_functional_rewriting( n );
-
-      /* best resub is structural */
+      else if( choice == 1 )
       {
-        if( fun_opto )
         {
-          auto index_list = resynthesize_index_list( *fun_opto );
+          auto index_list = resynthesize_index_list( *win_opto );
           if( index_list.num_gates() > 0 )
           {
-          //std::cout << "F: "<< to_index_list_string( index_list ) << std::endl;
-          //for( auto x : _database._idlists[(*fun_opto).id] )
-          //  std::cout << x << " ";
-          //std::cout << std::endl;
+            if( VERBOSE )
+            {
+              std::cout << "F: "<< to_index_list_string( index_list ) << std::endl;
+              for( auto x : _database._idlists[(*win_opto).id] )
+                std::cout << x << " ";
+              std::cout << std::endl;
+            }
 
-          auto fnew = resynthesize_sub_network( index_list, (*fun_opto).permutation, (*fun_opto).leaves );
-          //std::cout << "new signal " << fnew <<std::endl;
-          //std::cout << "substitute " << fnew << " " << n <<std::endl;
-          ntk.substitute_node( n, fnew );
-          std::cout << "substituted " << fnew  <<std::endl;
+            auto fnew = resynthesize_sub_network( index_list, (*win_opto).permutation, (*win_opto).leaves );
 
-          if( ps.preserve_depth )
-          {
-            compute_arrival();
-          }
-          return true;
+            if( !ps.preserve_depth || is_timing_acceptable( (*win_opto).leaves, fnew, n ) )
+            {
+              ntk.substitute_node( n, fnew );
+              if( ps.preserve_depth )
+              {
+                compute_arrival();
+                compute_required( _max_delay );
+              }
+              aWin += (*win_opto).reward;
+            }
           }
         }
       }
+      else 
+      {
+        auto sim_opto = find_functional_rewriting_signatures( n );
+        if( sim_opto )
+        {
+          auto index_list = resynthesize_index_list( *sim_opto );
+          if( index_list.num_gates() > 0 )
+          {
+            if( VERBOSE )
+            {
+              std::cout << "S: "<< to_index_list_string( index_list ) << std::endl;
+              for( auto x : _database._idlists[(*sim_opto).id] )
+                std::cout << x << " ";
+              std::cout << std::endl;
+            }
+
+            /* check equivalence */
+            std::vector<node> divs;
+            for( int i{0}; i<4; ++i )
+            {
+              divs.push_back( ( *sim_opto ).leaves[i] );
+            }
+
+            auto fnew = resynthesize_sub_network( index_list, (*sim_opto).permutation, (*sim_opto).leaves );
+            
+            if( !ps.preserve_depth || is_timing_acceptable( (*sim_opto).leaves, fnew, n ) )
+            {
+              auto valid = _validator.validate( ntk.make_signal(n), fnew );
+              if( valid )
+              {
+                if( *valid )
+                { 
+                  ntk.substitute_node( n, fnew );
+                  aSim += (*sim_opto).reward;
+
+                  if( ps.preserve_depth )
+                  {
+                    compute_arrival();
+                    compute_required( _max_delay );
+                  }
+                }
+                else
+                {
+                  found_cex();
+                }
+              }
+            }
+          }
+        }
+        //printf("simula has a candidate\n");
+      }
+      
       return true;
 
     });
@@ -1486,16 +1844,34 @@ private:
   rewrub_sc_params const& ps;
   rewrub_sc_stats& st;
 
-  node_map<float, Ntk> _required;
-  node_map<float, Ntk> _arrival;
-  float _max_delay;
+  unordered_node_map<double, Ntk> _required;
+  unordered_node_map<double, Ntk> _arrival;
+  double _max_delay;
+  double _BUF_AREA{0};
+  int _BUF_ID{0};
 
   pLibrary_t& _database;
 
   std::array<kitty::static_truth_table<W>,W> _xsW;
   std::array<kitty::static_truth_table<4u>,4u> _xs4;
   unordered_node_map<kitty::static_truth_table<W>, Ntk> _ttW;
-  spfd_covering_manager_t<kitty::static_truth_table<W>, 16u> _spfd;
+
+  incomplete_node_map<signature_t, Ntk> _ttG;
+  incomplete_node_map<word_t, Ntk> _ttC;
+  validator_t _validator;
+
+  static_simulator<S> _gSim;
+  static_simulator<6> _cSim;
+  uint32_t _block{0};
+  double aStr{0};
+  double aSim{0};
+  double aWin{0};
+
+  uint32_t sig_pointer{0};
+
+
+  spfd_covering_manager_t<kitty::static_truth_table<W>, 16u> _wSpfd;
+  spfd_covering_manager_t<kitty::static_truth_table<S>, 16u> _gSpfd;
   std::vector<node> _leaves;
   std::vector<node> _divs;
   std::vector<node> _mffc;
@@ -1503,23 +1879,23 @@ private:
   uint32_t _candidates{ 0 };
   uint32_t _estimated_gain{ 0 };
 
+  std::shared_ptr<typename network_events<Ntk>::add_event_type> add_event;
+
 
 };
 
 } /* namespace detail */
 
+template<uint32_t W=10u, uint32_t S=8u>
 void rewrub_sc( scopt::scg_network& ntk, pLibrary_t& database, rewrub_sc_params const& ps = {}, rewrub_sc_stats* pst = nullptr )
 {
-
   rewrub_sc_stats st;
 
   using opto_view_t = fanout_view<depth_view<scopt::scg_network>>;
   depth_view<scopt::scg_network> depth_view{ ntk };
   opto_view_t opto_view{ depth_view };
 
-  static constexpr uint32_t W = 16; 
-
-  detail::rewrub_sc_impl<opto_view_t, W> p( opto_view, database, ps, st );
+  detail::rewrub_sc_impl<opto_view_t, W, S> p( opto_view, database, ps, st );
   p.run();
   
 
@@ -1533,7 +1909,7 @@ void rewrub_sc( scopt::scg_network& ntk, pLibrary_t& database, rewrub_sc_params 
     *pst = st;
   }
 
-  ntk = cleanup_dangling( ntk );
+  ntk = cleanup_scg( ntk );
 }
 
 

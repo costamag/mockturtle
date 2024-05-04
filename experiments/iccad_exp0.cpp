@@ -52,10 +52,11 @@ using namespace experiments;
 using namespace mockturtle;
 using namespace std::chrono;
 
-aig_network abc_if( aig_network const& ntk, std::string str_code, uint32_t K=4u )
+template<class Ntk>
+Ntk abc_strash( Ntk const& ntk, std::string str_code )
 {
   write_aiger( ntk, "/tmp/"+str_code+".aig" );
-  std::string command = "abc -q \"r /tmp/"+str_code+".aig; dch -f; if -g; strash; dfraig; write_aiger /tmp/" + str_code + ".aig\"";
+  std::string command = "abc -q \"r /tmp/"+str_code+".aig; strash; write_aiger /tmp/" + str_code + ".aig\"";
 
   std::array<char, 128> buffer;
   std::string result;
@@ -69,11 +70,10 @@ aig_network abc_if( aig_network const& ntk, std::string str_code, uint32_t K=4u 
     result += buffer.data();
   }
 
-  aig_network res;
-
+  Ntk res;
   std::string string_path = ("/tmp/"+str_code+".aig");
   if( lorina::read_aiger( string_path, aiger_reader( res ) ) != lorina::return_code::success )
-    std::cerr << "read_blif failed" << std::endl;
+    std::cerr << "read_aiger failed" << std::endl;
 
   return res;
 }
@@ -113,10 +113,11 @@ int main()
 
   fmt::print( "[i] processing technology library\n" );
 
+  double RUNTIME_LIMIT=180;
 
   /* library to map to technology */
   std::vector<gate> gates;
-  std::ifstream in( cell_libraries_path( "asap7" ) );//sky130
+  std::ifstream in( cell_libraries_path( "asap7" ) );
 
   pLibrary_t database( "asap7" );
 
@@ -129,172 +130,264 @@ int main()
   tech_library<5, classification_type::np_configurations> tech_lib( gates, tps );
 
 
-  double N{1};
-  double rarea1{0};
-  double rareaN{0};
-  double rdept1{0};
-  double rdeptN{0};
-  for ( auto const& benchmark : all_benchmarks( iscas ) )
+  double dA_i_1{0};
+  double dA_i_T{0};
+  double dA_e_1{0};
+  double dA_e_T{0};
+  double aAig0{0};
+  double aMap0{0};
+
+  std::vector<double> hAIG = {0.0};
+  std::vector<double> hMAP = {0.0};
+  std::vector<int> hHEU = {0};
+
+  scopt::emap2_params ps;
+  ps.area_oriented_mapping = true;
+  scopt::emap2_stats st;
+
+  rewrub_sc_params rps;
+
+  rps.delay_awareness = false;
+  rps.preserve_depth = false;
+  rps.max_divisors = 256;
+  rps.try_struct = true;
+  rps.try_window = true;
+  rps.try_simula = true;
+
+  rewrub_sc_stats rst_p1;
+
+
+  for ( auto const& benchmark : all_benchmarks( experiments::systemcaes ) )
   {
-
-
     fmt::print( "[i] processing {}\n", benchmark );
 
-    bool start=true;
-    bool close=false;
-
-    aig_network aig;
-    if ( lorina::read_aiger( experiments::benchmark_path(benchmark), aiger_reader( aig ) ) != lorina::return_code::success )
+    aig_network aig_i;
+    if ( lorina::read_aiger( experiments::benchmark_path(benchmark), aiger_reader( aig_i ) ) != lorina::return_code::success )
     {
       continue;
     }
-    auto aaig_old = aig.num_gates()+1;
-    auto aaig_new = aig.num_gates();
-    depth_view<aig_network> daig{aig};
-    uint32_t daig_old = daig.depth()+1;
-    uint32_t daig_new = daig.depth();
+    /* read the initial AIG size */
+    aAig0 = (double)aig_i.num_gates();
+    hAIG[0]=aAig0;
 
-    if( aig.num_gates()>300000 || benchmark == "hyp"  ) continue;
+    scopt::scg_network scg = emap2_klut( aig_i, tech_lib, ps, &st );
+    scg = cleanup_scg( scg );
+    /* read the initial MAP size */
+    aMap0 = scg.compute_area();
+    hMAP[0]=aMap0;
 
-    if( benchmark != "hyp" )
+    /* optimize once */
+    rewrub_sc( scg, database, rps, &rst_p1 );
+    dA_i_1 = (scg.compute_area()-aMap0)/(aMap0)*100;
+
+    printf("\n a[i, 0]= %6.2f ", scg.compute_area() );
+    printf("-> %6.2f\% \n", dA_i_1 );
+
+
+    /* iteratively optimize */
+
+    printf("Initial iterative optimization\n");
+    double time_now=0;
+    std::clock_t start = clock();
+    double aMapBest = scg.compute_area();
+    while( time_now<RUNTIME_LIMIT )
     {
-
-      while( aaig_new < aaig_old )
+      double aMapOld = scg.compute_area()+1;
+      while( aMapOld > scg.compute_area() )
       {
-        aig = abc_opto( aig, benchmark, "resyn2rs" );
-        aig = cleanup_dangling( aig );
-        aig = abc_opto( aig, benchmark, "compress2rs" );
-        aig = cleanup_dangling( aig );
-//
-        aaig_old = aaig_new;
-        aaig_new = aig.num_gates();
-        printf("%d\n", aaig_new);
-//
+        aMapOld = scg.compute_area();
+        rewrub_sc( scg, database, rps, &rst_p1 );
+        
+        printf("a[e, t]= %6.2f\n", scg.compute_area() );
+
+        std::clock_t end_now = clock();
+        time_now = double(end_now - start) / CLOCKS_PER_SEC;
+      }
+      if( aMapOld < aMapBest )
+      {
+        aMapBest = aMapOld;
+      }
+      if( time_now < RUNTIME_LIMIT )
+      {
+        printf("unmap; strash; emap;\n");
+        aig_i = scg.unmap();
+        aig_i = abc_strash( aig_i, benchmark );
+        scg = emap2_klut( aig_i, tech_lib, ps, &st );
+        scg = cleanup_scg( scg ); 
       }
     }
 
-    const auto cec = benchmark == "hyp" ? true : abc_cec( aig, benchmark );
+    const auto cec = benchmark == "hyp" ? true : abc_cec( scg, benchmark );
     if(!cec)
-      printf("ERROR\n");
-    assert( cec && "[e] not equivalent" );
+      printf("ERROR 1\n");
 
-    scopt::emap2_params ps;
-    ps.required_time = std::numeric_limits<float>::max();
-    ps.area_oriented_mapping = true;
-    scopt::emap2_stats st;
+    dA_i_T = (aMapBest-aMap0)/(aMap0)*100;
 
-    printf("map..\n");
+    printf("\n a[i, T]= %6.2f ", aMapBest );
+    printf("-> %6.2f\% \n", dA_i_T );
 
-    scopt::scg_network scg = emap2_klut( aig, tech_lib, ps, &st );
-    scg = cleanup_scg( scg );
-
-    double const aold = scg.compute_area();
-    double const dold = scg.compute_worst_delay();
-
-    printf("a0)%6f ", aold );
-    std::cout << std::endl;
-    printf("d0)%6f ", dold );
-    std::cout << std::endl;
-
-    rewrub_sc_params rps;
-    rewrub_sc_stats rst_p1;
-
-    double aold1 = scg.compute_area();
-    double dold1 = scg.compute_worst_delay();
-
-
-    std::clock_t begin1 = clock();
-    std::clock_t beginN = clock();
-
-    rewrub_sc( scg, database, rps, &rst_p1 );
-    std::clock_t end1 = clock();
-
-    double aopt1 = scg.compute_area();
-    double dopt1 = scg.compute_worst_delay();
-    printf("[a]%6f ", aold );
-    printf("-> %6f ", scg.compute_area() );
-    printf("[d]%6f ", dold );
-    printf("-> %6f ", scg.compute_worst_delay() );
-
-    std::cout << std::endl;
-
-    scopt::scg_network scg_copy=scg;
-
-
-  //  rps.max_trials = 10;
-  //  rps.max_pis = 8;
-  //  rps.max_divisors = 32;256u
-    double aold_N = scg.compute_area()+1;
-
-    double time_now=0;
-    
-    printf("4 iters\n");
-    int it = 0;
-    while( time_now<180 && aold_N > scg.compute_area() )
+    /* iteratively optimize the AIG */
+    aig_network aig_e;
+    if ( lorina::read_aiger( experiments::benchmark_path(benchmark), aiger_reader( aig_e ) ) != lorina::return_code::success )
     {
-      aold_N = scg.compute_area();
-      it++;
-      aold1 = scg.compute_area();
-      rewrub_sc( scg, database, rps, &rst_p1 );
+      continue;
+    }
+    /* read the initial AIG size */
+    auto aAigOld = aig_e.num_gates() + 1;
+    while( aAigOld > aig_e.num_gates() )
+    {
+      aAigOld = aig_e.num_gates();
+
+      aig_e = abc_opto( aig_e, benchmark, "rw" );
+      if( aig_e.num_gates() < aAigOld )
+      {
+        hHEU.push_back(1);
+        scg = emap2_klut( aig_e, tech_lib, ps, &st );
+        scg = cleanup_scg( scg ); 
+        hAIG.push_back(aig_e.num_gates());
+        hMAP.push_back(scg.compute_area());
+        printf("rw   -> %6.2f -MAP-> %6.2f\n", hAIG[hAIG.size()-1], hMAP[hMAP.size()-1] );
+        continue;
+      }
       
-      printf("[a]%6f ", aold );
-      printf("-> %6f ", scg.compute_area() );
-      printf("[d]%6f ", dold );
-      printf("-> %6f ", scg.compute_worst_delay() );
+      aig_e = abc_opto( aig_e, benchmark, "rs" );
+      if( aig_e.num_gates() < aAigOld )
+      {
+        hHEU.push_back(2);
+        scg = emap2_klut( aig_e, tech_lib, ps, &st );
+        scg = cleanup_scg( scg ); 
+        hAIG.push_back(aig_e.num_gates());
+        hMAP.push_back(scg.compute_area());
+        printf("rs   -> %6.2f -MAP-> %6.2f\n", hAIG[hAIG.size()-1], hMAP[hMAP.size()-1] );
+        continue;
+      }
 
-      std::clock_t end_now = clock();
-      time_now = double(end_now - beginN) / CLOCKS_PER_SEC;
+      aig_e = abc_opto( aig_e, benchmark, "rf" );
+      if( aig_e.num_gates() < aAigOld )
+      {
+        hHEU.push_back(3);
+        scg = emap2_klut( aig_e, tech_lib, ps, &st );
+        scg = cleanup_scg( scg ); 
+        hAIG.push_back(aig_e.num_gates());
+        hMAP.push_back(scg.compute_area());
+        printf("rf   -> %6.2f -MAP-> %6.2f\n", hAIG[hAIG.size()-1], hMAP[hMAP.size()-1] );
+        continue;
+      }
 
-      std::cout << std::endl;
+      aig_e = abc_opto( aig_e, benchmark, "resyn2rs" );
+      if( aig_e.num_gates() < aAigOld )
+      {
+        hHEU.push_back(4);
+        scg = emap2_klut( aig_e, tech_lib, ps, &st );
+        scg = cleanup_scg( scg ); 
+        hAIG.push_back(aig_e.num_gates());
+        hMAP.push_back(scg.compute_area());
+        printf("r2rs -> %6.2f -MAP-> %6.2f\n", hAIG[hAIG.size()-1], hMAP[hMAP.size()-1] );
+        continue;
+      }
+
+      aig_e = abc_opto( aig_e, benchmark, "compress2rs" );
+      if( aig_e.num_gates() < aAigOld )
+      {
+        hHEU.push_back(5);
+        scg = emap2_klut( aig_e, tech_lib, ps, &st );
+        scg = cleanup_scg( scg ); 
+        hAIG.push_back(aig_e.num_gates());
+        hMAP.push_back(scg.compute_area());
+        printf("c2rs -> %6.2f -MAP-> %6.2f\n", hAIG[hAIG.size()-1], hMAP[hMAP.size()-1] );
+        continue;
+      }
+
+      hHEU.push_back(0);
+      scg = emap2_klut( aig_e, tech_lib, ps, &st );
+      scg = cleanup_scg( scg ); 
+      hAIG.push_back(aig_e.num_gates());
+      hMAP.push_back(scg.compute_area());
     }
 
-//    printf("{a}%6f ", aold );
-//    printf("-> %6f ", scg.compute_area() );
-//    printf("{d}%6f ", dold );
-//    printf("-> %6f ", scg.compute_worst_delay() );
+    /* optimize once */
+    rewrub_sc( scg, database, rps, &rst_p1 );
+    dA_e_1 = (scg.compute_area()-aMap0)/(aMap0)*100;
 
-    std::clock_t endN = clock();
-    double timeN = double(endN - beginN) / CLOCKS_PER_SEC;
-    double time1 = double(end1 - begin1) / CLOCKS_PER_SEC;
-
-    start=false;       
-
-    double const d_opt = scg.compute_worst_delay();
-
-    printf("[d]%6f ", dold );
-    printf("-> %6f ", d_opt );
-    std::cout << std::endl;
-
-    auto const cecMP = benchmark == "hyp" ? true : abc_cec( scg, benchmark );
-    if(!cecMP)
-      printf("ERROR\n");
+    printf("\n a[e, 0]= %6.2f ", scg.compute_area() );
+    printf("-> %6.2f\% \n", dA_e_1 );
 
 
-    rarea1 = rarea1*(N-1)/N+(aopt1-aold)/(N*aold);
-    rdept1 = rdept1*(N-1)/N+(dopt1-dold)/(N*dold);
+    /* iteratively optimize */
 
-    rareaN = rareaN*(N-1)/N+(scg.compute_area()-aold)/(N*aold);
-    rdeptN = rdeptN*(N-1)/N+(scg.compute_worst_delay()-dold)/(N*dold);
+    printf("Initial iterative optimization\n");
+    time_now=0;
+    start = clock();
+    aMapBest = scg.compute_area();
+    while( time_now<RUNTIME_LIMIT )
+    {
+      double aMapOld = scg.compute_area()+1;
+      while( aMapOld > scg.compute_area() )
+      {
+        aMapOld = scg.compute_area();
+        rewrub_sc( scg, database, rps, &rst_p1 );
+        
+        printf("a[e, t]= %6.2f\n", scg.compute_area() );
 
-    double dA1 = (aopt1-aold)/(aold);
-    double dAN = (scg.compute_area()-aold)/(aold);
+        std::clock_t end_now = clock();
+        time_now = double(end_now - start) / CLOCKS_PER_SEC;
+      }
+      if( aMapOld < aMapBest )
+      {
+        aMapBest = aMapOld;
+      }
+      if( time_now < RUNTIME_LIMIT )
+      {
+        printf("unmap; strash; emap;\n");
+        aig_e = scg.unmap();
+        aig_e = abc_strash( aig_e, benchmark );
+        scg = emap2_klut( aig_e, tech_lib, ps, &st );
+        scg = cleanup_scg( scg ); 
+      }
+    }
 
-    double dD1 = (dopt1-dold)/(dold);
-    double dDN = (scg.compute_worst_delay()-dold)/(dold);
+    const auto cec2 = benchmark == "hyp" ? true : abc_cec( scg, benchmark );
+    if(!cec2)
+      printf("ERROR 2\n"); 
+ 
+    dA_e_T = (aMapBest-aMap0)/(aMap0)*100;
 
-    printf(" n1 =%f  aN =%f\n", dA1, dAN );
-    printf("<a1>=%f <d1>=%f\n", rarea1, rdept1 );
-    printf("<aN>=%f <dN>=%f\n", rareaN, rdeptN );
-    std::cout << std::endl;
-    N+=1;
+    printf("\n a[e, T]= %6.2f ", aMapBest );
+    printf("-> %6.2f\% \n", dA_e_T );
 
-    exp( benchmark, aold, aopt1, scg.compute_area(), 100*dA1, 100*dAN, dold, dopt1, scg.compute_worst_delay(), 100*dD1, 100*dDN, time1, timeN, cecMP );
+    fmt::print( "[i] design {}\n", benchmark );
+
+    printf("hAIG=np.array([0.00,");
+    int i;
+    for( i=1; i<hAIG.size()-1; ++i )
+    {
+      printf("%6.2f,", 100*(hAIG[i]-hAIG[0])/hAIG[0]);
+    }
+    printf("%6.2f]);\n", 100*(hAIG[i]-hAIG[0])/hAIG[0]);
+
+    printf("hMAP=np.array([0.00,");
+    for( i=1; i<hMAP.size()-1; ++i )
+    {
+      printf("%6.2f,", 100*(hMAP[i]-hMAP[0])/hMAP[0]);
+    }
+    printf("%6.2f]);\n", 100*(hMAP[i]-hMAP[0])/hMAP[0]);
+
+    printf("hHEU=np.array([");
+    for( i=0; i<hHEU.size()-1; ++i )
+    {
+      printf("%d,", hHEU[i]);
+    }
+    printf("%d]);\n", hHEU[i] );
+
+    printf("dMAP[i,1]=%6.2f\n", dA_i_1 );
+    printf("dMAP[i,T]=%6.2f\n", dA_i_T );
+    printf("dMAP[e,1]=%6.2f\n", dA_e_1 );
+    printf("dMAP[e,T]=%6.2f\n", dA_e_T );
 
   }
 
-  exp.save();
-  exp.table();
   return 0;
+
 }
 
 //|       benchmark |    a(map) |   a(opt1) |   a(optN) |    d(map) |   d(opt1) |   d(optN) | t(opt1) | t(optN) |  cec |

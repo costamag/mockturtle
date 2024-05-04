@@ -1878,6 +1878,11 @@ class scg_network
     return static_cast<uint32_t>( _storage->nodes[n].children[idx].index );
   }
 
+  signal get_children_signal( node const& n, uint32_t idx ) const
+  {
+    return _storage->nodes[n].children[idx];
+  }
+
   size_t fanout_size( node const& n ) const
   {
     return _storage->nodes[n].nfos & UINT32_C( 0x7FFFFFFF );
@@ -2163,6 +2168,94 @@ class scg_network
         return;
       }
     }
+
+    aig_network::signal unmap_aig_rec( aig_network::signal const& twin, aig_network& aig, std::vector<aig_network::signal> const& children )
+    {
+      auto i_node = _aig.get_node( twin );
+      auto const& i_gate = _aig._storage->nodes[i_node];
+      if( _aig.is_constant(i_node) )
+      {
+        return twin.complement ? aig.get_constant(true) : aig.get_constant(false);
+      }
+
+      if( _aig.is_pi(i_node) )
+      {
+        return twin.complement ? !children[_aig.pi_index(i_node)] : children[_aig.pi_index(i_node)];
+      }
+      else
+      {
+        aig_network::signal const & a = i_gate.children[0];
+        aig_network::signal const & b = i_gate.children[1];
+        aig_network::signal fa = unmap_aig_rec( a, aig, children );
+        aig_network::signal fb = unmap_aig_rec( b, aig, children );
+        aig_network::signal fo = twin.complement ? !aig.create_and( fa, fb ) : aig.create_and( fa, fb );
+        return fo;
+      }
+    }
+
+    aig_network::signal unmap_rec( node n, aig_network& aig, node_map<aig_network::signal, scg_network>& old_to_new )
+    {
+      if( visited(n) == 1u )
+      {
+        return old_to_new[n];
+      }
+      if( is_constant(n) )
+      {
+        old_to_new[n] = aig.get_constant(false);
+        return old_to_new[n];
+      }
+
+      std::vector<aig_network::signal> children;
+      int i{0};
+      foreach_fanin( n, [&]( auto const& fi ) {
+        node ni = get_node(fi);
+        auto iaig = unmap_rec( ni, aig, old_to_new );
+        children.push_back( iaig );
+      } );
+
+      aig_network::signal faig = unmap_aig_rec( _storage->nodes[n].twin, aig, children );
+      set_visited( n, 1u );
+      old_to_new[n] = faig;
+      return old_to_new[n];
+    }
+
+    aig_network unmap()
+    {
+      clear_visited();
+      node_map<aig_network::signal, scg_network> old_to_new(*this);
+
+      aig_network aig;
+      foreach_pi( [&]( auto n, auto i ) { 
+        old_to_new[n] = aig.create_pi(); 
+        set_visited( n, 1u );
+      } );
+
+      foreach_po( [&]( auto fo, auto i ) { 
+        node no = get_node(fo);
+        auto oaig = unmap_rec( no, aig, old_to_new );
+        aig.create_po( is_complemented(fo) ? !oaig : oaig );
+      } );
+
+      return aig;
+
+//      node n = get_node(f);
+//      const auto nfanin = _storage->nodes[n].children.size();
+//
+//      std::vector<aig_network::signal> children;
+//      int i{0};
+//      foreach_fanin( n, [&]( auto const& fi ) {
+//        aig_network::signal i_signal = {_aig.pi_at(i), is_complemented(fi) };//is_complemented(fi) ? !_aig.pi_at() : _storage->nodes[get_node(fi)].twin;
+//        children.push_back( i_signal );
+//        i++;
+//      } );
+//      print_aig_rec( _aig.get_node(_storage->nodes[n].twin), children );
+//
+//      if( _storage->nodes[n].twin.complement )
+//        printf(" invert\n");
+//      else
+//        printf(" don't invert\n");
+    }
+
   #pragma endregion simulation properties
 
   #pragma region application specific value
@@ -2274,10 +2367,53 @@ class scg_network
         }
       } );
 
-      return area;
+      return std::ceil(area*100.0)/100.0;
     }
 
-    double compute_worst_delay() const
+  double compute_arrival_rec( node n, unordered_node_map<double, scg_network>& delays ) const
+  {
+    if( delays.has(n) )
+    {
+      return delays[n];
+    }
+
+    auto const& g = get_binding( n );
+    double arrival = 0;
+
+    foreach_fanin( n, [&]( auto const& f, auto i ) {
+      double arr_fanin = compute_arrival_rec( get_node(f), delays ); 
+      double pin_delay = std::max( g.pins[i].rise_block_delay, g.pins[i].fall_block_delay );
+      pin_delay = std::ceil(pin_delay * 100.0) / 100.0;
+      arrival = std::max( arrival, (double)( arr_fanin + pin_delay ) );
+    } );
+    delays[n] = std::ceil( arrival * 100.0) / 100.0;
+
+    return delays[n];
+  }
+
+  double compute_worst_delay() const
+  {
+    unordered_node_map<double, scg_network> delays( *this );
+
+    foreach_pi( [&]( auto const& n, auto i ) {
+      delays[n]=0.0;
+    } );
+    delays[0]=0.0;
+
+    double max_delay=0;
+    foreach_po( [&]( auto const& fo, auto i ) {
+      node no = get_node(fo);
+      double out_del = compute_arrival_rec( no, delays );
+      if( out_del > max_delay )
+      {
+        max_delay = out_del;
+      }
+    } );
+    
+    return max_delay;
+  }
+
+    double compute_worst_delay2() const
     {
       topo_view ntk_topo{ *this };
       ntk_topo.set_library( _library );
@@ -2295,7 +2431,8 @@ class scg_network
           auto const& g = get_binding( n );
           double gate_delay = 0;
           foreach_fanin( n, [&]( auto const& f, auto i ) {
-            gate_delay = std::max( gate_delay, (double)( delays[f] + std::max( g.pins[i].rise_block_delay, g.pins[i].fall_block_delay ) ) );
+            double pin_delay = std::ceil( std::max( g.pins[i].rise_block_delay, g.pins[i].fall_block_delay )*100.0 )/100.0;
+            gate_delay = std::max( gate_delay, (double)( delays[f] + pin_delay ) );
           } );
           delays[n] = gate_delay;
           worst_delay = std::max( worst_delay, gate_delay );

@@ -109,7 +109,7 @@ int main()
   using namespace experiments;
   using namespace mockturtle;
 
-  experiment<std::string, double, double, double, double, double, double, double, double, double, double, double, double, bool> exp( "SCOPTA", "benchmark", "a(map)", "a(opt1)", "a(optN)", "da(opt1)", "da(optN)", "d(map)", "d(opt1)", "d(optN)", "dd(opt1)", "dd(optN)", "t(opt1)", "t(optN)", "cec");
+  experiment<std::string, double, double, double, double, double, double, double, double, double, double, double, double, bool, bool> exp( "SCOPTA", "benchmark", "a(map)", "a(opt1)", "a(optN)", "da(opt1)", "da(optN)", "d(map)", "d(opt1)", "d(optN)", "dd(opt1)", "dd(optN)", "t(opt1)", "t(optN)", "cec1", "cec2");
 
   fmt::print( "[i] processing technology library\n" );
 
@@ -131,12 +131,11 @@ int main()
 
   double N{1};
   double rarea1{0};
-  double rareaN{0};
+  double rarea2{0};
   double rdept1{0};
-  double rdeptN{0};
-  for ( auto const& benchmark : all_benchmarks( iscas ) )
+  double rdept2{0};
+  for ( auto const& benchmark : all_benchmarks( epfl ) )
   {
-
 
     fmt::print( "[i] processing {}\n", benchmark );
 
@@ -156,20 +155,18 @@ int main()
 
     if( aig.num_gates()>300000 || benchmark == "hyp"  ) continue;
 
+
     if( benchmark != "hyp" )
     {
-
       while( aaig_new < aaig_old )
       {
         aig = abc_opto( aig, benchmark, "resyn2rs" );
         aig = cleanup_dangling( aig );
         aig = abc_opto( aig, benchmark, "compress2rs" );
         aig = cleanup_dangling( aig );
-//
         aaig_old = aaig_new;
         aaig_new = aig.num_gates();
-        printf("%d\n", aaig_new);
-//
+        printf("1 %d\n", aaig_new);
       }
     }
 
@@ -183,10 +180,13 @@ int main()
     ps.area_oriented_mapping = true;
     scopt::emap2_stats st;
 
+
+
     printf("map..\n");
 
     scopt::scg_network scg = emap2_klut( aig, tech_lib, ps, &st );
     scg = cleanup_scg( scg );
+
 
     double const aold = scg.compute_area();
     double const dold = scg.compute_worst_delay();
@@ -201,24 +201,8 @@ int main()
 
     double aold1 = scg.compute_area();
     double dold1 = scg.compute_worst_delay();
-
-
-    std::clock_t begin1 = clock();
-    std::clock_t beginN = clock();
-
-    rewrub_sc( scg, database, rps, &rst_p1 );
-    std::clock_t end1 = clock();
-
-    double aopt1 = scg.compute_area();
-    double dopt1 = scg.compute_worst_delay();
-    printf("[a]%6f ", aold );
-    printf("-> %6f ", scg.compute_area() );
-    printf("[d]%6f ", dold );
-    printf("-> %6f ", scg.compute_worst_delay() );
-
-    std::cout << std::endl;
-
-    scopt::scg_network scg_copy=scg;
+    rps.preserve_depth=true;
+    rps.required_time=dold1;
 
 
   //  rps.max_trials = 10;
@@ -227,68 +211,113 @@ int main()
     double aold_N = scg.compute_area()+1;
 
     double time_now=0;
-    
-    printf("4 iters\n");
-    int it = 0;
+    std::clock_t begin = clock();
+
     while( time_now<180 && aold_N > scg.compute_area() )
     {
       aold_N = scg.compute_area();
-      it++;
       aold1 = scg.compute_area();
       rewrub_sc( scg, database, rps, &rst_p1 );
       
-      printf("[a]%6f ", aold );
+      printf("1[a]%6f ", aold );
       printf("-> %6f ", scg.compute_area() );
-      printf("[d]%6f ", dold );
+      printf("1[d]%6f ", dold );
       printf("-> %6f ", scg.compute_worst_delay() );
 
       std::clock_t end_now = clock();
-      time_now = double(end_now - beginN) / CLOCKS_PER_SEC;
+      time_now = double(end_now - begin) / CLOCKS_PER_SEC;
 
       std::cout << std::endl;
     }
+    std::clock_t end1 = clock();
 
-//    printf("{a}%6f ", aold );
-//    printf("-> %6f ", scg.compute_area() );
-//    printf("{d}%6f ", dold );
-//    printf("-> %6f ", scg.compute_worst_delay() );
+    
+    aig_network dump = scg.unmap();
+    aaig_old = dump.num_gates()+1;
+    aaig_new = dump.num_gates();
+    dump = abc_opto( dump, benchmark, "balance" );
+    //dump = cleanup_dangling( dump );
+    while( aaig_new < aaig_old )
+    {
+      dump = abc_opto( dump, benchmark, "resyn2rs" );
+      dump = cleanup_dangling( dump );
+      dump = abc_opto( dump, benchmark, "compress2rs" );
+      dump = cleanup_dangling( dump );
+////
+      aaig_old = aaig_new;
+      aaig_new = dump.num_gates();
+      printf("2 %d\n", aaig_new);
+////
+    }
+    auto const cec3 = benchmark == "hyp" ? true : abc_cec( dump, benchmark );
+    if( !cec3 )
+      printf("--------------------------------------------XXXX ERRORRRRRR\n");
 
-    std::clock_t endN = clock();
-    double timeN = double(endN - beginN) / CLOCKS_PER_SEC;
-    double time1 = double(end1 - begin1) / CLOCKS_PER_SEC;
+
+    scopt::scg_network scg2 = emap2_klut( aig, tech_lib, ps, &st );
+    scg2 = cleanup_scg( scg2 );
+
+    aold_N = scg2.compute_area()+1;
+
+    std::clock_t begin2 = clock();
+    while( false&& time_now<180 && aold_N > scg2.compute_area() )
+    {
+      aold_N = scg2.compute_area();
+      rewrub_sc( scg2, database, rps, &rst_p1 );
+      
+      printf("2[a]%6f ", aold );
+      printf("-> %6f ", scg2.compute_area() );
+      printf("2[d]%6f ", dold );
+      printf("-> %6f ", scg2.compute_worst_delay() );
+
+      std::clock_t end_now = clock();
+      time_now = double(end_now - begin2) / CLOCKS_PER_SEC;
+
+      std::cout << std::endl;
+    }
+    std::clock_t end2 = clock();
+
+
+    printf("2)-> %6f ", scg2.compute_area() );
+    printf("{d}%6f ", dold );
+    printf("-> %6f ", scg2.compute_worst_delay() );
+
+    double time2 = double(end2 - begin) / CLOCKS_PER_SEC;
+    double time1 = double(end1 - begin) / CLOCKS_PER_SEC;
 
     start=false;       
 
     double const d_opt = scg.compute_worst_delay();
 
-    printf("[d]%6f ", dold );
-    printf("-> %6f ", d_opt );
-    std::cout << std::endl;
 
-    auto const cecMP = benchmark == "hyp" ? true : abc_cec( scg, benchmark );
-    if(!cecMP)
+    auto const cec1 = benchmark == "hyp" ? true : abc_cec( scg, benchmark );
+    auto const cec2 = benchmark == "hyp" ? true : abc_cec( scg2, benchmark );
+    if(!cec1)
       printf("ERROR\n");
 
+    if(!cec2)
+      printf("ERROR2\n");
 
-    rarea1 = rarea1*(N-1)/N+(aopt1-aold)/(N*aold);
-    rdept1 = rdept1*(N-1)/N+(dopt1-dold)/(N*dold);
 
-    rareaN = rareaN*(N-1)/N+(scg.compute_area()-aold)/(N*aold);
-    rdeptN = rdeptN*(N-1)/N+(scg.compute_worst_delay()-dold)/(N*dold);
+    rarea1 = rarea1*(N-1)/N+(scg.compute_area()-aold)/(N*aold);
+    rdept1 = rdept1*(N-1)/N+(scg.compute_worst_delay()-dold)/(N*dold);
 
-    double dA1 = (aopt1-aold)/(aold);
-    double dAN = (scg.compute_area()-aold)/(aold);
+    rarea2 = rarea2*(N-1)/N+(scg2.compute_area()-aold)/(N*aold);
+    rdept2 = rdept2*(N-1)/N+(scg2.compute_worst_delay()-dold)/(N*dold);
 
-    double dD1 = (dopt1-dold)/(dold);
-    double dDN = (scg.compute_worst_delay()-dold)/(dold);
+    double dA1 = (scg.compute_area()-aold)/(aold);
+    double dA2 = (scg2.compute_area()-aold)/(aold);
 
-    printf(" n1 =%f  aN =%f\n", dA1, dAN );
+    double dD1 = (scg.compute_worst_delay()-dold)/(dold);
+    double dD2 = (scg2.compute_worst_delay()-dold)/(dold);
+
+    printf(" n1 =%f  aN =%f\n", dA1, dA2 );
     printf("<a1>=%f <d1>=%f\n", rarea1, rdept1 );
-    printf("<aN>=%f <dN>=%f\n", rareaN, rdeptN );
+    printf("<aN>=%f <dN>=%f\n", rarea2, rdept2 );
     std::cout << std::endl;
     N+=1;
 
-    exp( benchmark, aold, aopt1, scg.compute_area(), 100*dA1, 100*dAN, dold, dopt1, scg.compute_worst_delay(), 100*dD1, 100*dDN, time1, timeN, cecMP );
+    exp( benchmark, aold, scg.compute_area(), scg2.compute_area(), 100*dA1, 100*dA2, dold, scg.compute_worst_delay(), scg2.compute_worst_delay(), 100*dD1, 100*dD2, time1, time2, cec1, cec2 );
 
   }
 
