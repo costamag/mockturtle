@@ -36,8 +36,8 @@ jobs:
     - name: Run lcov
       run: |
         sudo apt-get install -y lcov
-        lcov -t "result" -o lcov.info -c -d .
-        lcov --ignore-errors mismatch -e lcov.info "*mockturtle/include*" -o lcov_filtered.info
+        lcov -t "result" -o lcov.info -c -d . --rc lcov_branch_coverage=1
+        lcov --ignore-errors mismatch,gcov -e lcov.info "*mockturtle/include*" -o lcov_filtered.info
         lcov -l lcov_filtered.info
     - name: CodeCov
       uses: codecov/codecov-action@v2
