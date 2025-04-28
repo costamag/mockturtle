@@ -34,11 +34,17 @@ jobs:
       run: |
         cd build
         ./test/run_tests "~[quality]"
+    - name: Debug Coverage Data
+      run: |
+        lcov -t "debug" -o debug.info -c -d .
+        lcov -l debug.info
     - name: Run lcov
       run: |
         sudo apt-get install lcov
+        find . -name "*.gcda" -exec rm -f {} +
+        find . -name "*.gcno" -exec rm -f {} +
         lcov -t "result" -o lcov.info -c -d .
-        lcov --ignore-errors mismatch -e lcov.info "*mockturtle/include*" -o lcov_filtered.info
+        lcov --rc geninfo_unexecuted_blocks=1 --ignore-errors mismatch -e lcov.info "*mockturtle/include*" -o lcov_filtered.info
         lcov -l lcov_filtered.info
     - name: CodeCov
       uses: codecov/codecov-action@v2
