@@ -137,7 +137,7 @@ jobs:
         cd build
         ./test/run_tests "~[quality]"
   build-clang13:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     name: Clang 13
     
     steps:
