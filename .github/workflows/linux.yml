@@ -25,6 +25,10 @@ jobs:
         sudo update-alternatives --set g++ /usr/bin/g++-9
         export CXX=/usr/bin/g++-9  # Explicitly set the compiler
         g++ --version  # Verify installation
+    - name: Debug Compiler Installation
+      run: |
+        which g++
+        g++ --version
     - name: Build mockturtle
       run: |
         mkdir build
