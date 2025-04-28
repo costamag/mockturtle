@@ -36,6 +36,7 @@ jobs:
         ./test/run_tests "~[quality]"
     - name: Debug Coverage Data
       run: |
+        sudo apt-get install lcov
         lcov -t "debug" -o debug.info -c -d .
         lcov -l debug.info
     - name: Run lcov
