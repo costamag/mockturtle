@@ -22,6 +22,7 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y g++-9
         sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-9 90
+        g++ --version  # Verify installation
     - name: Build mockturtle
       run: |
         mkdir build
