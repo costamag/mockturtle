@@ -94,7 +94,7 @@ jobs:
         cd build
         ./test/run_tests "~[quality]"
   build-clang11:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     name: Clang 11
     
     steps:
