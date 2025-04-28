@@ -40,6 +40,13 @@ jobs:
     - uses: actions/checkout@v1
       with:
         submodules: true
+    - name: Install GCC 10
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y g++-10
+        sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-10 100
+        sudo update-alternatives --set g++ /usr/bin/g++-10
+        g++ --version # Verify installation
     - name: Build mockturtle
       run: |
         mkdir build
