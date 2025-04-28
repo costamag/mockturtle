@@ -25,6 +25,7 @@ jobs:
         sudo update-alternatives --install /usr/bin/gcov gcov /usr/bin/gcov-9 90
     - name: Build mockturtle
       run: |
+        rm -rf build
         mkdir build
         cd build
         cmake -DCMAKE_CXX_COMPILER=g++-9 -DMOCKTURTLE_TEST=ON -DENABLE_COVERAGE=ON ..
