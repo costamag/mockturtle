@@ -22,7 +22,8 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y g++-9
         sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-9 90
-        sudo update-alternatives --set g++ /usr/bin/g++-9  # Ensure g++-9 is set as default
+        sudo update-alternatives --set g++ /usr/bin/g++-9
+        export CXX=/usr/bin/g++-9  # Explicitly set the compiler
         g++ --version  # Verify installation
     - name: Build mockturtle
       run: |
