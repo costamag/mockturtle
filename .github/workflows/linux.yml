@@ -29,6 +29,7 @@ jobs:
       run: |
         which g++
         g++ --version
+        echo $CXX  # Verify CXX environment variable
     - name: Build mockturtle
       run: |
         mkdir build
