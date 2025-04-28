@@ -29,16 +29,19 @@ jobs:
         mkdir build
         cd build
         cmake -DCMAKE_CXX_COMPILER=g++-9 -DMOCKTURTLE_TEST=ON -DENABLE_COVERAGE=ON ..
-        make run_tests
+        make -j 12 run_tests
     - name: Run tests
       run: |
         cd build
         ./test/run_tests "~[quality]"
+
+    - name: Clean Coverage Data
+      run: find . -name '*.gcda' -o -name '*.gcno' -delete
     - name: Debug Coverage Data
       run: |
         sudo apt-get install lcov
         lcov -t "debug" -o debug.info -c -d .
-        lcov -l debug.info
+        lcov --ignore-errors mismatch -l debug.info
     - name: Run lcov
       run: |
         sudo apt-get install lcov
