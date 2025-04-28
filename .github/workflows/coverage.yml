@@ -17,6 +17,11 @@ jobs:
     - uses: actions/checkout@v1
       with:
         submodules: true
+    - name: Install GCC 9
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y g++-9
+        sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-9 90
     - name: Build mockturtle
       run: |
         mkdir build
@@ -29,7 +34,7 @@ jobs:
         ./test/run_tests "~[quality]"
     - name: Run lcov
       run: |
-        sudo apt-get install lcov
+        sudo apt-get install -y lcov
         lcov -t "result" -o lcov.info -c -d .
         lcov -e lcov.info "*mockturtle/include*" -o lcov_filtered.info
         lcov -l lcov_filtered.info
