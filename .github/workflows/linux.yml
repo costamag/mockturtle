@@ -179,21 +179,6 @@ jobs:
         sudo update-alternatives --set g++ /usr/bin/g++-9
         export CXX=/usr/bin/g++-9  # Explicitly set the compiler
         g++ --version  # Verify installation
-
-        if ! which g++; then
-          echo "Error: g++ is not installed or not in PATH." >&2
-          exit 1
-        fi
-        if ! g++ --version | grep "9."; then
-          echo "Error: g++ version is not GCC 9." >&2
-          exit 1
-        fi
-
-    - name: Debug Environment
-      run: |
-        echo "CXX: $CXX"
-        which g++
-        g++ --version
     - name: Build mockturtle
       run: |
         mkdir build
