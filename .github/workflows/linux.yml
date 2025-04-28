@@ -145,6 +145,29 @@ jobs:
     - uses: actions/checkout@v1
       with:
         submodules: true
+    - name: Install GCC 9
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y g++-9
+        sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-9 90
+        sudo update-alternatives --set g++ /usr/bin/g++-9
+        export CXX=/usr/bin/g++-9  # Explicitly set the compiler
+        g++ --version  # Verify installation
+
+        if ! which g++; then
+          echo "Error: g++ is not installed or not in PATH." >&2
+          exit 1
+        fi
+        if ! g++ --version | grep "9."; then
+          echo "Error: g++ version is not GCC 9." >&2
+          exit 1
+        fi
+
+    - name: Debug Environment
+      run: |
+        echo "CXX: $CXX"
+        which g++
+        g++ --version
     - name: Build mockturtle
       run: |
         mkdir build
