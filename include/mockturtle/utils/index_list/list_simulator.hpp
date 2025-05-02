@@ -34,7 +34,7 @@
 
 #include "index_list.hpp"
 
-#include <functional>
+#include <algorithm>
 #include <vector>
 
 namespace mockturtle
