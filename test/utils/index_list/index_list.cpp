@@ -3,8 +3,8 @@
 #include <kitty/static_truth_table.hpp>
 #include <mockturtle/algorithms/simulation.hpp>
 #include <mockturtle/networks/mig.hpp>
-#include <mockturtle/networks/xag.hpp>
 #include <mockturtle/networks/muxig.hpp>
+#include <mockturtle/networks/xag.hpp>
 #include <mockturtle/utils/index_list/index_list.hpp>
 
 using namespace mockturtle;
