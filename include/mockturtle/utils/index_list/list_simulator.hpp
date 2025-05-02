@@ -121,7 +121,7 @@ public:
   {
     /* update the allocated memory */
     if ( sims.size() < list.num_gates() )
-      sims.resize( std::max( sims.size(), list.num_gates() ) );
+      sims.resize( std::max<size_t>( sims.size(), list.num_gates() ) );
     /* traverse the list in topological order and simulate each node */
     size_t i = 0;
     list.foreach_gate( [&]( element_type const& lit_lhs, element_type const& lit_rhs ) {
