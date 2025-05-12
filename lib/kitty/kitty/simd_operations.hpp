@@ -72,8 +72,6 @@ enum class BinaryOp
   LT // Less Than (ANDNOT)
 };
 
-
-
 inline bool has_avx2_cached()
 {
 #if KITTY_HAS_AVX2
