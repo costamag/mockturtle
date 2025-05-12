@@ -43,7 +43,7 @@
 #include "detail/mscfix.hpp"
 
 #ifndef KITTY_HAS_AVX2
-#if defined( __x86_64__ ) || defined( _M_X64 )
+#if defined( __x86_64__ ) || defined( _M_X64 ) || defined(_MSC_VER)
 #define KITTY_HAS_AVX2 1
 #else
 #define KITTY_HAS_AVX2 0
@@ -51,8 +51,12 @@
 #endif
 
 #if KITTY_HAS_AVX2
+#if defined(_MSC_VER)
+#include <intrin.h>
+#else
 #include <immintrin.h>
 #include <cpuid.h>
+#endif
 #endif
 
 namespace kitty
@@ -68,9 +72,23 @@ enum class BinaryOp
   LT // Less Than (ANDNOT)
 };
 
+
+
 inline bool has_avx2_cached()
 {
 #if KITTY_HAS_AVX2
+#if defined(_MSC_VER)
+  static const bool cached = [] {
+      int cpuInfo[4] = {-1};
+      __cpuid(cpuInfo, 0);
+      if (cpuInfo[0] < 7) {
+          return false;  // AVX2 is supported only from CPUID leaf 7
+      }
+      __cpuidex(cpuInfo, 7, 0);
+      return (cpuInfo[1] & (1 << 5)) != 0;  // Check bit 5 for AVX2
+  }();
+  return cached;
+#else
   static const bool cached = []
   {
     unsigned int eax, ebx, ecx, edx;
@@ -80,6 +98,7 @@ inline bool has_avx2_cached()
     return ( ebx & ( 1 << 5 ) ) != 0; // Bit 5 of EBX indicates AVX2
   }();
   return cached;
+#endif
 #else
   return false;
 #endif
