@@ -656,6 +656,11 @@ public:
     return ( num_gates() + num_pis() ) << 1;
   }
 
+  inline element_type add_not( element_type lit )
+  {
+    return lit ^ 0x1;
+  }
+
   void add_output( element_type lit )
   {
     if constexpr ( separate_header )
@@ -677,6 +682,12 @@ public:
     return lit >> 1;
   }
 
+  /*! \brief Shift right the literal, removing the complementation bit */
+  inline element_type get_literal( uint32_t const& index, bool is_compl = false ) const
+  {
+    return ( index << 1u ) ^ ( is_compl ? 0x1 : 0x0 );
+  }
+
   /*! \brief Returns the node index excluding the constants and the inputs */
   inline uint32_t get_node_index( element_type const& lit ) const
   {
@@ -687,6 +698,12 @@ public:
   inline uint32_t get_pi_index( element_type const& lit ) const
   {
     return get_index( lit ) - offset;
+  }
+
+  /*! \brief Returns the literal associated with the constant value */
+  inline element_type get_constant( bool value )
+  {
+    return value ? 1u : 0u;
   }
 
   /*! \brief When the literal is even ( bit0 = 0 ), it is not complemented */
