@@ -149,7 +149,9 @@ public:
   list_element_t recursive_synthesis( std::vector<list_element_t> & support, incompl_specified_t<NumVars> & func )
   {
     func._bits &= func._care;
-    auto supp = kitty::min_base_inplace<compl_specified_t<NumVars>, true>( func );
+    constexpr bool UseDCs = true;
+    using TT = compl_specified_t<NumVars>;
+    auto supp = kitty::min_base_inplace<TT, UseDCs>( func );
     std::cout << supp.size() << std::endl;
     if ( supp.size() == 0 )
     {
@@ -157,16 +159,9 @@ public:
     }
     else if ( supp.size() == 1 )
     {
-      auto const index = support[0];
+      auto const index = support[supp[0]];
       list_element_t const lit = index_list.get_literal( index );
-      return kitty::equal( func, sims[index] ) ? lit : index_list.add_not( lit );
-    }
-    else
-    {
-      for ( auto it = supp.rbegin(); it != supp.rend(); ++it )
-      {
-        support.erase( support.begin() + *it );
-      }
+      return kitty::equal<TT, UseDCs>( func, sims[index] ) ? lit : index_list.add_not( lit );
     }
   }
 
