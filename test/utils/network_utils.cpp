@@ -104,3 +104,27 @@ TEST_CASE( "clone a window, optimize it, and insert it back", "[network_utils]" 
 
   CHECK( aig.num_gates() == 5u );
 }
+
+TEST_CASE( "count the number of nodes in a transitive fanin", "[network_utils]" )
+{
+  using node = aig_network::node;
+  using signal = aig_network::signal;
+
+  /* original network */
+  aig_network aig;
+  auto const x0 = aig.create_pi();
+  auto const x1 = aig.create_pi();
+  auto const x2 = aig.create_pi();
+  auto const x3 = aig.create_pi();
+  auto const a = aig.create_and( x0, x1 );
+  auto const b = aig.create_and( x2, x3 );
+  auto const t0 = aig.create_and( !a, b );
+  auto const t1 = aig.create_and( a, !b );
+  auto const t2 = aig.create_or( t0, t1 ); // a XOR b
+  auto const t3 = aig.create_and( a, b );
+  aig.create_po( t2 );
+  aig.create_po( t3 );
+
+  CHECK( aig.num_gates() == 6u );
+  CHECK( count_nodes( aig, t2 ) == 5u );
+}
