@@ -2671,4 +2671,11 @@ using iterates_over_truth_table_t = std::enable_if_t<kitty::is_truth_table<typen
 template<class Iterator, typename T>
 inline constexpr bool iterates_over_v = std::is_same_v<typename Iterator::value_type, T>;
 
+/*! \brief Conditiional false value for static assertions.
+ */
+template<typename Ntk>
+struct dependent_false : std::false_type
+{
+};
+
 } /* namespace mockturtle */

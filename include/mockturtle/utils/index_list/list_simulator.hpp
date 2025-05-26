@@ -60,7 +60,7 @@ namespace mockturtle
 
    .. code-block:: c++
 
-      list_simulator<kitty::static_truth_table<4u>> sim;
+      list_simulator<index_list<true>, kitty::static_truth_table<4u>> sim;
       sim( list1, inputs1 );
       sim( list2, inputs2 );
    \endverbatim
