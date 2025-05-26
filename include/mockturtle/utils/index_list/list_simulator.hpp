@@ -60,19 +60,19 @@ namespace mockturtle
 
    .. code-block:: c++
 
-      xag_list_simulator<kitty::static_truth_table<4u>> sim;
+      list_simulator<kitty::static_truth_table<4u>> sim;
       sim( list1, inputs1 );
       sim( list2, inputs2 );
    \endverbatim
  */
-template<class TT>
-class xag_list_simulator
+template<typename List, typename TT>
+class list_simulator
 {
 public:
   /* Type of the literals of the index list */
-  using element_type = typename xag_index_list<true>::element_type;
+  using element_type = typename List::element_type;
 
-  xag_list_simulator()
+  list_simulator()
       : const0( TT().construct() )
   {
     /* The value 20 is chosen as it allows us to store most practical XAIG index lists */
@@ -88,8 +88,7 @@ public:
    * \param inputs Vector of pointers to the input truth tables.
    * \param lit Literal whose simulation we want to extract.
    */
-  template<bool separate_header>
-  inline void get_simulation_inline( TT& res, xag_index_list<separate_header> const& list, std::vector<TT const*> const& inputs, element_type const& lit )
+  inline void get_simulation_inline( TT& res, List const& list, std::vector<TT const*> const& inputs, element_type const& lit )
   {
     if ( list.is_constant( lit ) )
     {
@@ -116,27 +115,44 @@ public:
    * \param list Index list to be simulated.
    * \param inputs Vector of TT references corresponding to the input truth tables
    */
-  template<bool separate_header>
-  void operator()( xag_index_list<separate_header> const& list, std::vector<TT const*> const& inputs )
+  void operator()( List const& list, std::vector<TT const*> const& inputs )
   {
     /* update the allocated memory */
     if ( sims.size() < list.num_gates() )
-      sims.resize( std::max<size_t>( sims.size(), list.num_gates() ) );
+      sims.resize( std::max<size_t>( sims.size(), list.num_gates() ) ); /* ensure that the constant 0 simulation is correct ( for dynamic truth tables ) */
+    if ( const0.num_vars() != inputs[0]->num_vars() )
+      const0 = inputs[0]->construct();
     /* traverse the list in topological order and simulate each node */
     size_t i = 0;
-    list.foreach_gate( [&]( element_type const& lit_lhs, element_type const& lit_rhs ) {
-      auto const [tt_lhs_ptr, is_lhs_compl] = get_simulation( list, inputs, lit_lhs );
-      auto const [tt_rhs_ptr, is_rhs_compl] = get_simulation( list, inputs, lit_rhs );
-      sims[i++] = list.is_and( lit_lhs, lit_rhs )
-                      ? complement( *tt_lhs_ptr, is_lhs_compl ) & complement( *tt_rhs_ptr, is_rhs_compl )
-                      : complement( *tt_lhs_ptr, is_lhs_compl ) ^ complement( *tt_rhs_ptr, is_rhs_compl );
-    } );
+    if constexpr ( std::is_same<List, xag_index_list<true>>::value || std::is_same<List, xag_index_list<false>>::value )
+    {
+      list.foreach_gate( [&]( element_type const& lit_lhs, element_type const& lit_rhs ) {
+        auto const [tt_lhs_ptr, is_lhs_compl] = get_simulation( list, inputs, lit_lhs );
+        auto const [tt_rhs_ptr, is_rhs_compl] = get_simulation( list, inputs, lit_rhs );
+        sims[i++] = list.is_and( lit_lhs, lit_rhs )
+                        ? complement( *tt_lhs_ptr, is_lhs_compl ) & complement( *tt_rhs_ptr, is_rhs_compl )
+                        : complement( *tt_lhs_ptr, is_lhs_compl ) ^ complement( *tt_rhs_ptr, is_rhs_compl );
+      } );
+    }
+    else if constexpr ( std::is_same<List, mig_index_list>::value )
+    {
+      list.foreach_gate( [&]( element_type const& lit0, element_type const& lit1, element_type const& lit2 ) {
+        auto const [tt_0_ptr, is_0_compl] = get_simulation( list, inputs, lit0 );
+        auto const [tt_1_ptr, is_1_compl] = get_simulation( list, inputs, lit1 );
+        auto const [tt_2_ptr, is_2_compl] = get_simulation( list, inputs, lit2 );
+        sims[i++] = maj( complement( *tt_0_ptr, is_0_compl ), complement( *tt_1_ptr, is_1_compl ), complement( *tt_2_ptr, is_2_compl ) );
+      } );
+    }
   }
 
-private:
   inline TT complement( TT const& tt, bool c )
   {
     return c ? ~tt : tt;
+  }
+
+  inline TT maj( TT const& tt0, TT const& tt1, TT const& tt2 )
+  {
+    return ( tt0 & tt1 ) | ( tt0 & tt2 ) | ( tt1 & tt2 );
   }
 
   /*! \brief Return the simulation associated to the literal
@@ -150,8 +166,7 @@ private:
    *
    * \return A tuple containing a pointer to the simulation pattern and a flag for complementation.
    */
-  template<bool separate_header>
-  [[nodiscard]] std::tuple<TT const*, bool> get_simulation( xag_index_list<separate_header> const& list, std::vector<TT const*> const& inputs, element_type const& lit )
+  [[nodiscard]] std::tuple<TT const*, bool> get_simulation( List const& list, std::vector<TT const*> const& inputs, element_type const& lit )
   {
     if ( list.num_pis() != inputs.size() )
       throw std::invalid_argument( "Mismatch between number of PIs and input simulations." );

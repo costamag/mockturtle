@@ -242,6 +242,8 @@ struct mig_index_list
 {
 public:
   using element_type = uint32_t;
+  /* Literal used for the first primary input */
+  static constexpr uint32_t offset = 1;
 
 public:
   explicit mig_index_list( uint32_t num_pis = 0 )
@@ -319,11 +321,85 @@ public:
     return ( num_gates() + num_pis() ) << 1;
   }
 
+  inline element_type add_not( element_type lit )
+  {
+    return lit ^ 0x1;
+  }
+
   void add_output( element_type lit )
   {
     assert( num_pos() + 1 <= 0xff );
     values.at( 0u ) = ( num_pos() + 1 ) << 8 | ( values.at( 0u ) & 0xffff00ff );
     values.push_back( lit );
+  }
+
+  /*! \brief Shift right the literal, removing the complementation bit */
+  inline uint32_t get_index( element_type const& lit ) const
+  {
+    return lit >> 1;
+  }
+
+  /*! \brief Shift right the literal, removing the complementation bit */
+  inline element_type get_literal( uint32_t const& index, bool is_compl = false ) const
+  {
+    return ( index << 1u ) ^ ( is_compl ? 0x1 : 0x0 );
+  }
+
+  /*! \brief Returns the node index excluding the constants and the inputs */
+  inline uint32_t get_node_index( element_type const& lit ) const
+  {
+    return get_index( lit ) - num_pis() - offset;
+  }
+
+  /*! \brief Returns index of an input literal */
+  inline uint32_t get_pi_index( element_type const& lit ) const
+  {
+    return get_index( lit ) - offset;
+  }
+
+  /*! \brief Returns the literal associated with the constant value */
+  inline element_type get_constant( bool value )
+  {
+    return value ? 1u : 0u;
+  }
+
+  /*! \brief When the literal is even ( bit0 = 0 ), it is not complemented */
+  inline bool is_complemented( element_type const& lit ) const
+  {
+    return lit % 2;
+  }
+
+  /*! \brief The AND gate is distinguished by the EXOR gate based on the order of the input literals */
+  inline bool is_maj( element_type const& lit0, element_type const& lit1, element_type const& lit2 ) const
+  {
+    (void)lit0;
+    (void)lit1;
+    (void)lit2;
+    return true;
+  }
+
+  /*! \brief Check if a literal is a PI
+   *
+   * The index of the literal is shifted based on the usage of the separate_header.
+   * There are two cases identifying that the literal is not an input:
+   * -  The shifted index overflows : the literal was a constant 0.aig_hash
+   * -  The shifted integer is larger than the number of inputs.
+   */
+  inline bool is_pi( element_type const& lit ) const
+  {
+    uint32_t index = get_index( lit );
+    return index < num_pis() + 1;
+  }
+
+  inline bool is_constant( element_type const& lit ) const
+  {
+    return lit <= 1;
+  }
+
+  inline element_type po_at( uint32_t index )
+  {
+    assert( index < num_pos() );
+    return *( values.end() - num_pos() + index );
   }
 
 private:
