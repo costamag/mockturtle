@@ -36,10 +36,17 @@
 
 #pragma once
 
+#include "../../networks/aig.hpp"
+#include "../../networks/xag.hpp"
+#include "../../utils/databases/database_manager.hpp"
 #include "../../utils/index_list/index_list.hpp"
+#include "../../utils/network_utils.hpp"
 #include "../../utils/stopwatch.hpp"
+#include "../node_resynthesis/xag_npn.hpp"
 
 #include <kitty/kitty.hpp>
+
+#include <type_traits>
 
 namespace mockturtle
 {
@@ -64,7 +71,7 @@ struct xag_synth_stats
  *
  * The algorithm combines symmetry-based synthesis, decomposition, and SPFD synthesis.
  *
- * The algorithm accepts an incompletely specified function, which must be provided 
+ * The algorithm accepts an incompletely specified function, which must be provided
  * by specifying the onset and the careset with two truth tables of the same type.
  * The algorithm then automatically synthesizes the function combining the following
  * techniques:
@@ -90,7 +97,7 @@ struct xag_synth_stats
       auto result = resyn( func, num_inputs );
    \endverbatim
  */
-template<uint32_t NumVars>
+template<uint32_t NumVars, bool UseXors = false>
 class xag_synth_decompose
 {
 public:
@@ -106,11 +113,20 @@ public:
   template<uint32_t N>
   using incompl_specified_t = kitty::ternary_truth_table<compl_specified_t<N>>;
 
+  using Ntk = typename std::conditional<UseXors, xag_network, aig_network>::type;
+
+  using signal = typename Ntk::signal;
+  using node = typename Ntk::node;
+
+  static constexpr xag_npn_db_kind database_t = UseXors ? xag_npn_db_kind::xag_complete : xag_npn_db_kind::aig_complete;
 
 public:
   explicit xag_synth_decompose( stats& st ) noexcept
-      : st( st )
+      : st( st ), database()
   {
+    for ( auto i = 0u; i < 32u; ++i )
+      ntk.create_pi();
+
     for ( auto i = 0u; i < 4u; ++i )
     {
       kitty::create_nth_var( proj_fns[i], i );
@@ -122,7 +138,7 @@ public:
     {
       kitty::create_nth_var( tmp, i );
       incompl_specified_t<NumVars> tt( tmp );
-      sims[i+1] = tt;
+      sims[i + 1] = tt;
     }
   }
 
@@ -146,23 +162,24 @@ public:
     index_list.add_output( lit );
   }
 
-  list_element_t recursive_synthesis( std::vector<list_element_t> & support, incompl_specified_t<NumVars> & func )
+  list_element_t recursive_synthesis( std::vector<list_element_t>& support, incompl_specified_t<NumVars>& func )
   {
     func._bits &= func._care;
     constexpr bool UseDCs = true;
     using TT = compl_specified_t<NumVars>;
     auto supp = kitty::min_base_inplace<TT, UseDCs>( func );
-    std::cout << supp.size() << std::endl;
-    if ( supp.size() == 0 )
+    size_t supp_size = supp.size();
+    if ( supp_size == 0 )
     {
       return index_list.get_constant( !kitty::is_const0( func._bits & func._care ) );
     }
-    else if ( supp.size() == 1 )
+    else if ( supp_size == 1 )
     {
       auto const index = support[supp[0]];
       list_element_t const lit = index_list.get_literal( index );
       return kitty::equal<TT, UseDCs>( func, sims[index] ) ? lit : index_list.add_not( lit );
     }
+    return 0;
   }
 
   index_list_t const& get_list() const
@@ -179,6 +196,10 @@ private:
   index_list_t index_list;
   /*! \brief Index of a variable in the index list. */
   std::vector<list_element_t> support;
+
+  database_manager<Ntk> database;
+  /*! \brief Network representation of an index list. Used to exploit strashing. */
+  Ntk ntk;
 
   stats& st;
 };

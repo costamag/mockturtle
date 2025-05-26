@@ -36,7 +36,7 @@ void test_npn_lookup()
     /* verify that at least a match is found */
     CHECK( info );
     Ntk ntk;
-    std::vector<signal<Ntk>> pis;
+    std::vector<typename Ntk::signal> pis;
     for ( auto i = 0u; i < num_vars; ++i )
     {
       pis.push_back( ntk.create_pi() );
