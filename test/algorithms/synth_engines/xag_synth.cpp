@@ -81,7 +81,7 @@ void test_xag_n_input_functions()
   xag_synth_stats st;
   xag_synth_decompose engine( st );
   using TT = kitty::static_truth_table<NumVars>;
-  kitty::static_truth_table<NumVars> onset, careset;
+  kitty::static_truth_table<NumVars> onset;
   large_xag_index_list list;
 
   list_simulator<xag_index_list<true>, TT> sim;
@@ -123,7 +123,7 @@ void test_xag_n_input_functions_random()
   xag_synth_stats st;
   xag_synth_decompose engine( st );
   using TT = kitty::static_truth_table<NumVars>;
-  kitty::static_truth_table<NumVars> onset, careset;
+  kitty::static_truth_table<NumVars> onset;
   large_xag_index_list list;
 
   list_simulator<xag_index_list<true>, TT> sim;

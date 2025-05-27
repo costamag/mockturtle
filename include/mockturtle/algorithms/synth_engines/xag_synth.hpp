@@ -27,8 +27,8 @@
   \file xag_synth.hpp
   \brief Synthesis engine for XAG index lists.
 
-  This header defines an engine for synthesizing XAG index lists from 
-  incompletely specified Boolean functions. The engine employs a recursive 
+  This header defines an engine for synthesizing XAG index lists from
+  incompletely specified Boolean functions. The engine employs a recursive
   procedure with the following steps:
 
   - Minimize the functional support
@@ -77,11 +77,11 @@ struct xag_synth_stats
   {
     fmt::print( "[i]         <xag_synth_decompose>\n" );
     fmt::print( "[i]             look-up             : {:>5.2f} secs\n",
-      to_seconds( time_lookup ) );
+                to_seconds( time_lookup ) );
     fmt::print( "[i]             variable selection  : {:>5.2f} secs\n",
-      to_seconds( time_varsel ) );
+                to_seconds( time_varsel ) );
     fmt::print( "[i]             division            : {:>5.2f} secs\n",
-      to_seconds( time_divide ) );
+                to_seconds( time_divide ) );
   }
 };
 
@@ -89,9 +89,9 @@ struct xag_synth_stats
  *
  * Combine functional decomposition and database-based synthesis.
  *
- * It accepts an incompletely specified Boolean function, represented as a 
- * ternary truth table. The function is synthesized by recursively applying 
- * support-reducing decompositions until the support size is reduced to ≤ 4 
+ * It accepts an incompletely specified Boolean function, represented as a
+ * ternary truth table. The function is synthesized by recursively applying
+ * support-reducing decompositions until the support size is reduced to ≤ 4
  * variables. At that point, synthesis is completed via a database lookup.
  *
  * \tparam UseXors If true, XOR gates are allowed in the index list.
@@ -122,10 +122,8 @@ class xag_synth_decompose
   using Ntk = typename std::conditional<UseXors, xag_network, aig_network>::type;
   using signal = typename Ntk::signal;
   using node = typename Ntk::node;
-  static constexpr xag_npn_db_kind database_t = UseXors ?
-                                                xag_npn_db_kind::xag_complete : 
-                                                xag_npn_db_kind::aig_complete;
-  
+  static constexpr xag_npn_db_kind database_t = UseXors ? xag_npn_db_kind::xag_complete : xag_npn_db_kind::aig_complete;
+
   /*! \brief Types of support-reducing decompositions.
    */
   enum class decomp_t : uint8_t
@@ -135,7 +133,7 @@ class xag_synth_decompose
     LT,  // F = !x & F0
     LE,  // F = !x | F1
     GE,  // F =  x | F0
-    ITE  // F = ite( x, F1, F0 ) 
+    ITE  // F = ite( x, F1, F0 )
   };
 
 public:
@@ -146,13 +144,13 @@ public:
 
   /*! \brief Perform XAIG synthesis from incompletely specified functions.
    *
-   * Reset the internal index list and invokes the recursive synthesis engine 
+   * Reset the internal index list and invokes the recursive synthesis engine
    * to construct a logic network from a given incompletely specified function.
    *
-   * \param func The incompletely specified Boolean function, represented as a 
+   * \param func The incompletely specified Boolean function, represented as a
    *             `kitty::ternary_truth_table`.
    *
-   * \tparam TT The type of truth table used to represent the onset and offset 
+   * \tparam TT The type of truth table used to represent the onset and offset
    *            of the Boolean function (e.g., `kitty::static_truth_table<N>`).
    */
   template<typename TT>
@@ -166,7 +164,7 @@ public:
     /* initialize the support with the literals */
     std::vector<element_type_t> support( num_vars );
     uint32_t i = 1u;
-    std::generate( support.begin(), support.end(), [&i](){ return i++ << 1; } );
+    std::generate( support.begin(), support.end(), [&i]() { return i++ << 1; } );
 
     /* call the synthesis engine recursively */
     element_type_t const lit = recursive_synthesis( support, func );
@@ -180,9 +178,7 @@ public:
     return index_list;
   }
 
-
 private:
-
   /*! \brief Core synthesis engine.
    *
    * Manage the synthesis action based on the size of the functional support.
@@ -190,7 +186,7 @@ private:
    * \param support Vector of literals from the index list inputs.
    * \param func Incompletely specified function ( `ternary_truth_table` ).
    *
-   * \tparam TT The type of truth table used to represent the onset and offset 
+   * \tparam TT The type of truth table used to represent the onset and offset
    *            of the Boolean function (e.g., `kitty::static_truth_table<N>`).
    */
   template<typename TT>
@@ -208,7 +204,7 @@ private:
       TT const tt = func._bits & func._care;
       return index_list.get_constant( !kitty::is_const0( tt ) );
     }
-    
+
     /* collect the new support */
     std::vector<uint32_t> new_support;
     for ( auto s : supp )
@@ -225,9 +221,12 @@ private:
       return lit;
     }
     /* variable selection for the decomposition */
-    auto const [ index, op ] = call_with_stopwatch( st.time_varsel, [&]() {
+    auto const varsel_result = call_with_stopwatch( st.time_varsel, [&]() {
       return choose_variable( func, supp_size );
     } );
+
+    auto const& index = varsel_result.first;
+    auto const& op = varsel_result.second;
 
     /* support-reducing decomposition */
     auto const lit = call_with_stopwatch( st.time_divide, [&]() {
@@ -248,17 +247,17 @@ private:
    * \param func Incompletely specified function ( `ternary_truth_table` ).
    * \param supp_size Number of variables in the functional support.
    *
-   * \tparam TT The type of truth table used to represent the onset and offset 
+   * \tparam TT The type of truth table used to represent the onset and offset
    *            of the Boolean function (e.g., `kitty::static_truth_table<N>`).
    */
   template<typename TT>
-  std::tuple<uint32_t, decomp_t> choose_variable( 
-                                    kitty::ternary_truth_table<TT> const& func,
-                                    int supp_size )
+  std::tuple<uint32_t, decomp_t> choose_variable(
+      kitty::ternary_truth_table<TT> const& func,
+      int supp_size )
   {
     uint32_t cost, min_cost = std::numeric_limits<uint32_t>::max();
     int best_index = -1;
-    for ( int i = supp_size - 1; i >= 0 ; --i )
+    for ( int i = supp_size - 1; i >= 0; --i )
     {
       auto tt0 = kitty::cofactor0( func, i );
       auto tt1 = kitty::cofactor1( func, i );
@@ -285,7 +284,7 @@ private:
       {
         return { i, decomp_t::GE };
       }
-      cost = kitty::count_ones( tt0 )*kitty::count_ones( tt1 );
+      cost = kitty::count_ones( tt0 ) * kitty::count_ones( tt1 );
       if ( cost < min_cost )
       {
         min_cost = cost;
@@ -293,7 +292,7 @@ private:
       }
     }
     assert( best_index >= 0 );
-    // F = ite( x, F1, F0 ) 
+    // F = ite( x, F1, F0 )
     return { best_index, decomp_t::ITE };
   }
 
@@ -304,64 +303,64 @@ private:
    * \param op decomposition type.
    * \param func incompletely specified Boolean function to synthesize.
    *
-   * \tparam TT The type of truth table used to represent the onset and offset 
+   * \tparam TT The type of truth table used to represent the onset and offset
    *            of the Boolean function (e.g., `kitty::static_truth_table<N>`).
    */
   template<typename TT>
   element_type_t decompose( std::vector<element_type_t> const& support,
-    uint32_t index, 
-    decomp_t op, 
-    kitty::ternary_truth_table<TT> const& func )
+                            uint32_t index,
+                            decomp_t op,
+                            kitty::ternary_truth_table<TT> const& func )
   {
     element_type_t lit_fun, lit_var = support[index];
     kitty::ternary_truth_table<TT> tt0, tt1;
 
     switch ( op )
     {
-      case decomp_t::AND: // F =  x & F1
-      {
-        tt1 = kitty::cofactor1( func, index );
-        lit_fun = recursive_synthesis( support, tt1 );
-        return index_list.add_and( lit_var, lit_fun );
-      }
-      case decomp_t::LT: // F = !x & F0
-      {
-        tt0 = kitty::cofactor0( func, index );
-        lit_fun = recursive_synthesis( support, tt0 );
-        return index_list.add_and( index_list.add_not(lit_var), lit_fun );
-      }
-      case decomp_t::LE: // F = !x | F1
-      {
-        tt1 = kitty::cofactor1( func, index );
-        lit_fun = recursive_synthesis( support, tt1 );
-        return index_list.add_or( index_list.add_not( lit_var ), lit_fun );
-      }
-      case decomp_t::GE: // F =  x | F0
-      {
-        tt0 = kitty::cofactor0( func, index );
-        lit_fun = recursive_synthesis( support, tt0 );
-        return index_list.add_or( lit_var, lit_fun );
-      }
-      case decomp_t::XOR:  // F =  x ^ F0
-      {
-        tt0 = kitty::cofactor0( func, index );
-        tt1 = kitty::cofactor1( func, index );
-        kitty::ternary_truth_table<TT> ttt;
-        ttt._care = tt0._care | tt1._care;
-        ttt._bits = ttt._care & ( tt0._bits & ~tt1._bits );
-        lit_fun = recursive_synthesis( support, ttt );
-        return index_list.add_xor( lit_var, lit_fun );
-      }
-      case decomp_t::ITE: // F = ite( x, F1, F0 ) 
-      {
-        tt0 = kitty::cofactor0( func, index );
-        tt1 = kitty::cofactor1( func, index );
-        auto lit_fn0 = recursive_synthesis( support, tt0 );
-        auto lit_fn1 = recursive_synthesis( support, tt1 );
-        auto lit_cf0 = index_list.add_and( index_list.add_not( lit_var ), lit_fn0 );
-        auto lit_cf1 = index_list.add_and( lit_var, lit_fn1 );
-        return index_list.add_or( lit_cf0, lit_cf1 );
-      }
+    case decomp_t::AND: // F =  x & F1
+    {
+      tt1 = kitty::cofactor1( func, index );
+      lit_fun = recursive_synthesis( support, tt1 );
+      return index_list.add_and( lit_var, lit_fun );
+    }
+    case decomp_t::LT: // F = !x & F0
+    {
+      tt0 = kitty::cofactor0( func, index );
+      lit_fun = recursive_synthesis( support, tt0 );
+      return index_list.add_and( index_list.add_not( lit_var ), lit_fun );
+    }
+    case decomp_t::LE: // F = !x | F1
+    {
+      tt1 = kitty::cofactor1( func, index );
+      lit_fun = recursive_synthesis( support, tt1 );
+      return index_list.add_or( index_list.add_not( lit_var ), lit_fun );
+    }
+    case decomp_t::GE: // F =  x | F0
+    {
+      tt0 = kitty::cofactor0( func, index );
+      lit_fun = recursive_synthesis( support, tt0 );
+      return index_list.add_or( lit_var, lit_fun );
+    }
+    case decomp_t::XOR: // F =  x ^ F0
+    {
+      tt0 = kitty::cofactor0( func, index );
+      tt1 = kitty::cofactor1( func, index );
+      kitty::ternary_truth_table<TT> ttt;
+      ttt._care = tt0._care | tt1._care;
+      ttt._bits = ttt._care & ( tt0._bits & ~tt1._bits );
+      lit_fun = recursive_synthesis( support, ttt );
+      return index_list.add_xor( lit_var, lit_fun );
+    }
+    case decomp_t::ITE: // F = ite( x, F1, F0 )
+    {
+      tt0 = kitty::cofactor0( func, index );
+      tt1 = kitty::cofactor1( func, index );
+      auto lit_fn0 = recursive_synthesis( support, tt0 );
+      auto lit_fn1 = recursive_synthesis( support, tt1 );
+      auto lit_cf0 = index_list.add_and( index_list.add_not( lit_var ), lit_fn0 );
+      auto lit_cf1 = index_list.add_and( lit_var, lit_fn1 );
+      return index_list.add_or( lit_cf0, lit_cf1 );
+    }
     }
   }
 
@@ -369,17 +368,17 @@ private:
    *
    * When the support size is ≤ 4 this method manages Boolean matching ( with
    * don't cares if `UseDCs=true` ) to synthesize the function using the
-   * precomputed structure in the database.  
+   * precomputed structure in the database.
    *
    * \param support Functional support.
    * \param func Incompletely specified function ( `ternary_truth_table` ).
    *
-   * \tparam TT The type of truth table used to represent the onset and offset 
+   * \tparam TT The type of truth table used to represent the onset and offset
    *            of the Boolean function (e.g., `kitty::static_truth_table<N>`).
    */
   template<typename TT>
   element_type_t boolean_matching( std::vector<element_type_t> const& support,
-                                    kitty::ternary_truth_table<TT> func )
+                                   kitty::ternary_truth_table<TT> func )
   {
     /* make the truth table representation compatibile with the database */
     kitty::ternary_truth_table<kitty::static_truth_table<4u>> tt;
@@ -387,7 +386,7 @@ private:
       kitty::shrink_to_inplace( tt, func );
     else
       kitty::extend_to_inplace( tt, func );
-    
+
     /* extract the sub-networks implementing the functionality */
     auto info = database.lookup_npn( tt );
     size_t cost, min_cost = std::numeric_limits<size_t>::max();
@@ -402,13 +401,13 @@ private:
         best_sign = f;
       }
     } );
-    
+
     /* insert the sub-network in the index list */
-    auto lit_out = database.insert( *info, 
-      index_list,
-      best_sign,
-      support.begin(),
-      support.end() );
+    auto lit_out = database.insert( *info,
+                                    index_list,
+                                    best_sign,
+                                    support.begin(),
+                                    support.end() );
     return lit_out;
   }
 
