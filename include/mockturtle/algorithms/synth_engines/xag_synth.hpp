@@ -225,8 +225,8 @@ private:
       return choose_variable( func, supp_size );
     } );
 
-    auto const& index = varsel_result.first;
-    auto const& op = varsel_result.second;
+    auto const& index = std::get<0>( varsel_result );
+    auto const& op = std::get<1>( varsel_result );
 
     /* support-reducing decomposition */
     auto const lit = call_with_stopwatch( st.time_divide, [&]() {
