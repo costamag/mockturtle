@@ -663,11 +663,19 @@ inline bool is_const0( const static_truth_table<NumVars, true>& tt )
 
   \param tt Truth table
 */
-template<typename TT>
+template<typename TT, bool UseDCs = false>
 inline bool is_const0( const ternary_truth_table<TT>& tt )
 {
-  return is_const0( tt._bits | ~tt._care );
+  if constexpr ( UseDCs )
+  {
+    return is_const0( tt._bits & tt._care );
+  }
+  else
+  {
+    return is_const0( tt._bits | ~tt._care );
+  }
 }
+
 
 /*! \brief Checks whether a quaternary truth table is constant composed by only - and 0.
 

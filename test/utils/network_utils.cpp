@@ -5,7 +5,7 @@
 #include <mockturtle/algorithms/simulation.hpp>
 #include <mockturtle/networks/aig.hpp>
 #include <mockturtle/utils/debugging_utils.hpp>
-#include <mockturtle/utils/index_list/index_list.hpp>
+#include <mockturtle/utils/index_lists/index_list.hpp>
 #include <mockturtle/utils/network_utils.hpp>
 
 using namespace mockturtle;
@@ -107,9 +107,6 @@ TEST_CASE( "clone a window, optimize it, and insert it back", "[network_utils]" 
 
 TEST_CASE( "count the number of nodes in a transitive fanin", "[network_utils]" )
 {
-  using node = aig_network::node;
-  using signal = aig_network::signal;
-
   /* original network */
   aig_network aig;
   auto const x0 = aig.create_pi();

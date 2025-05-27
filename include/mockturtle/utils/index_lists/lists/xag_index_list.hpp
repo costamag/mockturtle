@@ -192,6 +192,13 @@ public:
     return ( num_gates() + num_pis() ) << 1;
   }
 
+  element_type add_or( element_type lit0, element_type lit1 )
+  {
+    element_type const lit0_n = add_not( lit0 );
+    element_type const lit1_n = add_not( lit1 );
+    return add_not( add_and( lit0_n, lit1_n ) );
+  }
+
   element_type add_xor( element_type lit0, element_type lit1 )
   {
     if constexpr ( separate_header )

@@ -38,7 +38,8 @@
 #include "../../networks/mig.hpp"
 #include "../../networks/xag.hpp"
 #include "../../traits.hpp"
-#include "../index_list/index_list.hpp"
+#include "../index_lists/index_list.hpp"
+#include "../network_utils.hpp"
 #include "../struct_library.hpp"
 #include "../tech_library.hpp"
 
@@ -94,7 +95,8 @@ typename element<Ntk>::type invert( Ntk& ntk, typename element<Ntk>::type const&
   else if constexpr ( is_index_list<Ntk>::value )
     return ntk.add_not( f );
   else
-    static_assert( dependent_false<Ntk>::value, "Unsupported Ntk type in dispatch::invert." );
+    static_assert( dependent_false<Ntk>::value,
+                   "Unsupported Ntk type in dispatch::invert." );
 }
 
 /*! \brief Dispatch the output creation operation.
@@ -110,20 +112,19 @@ typename element<Ntk>::type invert( Ntk& ntk, typename element<Ntk>::type const&
  * - `xag_index_list<false>`
  */
 template<typename Ntk>
-typename element<Ntk>::type create_output( Ntk& ntk, typename element<Ntk>::type const& f, bool phase )
+typename element<Ntk>::type output_inversion( Ntk& ntk,
+                                              typename element<Ntk>::type const& f,
+                                              bool phase )
 {
   auto const res = phase ? invert( ntk, f ) : f;
-  if constexpr ( is_network_type_v<Ntk> )
-    ntk.create_po( res );
-  else if constexpr ( is_index_list<Ntk>::value )
-    ntk.add_output( res );
-  else
-    static_assert( dependent_false<Ntk>::value, "Unsupported Ntk type in dispatch::create_output." );
   return res;
 }
 
 template<typename NtkDb, typename NtkDest>
-typename element<NtkDest>::type create_node( NtkDest& ntk_dest, std::vector<typename dispatch::element<NtkDest>::type> const& children, NtkDb& ntk_db, node<NtkDb> const& n )
+typename element<NtkDest>::type create_node( NtkDest& ntk_dest,
+                                             std::vector<typename dispatch::element<NtkDest>::type> const& children,
+                                             NtkDb& ntk_db,
+                                             node<NtkDb> const& n )
 {
   /* XAG */
   if constexpr ( std::is_same<NtkDest, xag_network>::value )
@@ -137,7 +138,8 @@ typename element<NtkDest>::type create_node( NtkDest& ntk_dest, std::vector<type
   {
     return ntk_dest.create_and( children[0], children[1] );
   } /* XAG list */
-  else if constexpr ( std::is_same<NtkDest, xag_index_list<true>>::value || std::is_same<NtkDest, xag_index_list<false>>::value )
+  else if constexpr ( std::is_same<NtkDest, xag_index_list<true>>::value ||
+                      std::is_same<NtkDest, xag_index_list<false>>::value )
   {
     if ( ntk_db.is_and( n ) )
       return ntk_dest.add_and( children[0], children[1] );
@@ -153,7 +155,8 @@ typename element<NtkDest>::type create_node( NtkDest& ntk_dest, std::vector<type
     return ntk_dest.add_maj( children[0], children[1], children[2] );
   }
   else
-    static_assert( dependent_false<NtkDest>::value, "Unsupported NtkDest type in dispatch::create_output." );
+    static_assert( dependent_false<NtkDest>::value,
+                   "Unsupported NtkDest type in dispatch::create_node." );
 }
 
 template<>
@@ -188,17 +191,46 @@ struct element<Ntk, std::enable_if_t<is_index_list<Ntk>::value>>
 
 }; // namespace dispatch
 
+template<bool UseDCs = true>
+struct database_manager_params
+{
+  /* area of a gate */
+  static constexpr float area_gate{ 1.0f };
+  /* area of an inverter */
+  static constexpr float area_inverter{ 0.0f };
+  /* delay of a gate */
+  static constexpr float delay_gate{ 1.0f };
+  /* delay of an inverter */
+  static constexpr float delay_inverter{ 0.0f };
+  /* classify in NP instead of NPN */
+  static constexpr bool np_classification{ false };
+  /* Compute DC classes for matching with  don't cares */
+  static constexpr bool compute_dc_classes{ UseDCs };
+  /* verbose */
+  static constexpr bool verbose{ false };
+
+  static constexpr exact_library_params lib_ps{ area_gate,
+                                                area_inverter,
+                                                delay_gate,
+                                                delay_inverter,
+                                                np_classification,
+                                                compute_dc_classes,
+                                                verbose };
+};
+
 /*! \brief Database manager for sub-network reuse.
  *
- * This engine encapsulates operations on network-based databases, i.e., databases
- * that store sub-networks within a larger network. Given an incompletely specified
- * Boolean function, the `lookup` function identifies matching sub-networks in the
- * database that implement the desired functionality. It returns a unique match type,
- * which contains information about input/output negations and input permutations.
+ * This engine encapsulates operations on network-based databases, i.e.,
+ * databases that store sub-networks within a larger network. Given an
+ * incompletely specified Boolean function, the `lookup` function identifies
+ * matching sub-networks in the database that implement the desired
+ * functionality. It returns a unique match type, which contains information
+ * about input/output negations and input permutations.
  *
  * Using the returned matching information, the `insert` function reconstructs
  * the matched sub-network in a destination network. The database manager takes
- * care of handling input permutations and inversions, abstracting away the low-level details.
+ * care of handling input permutations and inversions, abstracting away the
+ * low-level details.
  *
  * \tparam Ntk Database type.
  *
@@ -222,7 +254,7 @@ struct element<Ntk, std::enable_if_t<is_index_list<Ntk>::value>>
 
    \endverbatim
  */
-template<typename NtkDb>
+template<typename NtkDb, bool UseDCs = false>
 class database_manager
 {
   using library_t = exact_library<NtkDb>;
@@ -243,7 +275,8 @@ class database_manager
     template<typename Fn>
     void foreach_entry( Fn&& fn ) const
     {
-      static_assert( std::is_invocable_v<Fn, signal>, "Fn must be callable with signal" );
+      static_assert( std::is_invocable_v<Fn, signal>,
+                     "Fn must be callable with signal" );
       for ( auto const& dag : *structures )
       {
         fn( dag.root );
@@ -262,9 +295,16 @@ class database_manager
 
 public:
   explicit database_manager()
-      : library( resyn, ps ),
+      : library( *get_cached_library( resyn, ps.lib_ps ) ),
         database( library.get_database() )
   {
+  }
+
+  static auto& get_cached_library( const resyn_t& resyn,
+                                   const exact_library_params& lib_ps )
+  {
+    static auto cached_library = std::make_shared<library_t>( resyn, lib_ps );
+    return cached_library;
   }
 
   /*! \brief Boolean matching from an incompletely-specified Boolean function.
@@ -272,9 +312,10 @@ public:
    * Perform NPN canonization and Boolean matching with don't cares. The results
    * are wrapped in a `matches_t` object.
    *
-   * The input leaves must be provided as a continuous container (e.g., `std::array` or `std::vector`)
-   * and accessed via a pair of `begin` and `end` iterators. Permutation and inversion information
-   * is provided via a `matches_t` object, typically obtained from a `lookup_*` function.
+   * The input leaves must be provided as a continuous container
+   * (e.g., `std::array` or `std::vector`) and accessed via a pair of `begin`
+   * and `end` iterators. Permutation and inversion information is provided
+   * via a `matches_t` object, typically obtained from a `lookup_*` function.
    *
    * Two callable objects must also be provided:
    * - `invert`: A function that applies inversion to an `Element`.
@@ -316,16 +357,19 @@ public:
 
   /*! \brief Permute and invert leaves to match a target Boolean function.
    *
-   * This function applies a permutation and optional inversion to a list of leaves
-   * (typically primary inputs), to match the canonical form of a Boolean function.
+   * This function applies a permutation and optional inversion to a list of
+   * leaves (typically primary inputs), to match the canonical form of a
+   * Boolean function.
    *
-   * The input leaves must be provided as a continuous container (e.g., `std::array` or `std::vector`)
-   * and accessed via a pair of `begin` and `end` iterators. Permutation and inversion information
-   * is provided via a `matches_t` object, typically obtained from a `lookup_*` function.
+   * The input leaves must be provided as a continuous container
+   * (e.g., `std::array` or `std::vector`) and accessed via a pair of `begin`
+   * and `end` iterators. Permutation and inversion information is provided via
+   * a `matches_t` object, typically obtained from a `lookup_*` function.
    *
    * Two callable objects must also be provided:
    * - `invert`: A function that applies inversion to an `Element`.
-   * - `get_null`: A function that returns a null or dummy element to fill unused positions.
+   * - `get_null`: A function that returns a null or dummy element to fill
+   * unused positions.
    *
    * \tparam Element Type of the elements to permute/invert (e.g., signals or literals).
    * \tparam Iterator Iterator type for the input container.
@@ -341,7 +385,11 @@ public:
    * \return A `std::array` of size `num_vars` with permuted and conditionally inverted elements.
    */
   template<typename Element, typename Iterator, typename FnInv, typename FnNull>
-  std::array<Element, num_vars> match_leaves( matches_t const& info, Iterator begin, Iterator end, FnInv&& invert, FnNull&& get_null )
+  std::array<Element, num_vars> match_leaves( matches_t const& info,
+                                              Iterator begin,
+                                              Iterator end,
+                                              FnInv&& invert,
+                                              FnNull&& get_null )
   {
     size_t const num_inputs = end - begin;
     assert( num_inputs <= num_vars );
@@ -373,10 +421,10 @@ public:
 
   /*! \brief Insert a database sub-network in a destination network.
    *
-   * This function applies matching transformations to a sub-network stored in the
-   * database to insert it into a destination network, given the nodes of this
-   * network that serve as the inputs of the stored sub-network, upon permutation
-   * and inversion.
+   * This function applies matching transformations to a sub-network stored in
+   * the database to insert it into a destination network, given the nodes of
+   * this network that serve as the inputs of the stored sub-network, upon
+   * permutation and inversion.
    *
    * \tparam NtkDest Network type where to store the sub-network.
    * \tparam Iterator Iterator type for the input container.
@@ -390,7 +438,11 @@ public:
    * \return A `signal<NtkDest>` when NtkDest is a network, `uint32_t` when NtkDest is a list.
    */
   template<typename NtkDest, typename Iterator>
-  auto insert( matches_t const& info, NtkDest& ntk_dest, signal root, Iterator begin, Iterator end )
+  auto insert( matches_t const& info,
+               NtkDest& ntk_dest,
+               signal root,
+               Iterator begin,
+               Iterator end )
   {
     using element = typename dispatch::element<NtkDest>::type;
 
@@ -403,8 +455,12 @@ public:
         info,
         begin,
         end,
-        [&ntk_dest]( element const& f ) { return dispatch::invert<NtkDest>( ntk_dest, f ); },
-        [&ntk_dest]() { return ntk_dest.get_constant( false ); } );
+        [&ntk_dest]( element const& f ) {
+          return dispatch::invert<NtkDest>( ntk_dest, f );
+        },
+        [&ntk_dest]() {
+          return ntk_dest.get_constant( false );
+        } );
 
     /* initialize the hash map connecting database nodes to signals in the destination network. */
     auto map = create_map( ntk_dest, leaves );
@@ -437,12 +493,21 @@ public:
     };
     element s = synthesize( root );
 
-    return dispatch::create_output( ntk_dest, s, info.phase );
+    return dispatch::output_inversion( ntk_dest, s, info.phase );
+  }
+
+  /*! \brief Evaluate the number of gates in the transitive fanin
+   */
+  size_t get_cost( signal const& f )
+  {
+    return count_nodes( database, f );
   }
 
 private:
   template<typename NtkDest>
-  std::unordered_map<node, typename dispatch::element<NtkDest>::type> create_map( NtkDest& ntk_dest, std::array<typename dispatch::element<NtkDest>::type, num_vars> const& leaves )
+  std::unordered_map<node, typename dispatch::element<NtkDest>::type>
+  create_map( NtkDest& ntk_dest,
+              std::array<typename dispatch::element<NtkDest>::type, num_vars> const& leaves )
   {
     std::unordered_map<node, typename dispatch::element<NtkDest>::type> map;
     for ( auto i = 0u; i < num_vars; ++i )
@@ -455,10 +520,10 @@ private:
   }
 
 private:
+  /*! \brief Parameters: for now no need to specify them */
+  database_manager_params<UseDCs> ps;
   /*! \brief Resynthesis engine */
   resyn_t resyn;
-  /*! \brief Parameters: for now no need to specify them */
-  exact_library_params ps;
   /*! \brief Exact library defined for the NtkDb type */
   library_t library;
   /*! \brief Database represented as a network */

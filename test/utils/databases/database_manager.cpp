@@ -4,8 +4,8 @@
 #include <mockturtle/networks/mig.hpp>
 #include <mockturtle/networks/xag.hpp>
 #include <mockturtle/utils/databases/database_manager.hpp>
-#include <mockturtle/utils/index_list/index_list.hpp>
-#include <mockturtle/utils/index_list/list_simulator.hpp>
+#include <mockturtle/utils/index_lists/index_list.hpp>
+#include <mockturtle/utils/index_lists/list_simulator.hpp>
 
 using namespace mockturtle;
 

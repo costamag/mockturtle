@@ -36,9 +36,9 @@
 
 #include "../../traits.hpp"
 
-#include "mig_index_list.hpp"
-#include "muxig_index_list.hpp"
-#include "xag_index_list.hpp"
+#include "lists/mig_index_list.hpp"
+#include "lists/muxig_index_list.hpp"
+#include "lists/xag_index_list.hpp"
 
 #include <vector>
 
