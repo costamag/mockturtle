@@ -24,8 +24,8 @@
  */
 
 /*!
-  \file index_list.hpp
-  \brief List of indices to represent small networks.
+  \file mig_index_list.hpp
+  \brief List of indices to represent small Majority Inverter Graphs (MIG)
 
   \author Andrea Costamagna
   \author Heinz Riener

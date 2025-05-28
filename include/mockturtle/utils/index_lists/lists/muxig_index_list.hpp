@@ -24,8 +24,8 @@
  */
 
 /*!
-  \file index_list.hpp
-  \brief List of indices to represent small networks.
+  \file muxig_index_list.hpp
+  \brief List of indices to represent small Multiplexer Inverter Graphs (MUXIG)
 
   \author Andrea Costamagna
   \author Heinz Riener

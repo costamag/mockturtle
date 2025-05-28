@@ -24,8 +24,8 @@
  */
 
 /*!
-  \file index_list.hpp
-  \brief List of indices to represent small networks.
+  \file xag_index_list.hpp
+  \brief List of indices to represent small XOR AND Inverter Graphs (MIG).
 
   \author Andrea Costamagna
   \author Heinz Riener
