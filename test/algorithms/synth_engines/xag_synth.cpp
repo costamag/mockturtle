@@ -7,7 +7,7 @@
 #include <mockturtle/networks/aig.hpp>
 #include <mockturtle/networks/xag.hpp>
 #include <mockturtle/utils/index_lists/index_list.hpp>
-#include <mockturtle/utils/index_lists/list_simulator.hpp>
+#include <mockturtle/utils/index_lists/simulators/list_simulator.hpp>
 
 using namespace mockturtle;
 

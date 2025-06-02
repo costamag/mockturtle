@@ -171,6 +171,22 @@ public:
     index_list.add_output( lit );
   }
 
+  /*! \brief Perform XAIG synthesis from completely specified functions.
+   *
+   * Defines the corresponding incompletely specified function and falls back
+   * to the corresponding method.
+   *
+   * \param tt The completely specified Boolean function.
+   *
+   * \tparam TT The type of truth table used to represent the onset.
+   */
+  template<typename TT>
+  void operator()( TT const& tt )
+  {
+    kitty::ternary_truth_table<TT> func( tt );
+    return (*this)( func );
+  }
+
   /*! \brief Getter to obtain the last index list synthesized by the engine.
    */
   index_list_t const& get_list() const

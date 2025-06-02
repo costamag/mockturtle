@@ -32,7 +32,8 @@
 
 #pragma once
 
-#include "index_list.hpp"
+#include "../index_list.hpp"
+#include "../mapping/augmented_library.hpp"
 
 #include <algorithm>
 #include <vector>
@@ -51,8 +52,8 @@ namespace mockturtle
  * of the simulator. To avoid unnecessary copies, the input simulation patterns
  * must be passed as a vector of raw pointers.
  *
+ * \tparam List Type of the index list to be simulated.
  * \tparam TT Truth table type.
- * \tparam separate_header
  *
  * \verbatim embed:rst
 
@@ -60,7 +61,9 @@ namespace mockturtle
 
    .. code-block:: c++
 
-      list_simulator<index_list<true>, kitty::static_truth_table<4u>> sim;
+      using list_t = large_xag_index_list;
+      using truth_table_t = kitty::static_truth_table<4u>;
+      list_simulator<list_t, truth_table_t> sim;
       sim( list1, inputs1 );
       sim( list2, inputs2 );
    \endverbatim
@@ -190,5 +193,157 @@ private:
   TT const0;
 
 }; /* list simulator */
+
+/*! \brief Specialized simulator engine for index lists using a gate library.
+ *
+ * This engine can be used to efficiently simulate index lists representing
+ * small netlists where each gate is taken from a technology library.
+ * A simulation pattern is a truth table corresponding to a node’s Boolean
+ * behavior under the given input assignments. It pre-allocates the memory
+ * necessary to store the simulation patterns of an index list, and extends
+ * this memory when the evaluator is required to perform Boolean evaluation of
+ * a list that is larger than the current capacity of the simulator. To avoid
+ * unnecessary copies, the input simulation patterns must be passed as a vector
+ * of raw pointers.
+ *
+ * \tparam TT Truth table type.
+ *
+ * \verbatim embed:rst
+
+   Example
+
+   .. code-block:: c++
+
+      using list_t = lib_index_list;
+      using truth_table_t = kitty::static_truth_table<4u>;
+      list_simulator<list_t, truth_table_t> sim;
+      sim( list1, inputs1 );
+      sim( list2, inputs2 );
+   \endverbatim
+ */
+template<typename Gate, typename TT>
+class list_simulator<lib_index_list<Gate>, TT>
+{
+public:
+  using outer_list_t = lib_index_list<Gate>;
+  using inner_list_t = large_xag_index_list;
+  /* Type of the literals of the index list */
+  using element_type = typename List::element_type;
+
+  list_simulator( std::vector<Gate> const& library )
+      : library( library ),
+        inner_simulator()
+  {
+    /* The value 20 is chosen as it allows us to store most practical XAIG index lists */
+    sims.resize( 20u );
+  }
+
+  /*! \brief Extract the simulation of a literal
+   *
+   * Inline specifier used to ensure manual inlining.
+   *
+   * \param res Truth table where to store the result.
+   * \param list Index list to be simulated.
+   * \param inputs Vector of pointers to the input truth tables.
+   * \param lit Literal whose simulation we want to extract.
+   */
+  inline void get_simulation_inline( TT& res,
+    outer_list_t const& list,
+    std::vector<TT const*> const& inputs,
+    element_type const& lit )
+  {
+    if ( list.is_pi( lit ) )
+    {
+      uint32_t index = list.get_pi_index( lit );
+      res = *inputs[index];
+      return;
+    }
+    uint32_t index = list.get_node_index( lit );
+    res = sims[index];
+  }
+
+  /*! \brief Simulate the list in topological order.
+   *
+   * This method updates the internal state of the simulator by
+   * storing in `sims` the simulation patterns of the nodes in the list.
+   *
+   * \param list Index list to be simulated.
+   * \param inputs Vector of TT references corresponding to the input truth tables
+   */
+  void operator()( outer_list_t const& outer_list,
+    std::vector<TT const*> const& inputs )
+  {
+    /* update the allocated memory */
+    if ( sims.size() < outer_list.num_gates() )
+      sims.resize( std::max<size_t>( sims.size(), outer_list.num_gates() ) );
+    
+    /* traverse the list in topological order and simulate each node */
+    size_t i = 0;
+
+    std::vector<TT const *> sims_ptrs;
+    outer_list.foreach_gate( [&]( std::vector<element_type> const& children, element_type const& id ) {
+      inner_list_t const& inner_list = library.get_list( id );
+      for ( auto c : children )
+      {
+        if ( outer_list.is_pi( c ) )
+        {
+          auto const index = outer_list.get_index( c );
+          sims_ptrs.push_back(  );
+        }
+      }
+      sims[i++] = list.is_and( lit_lhs, lit_rhs )
+                      ? complement( *tt_lhs_ptr, is_lhs_compl ) & complement( *tt_rhs_ptr, is_rhs_compl )
+                      : complement( *tt_lhs_ptr, is_lhs_compl ) ^ complement( *tt_rhs_ptr, is_rhs_compl );
+    } );
+  }
+
+  inline TT complement( TT const& tt, bool c )
+  {
+    return c ? ~tt : tt;
+  }
+
+  inline TT maj( TT const& tt0, TT const& tt1, TT const& tt2 )
+  {
+    return ( tt0 & tt1 ) | ( tt0 & tt2 ) | ( tt1 & tt2 );
+  }
+
+  /*! \brief Return the simulation associated to the literal
+   *
+   * \param list An XAIG index list, with or without separated header.
+   * \param inputs A vector of pointers to the input simulation patterns.
+   * \param lit The literal whose simulation we want to extract.
+   *
+   * The size of `inputs` should be equal to the number of inputs of the list.
+   * Keep private to avoid giving external access to memory that could be later corrupted.
+   *
+   * \return A tuple containing a pointer to the simulation pattern and a flag for complementation.
+   */
+  [[nodiscard]] std::tuple<TT const*, bool> get_simulation( List const& list, std::vector<TT const*> const& inputs, element_type const& lit )
+  {
+    if ( list.num_pis() != inputs.size() )
+      throw std::invalid_argument( "Mismatch between number of PIs and input simulations." );
+    if ( list.is_constant( lit ) )
+    {
+      return { &const0, list.is_complemented( lit ) };
+    }
+    if ( list.is_pi( lit ) )
+    {
+      uint32_t index = list.get_pi_index( lit );
+      TT const& sim = *inputs[index];
+      return { &sim, list.is_complemented( lit ) };
+    }
+    uint32_t index = list.get_node_index( lit );
+    TT const& sim = sims[index];
+    return { &sim, list.is_complemented( lit ) };
+  }
+
+private:
+  /*! \brief Simulation patterns of the list's nodes */
+  std::vector<TT> sims;
+  /*! \brief Augmented library */
+  augmented_library<Gate> library;
+  /*! \brief Simulator engine for the individual nodes */
+  list_simulator<inner_list_t, TT> inner_simulator;
+};
 
 } /* namespace mockturtle */

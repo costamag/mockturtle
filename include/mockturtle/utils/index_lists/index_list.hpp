@@ -25,7 +25,7 @@
 
 /*!
   \file index_list.hpp
-  \brief List of indices to represent small networks.
+  \brief Main header for index list representations of small networks.
 
   \author Andrea Costamagna
   \author Heinz Riener
@@ -36,6 +36,7 @@
 
 #include "../../traits.hpp"
 
+#include "lists/lib_index_list.hpp"
 #include "lists/mig_index_list.hpp"
 #include "lists/muxig_index_list.hpp"
 #include "lists/xag_index_list.hpp"
