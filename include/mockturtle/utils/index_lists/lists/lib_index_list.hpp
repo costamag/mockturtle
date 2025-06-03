@@ -148,14 +148,13 @@ public:
   template<typename Fn>
   void foreach_gate( Fn&& fn ) const
   {
-    using iterate_type = std::vector<element_type>::iterator;
-    /* the first 3 literals are used for `num_pis` `num_pos` `num_gates` */
+    using iterate_type = typename std::vector<element_type>::const_iterator;
     auto i = 3u;
     while ( i < values.size() - num_pos() )
     {
       element_type const num_fanins = values[i];
-      iterate_type const start_iter = values.begin() + i + 1;
-      iterate_type const final_iter = start_iter + num_fanins;
+      iterate_type start_iter = values.begin() + i + 1;
+      iterate_type final_iter = start_iter + num_fanins;
       element_type const identifier = values[i + num_fanins + 1];
       fn( start_iter, final_iter, identifier );
       i += num_fanins + 2;
@@ -240,11 +239,9 @@ public:
     return lit < num_pis();
   }
 
-  /*! \brief Returns the
+  /*! \brief Returns the output at a given index
    *
-   * The literals identifying an input are [0, ..., num_pis() - 1]
-   *
-   * \param index Literal to be analyzed to see if is an input
+   * \param index Index of the desired output
    * \return The output literal of the `index`-th output
    */
   inline element_type po_at( uint32_t index ) const
@@ -252,6 +249,32 @@ public:
     if ( index >= num_pos() )
       throw std::out_of_range( "Output index out of bounds" );
     return *( values.end() - num_pos() + index );
+  }
+
+  /*! \brief Returns the input literal at a given index
+   *
+   * The literals identifying an input are [0, ..., num_pis() - 1]
+   *
+   * \param index Index of the desired input
+   * \return The input literal of the `index`-th input
+   */
+  inline element_type pi_at( uint32_t index ) const
+  {
+    if ( index < num_pos() )
+      throw std::out_of_range( "Input index out of bounds" );
+    return index;
+  }
+
+  /*! \brief Returns the node index excluding the constants and the inputs */
+  inline uint32_t get_node_index( element_type const& lit ) const
+  {
+    return lit - num_pis();
+  }
+
+  /*! \brief Returns index of an input literal */
+  inline uint32_t get_pi_index( element_type const& lit ) const
+  {
+    return lit;
   }
 
 private:
@@ -264,8 +287,10 @@ private:
  * \param list An lib index list
  * \return A string representation of the index list
  */
-inline std::string to_index_list_string( lib_index_list const& list )
+template<typename Gate>
+inline std::string to_index_list_string( lib_index_list<Gate> const& list )
 {
+
   auto s = fmt::format( "{{{}, {}, {}", list.num_pis(), list.num_pos(), list.num_gates() );
 
   list.foreach_gate( [&]( auto start, auto end, auto id ) {

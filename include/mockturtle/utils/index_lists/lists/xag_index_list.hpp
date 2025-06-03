@@ -296,7 +296,7 @@ public:
     return lit <= 1;
   }
 
-  inline element_type po_at( uint32_t index )
+  inline element_type po_at( uint32_t index ) const
   {
     assert( index < num_pos() );
     return *( values.end() - num_pos() + index );

@@ -25,13 +25,17 @@
 
 /*!
   \file bind_library.hpp
-  \brief Implements methods for handling and evaluating a library of standerd cells.
+  \brief Implements methods for handling and evaluating a library of standard cells.
 
-  This engine can be used for efficient Boolean evaluaton of the gates in a
+  This engine can be used for efficient Boolean evaluation of the gates in a
   standard cell library. Each gate is represented as an AIG index list for
   efficient evaluation. Additionally, in the presence of multiple-output cells,
   this engine identifies which gates belong to a multiple-output and allows handling
   this information.
+
+  NOTE: The augmented library can be made arbitrarily complex adding technological
+  information. This data structure can be modified to store detailed information from
+  the liberty file.
 
   \author Andrea Costamagna
 */
@@ -41,8 +45,8 @@
 #include <vector>
 
 #include "../../algorithms/synth_engines/xag_synth.hpp"
-#include "../../utils/index_lists/lists/xag_index_list.hpp"
 #include "../../io/genlib_reader.hpp"
+#include "../../utils/index_lists/lists/xag_index_list.hpp"
 
 namespace mockturtle
 {
@@ -59,7 +63,7 @@ public:
 
   /*! \brief Augmented gate.
    *
-   * A raw gate is augmented by decomposing it into an XAIG index list for
+   * A raw gate is augmented by decomposing it into an index list for
    * efficient simulation.
    */
   struct aug_gate_t : raw_gate_t
@@ -67,15 +71,21 @@ public:
     list_t aig_list;
 
     aug_gate_t( const raw_gate_t& g, list_t const& list )
-      : raw_gate_t( g ), aig_list( list )
+        : raw_gate_t( g ), aig_list( list )
+    {}
   };
-  
+
+  /*! \brief Construction via specification of the simpler library.
+   *
+   * The gates should specify at least the gate's functionality, from
+   * which this constructor can synthesize an index list for each gate.
+   */
   augmented_library( std::vector<raw_gate_t> const& raw_gates )
   {
     xag_synth_stats st;
     xag_synth_decompose synth( st );
     aug_gates.reserve( raw_gates.size() );
-    for ( gate const& g : aug_gates )
+    for ( gate const& g : raw_gates )
     {
       synth( g.function );
       list_t const list = synth.get_list();
@@ -83,18 +93,20 @@ public:
     }
   }
 
+  /*! \brief Getter of gate containing detailed information. */
   aug_gate_t const& get_augmented_gate( uint32_t id ) const
   {
     return aug_gates[id];
   }
 
-  aug_gate_t const& get_list( uint32_t id ) const
+  /*! \brief Getter of the list synthesizing the gate's functionality. */
+  list_t const& get_list( uint32_t id ) const
   {
     return aug_gates[id].aig_list;
   }
 
 private:
-/* Augmented technolofgy library */
+  /*! \brief Augmented technology library */
   std::vector<aug_gate_t> aug_gates;
 };
 

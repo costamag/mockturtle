@@ -3,10 +3,11 @@
 #include <kitty/print.hpp>
 #include <kitty/static_truth_table.hpp>
 #include <mockturtle/algorithms/simulation.hpp>
+#include <mockturtle/io/genlib_reader.hpp>
 #include <mockturtle/networks/mig.hpp>
 #include <mockturtle/networks/xag.hpp>
 #include <mockturtle/utils/index_lists/index_list.hpp>
-#include <mockturtle/utils/index_lists/simulators/list_simulator.hpp>
+#include <mockturtle/utils/index_lists/list_simulator.hpp>
 
 using namespace mockturtle;
 
@@ -194,4 +195,62 @@ TEST_CASE( "simulation of mig_index_list with dynamic truth tables", "[list_simu
   CHECK( kitty::equal( xs[4], tt4 ) );
   CHECK( kitty::equal( xs[5], tt5 ) );
   CHECK( kitty::equal( xs[6], tt6 ) );
+}
+
+std::string const test_library = "GATE   zero    0 O=CONST0;\n"                                                     // 0
+                                 "GATE   one     0 O=CONST1;\n"                                                     // 1
+                                 "GATE   inv1    1 O=!a;                      PIN * INV 1 999 0.9 0.3 0.9 0.3\n"    // 2
+                                 "GATE   inv2    2 O=!a;                      PIN * INV 2 999 1.0 0.1 1.0 0.1\n"    // 3
+                                 "GATE   buf     2 O=a;                       PIN * NONINV 1 999 1.0 0.0 1.0 0.0\n" // 4
+                                 "GATE   nand    2 O=!(a*b);                  PIN * INV 1 999 1.0 0.2 1.0 0.2\n"    // 5
+                                 "GATE   maj3    8 O=(a*b)+(a*c)+(b*c);       PIN * INV 1 999 3.0 0.4 3.0 0.4\n";   // 6
+
+TEST_CASE( "simulation of lib_index_list with static truth tables", "[list_simulator]" )
+{
+
+  std::vector<gate> gates;
+  std::istringstream in_genlib( test_library );
+  auto result = lorina::read_genlib( in_genlib, genlib_reader( gates ) );
+  CHECK( result == lorina::return_code::success );
+
+  lib_index_list<gate> list;
+  list.add_inputs( 4u );
+  auto const a = list.pi_at( 0 );
+  auto const b = list.pi_at( 1 );
+  auto const c = list.pi_at( 2 );
+  auto const d = list.pi_at( 3 );
+  auto const lit0 = list.add_gate( {}, 0 );
+  auto const lit1 = list.add_gate( {}, 1 );
+  auto const lit2 = list.add_gate( { a, b, c }, 6 );
+  auto const lit3 = list.add_gate( { lit2, d }, 5 );
+  auto const lit4 = list.add_gate( { lit3 }, 2 );
+  list.add_output( lit0 );
+  list.add_output( lit1 );
+  list.add_output( lit2 );
+  list.add_output( lit4 );
+
+  std::vector<kitty::static_truth_table<4u>> xs;
+  for ( auto i = 0u; i < 4u; ++i )
+  {
+    xs.emplace_back();
+    kitty::create_nth_var( xs[i], i );
+  }
+  xs.emplace_back( xs[0].construct() );                                         // 4
+  xs.emplace_back( ~xs.back() );                                                // 5
+  xs.emplace_back( ( xs[1] & xs[2] ) | ( xs[0] & xs[1] ) | ( xs[0] & xs[2] ) ); // 6
+  xs.emplace_back( ~( xs.back() & xs[3] ) );                                    // 7
+  xs.emplace_back( ~xs.back() );                                                // 8
+
+  std::vector<kitty::static_truth_table<4u> const*> xs_r;
+  for ( auto i = 0u; i < 4u; ++i )
+  {
+    xs_r.emplace_back( &xs[i] );
+  }
+
+  list_simulator<lib_index_list<gate>, kitty::static_truth_table<4u>> sim( gates );
+  sim( list, xs_r );
+  for ( auto i = 0u; i < xs.size(); ++i )
+  {
+    CHECK( kitty::equal( xs[i], sim.get_simulation( list, xs_r, i ) ) );
+  }
 }
