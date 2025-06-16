@@ -52,8 +52,8 @@
 #include "../../../io/genlib_reader.hpp"
 #include "../../../utils/mapping/augmented_library.hpp"
 #include "bound_node.hpp"
-#include "bound_types.hpp"
 #include "bound_signal.hpp"
+#include "bound_types.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -71,8 +71,8 @@ namespace bound
 {
 
 /*! \brief Compact storage for nodes in the bound network.
- * 
- * This structure represents the storage in bound networks, enabling the 
+ *
+ * This structure represents the storage in bound networks, enabling the
  * encapsulation of the detailed operations on nodes, inputs, and outputs.
  * It provides methods for creating primary inputs and outputs, managing nodes,
  * and handling the functional properties of the network. The storage is designed
@@ -82,8 +82,9 @@ namespace bound
  * \tparam NumBitsOutputs Number of bits used to represent the output pin specifier.
  */
 template<uint32_t NumBitsOutputs>
-struct storage
+class storage
 {
+public:
   using gate_t = mockturtle::gate;
   using node_t = storage_node<NumBitsOutputs>;
   using signal_t = storage_signal<NumBitsOutputs>;
@@ -95,9 +96,9 @@ struct storage
    * two nodes as constants (0 and 1).
    *
    * \param gates The gates to be included in the library.
-  */
+   */
   storage( std::vector<gate> const& gates )
-  : library( gates )
+      : library( gates )
   {
     /* reserve space for nodes */
     nodes.reserve( 10000u ); // reserve to avoid frequent reallocations
@@ -106,6 +107,8 @@ struct storage
     nodes.emplace_back( pin_type_t::CONSTANT ); // 0
     nodes.emplace_back( pin_type_t::CONSTANT ); // 1
   }
+
+#pragma region Primary I / O and constants
 
   /*! \brief Creates a constant signal.
    *
@@ -155,7 +158,7 @@ struct storage
   }
 
   /*! \brief Check if the node is a multiple-output node
-  */
+   */
   bool is_multioutput( node_index_t const& n ) const
   {
     return nodes[n].outputs.size() > 1;
@@ -176,15 +179,15 @@ struct storage
   bool is_ci( node_index_t const& n ) const
   {
     auto const& pins = nodes[n].outputs;
-    return ( pins[0].type == pin_type_t::PI ) || 
-    ( pins[0].type == pin_type_t::CI );
+    return ( pins[0].type == pin_type_t::PI ) ||
+           ( pins[0].type == pin_type_t::CI );
   }
 
   /*! \brief Check if the node is a primary input (PI)
    *
    * \param n The node to check.
    * \return True if the node is a primary input, false otherwise.
-   */ 
+   */
   bool is_pi( node_index_t const& n ) const
   {
     return is_ci( n );
@@ -199,12 +202,19 @@ struct storage
   bool is_po( node_index_t const& n, uint32_t output = 0 ) const
   {
     auto const& pins = nodes[n].outputs;
-    return ( pins[output].type == pin_type_t::PO ) || 
-    ( pins[output].type == pin_type_t::CO );
+    return ( pins[output].type == pin_type_t::PO ) ||
+           ( pins[output].type == pin_type_t::CO );
   }
 
+  /*! \brief Returns if node index is not 0 */
+  bool constant_value( node_index_t const& n ) const
+  {
+    return n != 0;
+  }
+#pragma region
+
   /*! \brief Check if the node is dead
-   *   
+   *
    * \param n The node to check.
    * \return True if the node is dead, false otherwise.
    *
@@ -213,8 +223,8 @@ struct storage
    */
   bool is_dead( node_index_t const& n ) const
   {
-    bool all_dead { true };
-    bool one_dead { false };
+    bool all_dead{ true };
+    bool one_dead{ false };
     for ( auto const& pin : nodes[n].outputs )
     {
       bool const dead = pin.type == pin_type_t::DEAD;
@@ -224,12 +234,6 @@ struct storage
     assert( !( all_dead ^ one_dead ) );
     /* A dead node is simply a dangling node */
     return all_dead;
-  }
-
-  /*! \brief Returns if node index is not 0 */
-  bool constant_value( node_index_t const& n ) const
-  {
-    return n != 0;
   }
 
   /*! \brief Create a new node with multiple outputs.
@@ -266,7 +270,7 @@ struct storage
   }
 
   /*! \brief Get the binding identifiers of the output pins in a node
-  */
+   */
   std::vector<uint32_t> get_binding_ids( node_index_t const& n ) const
   {
     std::vector<uint32_t> ids;

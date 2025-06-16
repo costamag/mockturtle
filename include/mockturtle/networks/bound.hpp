@@ -46,10 +46,10 @@
 #include "../utils/index_lists/list_simulator.hpp"
 #include "../utils/mapping/augmented_library.hpp"
 #include "../utils/truth_table_cache.hpp"
-#include "storage/bound_storage.hpp"
 #include "detail/foreach.hpp"
 #include "events.hpp"
 #include "storage.hpp"
+#include "storage/bound_storage.hpp"
 
 #include <kitty/constructors.hpp>
 #include <kitty/dynamic_truth_table.hpp>
@@ -67,87 +67,172 @@ namespace mockturtle
 template<uint32_t MaxNumOutputs = 2u>
 class bound_network
 {
-  public:
-  #pragma region Types and constructors
-  static constexpr auto NumBitsOutputs = static_cast<uint32_t>( ceil( log2( MaxNumOutputs ) ) );
+public:
+#pragma region Types and constructors
 
-  using base_type = bound_network<MaxNumOutputs>;
+  static constexpr auto NumBitsOutputs = bound::bits_required<MaxNumOutputs>();
+
+  /* aliases used in this class */
   using storage_t = std::shared_ptr<bound::storage<NumBitsOutputs>>;
   using list_t = large_xag_index_list;
   using node_t = bound::storage_node<NumBitsOutputs>;
   using signal_t = bound::storage_signal<NumBitsOutputs>;
   using node_index_t = bound::node_index_t;
-  /* for compatibility with mockturtle */
+
+  /* aliases for compatibility with the other network types */
+  using base_type = bound_network<MaxNumOutputs>;
   using signal = signal_t;
   using node = node_index_t;
 
+  /*! \brief Constructor from a technology library.
+   *
+   * \param gates The gates in the technology library.
+   */
   bound_network( std::vector<gate> const& gates )
-      : _storage( std::make_shared<bound::storage <NumBitsOutputs>>( gates ) ),
+      : _storage( std::make_shared<bound::storage<NumBitsOutputs>>( gates ) ),
         _events( std::make_shared<typename decltype( _events )::element_type>() )
   {
   }
 
-  bound_network( std::shared_ptr<bound::storage <NumBitsOutputs>> storage )
+  /*! \brief Constructor from a storage object.
+   *
+   * This constructor is used to create a bound network from an existing storage
+   * object, allowing for cloning and manipulation of the network without
+   * needing to recreate the storage structure.
+   *
+   * \param storage The storage object containing the network data.
+   */
+  bound_network( std::shared_ptr<bound::storage<NumBitsOutputs>> storage )
       : _storage( storage ),
         _events( std::make_shared<typename decltype( _events )::element_type>() )
   {
   }
 
-  bound_network clone() const
+  /*! \brief Clone the current network.
+   *
+   * This method creates a new instance of the bound network with a copy of the
+   * current storage. It is useful for creating a separate instance of the
+   * network that can be modified independently of the original.
+   *
+   * \return A new bound_network instance with cloned storage.
+   */
+  bound_network<MaxNumOutputs> clone() const
   {
-    return { std::make_shared<bound::storage <NumBitsOutputs>>( *_storage ) };
+    return { std::make_shared<bound::storage<NumBitsOutputs>>( *_storage ) };
   }
 
 #pragma endregion
 
 #pragma region Primary I / O and constants
 public:
-  /* */
-  signal get_constant( bool value = false ) const
+  /*! \brief Returns a constant signal.
+   *
+   * This method returns a signal representing a constant value (0 or 1).
+   * The value can be specified as an argument, with the default being false (0).
+   *
+   * \param value The constant value to be represented (true for 1, false for 0).
+   * \return A signal representing the constant value.
+   */
+  signal_t get_constant( bool value = false ) const
   {
     return _storage->get_constant( value );
   }
 
-  signal create_pi()
+  /*! \brief Creates a primary input signal.
+   *
+   * \return A signal representing the primary input.
+   */
+  signal_t create_pi()
   {
     return _storage->create_pi();
   }
 
+  /*! \brief Label a signal as primary output.
+   *
+   * \param f The signal to be added to the primary outputs.
+   * \return A unique identifier for the primary output.
+   */
   uint32_t create_po( signal_t const& f )
   {
     return _storage->create_po( f );
   }
 
+  /*! \brief Returns true since the network is combinational.
+   *
+   * TODO: Add support for sequential elements in the future.
+   * \return Always returns true.
+   */
   bool is_combinational() const
   {
     return true;
   }
 
+  /*! \brief Test if a node is a multiple-output node.
+   *
+   * \param n The node index to check.
+   * \return True if the node has multiple outputs, false otherwise.
+   */
   bool is_multioutput( node_index_t const& n ) const
   {
     return _storage->is_multioutput( n );
   }
 
+  /*! \brief Check if a node is a constant.
+   *
+   * \param n The node index to check.
+   * \return True if the node is a constant, false otherwise.
+   */
   bool is_constant( node_index_t const& n ) const
   {
     return _storage->is_constant( n );
   }
 
+  /*! \brief Check if a node is a combinational input (CI).
+   *
+   * \param n The node index to check.
+   * \return True if the node is a combinational input, false otherwise.
+   */
   bool is_ci( node_index_t const& n ) const
   {
     return _storage->is_ci( n );
   }
-  
+
+  /*! \brief Check if a node is a primary input (PI).
+   *
+   * \param n The node index to check.
+   * \return True if the node is a primary input, false otherwise.
+   */
   bool is_pi( node_index_t const& n ) const
   {
     return _storage->is_pi( n );
   }
 
+  /*! \brief Check if a node is a primary output (PO).
+   *
+   * \param n The node index to check.
+   * \param output The output pin index to check (default is 0).
+   * \return True if the node is a primary output, false otherwise.
+   */
   bool is_po( node_index_t const& n, uint32_t output = 0 ) const
   {
     return _storage->is_po( n, output );
   }
 
+  /*! \brief Check if a signal is a primary output (PO).
+   *
+   * \param f The signal to check.
+   * \return True if the signal is a primary output, false otherwise.
+   */
+  bool is_po( signal_t const& f ) const
+  {
+    return is_po( f.index, f.output );
+  }
+
+  /*! \brief Check if a node is a constant 0 or not.
+   *
+   * \param n The node index to check.
+   * \return False if the node represents the constant 0, true otherwise.
+   */
   bool constant_value( node_index_t const& n ) const
   {
     return _storage->constant_value( n );
@@ -159,12 +244,12 @@ public:
   {
     return create_node( children, std::vector<uint32_t>{ id } );
   }
-  
+
   signal_t create_node( std::vector<signal_t> const& children, std::vector<uint32_t> const& ids )
   {
     signal_t const f = _storage->create_node( children, ids );
     set_value( f.index, 0 );
-    
+
     for ( auto const& fn : _events->on_add )
     {
       ( *fn )( f.index );
@@ -185,12 +270,12 @@ public:
   {
     if ( !_storage->in_fanin( n, old_node ) )
       return;
-    
+
     /* if here old_node is in the fanin of n. Store current children to apply events */
     std::vector<signal_t> const old_children = _storage->get_children( old_node );
 
     /* replace in n's fanin the new node to the old one */
-    _storage->replace_in_node( n, old_node, new_signal ); 
+    _storage->replace_in_node( n, old_node, new_signal );
 
     for ( auto const& fn : _events->on_modified )
     {
@@ -358,8 +443,8 @@ public:
 
   bool is_function( node_index_t const& n ) const
   {
-    auto const & outputs = _storage->nodes[n].outputs;
-    return ( outputs.size() > 0) && ( outputs[0].status == bound::pin_type_t::INTERNAL );
+    auto const& outputs = _storage->nodes[n].outputs;
+    return ( outputs.size() > 0 ) && ( outputs[0].status == bound::pin_type_t::INTERNAL );
   }
 #pragma endregion
 
@@ -383,7 +468,7 @@ public:
   {
     return f.index;
   }
-  
+
   signal make_signal( node_index_t const& n, uint32_t output_pin ) const
   {
     return { n, output_pin };
@@ -502,20 +587,21 @@ public:
 
     using IteratorType = decltype( _storage->outputs.begin() );
     detail::foreach_element<IteratorType>(
-      _storage->nodes[n].children.begin(), _storage->nodes[n].children.end(), []( auto f ) { return signal( f ); }, fn );
+        _storage->nodes[n].children.begin(), _storage->nodes[n].children.end(), []( auto f ) { return signal( f ); }, fn );
   }
 #pragma endregion
 
 #pragma region Simulate values
   template<typename TT>
-  std::shared_ptr<list_simulator<list_t, TT>> get_simulator() {
+  std::shared_ptr<list_simulator<list_t, TT>> get_simulator()
+  {
     using simulator_t = list_simulator<list_t, TT>;
     static std::shared_ptr<simulator_t> sim = std::make_shared<simulator_t>( simulator_t() );
     return sim;
   }
 
   template<typename TT>
-  std::vector<TT> compute( node_index_t const& n, std::vector<TT const *> sim_ptrs ) const
+  std::vector<TT> compute( node_index_t const& n, std::vector<TT const*> sim_ptrs ) const
   {
     std::vector<TT> res;
     compute( res, n, sim_ptrs );
@@ -523,7 +609,7 @@ public:
   }
 
   template<typename TT>
-  void compute( std::vector<TT> & res, node_index_t const& n, std::vector<TT const *> sim_ptrs ) const
+  void compute( std::vector<TT>& res, node_index_t const& n, std::vector<TT const*> sim_ptrs ) const
   {
     auto simulator_ptr = get_simulator<TT>();
     auto const& nd = _storage->nodes[n];
@@ -605,14 +691,14 @@ public:
 #pragma endregion
 
 #pragma region Binding
-std::vector<uint32_t> get_binding_ids( node_index_t const& n )
-{
-  return _storage->get_binding_ids( n );
-}
+  std::vector<uint32_t> get_binding_ids( node_index_t const& n )
+  {
+    return _storage->get_binding_ids( n );
+  }
 #pragma endregion
 
 public:
-  std::shared_ptr<bound::storage <NumBitsOutputs>> _storage;
+  std::shared_ptr<bound::storage<NumBitsOutputs>> _storage;
   std::shared_ptr<network_events<base_type>> _events;
 };
 

@@ -55,6 +55,35 @@ namespace bound
 {
 
 /*!
+ * \brief Computes the number of bits required to represent a given number.
+ *
+ * This function calculates the minimum number of bits needed to represent
+ * an integer `n` in binary. When wsriting this function, only two-output
+ * gates are present in technology libraries, so the maximum number of outputs
+ * is 4. The function uses static assertions to ensure that the maximum number
+ * of outputs does not exceed 4 and is greater than or equal to 0. Modifying
+ * the maximum number of outputs requires changing the static assertions and
+ * the return values accordingly.
+ *
+ * \param n The number to compute bits for.
+ * \return The number of bits required.
+ */
+template<uint32_t MaxNumOutputs>
+constexpr uint32_t bits_required()
+{
+  static_assert( MaxNumOutputs <= 4u, "num_outputs must be less than or equal to 4" );
+  static_assert( MaxNumOutputs > 0u, "num_outputs must be larger than or equal to 0" );
+  if constexpr ( MaxNumOutputs <= 1u )
+  {
+    return 1u; // One bit is enough for 0 or 1 outputs
+  }
+  else
+  {
+    return 2u; // One bit is enough for two outputs (0 or 1)
+  }
+}
+
+/*!
  * \brief Describes the logical or structural role of a node’s output pin.
  *
  * These types are used to classify each output pin within the bound network.
@@ -63,14 +92,14 @@ namespace bound
  */
 enum class pin_type_t : uint8_t
 {
-  CONSTANT,    //!< Constant node (logic 0 or 1)
-  INTERNAL,    //!< Internal node within the network
-  NONE,        //!< No type assigned or invalid
-  DEAD,        //!< Node marked as dead (not used)
-  PI,          //!< Primary input
-  PO,          //!< Primary output
-  CI,          //!< Combinational input (e.g., from flip-flop)
-  CO           //!< Combinational output (e.g., to flip-flop)
+  CONSTANT, //!< Constant node (logic 0 or 1)
+  INTERNAL, //!< Internal node within the network
+  NONE,     //!< No type assigned or invalid
+  DEAD,     //!< Node marked as dead (not used)
+  PI,       //!< Primary input
+  PO,       //!< Primary output
+  CI,       //!< Combinational input (e.g., from flip-flop)
+  CO        //!< Combinational output (e.g., to flip-flop)
 };
 
 /*! \brief Type used to identify a node within the bound network.
@@ -91,18 +120,18 @@ struct output_pin_t
 {
 
   output_pin_t( uint32_t id, pin_type_t type, std::vector<node_index_t> const& fanout ) noexcept
-   : id( id ), type( type ), fanout( fanout )
+      : id( id ), type( type ), fanout( fanout )
   {}
 
   output_pin_t( uint32_t id, pin_type_t type ) noexcept
-   : output_pin_t( id, type, {} )
+      : output_pin_t( id, type, {} )
   {}
 
   output_pin_t() noexcept
-   : output_pin_t( std::numeric_limits<uint32_t>::max(), pin_type_t::NONE, {} )
+      : output_pin_t( std::numeric_limits<uint32_t>::max(), pin_type_t::NONE, {} )
   {}
 
-/*! \brief Identifier of the pin’s function in the gate (used for mapping) */
+  /*! \brief Identifier of the pin’s function in the gate (used for mapping) */
   uint32_t id;
 
   /*! \brief Logical type of the pin (PI, PO, constant, etc.) */
