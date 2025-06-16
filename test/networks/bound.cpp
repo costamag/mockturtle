@@ -28,6 +28,9 @@ std::string const test_library = "GATE   inv1    1 O=!a;            PIN * INV 1 
 
 TEST_CASE( "Initialize bound network", "[bound]" )
 {
+  using bound_network = mockturtle::bound_network<2>;
+  using signal = bound_network::signal;
+
   std::vector<gate> gates;
 
   std::istringstream in( test_library );
@@ -35,4 +38,30 @@ TEST_CASE( "Initialize bound network", "[bound]" )
   CHECK( result == lorina::return_code::success );
 
   bound_network ntk( gates );
+  auto const a = ntk.create_pi();
+  auto const b = ntk.create_pi();
+  auto const c = ntk.create_pi();
+  auto const f1 = ntk.create_node( { a, b, c }, { 5 } ); // maj3
+  ntk.create_po( f1 );
+  CHECK( ntk.is_combinational() );
+
 }
+//  CHECK( ntk.is_pi( a.index ) );
+//  CHECK( ntk.is_pi( b.index ) );
+//  CHECK( ntk.is_pi( c.index ) );
+//  CHECK( ntk.is_po( f1 ) );
+//  CHECK( ntk.is_constant( ntk.get_constant( false ) ) );
+//  CHECK( ntk.is_constant( ntk.get_constant( true ) ) );
+//  CHECK( !ntk.is_multioutput( f1 ) );
+//  CHECK( ntk.is_multioutput( ntk.get_constant( false ) ) );
+//  CHECK( ntk.is_multioutput( ntk.get_constant( true ) ) );
+//  CHECK( ntk.is_constant( 0 ) );
+//  CHECK( ntk.is_constant( 1 ) );
+//  CHECK( ntk.constant_value( 0 ) );
+//  CHECK( !ntk.constant_value( 1 ) );
+//  CHECK( !ntk.is_ci( 0 ) );
+//  CHECK( !ntk.is_ci( 1 ) );
+//  CHECK( !ntk.is_ci( f1.index ) );
+//  CHECK( !ntk.is_pi( 0 ) );
+//  CHECK( !ntk.is_pi( 1 ) );
+//  CHECK( !ntk.is_pi( f1.index ) );//

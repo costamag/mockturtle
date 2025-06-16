@@ -256,18 +256,4 @@ struct storage_no_hash
   T data;
 };
 
-/*! \brief Enumeration type to distinguish the different types of nodes.
- */
-enum class pin_status : uint8_t
-{
-  CONSTANT,
-  INTERNAL,
-  NONE,
-  DEAD,
-  PI,
-  PO,
-  CI,
-  CO
-};
-
 } /* namespace mockturtle */
