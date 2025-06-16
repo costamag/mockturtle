@@ -81,16 +81,36 @@ public:
    * which this constructor can synthesize an index list for each gate.
    */
   augmented_library( std::vector<raw_gate_t> const& raw_gates )
+  : synth( st )
   {
-    xag_synth_stats st;
-    xag_synth_decompose synth( st );
     aug_gates.reserve( raw_gates.size() );
     for ( gate const& g : raw_gates )
     {
-      synth( g.function );
-      list_t const list = synth.get_list();
-      aug_gates.emplace_back( g, list );
+      add_gate( g );
     }
+  }
+
+  /*! \brief Default construction expecting gate-by-gate library characterization.
+   *
+   * This constructor can be used for virtual libraries, useful when storing
+   * look-up tables appearing in an LUT network.
+   */
+  augmented_library()
+  : synth( st )
+  {
+    /* reserve initial space for the library */
+    aug_gates.reserve( 128u );
+  }
+
+  /*! \brief Augment the gate and add it to the library.
+   *
+   * \param raw_gate Representation containing the gate's function
+   */
+  void add_gate( raw_gate_t const& g )
+  {
+    synth( g.function );
+    list_t const list = synth.get_list();
+    aug_gates.emplace_back( g, list );
   }
 
   /*! \brief Getter of gate containing detailed information. */
@@ -108,6 +128,9 @@ public:
 private:
   /*! \brief Augmented technology library */
   std::vector<aug_gate_t> aug_gates;
+  /*! \brief Synthesis engine for AIG index lists */
+  xag_synth_stats st;
+  xag_synth_decompose<false, false> synth;
 };
 
 } // namespace mockturtle
