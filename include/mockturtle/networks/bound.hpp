@@ -813,7 +813,7 @@ public:
 
   uint32_t trav_id() const
   {
-    return _storage->trav_id();
+    return _storage->get_trav_id();
   }
 
   void incr_trav_id() const

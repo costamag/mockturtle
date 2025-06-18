@@ -730,7 +730,7 @@ public:
 #pragma endregion
 
 #pragma region Custom node values
-  void clear_values() const
+  void clear_values()
   {
     std::for_each( nodes.begin(), nodes.end(), []( auto& n ) { n.user_data = 0; } );
   }
@@ -740,24 +740,24 @@ public:
     return nodes[n].user_data;
   }
 
-  void set_value( node_index_t const& n, uint32_t v ) const
+  void set_value( node_index_t const& n, uint32_t v )
   {
     nodes[n].user_data = v;
   }
 
-  uint32_t incr_value( node_index_t const& n ) const
+  uint32_t incr_value( node_index_t const& n )
   {
     return static_cast<uint32_t>( nodes[n].user_data++ );
   }
 
-  uint32_t decr_value( node_index_t const& n ) const
+  uint32_t decr_value( node_index_t const& n )
   {
     return static_cast<uint32_t>( --nodes[n].user_data );
   }
 #pragma endregion
 
 #pragma region Visited flags
-  void clear_visited() const
+  void clear_visited()
   {
     std::for_each( nodes.begin(), nodes.end(), []( auto& n ) { n.traversal_id = 0; } );
   }
@@ -767,17 +767,17 @@ public:
     return nodes[n].traversal_id;
   }
 
-  void set_visited( node_index_t const& n, uint32_t v ) const
+  void set_visited( node_index_t const& n, uint32_t v )
   {
     nodes[n].traversal_id = v;
   }
 
-  uint32_t trav_id() const
+  uint32_t get_trav_id() const
   {
     return trav_id;
   }
 
-  void incr_trav_id() const
+  void incr_trav_id()
   {
     ++trav_id;
   }
