@@ -81,7 +81,7 @@ public:
    * which this constructor can synthesize an index list for each gate.
    */
   augmented_library( std::vector<raw_gate_t> const& raw_gates )
-  : synth( st )
+      : synth( st )
   {
     aug_gates.reserve( raw_gates.size() );
     for ( gate const& g : raw_gates )
@@ -96,7 +96,7 @@ public:
    * look-up tables appearing in an LUT network.
    */
   augmented_library()
-  : synth( st )
+      : synth( st )
   {
     /* reserve initial space for the library */
     aug_gates.reserve( 128u );
@@ -123,6 +123,18 @@ public:
   list_t const& get_list( uint32_t id ) const
   {
     return aug_gates[id].aig_list;
+  }
+
+  /*! \brief Getter of the gate's name. */
+  std::string const& get_name( uint32_t id ) const
+  {
+    return aug_gates[id].name;
+  }
+
+  /*! \brief Getter of the augmented gate. */
+  aug_gate_t const& get_gate( uint32_t id ) const
+  {
+    return aug_gates[id];
   }
 
 private:

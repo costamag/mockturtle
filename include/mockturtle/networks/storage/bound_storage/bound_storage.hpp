@@ -53,7 +53,7 @@
 #include "../../../utils/mapping/augmented_library.hpp"
 #include "bound_node.hpp"
 #include "bound_signal.hpp"
-#include "bound_types.hpp"
+#include "bound_utils.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -69,7 +69,6 @@ namespace mockturtle
  */
 namespace bound
 {
-
 /*! \brief Compact storage for nodes in the bound network.
  *
  * This structure represents the storage in bound networks, enabling the
@@ -84,8 +83,11 @@ namespace bound
 template<uint32_t NumBitsOutputs>
 class storage
 {
+#pragma region Types and constructors
+
 public:
   using gate_t = mockturtle::gate;
+  using list_t = large_xag_index_list;
   using node_t = storage_node<NumBitsOutputs>;
   using signal_t = storage_signal<NumBitsOutputs>;
 
@@ -107,6 +109,8 @@ public:
     nodes.emplace_back( pin_type_t::CONSTANT ); // 0
     nodes.emplace_back( pin_type_t::CONSTANT ); // 1
   }
+
+#pragma endregion
 
 #pragma region Primary I / O and constants
 
@@ -141,7 +145,11 @@ public:
   /*! \brief Creates a primary output signal.
    *
    * This method creates a primary output signal from a given signal.
-   * It increases the reference count for the child node and sets the output pin type to PO.
+   * It increases the reference count for the node to avoid incorrect deletions
+   * and updates the output pin type to indicate it is a primary output. A node
+   * can be used as PO more than once, so the number of fanouts is equal to the
+   * fanout size of the output pins, plus the number of times one of its pins
+   * is used as a primary output.
    * It returns the index of the newly created primary output.
    *
    * \param f The signal representing the function to be used as primary output.
@@ -151,24 +159,17 @@ public:
   {
     /* increase ref-count to children */
     nodes[f.index].fanout_count++;
-    nodes[f.index].outputs[f.output].type = pin_type_t::PO;
+    nodes[f.index].outputs[f.output].type |= pin_type_t::PO;
     auto const po_index = static_cast<uint32_t>( outputs.size() );
     outputs.emplace_back( f.index, f.output );
     return po_index;
-  }
-
-  /*! \brief Check if the node is a multiple-output node
-   */
-  bool is_multioutput( node_index_t const& n ) const
-  {
-    return nodes[n].outputs.size() > 1;
   }
 
   /*! \brief Check if the node is a constant */
   bool is_constant( node_index_t const& n ) const
   {
     auto const& pins = nodes[n].outputs;
-    return pins[0].type == pin_type_t::CONSTANT;
+    return has_intersection( pins[0].type, pin_type_t::CONSTANT );
   }
 
   /*! \brief Check if the node is a combinational input (CI)
@@ -179,8 +180,8 @@ public:
   bool is_ci( node_index_t const& n ) const
   {
     auto const& pins = nodes[n].outputs;
-    return ( pins[0].type == pin_type_t::PI ) ||
-           ( pins[0].type == pin_type_t::CI );
+    return has_intersection( pins[0].type, pin_type_t::PI ) ||
+           has_intersection( pins[0].type, pin_type_t::CI );
   }
 
   /*! \brief Check if the node is a primary input (PI)
@@ -201,9 +202,13 @@ public:
    */
   bool is_po( node_index_t const& n, uint32_t output = 0 ) const
   {
-    auto const& pins = nodes[n].outputs;
-    return ( pins[output].type == pin_type_t::PO ) ||
-           ( pins[output].type == pin_type_t::CO );
+    auto& pins = nodes[n].outputs;
+    return has_intersection( pins[output].type, pin_type_t::PO );
+  }
+
+  bool is_po( signal_t f ) const
+  {
+    return is_po( f.index, f.output );
   }
 
   /*! \brief Returns if node index is not 0 */
@@ -211,7 +216,248 @@ public:
   {
     return n != 0;
   }
-#pragma region
+
+#pragma endregion
+
+#pragma region Create arbitrary functions
+
+  /*! \brief Create a detailed node to be stored.
+   *
+   * \param children input signals.
+   * \param ids binding identifier of the output pins.
+   */
+  node_t create_storage_node( std::vector<signal_t> const& children, std::vector<uint32_t> const& ids )
+  {
+    for ( auto i = 1; i < ids.size(); ++i )
+    {
+      assert( library.get_name( ids[i] ) == library.get_name( ids[0] ) &&
+              "Multiple-output nodes are expected to have the same name" );
+    }
+
+    node_t new_node;
+    std::copy( children.begin(), children.end(), std::back_inserter( new_node.children ) );
+
+    new_node.outputs = decltype( new_node.outputs )( ids.size() );
+
+    for ( auto i = 0; i < ids.size(); ++i )
+      new_node.outputs[i] = { ids[i], pin_type_t::INTERNAL };
+
+    return new_node;
+  }
+
+  /*! \brief Create a new node with multiple outputs.
+   *
+   * This method creates a new node with the specified children and output IDs.
+   * It updates the fanout counts of the children and returns a signal representing
+   * the new node.
+   *
+   * \param children The child signals that this node will depend on.
+   * \param ids The IDs of the outputs for this node.
+   * \return A signal representing the newly created node.
+   */
+  signal_t create_node( std::vector<signal_t> const& children, node_t const& n )
+  {
+    const auto index = nodes.size();
+    nodes.push_back( n );
+
+    /* increase ref-count to children */
+    for ( auto c : children )
+    {
+      nodes[c.index].fanout_count++;
+      nodes[c.index].outputs[c.output].fanout_count++;
+      nodes[c.index].outputs[c.output].fanout.push_back( index );
+    }
+
+    if ( hash.find( n ) != hash.end() )
+    {
+      hash[n].push_back( index );
+    }
+    else
+    {
+      hash[n] = { index };
+    }
+
+    return { index, 0 };
+  }
+
+#pragma endregion
+
+#pragma region Restructuring
+
+  /*! \brief Update the list of POs when a signal in the old list is replaced.
+   *
+   * \param old_node The index of the old node to be replaced.
+   * \param new_signals The new signals to replace the old node's outputs.
+   */
+  void replace_in_outputs( node_index_t const& old_node,
+                           std::vector<signal_t> const& new_signals )
+  {
+    foreach_output_pin( old_node, [&]( auto const& pin, uint32_t i ) {
+      signal_t const old_signal = signal_t{ old_node, i };
+      if ( is_po( old_signal ) )
+      {
+        /* replace the output signals with the new signal */
+        replace_output( old_signal, new_signals[i] );
+      }
+    } );
+  }
+
+  /*! \brief Replace an output signal in the outputs list.
+   *
+   * This method replaces an old signal with a new signal in the outputs list.
+   * It updates the fanout count of the new signal and the old signal,
+   *
+   * \param old_signal The old signal to be replaced.
+   * \param new_signal The new signal to replace the old signal.
+   */
+  void replace_output( signal_t const& old_signal,
+                       signal_t const& new_signal )
+  {
+    bool found = false;
+    for ( auto& output : outputs )
+    {
+      if ( output == old_signal )
+      {
+        found = true;
+        /* replace the old signal with the new signal in the outputs */
+        output = new_signal;
+        /* update the fanout count of the new signal */
+        nodes[new_signal.index].fanout_count++;
+        nodes[old_signal.index].fanout_count--;
+        nodes[old_signal.index].outputs[old_signal.output].type &= ~pin_type_t::PO;
+        nodes[new_signal.index].outputs[new_signal.output].type |= pin_type_t::PO;
+      }
+    }
+    assert( found && "Output signal not found in the outputs list" );
+  }
+
+  /*! \brief Insert a fanout node for a signal.
+   *
+   * This method inserts a fanout for a given signal and node index.
+   * It updates the fanout count of the signal and the output pin accordingly.
+   *
+   * \param f The signal for which the fanout is to be inserted.
+   * \param n The node index to be added as a fanout.
+   */
+  void insert_fanout( signal_t const& f, node_index_t const& n )
+  {
+    auto& fanout = nodes[f.index].outputs[f.output].fanout;
+    uint32_t const occurrences = std::count( fanout.begin(),
+                                             fanout.end(),
+                                             n );
+    if ( occurrences > 0 )
+    {
+      /* if the fanout already exists, we do not need to insert it again */
+      return;
+    }
+    nodes[f.index].fanout_count++;
+    nodes[f.index].outputs[f.output].fanout_count++;
+    nodes[f.index].outputs[f.output].fanout.push_back( n );
+  }
+
+  /*! \brief Delete a fanout node for a signal.
+   *
+   * This method deletes a fanout for a given signal and node index.
+   * It updates the fanout count of the signal and the output pin accordingly.
+   *
+   * \param f The signal for which the fanout is to be deleted.
+   * \param n The node index to be removed from the fanout.
+   */
+  void delete_fanout( signal_t const& f, node_index_t const& n )
+  {
+    auto& fanout = nodes[f.index].outputs[f.output].fanout;
+    uint32_t const occurrences = std::count( fanout.begin(),
+                                             fanout.end(),
+                                             n );
+    nodes[f.index].fanout_count -= occurrences;
+    nodes[f.index].outputs[f.output].fanout_count -= occurrences;
+    fanout.erase( std::remove( fanout.begin(),
+                               fanout.end(),
+                               n ),
+                  fanout.end() );
+  }
+
+  /*! \brief Update the interconnections of a node.
+   *
+   * This method updates the fanin-fanout information in the network by replacing an old signal
+   * with a new signal in the fanin of a specified node. It updates the fanout count of the new signal
+   * and applies events to notify about the modification.
+   *
+   * \param root The index of the node where the replacement occurs.
+   * \param old_signal The old signal to be replaced.
+   * \param new_signal The new signal to replace the old node.
+   */
+  void update_nets( node_index_t const& root,
+                    signal_t const& old_signal,
+                    signal_t new_signal )
+  {
+    auto& nd_root = nodes[root];
+    for ( auto& child : nd_root.children )
+    {
+      if ( child == old_signal )
+      {
+        /* add the root node to the new signal's fanout */
+        insert_fanout( new_signal, root );
+
+        /* update the fanout of the old signal */
+        delete_fanout( child, root );
+
+        /* replace the old signal with the new signal in the children */
+        child = new_signal;
+      }
+    }
+  }
+
+  /*! \brief Delete a node from the network.
+   *
+   * This method removes a node from the network, marking it as dead and
+   * updating the fanout counts of its children. It also triggers events
+   * for the deletion of the node.
+   *
+   * \param n The index of the node to be removed.
+   */
+  void delete_node( node_index_t const& n )
+  {
+    /* remove the node from the hash table if present */
+    auto it = hash.find( nodes[n] );
+    if ( it != hash.end() )
+    {
+      auto& list = it->second;
+      std::remove( list.begin(), list.end(), n );
+      if ( list.empty() )
+      {
+        hash.erase( it );
+      }
+    }
+    /* mark the node as dead */
+    for ( auto& pin : nodes[n].outputs )
+    {
+      pin.type |= pin_type_t::DEAD;
+      pin.fanout.clear();
+      pin.fanout_count = 0;
+    }
+    nodes[n].fanout_count = 0;
+    nodes[n].children.clear();
+  }
+
+#pragma endregion
+
+#pragma region Structural properties
+
+  /*! \brief Returns true since the network is combinational.
+   *
+   * TODO: Add support for sequential elements in the future.
+   * \return Always returns true.
+   */
+  bool is_combinational() const
+  {
+    return true;
+  }
+
+  bool is_multioutput( node_index_t const& n ) const
+  {
+    return num_outputs( n ) > 1;
+  }
 
   /*! \brief Check if the node is dead
    *
@@ -227,7 +473,7 @@ public:
     bool one_dead{ false };
     for ( auto const& pin : nodes[n].outputs )
     {
-      bool const dead = pin.type == pin_type_t::DEAD;
+      bool const dead = has_intersection( pin.type, pin_type_t::DEAD );
       all_dead &= dead;
       one_dead |= dead;
     }
@@ -236,50 +482,108 @@ public:
     return all_dead;
   }
 
-  /*! \brief Create a new node with multiple outputs.
-   *
-   * This method creates a new node with the specified children and output IDs.
-   * It updates the fanout counts of the children and returns a signal representing
-   * the new node.
-   *
-   * \param children The child signals that this node will depend on.
-   * \param ids The IDs of the outputs for this node.
-   * \return A signal representing the newly created node.
-   */
-  signal_t create_node( std::vector<signal_t> const& children, std::vector<uint32_t> const& ids )
+  inline bool is_constant( signal_t const& f ) const
   {
-    node_t new_node;
-    std::copy( children.begin(), children.end(), std::back_inserter( new_node.children ) );
+    auto const& outputs = nodes[f.index].outputs;
+    uint32_t i = f.output;
+    return outputs.size() > 0 && has_intersection( outputs[i].type, pin_type_t::CONSTANT );
+  }
 
-    new_node.outputs = decltype( new_node.outputs )( ids.size() );
+  auto size() const
+  {
+    return static_cast<uint32_t>( nodes.size() );
+  }
 
-    for ( auto i = 0; i < ids.size(); ++i )
-      new_node.outputs[i] = { ids[i], pin_type_t::INTERNAL };
+  auto num_cis() const
+  {
+    return static_cast<uint32_t>( inputs.size() );
+  }
 
-    const auto index = nodes.size();
-    nodes.push_back( new_node );
+  auto num_cos() const
+  {
+    return static_cast<uint32_t>( outputs.size() );
+  }
 
-    /* increase ref-count to children */
-    for ( auto c : children )
+  auto num_pis() const
+  {
+    return static_cast<uint32_t>( inputs.size() );
+  }
+
+  auto num_pos() const
+  {
+    return static_cast<uint32_t>( outputs.size() );
+  }
+
+  auto num_gates() const
+  {
+    return static_cast<uint32_t>( nodes.size() - inputs.size() - 2 );
+  }
+
+  uint32_t num_outputs( node_index_t const& n ) const
+  {
+    return static_cast<uint32_t>( nodes[n].outputs.size() );
+  }
+
+  uint32_t fanin_size( node_index_t const& n ) const
+  {
+    return static_cast<uint32_t>( nodes[n].children.size() );
+  }
+
+  uint32_t fanout_size( node_index_t const& n ) const
+  {
+    return nodes[n].fanout_count;
+  }
+
+  uint32_t incr_fanout_size( node_index_t const& n ) const
+  {
+    return nodes[n].fanout_count++;
+  }
+
+  uint32_t decr_fanout_size( node_index_t const& n ) const
+  {
+    return --nodes[n].fanout_count;
+  }
+
+  uint32_t incr_fanout_size_pin( node_index_t const& n, uint32_t pin_index ) const
+  {
+    return ++nodes[n].outputs[pin_index].fanout_count;
+  }
+
+  uint32_t decr_fanout_size_pin( node_index_t const& n, uint32_t pin_index ) const
+  {
+    return --nodes[n].outputs[pin_index].fanout_count;
+  }
+
+  uint32_t fanout_size_pin( node_index_t const& n, uint32_t pin_index ) const
+  {
+    return nodes[n].outputs[pin_index].fanout_count;
+  }
+
+  bool is_function( node_index_t const& n ) const
+  {
+    auto const& outputs = nodes[n].outputs;
+    return ( outputs.size() > 0 ) && ( has_intersection( outputs[0].type, bound::pin_type_t::INTERNAL ) ||
+                                       has_intersection( outputs[0].type, bound::pin_type_t::PO ) );
+  }
+
+  /*! \brief Checks if a given node is already present in the storage.
+   *
+   * Uses structural hashing to check if a node is in the network.
+   */
+  std::optional<node_index_t> find( node_t const& n ) const
+  {
+    auto it = hash.find( n );
+    if ( it != hash.end() )
     {
-      nodes[c.index].fanout_count++;
-      nodes[c.index].outputs[c.output].fanout.push_back( index );
+      assert( !is_dead( it->second[0] ) &&
+              "The node should not be dead when looking for it" );
+      return it->second[0];
     }
-
-    return { index, 0 };
+    return std::nullopt;
   }
 
-  /*! \brief Get the binding identifiers of the output pins in a node
+  /*! \brief Checks if a node is in the fanin of another one.
    */
-  std::vector<uint32_t> get_binding_ids( node_index_t const& n ) const
-  {
-    std::vector<uint32_t> ids;
-    for ( auto const& pin : nodes[n].outputs )
-      ids.push_back( pin.output );
-    return ids;
-  }
-
-  /*! \brief Checks if a node is in the fanin of another one */
   bool in_fanin( node_index_t parent, node_index_t other ) const
   {
     bool in_fanin = false;
@@ -296,6 +600,190 @@ public:
     return in_fanin;
   }
 
+#pragma endregion
+
+#pragma region Functional properties
+  kitty::dynamic_truth_table signal_function( const signal_t& f ) const
+  {
+    auto const& outputs = nodes[f.index].outputs;
+    auto const& id = outputs[f.output].id;
+    return library[id].function;
+  }
+#pragma endregion
+
+#pragma region Nodes and signals
+
+  node_index_t ci_at( uint32_t index ) const
+  {
+    assert( index < inputs.size() );
+    return *( inputs.begin() + index );
+  }
+
+  signal_t co_at( uint32_t index ) const
+  {
+    assert( index < outputs.size() );
+    return *( outputs.begin() + index );
+  }
+
+  node_index_t pi_at( uint32_t index ) const
+  {
+    assert( index < inputs.size() );
+    return *( inputs.begin() + index );
+  }
+
+  signal_t po_at( uint32_t index ) const
+  {
+    assert( index < outputs.size() );
+    return *( outputs.begin() + index );
+  }
+#pragma endregion
+
+#pragma region Node and signal iterators
+
+  template<typename Fn>
+  void foreach_node( Fn&& fn ) const
+  {
+    auto r = range<uint64_t>( nodes.size() );
+    detail::foreach_element_if(
+        r.begin(), r.end(),
+        [this]( auto n ) { return !is_dead( n ); },
+        fn );
+  }
+
+  template<typename Fn>
+  void foreach_ci( Fn&& fn ) const
+  {
+    detail::foreach_element( inputs.begin(), inputs.end(), fn );
+  }
+
+  template<typename Fn>
+  void foreach_co( Fn&& fn ) const
+  {
+    using IteratorType = decltype( outputs.begin() );
+    detail::foreach_element<IteratorType>(
+        outputs.begin(), outputs.end(), []( auto f ) { return signal_t( f ); }, fn );
+  }
+
+  template<typename Fn>
+  void foreach_pi( Fn&& fn ) const
+  {
+    detail::foreach_element( inputs.begin(), inputs.end(), fn );
+  }
+
+  template<typename Fn>
+  void foreach_po( Fn&& fn ) const
+  {
+    using IteratorType = decltype( outputs.begin() );
+    detail::foreach_element<IteratorType>(
+        outputs.begin(), outputs.end(), []( auto f ) { return signal_t( f ); }, fn );
+  }
+
+  template<typename Fn>
+  void foreach_gate( Fn&& fn ) const
+  {
+    auto r = range<uint64_t>( 2u, nodes.size() ); /* start from 2 to avoid constants */
+    detail::foreach_element_if(
+        r.begin(), r.end(),
+        [this]( auto n ) { return !is_ci( n ) && !is_dead( n ); },
+        fn );
+  }
+
+  template<typename Fn>
+  void foreach_fanin( node_index_t const& n, Fn&& fn ) const
+  {
+    if ( n == 0 || is_ci( n ) )
+      return;
+
+    using IteratorType = decltype( outputs.begin() );
+    detail::foreach_element<IteratorType>(
+        nodes[n].children.begin(), nodes[n].children.end(), []( auto f ) { return signal_t( f ); }, fn );
+  }
+
+  /*! \brief Iterate over the output pins of a node.
+   *
+   * This method iterates over the output pins of a specified node and applies
+   * a function to each pin. The function receives the pin and its index as arguments.
+   *
+   * \param n The index of the node whose output pins are to be iterated.
+   * \param fn The function to apply to each output pin.
+   */
+  template<typename Fn>
+  void foreach_output_pin( node_index_t const& n, Fn&& fn ) const
+  {
+    auto& pins = nodes[n].outputs;
+    for ( auto i = 0u; i < pins.size(); ++i )
+    {
+      fn( pins[i], i );
+    }
+  }
+
+  template<typename Fn>
+  void foreach_fanout( output_pin_t const& pin, Fn&& fn ) const
+  {
+    auto& fanout = pin.fanout;
+    for ( uint32_t i = 0; i < fanout.size(); ++i )
+    {
+      node_index_t const& n = fanout[i];
+      fn( n, i );
+    }
+  }
+#pragma endregion
+
+#pragma region Custom node values
+  void clear_values() const
+  {
+    std::for_each( nodes.begin(), nodes.end(), []( auto& n ) { n.user_data = 0; } );
+  }
+
+  uint32_t value( node_index_t const& n ) const
+  {
+    return nodes[n].user_data;
+  }
+
+  void set_value( node_index_t const& n, uint32_t v ) const
+  {
+    nodes[n].user_data = v;
+  }
+
+  uint32_t incr_value( node_index_t const& n ) const
+  {
+    return static_cast<uint32_t>( nodes[n].user_data++ );
+  }
+
+  uint32_t decr_value( node_index_t const& n ) const
+  {
+    return static_cast<uint32_t>( --nodes[n].user_data );
+  }
+#pragma endregion
+
+#pragma region Visited flags
+  void clear_visited() const
+  {
+    std::for_each( nodes.begin(), nodes.end(), []( auto& n ) { n.traversal_id = 0; } );
+  }
+
+  auto visited( node_index_t const& n ) const
+  {
+    return nodes[n].traversal_id;
+  }
+
+  void set_visited( node_index_t const& n, uint32_t v ) const
+  {
+    nodes[n].traversal_id = v;
+  }
+
+  uint32_t trav_id() const
+  {
+    return trav_id;
+  }
+
+  void incr_trav_id() const
+  {
+    ++trav_id;
+  }
+#pragma endregion
+
+#pragma region Getters
   /*! \brief Get the children of a node.
    *
    * This method retrieves the children of a specified node.
@@ -309,52 +797,24 @@ public:
     return nodes[n].children;
   }
 
-  /*! \brief Replace a node in the fanin of another node.
-   *
-   * This method replaces an old node with a new signal in the fanin of a specified node.
-   * It updates the fanout count of the new signal and adjusts the outputs accordingly.
-   *
-   * \param n The index of the node where the replacement occurs.
-   * \param old_node The index of the old node to be replaced.
-   * \param new_signal The new signal to replace the old node.
+  /*! \brief
    */
-  void replace_in_node( node_index_t const& n, node_index_t const& old_node, signal_t new_signal )
+  list_t const& get_list( uint32_t id ) const
   {
-    auto& nobj = nodes[n];
-    for ( auto& child : nobj.children )
-    {
-      if ( child.index == old_node )
-      {
-        child = signal_t{ new_signal.data };
-        nodes[new_signal.index].fanout_count++;
-        nodes[new_signal.index].outputs[new_signal.output].fanout.push_back( n );
-      }
-    }
+    return library.get_list( id );
   }
 
-  /*! \brief Replace a node in the outputs of the storage.
-   *
-   * This method replaces an old node with a new signal in the outputs of the storage.
-   * It increments the fanout count of the new signal and updates the output type.
-   *
-   * \param old_node The old node to be replaced.
-   * \param new_signal The new signal to replace the old node.
+  /*! \brief Get the binding identifiers of the output pins in a node
    */
-  void replace_in_outputs( node_index_t const& old_node, signal_t const& new_signal )
+  std::vector<uint32_t> get_binding_ids( node_index_t const& n ) const
   {
-    for ( auto& output : outputs )
-    {
-      if ( output.index == old_node )
-      {
-        if ( old_node != new_signal.index )
-        {
-          /* increment fan-in of new node */
-          nodes[new_signal.index].fanout_count++;
-          nodes[new_signal.index].outputs[new_signal.output].type = pin_type_t::PO;
-        }
-      }
-    }
+    std::vector<uint32_t> ids;
+    for ( auto const& pin : nodes[n].outputs )
+      ids.push_back( pin.id );
+    return ids;
   }
+
+#pragma endregion
 
   /*! \brief Traversal ID for graph algorithms.
    *
@@ -394,6 +854,14 @@ public:
    * manipulating the gates, as well as an AIG list representation for simulation.
    */
   augmented_library<gate> library;
+
+  /*! \brief Hash map for fast node lookups.
+   *
+   * This hash map allows for quick access to nodes based on their indices.
+   * It uses a custom hash function to ensure efficient storage and retrieval
+   * of nodes in the network.
+   */
+  phmap::flat_hash_map<node_t, std::vector<node_index_t>, bound_node_hash<NumBitsOutputs>> hash;
 };
 
 } // namespace bound

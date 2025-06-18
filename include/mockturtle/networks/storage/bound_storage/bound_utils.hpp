@@ -73,13 +73,13 @@ constexpr uint32_t bits_required()
 {
   static_assert( MaxNumOutputs <= 4u, "num_outputs must be less than or equal to 4" );
   static_assert( MaxNumOutputs > 0u, "num_outputs must be larger than or equal to 0" );
-  if constexpr ( MaxNumOutputs <= 1u )
+  if constexpr ( MaxNumOutputs <= 2u )
   {
-    return 1u; // One bit is enough for 0 or 1 outputs
+    return 1u; // One bit is enough for up to two outputs
   }
   else
   {
-    return 2u; // One bit is enough for two outputs (0 or 1)
+    return 2u; // Two bits are enough for up to 4 outputs
   }
 }
 
@@ -92,15 +92,53 @@ constexpr uint32_t bits_required()
  */
 enum class pin_type_t : uint8_t
 {
-  CONSTANT, //!< Constant node (logic 0 or 1)
-  INTERNAL, //!< Internal node within the network
-  NONE,     //!< No type assigned or invalid
-  DEAD,     //!< Node marked as dead (not used)
-  PI,       //!< Primary input
-  PO,       //!< Primary output
-  CI,       //!< Combinational input (e.g., from flip-flop)
-  CO        //!< Combinational output (e.g., to flip-flop)
+  CONSTANT = 0b00000001, //!< Constant node (logic 0 or 1)
+  INTERNAL = 0b00000010, //!< Internal node within the network
+  NONE = 0b00000100,     //!< No type assigned or invalid
+  DEAD = 0b00001000,     //!< Node marked as dead (not used)
+  PI = 0b00010000,       //!< Primary input
+  PO = 0b00100000,       //!< Primary output
+  CI = 0b01000000,       //!< Combinational input (e.g., from flip-flop)
+  CO = 0b10000000        //!< Combinational output (e.g., to flip-flop)
 };
+
+// Bitwise NOT
+constexpr pin_type_t operator~( pin_type_t rhs )
+{
+  return static_cast<pin_type_t>(
+      ~static_cast<uint8_t>( rhs ) );
+}
+
+// Bitwise OR operator for convenience
+constexpr pin_type_t operator|( pin_type_t lhs, pin_type_t rhs )
+{
+  return static_cast<pin_type_t>(
+      static_cast<uint8_t>( lhs ) | static_cast<uint8_t>( rhs ) );
+}
+
+// Bitwise AND operator
+constexpr pin_type_t operator&( pin_type_t lhs, pin_type_t rhs )
+{
+  return static_cast<pin_type_t>(
+      static_cast<uint8_t>( lhs ) & static_cast<uint8_t>( rhs ) );
+}
+
+inline pin_type_t& operator|=( pin_type_t& lhs, pin_type_t rhs )
+{
+  lhs = lhs | rhs; // Use previously defined operator|
+  return lhs;
+}
+
+inline pin_type_t& operator&=( pin_type_t& lhs, pin_type_t rhs )
+{
+  lhs = lhs & rhs; // Use previously defined operator|
+  return lhs;
+}
+
+constexpr bool has_intersection( pin_type_t target, pin_type_t query )
+{
+  return static_cast<uint8_t>( target & query ) > 0;
+}
 
 /*! \brief Type used to identify a node within the bound network.
  *
@@ -120,7 +158,7 @@ struct output_pin_t
 {
 
   output_pin_t( uint32_t id, pin_type_t type, std::vector<node_index_t> const& fanout ) noexcept
-      : id( id ), type( type ), fanout( fanout )
+      : id( id ), fanout_count( 0 ), type( type ), fanout( fanout )
   {}
 
   output_pin_t( uint32_t id, pin_type_t type ) noexcept
@@ -133,6 +171,9 @@ struct output_pin_t
 
   /*! \brief Identifier of the pin’s function in the gate (used for mapping) */
   uint32_t id;
+
+  /*! \brief Identifier of the pin’s function in the gate (used for mapping) */
+  uint32_t fanout_count;
 
   /*! \brief Logical type of the pin (PI, PO, constant, etc.) */
   pin_type_t type;

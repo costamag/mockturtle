@@ -26,7 +26,7 @@ std::string const test_library = "GATE   inv1    1 O=!a;            PIN * INV 1 
                                  "GATE   fa      6 C=a*b+a*c+b*c;   PIN * INV 1 999 2.1 0.4 2.1 0.4\n"
                                  "GATE   fa      6 S=a^b^c;         PIN * INV 1 999 3.0 0.4 3.0 0.4";
 
-TEST_CASE( "Primary I / O and constants", "[bound]" )
+TEST_CASE( "Bound network: Primary I / O and constants", "[bound]" )
 {
   using bound_network = mockturtle::bound_network<2>;
   using signal = bound_network::signal;
@@ -80,4 +80,163 @@ TEST_CASE( "Primary I / O and constants", "[bound]" )
   // any node index different than 0 gives true ( implementation detail )
   CHECK( ntk.constant_value( 1 ) );
   CHECK( ntk.constant_value( 3 ) );
+}
+
+TEST_CASE( "Bound network: Cloning nodes and networks", "[bound]" )
+{
+  using bound_network = mockturtle::bound_network<2>;
+  using signal = bound_network::signal;
+
+  std::vector<gate> gates;
+
+  std::istringstream in( test_library );
+  auto result = lorina::read_genlib( in, genlib_reader( gates ) );
+  CHECK( result == lorina::return_code::success );
+
+  bound_network ntk( gates );
+  auto const a = ntk.create_pi();
+  auto const b = ntk.create_pi();
+  auto const c = ntk.create_pi();
+  auto const f1 = ntk.create_node( { a, b, c }, 5 );          // maj3
+  auto const f2 = ntk.create_node( { a, b, c }, { 12, 13 } ); // fa
+  signal const carry = signal{ f2.index, 0 };                 // carry output
+  signal const sum = signal{ f2.index, 1 };                   // sum output
+  ntk.create_po( f1 );
+  ntk.create_po( carry );
+  auto const f3 = ntk.create_node( { sum, f1 }, 2u );
+  ntk.create_po( f3 );
+  auto ntk2 = ntk.clone();
+  CHECK( ntk2.size() == ntk.size() );
+  CHECK( ntk2.num_pis() == ntk.num_pis() );
+  CHECK( ntk2.num_pos() == ntk.num_pos() );
+  CHECK( ntk2.num_gates() == ntk.num_gates() );
+  CHECK( ntk2.is_combinational() );
+
+  auto const f4 = ntk2.create_node( { a, b, c }, 6 ); // xor3
+  CHECK( ntk2.size() - 1 == ntk.size() );
+  CHECK( ntk2.num_gates() - 1 == ntk.num_gates() );
+
+  ntk.clone_node( ntk2, f4.index, { a, b, c } );
+  CHECK( ntk2.size() == ntk.size() );
+  CHECK( ntk2.num_gates() == ntk.num_gates() );
+}
+
+TEST_CASE( "Bound network: Substitute multiple-output node with single-output nodes", "[bound]" )
+{
+  using bound_network = mockturtle::bound_network<2>;
+  using signal = bound_network::signal;
+
+  std::vector<gate> gates;
+
+  std::istringstream in( test_library );
+  auto result = lorina::read_genlib( in, genlib_reader( gates ) );
+  CHECK( result == lorina::return_code::success );
+
+  bound_network ntk( gates );
+  auto const a = ntk.create_pi();
+  auto const b = ntk.create_pi();
+  auto const c = ntk.create_pi();
+  auto const f1 = ntk.create_node( { a, b, c }, { 12, 13 } ); // fa
+  auto const carry = ntk.create_node( { a, b, c }, 5 );       // maj3
+  auto const sum = ntk.create_node( { a, b, c }, 6 );         // xor3
+  auto const f2 = ntk.create_node( std::vector<signal>{ signal{ f1.index, 0 },
+                                                        signal{ f1.index, 1 } },
+                                   2u ); // create a new node with carry and sum
+  ntk.create_po( signal{ f1.index, 0 } );
+  ntk.create_po( f2 );
+  ntk.create_po( signal{ f1.index, 1 } );
+  ntk.create_po( signal{ f1.index, 0 } );
+
+  CHECK( !ntk.is_po( carry ) );
+  CHECK( !ntk.is_po( sum ) );
+  CHECK( ntk.is_po( signal{ f1.index, 0 } ) );
+  CHECK( ntk.is_po( signal{ f1.index, 1 } ) );
+  CHECK( ntk.is_po( f2 ) );
+  CHECK( ntk.fanout_size( carry.index ) == 0 );
+  CHECK( ntk.fanout_size( sum.index ) == 0 );
+  CHECK( ntk.fanout_size( f1.index ) == 5 );
+  CHECK( ntk.fanout_size( f2.index ) == 1 );
+  CHECK( ntk.size() == 9 );
+
+  ntk.substitute_node( f1.index, std::vector<signal>{ carry, sum } );
+
+  CHECK( ntk.is_po( carry ) );
+  CHECK( ntk.is_po( sum ) );
+  CHECK( !ntk.is_po( signal{ f1.index, 0 } ) );
+  CHECK( !ntk.is_po( signal{ f1.index, 1 } ) );
+  CHECK( ntk.is_po( f2 ) );
+  CHECK( ntk.fanout_size( carry.index ) == 3 );
+  CHECK( ntk.fanout_size( sum.index ) == 2 );
+  CHECK( ntk.fanout_size( f1.index ) == 0 );
+  CHECK( ntk.fanout_size( f2.index ) == 1 );
+  CHECK( ntk.is_dead( f1.index ) );
+}
+
+TEST_CASE( "Bound network: Strashing", "[bound]" )
+{
+  using bound_network = mockturtle::bound_network<2>;
+
+  std::vector<gate> gates;
+
+  std::istringstream in( test_library );
+  auto result = lorina::read_genlib( in, genlib_reader( gates ) );
+  CHECK( result == lorina::return_code::success );
+
+  bound_network ntk( gates );
+  auto const a = ntk.create_pi();
+  auto const b = ntk.create_pi();
+  auto const c = ntk.create_pi();
+  auto const f1 = ntk.create_node( { a, b, c }, { 12, 13 } );       // fa
+  auto const f2 = ntk.create_node( { a, b, c }, { 12, 13 } );       // fa
+  auto const f3 = ntk.create_node<true>( { a, b, c }, { 12, 13 } ); // fa
+  auto const f4 = ntk.create_node( { a, b }, 2 );                   // nand2
+  auto const f5 = ntk.create_node( { a, b }, 2 );                   // nand2
+  auto const f6 = ntk.create_node<true>( { a, b }, 2 );             // nand2
+
+  CHECK( f2 != f1 );
+  CHECK( f3 == f1 );
+  CHECK( f3 != f2 );
+  CHECK( f5 != f4 );
+  CHECK( f6 == f4 );
+  CHECK( f6 != f5 );
+}
+
+TEST_CASE( "Bound network: Simulation", "[bound]" )
+{
+  using bound_network = mockturtle::bound_network<2>;
+
+  std::vector<gate> gates;
+
+  std::istringstream in( test_library );
+  auto result = lorina::read_genlib( in, genlib_reader( gates ) );
+  CHECK( result == lorina::return_code::success );
+
+  bound_network ntk( gates );
+  auto const a = ntk.create_pi();
+  auto const b = ntk.create_pi();
+  auto const c = ntk.create_pi();
+  auto const f1 = ntk.create_node( { a, b, c }, { 12, 13 } ); // fa
+  auto const f2 = ntk.create_node( { a, b }, 2 );             // nand2
+
+  std::vector<kitty::dynamic_truth_table> tts;
+  for ( int i = 0; i < 3; ++i )
+  {
+    tts.emplace_back( 3u );
+    kitty::create_nth_var( tts[i], i );
+  }
+  tts.push_back( ( tts[0] & tts[1] ) | ( tts[0] & tts[2] ) | ( tts[1] & tts[2] ) ); // maj( a, b, c )
+  tts.push_back( ( tts[0] ^ tts[1] ) ^ tts[2] );                                    // a ^ b ^ c
+  tts.push_back( ~( tts[0] & tts[1] ) );                                            // nand( a, b )
+  std::vector<kitty::dynamic_truth_table const*> sim_ptrs( 3 );
+  sim_ptrs[0] = &tts[0];
+  sim_ptrs[1] = &tts[1];
+  sim_ptrs[2] = &tts[2];
+  auto res = ntk.compute( f1.index, sim_ptrs );
+  CHECK( res.size() == 2 );
+  CHECK( kitty::equal( res[0], tts[3] ) );
+  CHECK( kitty::equal( res[1], tts[4] ) );
+  sim_ptrs.erase( sim_ptrs.begin() + 2 ); // remove c
+  res = ntk.compute( f2.index, sim_ptrs );
+  CHECK( res.size() == 1 );
+  CHECK( kitty::equal( res[0], tts[5] ) );
 }
