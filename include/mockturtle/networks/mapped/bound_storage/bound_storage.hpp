@@ -651,6 +651,17 @@ public:
     assert( has_intersection( outputs[0].type, bound::pin_type_t::PI ) );
     return static_cast<uint32_t>( nodes[n].children[0].data );
   }
+
+  uint32_t po_index( signal_t const& f ) const
+  {
+    for ( uint32_t i = 0; i < outputs.size(); ++i )
+    {
+      if ( f == outputs[i] )
+        return i;
+    }
+    assert( false && "PO does not exist" );
+    return std::numeric_limits<uint32_t>::max();
+  }
 #pragma endregion
 
 #pragma region Node and signal iterators

@@ -675,6 +675,11 @@ public:
   {
     return _storage->pi_index( n );
   }
+
+  uint32_t po_index( signal_t const& f ) const
+  {
+    return _storage->po_index( f );
+  }
 #pragma endregion
 
 #pragma region Node and signal iterators
@@ -854,6 +859,13 @@ public:
   void incr_trav_id() const
   {
     _storage->incr_trav_id();
+  }
+#pragma endregion
+
+#pragma region Getters
+  std::vector<signal_t> const& get_children( node_index_t const& n ) const
+  {
+    return _storage->get_children( n );
   }
 #pragma endregion
 

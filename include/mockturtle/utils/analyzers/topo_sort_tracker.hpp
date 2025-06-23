@@ -224,10 +224,32 @@ public:
       }
     }
   }
+
+  template<typename Fn>
+  void foreach_node_reverse( uint32_t last_level, Fn&& fn )
+  {
+    node_index_t head;
+
+    for ( int i = last_level; i >= 0; --i )
+    {
+      node_index_t head = heads_[i];
+      node_index_t tail = head;
+      while ( tail != null )
+      {
+        fn( tail );
+        tail = nodes_[tail].prev;
+      }
+    }
+  }
 #pragma endregion
 
 #pragma region Getters
 public:
+  [[nodiscard]] uint32_t get_level( node_index_t const& n ) const
+  {
+    return nodes_[n].level;
+  }
+
   [[nodiscard]] std::vector<node_index_t> get_topological_order()
   {
     std::vector<node_index_t> order;
