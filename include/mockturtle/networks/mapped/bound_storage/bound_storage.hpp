@@ -50,7 +50,7 @@
 #pragma once
 
 #include "../../../io/genlib_reader.hpp"
-#include "../../../utils/mapping/augmented_library.hpp"
+#include "../../../utils/mapped/augmented_library.hpp"
 #include "bound_node.hpp"
 #include "bound_signal.hpp"
 #include "bound_utils.hpp"
@@ -99,7 +99,7 @@ public:
    *
    * \param gates The gates to be included in the library.
    */
-  storage( std::vector<gate> const& gates )
+  storage( std::vector<gate_t> const& gates )
       : library( gates )
   {
     /* reserve space for nodes */
@@ -131,13 +131,16 @@ public:
    *
    * This method creates a primary input signal and adds it to the storage.
    * It returns a signal with the index of the newly created primary input.
+   * A PI stores its index in the only fanin it has.
    *
    * \return A signal representing the primary input.
    */
   signal_t create_pi()
   {
     const auto index = nodes.size();
-    nodes.emplace_back( pin_type_t::PI );
+    node_t input( pin_type_t::PI );
+    input.children = { inputs.size() };
+    nodes.emplace_back( input );
     inputs.emplace_back( index );
     return signal_t{ index, 0 };
   }
@@ -459,6 +462,11 @@ public:
     return num_outputs( n ) > 1;
   }
 
+  bool is_multioutput( std::string const& name ) const
+  {
+    return library.is_multioutput( name );
+  }
+
   /*! \brief Check if the node is dead
    *
    * \param n The node to check.
@@ -636,6 +644,13 @@ public:
     assert( index < outputs.size() );
     return *( outputs.begin() + index );
   }
+
+  uint32_t pi_index( node_index_t const& n ) const
+  {
+    auto const& outputs = nodes[n].outputs;
+    assert( has_intersection( outputs[0].type, bound::pin_type_t::PI ) );
+    return static_cast<uint32_t>( nodes[n].children[0].data );
+  }
 #pragma endregion
 
 #pragma region Node and signal iterators
@@ -643,11 +658,13 @@ public:
   template<typename Fn>
   void foreach_node( Fn&& fn ) const
   {
-    auto r = range<uint64_t>( nodes.size() );
-    detail::foreach_element_if(
-        r.begin(), r.end(),
-        [this]( auto n ) { return !is_dead( n ); },
-        fn );
+    for ( node_index_t n = 2u; n < nodes.size(); ++n )
+    {
+      if ( !is_dead( n ) )
+      {
+        fn( n );
+      }
+    }
   }
 
   template<typename Fn>
@@ -673,9 +690,10 @@ public:
   template<typename Fn>
   void foreach_po( Fn&& fn ) const
   {
-    using IteratorType = decltype( outputs.begin() );
-    detail::foreach_element<IteratorType>(
-        outputs.begin(), outputs.end(), []( auto f ) { return signal_t( f ); }, fn );
+    for ( signal_t const& f : outputs )
+    {
+      fn( f );
+    }
   }
 
   template<typename Fn>
@@ -691,12 +709,14 @@ public:
   template<typename Fn>
   void foreach_fanin( node_index_t const& n, Fn&& fn ) const
   {
-    if ( n == 0 || is_ci( n ) )
+    if ( is_constant( n ) || is_ci( n ) || is_pi( n ) )
       return;
 
-    using IteratorType = decltype( outputs.begin() );
-    detail::foreach_element<IteratorType>(
-        nodes[n].children.begin(), nodes[n].children.end(), []( auto f ) { return signal_t( f ); }, fn );
+    auto const& children = nodes[n].children;
+    for ( auto i = 0u; i < children.size(); ++i )
+    {
+      fn( children[i], i );
+    }
   }
 
   /*! \brief Iterate over the output pins of a node.
@@ -717,6 +737,25 @@ public:
     }
   }
 
+  /*! \brief Iterate over the outputs of a node.
+   *
+   * This method iterates over the output pins of a specified node represented
+   * as signals, applying a function to each signal.
+   *
+   * \param n The index of the node whose output pins are to be iterated.
+   * \param fn The function to apply to each output pin.
+   */
+  template<typename Fn>
+  void foreach_output( node_index_t const& n, Fn&& fn ) const
+  {
+    auto& pins = nodes[n].outputs;
+    for ( auto i = 0u; i < pins.size(); ++i )
+    {
+      auto const f = signal_t{ n, i };
+      fn( f );
+    }
+  }
+
   template<typename Fn>
   void foreach_fanout( output_pin_t const& pin, Fn&& fn ) const
   {
@@ -727,6 +766,28 @@ public:
       fn( n, i );
     }
   }
+
+  template<typename Fn>
+  void foreach_fanout( signal_t const& f, Fn&& fn ) const
+  {
+    auto& fanout = nodes[f.index].outputs[f.output].fanout;
+    for ( uint32_t i = 0; i < fanout.size(); ++i )
+    {
+      node_index_t const& n = fanout[i];
+      fn( n );
+    }
+  }
+
+  template<typename Fn>
+  void foreach_fanout( node_index_t const& n, Fn&& fn ) const
+  {
+    foreach_output_pin( n, [&]( auto const& pin, auto i ) {
+      foreach_fanout( pin, [&]( auto const& fanout_node, auto j ) {
+        fn( fanout_node );
+      } );
+    } );
+  }
+
 #pragma endregion
 
 #pragma region Custom node values
@@ -779,6 +840,13 @@ public:
 
   void incr_trav_id()
   {
+    if ( trav_id > ( std::numeric_limits<uint32_t>::max() - 10 ) )
+    {
+      std::cout << "[w] Traversal identifier exceeded safe treshold. Forced reset" << std::endl;
+      clear_values();
+      clear_visited();
+      trav_id = 0;
+    }
     ++trav_id;
   }
 #pragma endregion
@@ -814,6 +882,16 @@ public:
     return ids;
   }
 
+  auto const& get_binding( signal_t const& f ) const
+  {
+    auto const& pin = nodes[f.index].outputs[f.output];
+    return library.get_gate( pin.id );
+  }
+
+  bool has_binding( node_index_t const& n ) const
+  {
+    return std::is_same<gate_t, mockturtle::gate>::value;
+  }
 #pragma endregion
 
   /*! \brief Traversal ID for graph algorithms.
@@ -853,7 +931,7 @@ public:
    * It is initialized with a set of gates and provides methods for accessing and
    * manipulating the gates, as well as an AIG list representation for simulation.
    */
-  augmented_library<gate> library;
+  augmented_library<gate_t> library;
 
   /*! \brief Hash map for fast node lookups.
    *
@@ -861,7 +939,7 @@ public:
    * It uses a custom hash function to ensure efficient storage and retrieval
    * of nodes in the network.
    */
-  phmap::flat_hash_map<node_t, std::vector<node_index_t>, bound_node_hash<NumBitsOutputs>> hash;
+  phmap::flat_hash_map<node_t, std::vector<node_index_t>, bound::node_hash<NumBitsOutputs>> hash;
 };
 
 } // namespace bound

@@ -111,7 +111,7 @@ struct storage_node
  * and outputs to create a unique hash value for the node.
  */
 template<uint32_t NumBitsOutputs>
-struct bound_node_hash
+struct node_hash
 {
   using node_t = storage_node<NumBitsOutputs>;
 

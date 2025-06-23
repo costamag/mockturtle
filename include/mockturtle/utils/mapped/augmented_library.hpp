@@ -24,7 +24,7 @@
  */
 
 /*!
-  \file bind_library.hpp
+  \file augmented_library.hpp
   \brief Implements methods for handling and evaluating a library of standard cells.
 
   This engine can be used for efficient Boolean evaluation of the gates in a
@@ -42,6 +42,7 @@
 
 #pragma once
 
+#include <set>
 #include <vector>
 
 #include "../../algorithms/synth_engines/xag_synth.hpp"
@@ -69,10 +70,23 @@ public:
   struct aug_gate_t : raw_gate_t
   {
     list_t aig_list;
+    std::vector<double> max_pin_time;
+    std::vector<double> min_pin_time;
 
     aug_gate_t( const raw_gate_t& g, list_t const& list )
-        : raw_gate_t( g ), aig_list( list )
-    {}
+        : raw_gate_t( g ),
+          aig_list( list ),
+          max_pin_time( g.num_vars, std::numeric_limits<double>::min() ),
+          min_pin_time( g.num_vars, std::numeric_limits<double>::max() )
+    {
+      for ( auto i = 0u; i < g.num_vars; ++i )
+      {
+        double const rise_time = g.pins[i].rise_block_delay;
+        double const fall_time = g.pins[i].fall_block_delay;
+        max_pin_time[i] = std::max( rise_time, fall_time );
+        min_pin_time[i] = std::min( rise_time, fall_time );
+      }
+    }
   };
 
   /*! \brief Construction via specification of the simpler library.
@@ -110,6 +124,18 @@ public:
   {
     synth( g.function );
     list_t const list = synth.get_list();
+
+    /* check if the node should be added to the multiple output gates */
+    if ( single_output.find( g.name ) != single_output.end() )
+    {
+      single_output.erase( g.name );
+      multiple_output.insert( g.name );
+    }
+    else
+    {
+      single_output.insert( g.name );
+    }
+
     aug_gates.emplace_back( g, list );
   }
 
@@ -137,12 +163,21 @@ public:
     return aug_gates[id];
   }
 
+  /*! \brief Check if the gate is a multiple output gate from its name */
+  bool is_multioutput( std::string const& name ) const
+  {
+    return multiple_output.find( name ) != multiple_output.end();
+  }
+
 private:
   /*! \brief Augmented technology library */
   std::vector<aug_gate_t> aug_gates;
   /*! \brief Synthesis engine for AIG index lists */
   xag_synth_stats st;
   xag_synth_decompose<false, false> synth;
+  /* contains the name of the multiple-output gates in the library */
+  std::set<std::string> multiple_output;
+  std::set<std::string> single_output;
 };
 
 } // namespace mockturtle

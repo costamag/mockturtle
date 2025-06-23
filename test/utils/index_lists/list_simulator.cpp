@@ -205,7 +205,7 @@ std::string const test_library = "GATE   zero    0 O=CONST0;\n"                 
                                  "GATE   nand    2 O=!(a*b);                  PIN * INV 1 999 1.0 0.2 1.0 0.2\n"    // 5
                                  "GATE   maj3    8 O=(a*b)+(a*c)+(b*c);       PIN * INV 1 999 3.0 0.4 3.0 0.4\n";   // 6
 
-TEST_CASE( "simulation of lib_index_list with static truth tables", "[list_simulator]" )
+TEST_CASE( "simulation of bound_list with static truth tables", "[list_simulator]" )
 {
 
   std::vector<gate> gates;
@@ -213,7 +213,7 @@ TEST_CASE( "simulation of lib_index_list with static truth tables", "[list_simul
   auto result = lorina::read_genlib( in_genlib, genlib_reader( gates ) );
   CHECK( result == lorina::return_code::success );
 
-  lib_index_list<gate> list;
+  bound_list<gate> list;
   list.add_inputs( 4u );
   auto const a = list.pi_at( 0 );
   auto const b = list.pi_at( 1 );
@@ -247,7 +247,7 @@ TEST_CASE( "simulation of lib_index_list with static truth tables", "[list_simul
     xs_r.emplace_back( &xs[i] );
   }
 
-  list_simulator<lib_index_list<gate>, kitty::static_truth_table<4u>> sim( gates );
+  list_simulator<bound_list<gate>, kitty::static_truth_table<4u>> sim( gates );
   sim( list, xs_r );
   for ( auto i = 0u; i < xs.size(); ++i )
   {

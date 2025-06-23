@@ -6,7 +6,7 @@
 #include <lorina/genlib.hpp>
 #include <mockturtle/io/genlib_reader.hpp>
 #include <mockturtle/io/super_reader.hpp>
-#include <mockturtle/networks/bound.hpp>
+#include <mockturtle/networks/mapped/bound_network.hpp>
 #include <mockturtle/utils/tech_library.hpp>
 
 using namespace mockturtle;
@@ -51,6 +51,8 @@ TEST_CASE( "Bound network: Primary I / O and constants", "[bound]" )
   /* create a new node taking the carry signal as input */
   auto const f3 = ntk.create_node( { sum, f1 }, 2u );
   ntk.create_po( f3 );
+  CHECK( ntk.is_multioutput( "fa" ) );
+  CHECK( !ntk.is_multioutput( "nand2" ) );
   CHECK( ntk.is_combinational() );
   CHECK( ntk.get_constant( true ) == signal{ 1, 0 } );
   CHECK( ntk.get_constant( false ) == signal{ 0, 0 } );

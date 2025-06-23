@@ -32,7 +32,7 @@
 
 #pragma once
 
-#include "../mapping/augmented_library.hpp"
+#include "../mapped/augmented_library.hpp"
 #include "index_list.hpp"
 
 #include <algorithm>
@@ -219,7 +219,7 @@ private:
 
    .. code-block:: c++
 
-      using list_t = lib_index_list;
+      using list_t = bound_list;
       using truth_table_t = kitty::static_truth_table<4u>;
       list_simulator<list_t, truth_table_t> sim;
       sim( list1, inputs1 );
@@ -227,10 +227,10 @@ private:
    \endverbatim
  */
 template<typename Gate, typename TT>
-class list_simulator<lib_index_list<Gate>, TT>
+class list_simulator<bound_list<Gate>, TT>
 {
 public:
-  using outer_list_t = lib_index_list<Gate>;
+  using outer_list_t = bound_list<Gate>;
   using inner_list_t = large_xag_index_list;
   using element_type = typename outer_list_t::element_type;
 
@@ -270,10 +270,10 @@ public:
     size_t i = 0;
     using iterate_type = typename std::vector<element_type>::iterator;
     std::vector<TT const*> sims_ptrs;
-    outer_list.foreach_gate( [&]( auto const& start, auto const& end, element_type const& id ) {
+    outer_list.foreach_gate( [&]( auto const& children, element_type const& id, auto j ) {
       sims_ptrs.clear();
 
-      for ( auto it = start; it != end; it++ )
+      for ( auto it = children.begin(); it != children.end(); it++ )
       {
         element_type lit = *it;
         if ( outer_list.is_pi( lit ) )

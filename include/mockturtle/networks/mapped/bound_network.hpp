@@ -25,31 +25,32 @@
 
 /*!
   \file bound.hpp
-  \brief Bound network for standard cell design with multiple-output support
+  \brief Bound network with multiple-output gates support.
 
-  Similarly to the `block_network`, this data structure is designed to support
-  mapping with multiple-output gates, but it introduces the following features:
-  - Two nodes might have the same functionality, but different binding id. In
-    traditional technology mappers group cells with the same functionality into
-    equivalence classes. Supporting diversity across them allows us to consider
-    load capacitance and sizing.
-  - Each gate is combined with a Boolean chain for efficient Boolean evaluation.
+  This data structure is a general logic representation which can be used to
+  represent a network type with multiple-output cells. Natively, this network
+  representation is designed for enabling efficient optimization after technology
+  mapping. However, its generality allows us to use it to represent any network
+  type in mockturtle, including AIGs, XAIGs, MIGs, XMGs, etc. To support these
+  representations, signals can be complemented.
 
   \author Andrea Costamagna
 */
 
 #pragma once
 
-#include "../io/genlib_reader.hpp"
-#include "../traits.hpp"
-#include "../utils/algorithm.hpp"
-#include "../utils/index_lists/list_simulator.hpp"
-#include "../utils/mapping/augmented_library.hpp"
-#include "../utils/truth_table_cache.hpp"
-#include "detail/foreach.hpp"
-#include "events.hpp"
-#include "storage.hpp"
-#include "storage/bound_details.hpp"
+#include "../../io/genlib_reader.hpp"
+#include "../../traits.hpp"
+#include "../../utils/algorithm.hpp"
+#include "../../utils/index_lists/list_simulator.hpp"
+#include "../../utils/mapped/augmented_library.hpp"
+#include "../../utils/truth_table_cache.hpp"
+#include "../detail/foreach.hpp"
+#include "../events.hpp"
+#include "../storage.hpp"
+#include "bound_storage/bound_node.hpp"
+#include "bound_storage/bound_signal.hpp"
+#include "bound_storage/bound_storage.hpp"
 
 #include <kitty/constructors.hpp>
 #include <kitty/dynamic_truth_table.hpp>
@@ -78,9 +79,14 @@ public:
   using node_t = bound::storage_node<NumBitsOutputs>;
   using signal_t = bound::storage_signal<NumBitsOutputs>;
   using node_index_t = bound::node_index_t;
+  using hash_t = bound::signal_hash<NumBitsOutputs>;
 
   /* aliases for compatibility with the other network types */
+  static constexpr auto min_fanin_size = 1;
+  static constexpr auto max_fanin_size = 32;
+  static constexpr auto max_num_outputs = 1u << NumBitsOutputs;
   using base_type = bound_network<MaxNumOutputs>;
+  using storage = storage_t;
   using signal = signal_t;
   using node = node_index_t;
 
@@ -347,29 +353,8 @@ public:
    */
   void substitute_node( node_index_t const& old_node, signal_t const& new_signal )
   {
-    /* find all parents from old_node */
-    auto const& old_outputs = _storage->get_output_pins( old_node );
-    auto const new_node = new_signal.index;
-    std::vector<signal_t> new_signals( old_outputs.size() );
-    if ( old_outputs.size() == 1 )
-    {
-      /* if the old node has only one output, we can directly substitute it */
-      new_signals[0] = new_signal;
-    }
-    else
-    {
-      auto const& new_outputs = _storage->get_output_pins( new_signal.index );
-      assert( old_outputs.size() == new_outputs.size() &&
-              "Number of outputs in the old and new nodes must match" );
-      for ( auto i = 0u; i < old_outputs.size(); ++i )
-      {
-        /* create a new signal with the same index and output pin as the old one */
-        new_signals[i] = signal_t{ new_node, i };
-      }
-    }
-
     /* fall back to the general case */
-    substitute_node( old_node, new_signals );
+    substitute_node( old_node, std::vector<signal_t>{ new_signal } );
   }
 
   /*! \brief Update the fanin-fanout information in the network.
@@ -515,6 +500,11 @@ public:
     return _storage->is_multioutput( n );
   }
 
+  bool is_multioutput( std::string const& name ) const
+  {
+    return _storage->is_multioutput( name );
+  }
+
   inline bool is_dead( node_index_t const& n ) const
   {
     return _storage->is_dead( n );
@@ -523,6 +513,11 @@ public:
   auto size() const
   {
     return _storage->size();
+  }
+
+  auto signal_size() const
+  {
+    return max_num_outputs * size();
   }
 
   auto num_cis() const
@@ -617,7 +612,7 @@ public:
 
   signal_t make_signal( node_index_t const& n, uint32_t output_pin ) const
   {
-    return { n, output_pin };
+    return signal_t{ n, output_pin };
   }
 
   signal_t make_signal( node_index_t const& n ) const
@@ -638,7 +633,7 @@ public:
 
   signal_t next_output_pin( signal_t const& f ) const
   {
-    return { f.index, f.output + 1 };
+    return signal_t{ f.index, f.output + 1 };
   }
 
   uint32_t node_to_index( node_index_t const& n ) const
@@ -649,6 +644,11 @@ public:
   node_index_t index_to_node( uint32_t index ) const
   {
     return index;
+  }
+
+  uint64_t signal_to_index( signal_t const& f ) const
+  {
+    return static_cast<uint32_t>( f.data );
   }
 
   node_index_t ci_at( uint32_t index ) const
@@ -669,6 +669,11 @@ public:
   signal_t po_at( uint32_t index ) const
   {
     return _storage->po_at( index );
+  }
+
+  uint32_t pi_index( node_index_t const& n ) const
+  {
+    return _storage->pi_index( n );
   }
 #pragma endregion
 
@@ -713,6 +718,36 @@ public:
   void foreach_fanin( node_index_t const& n, Fn&& fn ) const
   {
     _storage->foreach_fanin( n, fn );
+  }
+
+  template<typename Fn>
+  void foreach_fanout( node_index_t const& n, Fn&& fn ) const
+  {
+    _storage->foreach_fanout( n, fn );
+  }
+
+  template<typename Fn>
+  void foreach_fanout( signal_t const& f, Fn&& fn ) const
+  {
+    _storage->foreach_fanout( f, fn );
+  }
+
+  template<typename Fn>
+  void foreach_tfo_node( node_index_t const& n, Fn&& fn ) const
+  {
+    _storage->foreach_tfo_node( n, fn );
+  }
+
+  template<typename Fn>
+  void foreach_output_pin( node_index_t const& n, Fn&& fn ) const
+  {
+    _storage->foreach_output_pin( n, fn );
+  }
+
+  template<typename Fn>
+  void foreach_output( node_index_t const& n, Fn&& fn ) const
+  {
+    _storage->foreach_output( n, fn );
   }
 #pragma endregion
 
@@ -833,6 +868,16 @@ public:
   std::vector<uint32_t> get_binding_ids( node_index_t const& n ) const
   {
     return _storage->get_binding_ids( n );
+  }
+
+  auto const& get_binding( signal_t const& f ) const
+  {
+    return _storage->get_binding( f );
+  }
+
+  auto const& has_binding( node_index_t const& n ) const
+  {
+    return _storage->has_binding( n );
   }
 #pragma endregion
 
