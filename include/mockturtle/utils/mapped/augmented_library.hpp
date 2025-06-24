@@ -72,6 +72,7 @@ public:
     list_t aig_list;
     std::vector<double> max_pin_time;
     std::vector<double> min_pin_time;
+    double avg_pin_delay;
 
     aug_gate_t( const raw_gate_t& g, list_t const& list )
         : raw_gate_t( g ),
@@ -79,13 +80,16 @@ public:
           max_pin_time( g.num_vars, std::numeric_limits<double>::min() ),
           min_pin_time( g.num_vars, std::numeric_limits<double>::max() )
     {
+      avg_pin_delay = 0;
       for ( auto i = 0u; i < g.num_vars; ++i )
       {
         double const rise_time = g.pins[i].rise_block_delay;
         double const fall_time = g.pins[i].fall_block_delay;
         max_pin_time[i] = std::max( rise_time, fall_time );
         min_pin_time[i] = std::min( rise_time, fall_time );
+        avg_pin_delay += 0.5 * ( max_pin_time[i] + min_pin_time[i] );
       }
+      avg_pin_delay /= (double)g.num_vars;
     }
   };
 

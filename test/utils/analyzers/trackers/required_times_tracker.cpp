@@ -7,7 +7,7 @@
 #include <mockturtle/io/genlib_reader.hpp>
 #include <mockturtle/io/super_reader.hpp>
 #include <mockturtle/networks/mapped/bound_network.hpp>
-#include <mockturtle/utils/analyzers/topo_sort_tracker.hpp>
+#include <mockturtle/utils/analyzers/trackers/required_times_tracker.hpp>
 #include <mockturtle/utils/tech_library.hpp>
 
 using namespace mockturtle;
@@ -27,10 +27,10 @@ std::string const test_library = "GATE   inv1    1 O=!a;            PIN * INV 1 
                                  "GATE   fa      6 C=a*b+a*c+b*c;   PIN * INV 1 999 2.1 0.4 2.1 0.4\n"
                                  "GATE   fa      6 S=a^b^c;         PIN * INV 1 999 3.0 0.4 3.0 0.4";
 
-TEST_CASE( "Topological sorting in Bound networks", "[topo_sort_tracker]" )
+TEST_CASE( "Required times in Bound networks", "[required_tracker]" )
 {
   using bound_network = mockturtle::bound_network<2>;
-  using node = typename bound_network::node;
+  using signal = typename bound_network::signal;
   std::vector<gate> gates;
 
   std::istringstream in( test_library );
@@ -43,27 +43,17 @@ TEST_CASE( "Topological sorting in Bound networks", "[topo_sort_tracker]" )
   auto const c = ntk.create_pi();
   /* chain of inverters */
   auto const f1 = ntk.create_node( { a }, 0 );
-  auto const f2 = ntk.create_node( { f1, b }, 2 );
-  auto const f3 = ntk.create_node( { f2, c }, 2 );
+  auto const f2 = ntk.create_node( { f1 }, 0 );
+  auto const f3 = ntk.create_node( { f2 }, 0 );
   ntk.create_po( f3 );
-  topo_sort_tracker topo_sort( ntk );
-
-  CHECK( topo_sort.get_topological_order() == std::vector<node>{ 2, 3, 4, 5, 6, 7 } );
-  CHECK( topo_sort.get_reverse_order() == std::vector<node>{ 7, 6, 5, 4, 3, 2 } );
-
-  auto const f4 = ntk.create_node( { b }, 0 );
-  auto const f5 = ntk.create_node( { a, f4, c }, { 12, 13 } );
-  ntk.create_po( f5 );
-
-  CHECK( topo_sort.get_topological_order() == std::vector<node>{ 2, 3, 4, 5, 8, 6, 9, 7 } );
-  CHECK( topo_sort.get_reverse_order() == std::vector<node>{ 7, 9, 6, 8, 5, 4, 3, 2 } );
-
-  ntk.substitute_node( ntk.get_node( f4 ), f2 );
-
-  CHECK( topo_sort.get_topological_order() == std::vector<node>{ 2, 3, 4, 5, 6, 7, 9 } );
-  CHECK( topo_sort.get_reverse_order() == std::vector<node>{ 9, 7, 6, 5, 4, 3, 2 } );
-
-  /* check correctness of on_add update */
-
-  // ntk.substitute_node( ntk.get_node( f1 ), signal{ f5.index, 1 } );
+  required_times_tracker required( ntk, 5.0 );
+  CHECK( std::abs( required.get_time( f1 ) - 3.2 ) < 0.1 );
+  CHECK( std::abs( required.get_time( f2 ) - 4.1 ) < 0.1 );
+  CHECK( std::abs( required.get_time( f3 ) - 5.0 ) < 0.1 );
+  
+  auto const f4 = ntk.create_node( { a, b }, 2 );
+  CHECK( std::abs( std::numeric_limits<double>::max() - required.get_time( f4 ) ) < 0.1 );
+  
+  ntk.substitute_node( ntk.get_node( f1 ), f4 );
+  CHECK( std::abs( required.get_time( f4 ) - 3.1 ) < 0.1 );
 }

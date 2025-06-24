@@ -455,18 +455,16 @@ public:
 
     auto children = _storage->get_children( n );
 
-    /* mark the node as dead */
-    _storage->delete_node( n );
-
-    /* NOTE: all node's information is cleared-up at this point, so we cannot
-     * access the node's outputs or the node's fanins anymore. On-delete events
-     * are deprecated for bound networks, sinxce on_modified events and on_add
-     * events can be used to exhaustively track the changes in the network.
+    /* NOTE: the node's information is not cleared-up yet, so we can
+     * access the node's outputs or the node's fanins. Not its old fanouts.
      */
     for ( auto const& fn : _events->on_delete )
     {
       ( *fn )( n );
     }
+
+    /* mark the node as dead */
+    _storage->delete_node( n );
 
     /* if the node has been deleted, then deref fanout_size of
        fanins and try to take them out if their fanout_size become 0 */
@@ -805,6 +803,24 @@ public:
       ( *simulator_ptr )( list, sim_ptrs );
       simulator_ptr->get_simulation_inline( res[i], list, sim_ptrs, list.po_at( 0 ) );
     } );
+  }
+
+  /*! \brief Inline simulation of the input patterns using the node's function.
+   *
+   * \param n index of the node to simulate
+   * \param sim_ptrs vector of pointers to the simulation of the fanins.
+   */
+  template<typename TT>
+  void compute( TT& res, signal_t const& f, std::vector<TT const*> sim_ptrs ) const
+  {
+    auto simulator_ptr = get_simulator<TT>();
+    const auto nfanin = fanin_size( get_node( f ) );
+    assert( nfanin > 0 );
+    assert( sim_ptrs.size() == nfanin );
+    auto const& g = get_binding( f );
+    auto const& list = _storage->get_list( g.id );
+    ( *simulator_ptr )( list, sim_ptrs );
+    simulator_ptr->get_simulation_inline( res, list, sim_ptrs, list.po_at( 0 ) );
   }
 #pragma endregion
 

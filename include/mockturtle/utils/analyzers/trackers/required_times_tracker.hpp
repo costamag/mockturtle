@@ -32,7 +32,7 @@
 
 #pragma once
 
-#include "../signal_map.hpp"
+#include "../../signal_map.hpp"
 #include "topo_sort_tracker.hpp"
 #include <limits>
 

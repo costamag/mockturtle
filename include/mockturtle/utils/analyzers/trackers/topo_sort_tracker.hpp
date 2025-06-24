@@ -32,8 +32,8 @@
 
 #pragma once
 
-#include "../network_exploration/tfo_manager.hpp"
-#include "../node_map.hpp"
+#include "../../network_exploration/tfo_manager.hpp"
+#include "../../node_map.hpp"
 #include <limits>
 
 namespace mockturtle
@@ -203,6 +203,22 @@ public:
       while ( head != null )
       {
         fn( head );
+        head = nodes_[head].next;
+      }
+    }
+  }
+
+  template<typename Fn>
+  void foreach_gate( Fn&& fn )
+  {
+    for ( auto i = 0u; i < tails_.size(); ++i )
+    {
+      node_index_t tail = tails_[i];
+      node_index_t head = tail;
+      while ( head != null )
+      {
+        if ( !ntk_.is_pi( head ) && !ntk_.is_constant( head ) )
+          fn( head );
         head = nodes_[head].next;
       }
     }

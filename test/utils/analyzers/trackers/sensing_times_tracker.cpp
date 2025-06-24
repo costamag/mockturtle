@@ -7,7 +7,7 @@
 #include <mockturtle/io/genlib_reader.hpp>
 #include <mockturtle/io/super_reader.hpp>
 #include <mockturtle/networks/mapped/bound_network.hpp>
-#include <mockturtle/utils/analyzers/sensing_times_tracker.hpp>
+#include <mockturtle/utils/analyzers/trackers/sensing_times_tracker.hpp>
 #include <mockturtle/utils/tech_library.hpp>
 
 using namespace mockturtle;

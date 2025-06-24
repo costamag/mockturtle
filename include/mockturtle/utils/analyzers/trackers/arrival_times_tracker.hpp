@@ -32,8 +32,8 @@
 
 #pragma once
 
-#include "../network_exploration/tfo_manager.hpp"
-#include "../signal_map.hpp"
+#include "../../network_exploration/tfo_manager.hpp"
+#include "../../signal_map.hpp"
 #include <limits>
 
 namespace mockturtle
