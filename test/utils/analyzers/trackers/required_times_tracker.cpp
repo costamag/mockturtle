@@ -30,7 +30,6 @@ std::string const test_library = "GATE   inv1    1 O=!a;            PIN * INV 1 
 TEST_CASE( "Required times in Bound networks", "[required_tracker]" )
 {
   using bound_network = mockturtle::bound_network<2>;
-  using signal = typename bound_network::signal;
   std::vector<gate> gates;
 
   std::istringstream in( test_library );
@@ -40,7 +39,6 @@ TEST_CASE( "Required times in Bound networks", "[required_tracker]" )
   bound_network ntk( gates );
   auto const a = ntk.create_pi();
   auto const b = ntk.create_pi();
-  auto const c = ntk.create_pi();
   /* chain of inverters */
   auto const f1 = ntk.create_node( { a }, 0 );
   auto const f2 = ntk.create_node( { f1 }, 0 );
@@ -50,10 +48,10 @@ TEST_CASE( "Required times in Bound networks", "[required_tracker]" )
   CHECK( std::abs( required.get_time( f1 ) - 3.2 ) < 0.1 );
   CHECK( std::abs( required.get_time( f2 ) - 4.1 ) < 0.1 );
   CHECK( std::abs( required.get_time( f3 ) - 5.0 ) < 0.1 );
-  
+
   auto const f4 = ntk.create_node( { a, b }, 2 );
   CHECK( std::abs( std::numeric_limits<double>::max() - required.get_time( f4 ) ) < 0.1 );
-  
+
   ntk.substitute_node( ntk.get_node( f1 ), f4 );
   CHECK( std::abs( required.get_time( f4 ) - 3.1 ) < 0.1 );
 }

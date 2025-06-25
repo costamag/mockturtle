@@ -95,7 +95,7 @@ public:
     /* update the allocated memory */
     if ( sims.size() < list.num_gates() )
       sims.resize( std::max<size_t>( sims.size(), list.num_gates() ) ); /* ensure that the constant 0 simulation is correct ( for dynamic truth tables ) */
-    if ( ( inputs.size() ) > 0 && ( const0.num_vars() != inputs[0]->num_vars() ) )
+    if ( ( inputs.size() ) > 0 && ( const0.num_bits() != inputs[0]->num_bits() ) )
       const0 = inputs[0]->construct();
     /* traverse the list in topological order and simulate each node */
     size_t i = 0;

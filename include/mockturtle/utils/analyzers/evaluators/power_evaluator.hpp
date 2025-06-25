@@ -78,9 +78,7 @@ public:
     /* simulate the network in topological order */
     topo_sort.foreach_gate( [&]( auto const& n ) {
       ntk_.foreach_output( n, [&]( auto const& f ) {
-        activity_[f].reset();
-
-        auto const g = ntk_.get_binding( f );
+        auto const binding = ntk_.get_binding( f );
         /* simulate the beginning of the clock cycle */
         sim_ptrs.clear();
         ntk_.foreach_fanin( n, [&]( auto const& fi, auto ii ) {
@@ -100,15 +98,15 @@ public:
         ntk_.compute( activity_[f][TimeSteps - 1], f, sim_ptrs );
 
         step = 1;
-        if ( ( arrival.get_time( f ) - sensing.get_time( f ) ) > g.avg_pin_delay )
+        if ( arrival.get_time( f ) > sensing.get_time( f ) )
         {
           while ( step < ( TimeSteps - 1 ) )
           {
-            double const time = get_time( step, sensing.get_time( f ), arrival.get_time( f ) );
+            double const time = get_time( step, sensing.get_time( f ) - binding.avg_pin_delay, arrival.get_time( f ) + binding.avg_pin_delay );
             sim_ptrs.clear();
             ntk_.foreach_fanin( n, [&]( auto const& fi, auto ii ) {
-              double const time_i = time - g.max_pin_time[ii];
-              auto step_i = get_step( time_i, sensing.get_time( fi ), arrival.get_time( fi ) );
+              double const time_i = time - binding.max_pin_time[ii];
+              auto step_i = get_step( time_i, sensing.get_time( fi ) - binding.avg_pin_delay, arrival.get_time( fi ) + binding.avg_pin_delay );
               sim_ptrs.push_back( &activity_[fi][step_i] );
             } );
             ntk_.compute( activity_[f][step], f, sim_ptrs );
@@ -123,8 +121,9 @@ public:
             activity_[f][step] = activity_[f][0u];
         }
         while ( step++ < ( TimeSteps - 1 ) )
+        {
           activity_[f][step] = activity_[f][TimeSteps - 1];
-
+        }
         double glitching = 0;
         double switching = 0;
         double zerodelay = 0;

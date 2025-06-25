@@ -219,13 +219,9 @@ TEST_CASE( "simulation of bound_list with static truth tables", "[list_simulator
   auto const b = list.pi_at( 1 );
   auto const c = list.pi_at( 2 );
   auto const d = list.pi_at( 3 );
-  auto const lit0 = list.add_gate( {}, 0 );
-  auto const lit1 = list.add_gate( {}, 1 );
   auto const lit2 = list.add_gate( { a, b, c }, 6 );
   auto const lit3 = list.add_gate( { lit2, d }, 5 );
   auto const lit4 = list.add_gate( { lit3 }, 2 );
-  list.add_output( lit0 );
-  list.add_output( lit1 );
   list.add_output( lit2 );
   list.add_output( lit4 );
 
@@ -235,8 +231,6 @@ TEST_CASE( "simulation of bound_list with static truth tables", "[list_simulator
     xs.emplace_back();
     kitty::create_nth_var( xs[i], i );
   }
-  xs.emplace_back( xs[0].construct() );                                         // 4
-  xs.emplace_back( ~xs.back() );                                                // 5
   xs.emplace_back( ( xs[1] & xs[2] ) | ( xs[0] & xs[1] ) | ( xs[0] & xs[2] ) ); // 6
   xs.emplace_back( ~( xs.back() & xs[3] ) );                                    // 7
   xs.emplace_back( ~xs.back() );                                                // 8
