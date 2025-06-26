@@ -29,7 +29,7 @@ std::string const test_library = "GATE   inv1    1 O=!a;            PIN * INV 1 
 
 TEST_CASE( "Power evaluation in Bound networks", "[power_evaluator]" )
 {
-  using Ntk = mockturtle::bound_network<2>;
+  using Ntk = mockturtle::bound_network<bound::design_type_t::CELL_BASED, 2>;
   std::vector<gate> gates;
 
   std::istringstream in( test_library );

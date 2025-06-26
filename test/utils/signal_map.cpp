@@ -26,7 +26,7 @@ std::string const test_library = "GATE   inv1    1 O=!a;            PIN * INV 1 
 
 TEST_CASE( "create incomplete signal map for full adder", "[signal_map]" )
 {
-  using Ntk = mockturtle::bound_network<2>;
+  using Ntk = mockturtle::bound_network<bound::design_type_t::CELL_BASED, 2>;
   using signal = Ntk::signal;
 
   std::vector<gate> gates;

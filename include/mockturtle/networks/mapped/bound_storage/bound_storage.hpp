@@ -50,7 +50,7 @@
 #pragma once
 
 #include "../../../io/genlib_reader.hpp"
-#include "../../../utils/mapped/augmented_library.hpp"
+#include "augmented_library.hpp"
 #include "bound_node.hpp"
 #include "bound_signal.hpp"
 #include "bound_utils.hpp"
@@ -80,13 +80,15 @@ namespace bound
  *
  * \tparam NumBitsOutputs Number of bits used to represent the output pin specifier.
  */
-template<uint32_t NumBitsOutputs>
+template<design_type_t DesignType, uint32_t NumBitsOutputs>
 class storage
 {
 #pragma region Types and constructors
 
 public:
-  using gate_t = mockturtle::gate;
+  using augmented_library_t = bound::augmented_library<DesignType>;
+  using gate = typename augmented_library_t::gate;
+  using gate_t = typename augmented_library_t::gate_t;
   using list_t = large_xag_index_list;
   using node_t = storage_node<NumBitsOutputs>;
   using signal_t = storage_signal<NumBitsOutputs>;
@@ -99,8 +101,29 @@ public:
    *
    * \param gates The gates to be included in the library.
    */
-  storage( std::vector<gate_t> const& gates )
+  template<
+      bound::design_type_t D = DesignType,
+      std::enable_if_t<D == bound::design_type_t::CELL_BASED, int> = 0>
+  storage( std::vector<gate> const& gates )
       : library( gates )
+  {
+    /* reserve space for nodes */
+    nodes.reserve( 10000u ); // reserve to avoid frequent reallocations
+
+    /* we reserve the first two nodes for constants */
+    nodes.emplace_back( pin_type_t::CONSTANT ); // 0
+    nodes.emplace_back( pin_type_t::CONSTANT ); // 1
+  }
+
+  /*! \brief The storage constructor.
+   *
+   * This constructor initializes the storage with a given library of gates.
+   * It reserves space for a maximum number of nodes and initializes the first
+   * two nodes as constants (0 and 1).
+   *
+   * \param gates The gates to be included in the library.
+   */
+  storage()
   {
     /* reserve space for nodes */
     nodes.reserve( 10000u ); // reserve to avoid frequent reallocations
@@ -231,10 +254,13 @@ public:
    */
   node_t create_storage_node( std::vector<signal_t> const& children, std::vector<uint32_t> const& ids )
   {
-    for ( auto i = 1; i < ids.size(); ++i )
+    if constexpr ( DesignType == design_type_t::CELL_BASED )
     {
-      assert( library.get_name( ids[i] ) == library.get_name( ids[0] ) &&
-              "Multiple-output nodes are expected to have the same name" );
+      for ( auto i = 1; i < ids.size(); ++i )
+      {
+        assert( library.get_name( ids[i] ) == library.get_name( ids[0] ) &&
+                "Multiple-output nodes are expected to have the same name" );
+      }
     }
 
     node_t new_node;
@@ -281,6 +307,40 @@ public:
     }
 
     return { index, 0 };
+  }
+
+  /*! \brief Create a new node from a truth table.
+   *
+   * This method creates a new node from its functionality, assuming LUT-like
+   * values of the area and delays.
+   *
+   * \param children The child signals that this node will depend on.
+   * \param function The truth table of the node's functionality.
+   * \return The binding identifier of the gate stored in the library.
+   */
+  template<
+      bound::design_type_t D = DesignType,
+      std::enable_if_t<D == bound::design_type_t::ARRAY_BASED, int> = 0>
+  uint32_t insert( kitty::dynamic_truth_table const& function )
+  {
+    return library.add_gate( function );
+  }
+
+  /*! \brief Create a new node from a vector of truth tables.
+   *
+   * This method creates a new node from its functionality, assuming LUT-like
+   * values of the area and delays.
+   *
+   * \param children The child signals that this node will depend on.
+   * \param functions The truth table of the node's functionality.
+   * \return The binding identifier of the gate stored in the library.
+   */
+  template<
+      bound::design_type_t D = DesignType,
+      std::enable_if_t<D == bound::design_type_t::ARRAY_BASED, int> = 0>
+  std::vector<uint32_t> insert( std::vector<kitty::dynamic_truth_table> const& functions )
+  {
+    return library.add_gates( functions );
   }
 
 #pragma endregion
@@ -462,6 +522,9 @@ public:
     return num_outputs( n ) > 1;
   }
 
+  template<bool DoStrash = false,
+           bound::design_type_t D = DesignType,
+           std::enable_if_t<D == bound::design_type_t::CELL_BASED, int> = 0>
   bool is_multioutput( std::string const& name ) const
   {
     return library.is_multioutput( name );
@@ -942,7 +1005,7 @@ public:
    * It is initialized with a set of gates and provides methods for accessing and
    * manipulating the gates, as well as an AIG list representation for simulation.
    */
-  augmented_library<gate_t> library;
+  augmented_library_t library;
 
   /*! \brief Hash map for fast node lookups.
    *

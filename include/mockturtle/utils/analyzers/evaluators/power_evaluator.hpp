@@ -32,7 +32,7 @@
 
 #pragma once
 
-#include "../analyzers_utils/workload.hpp"
+#include "../analyzers_utils/switching.hpp"
 #include "../trackers/arrival_times_tracker.hpp"
 #include "../trackers/gate_load_tracker.hpp"
 #include "../trackers/sensing_times_tracker.hpp"
@@ -43,15 +43,17 @@ namespace mockturtle
 
 struct power_evaluator_stats
 {
+  /*! \brief Switching activity */
   double switching = 0;
+  /*! \brief Glitching activity */
   double glitching = 0;
+  /*! \brief Dynamic power */
   double dyn_power = 0;
 };
 
 template<typename Ntk, typename TT, uint32_t TimeSteps = 10>
 class power_evaluator
 {
-private:
 public:
   power_evaluator( Ntk& ntk, power_evaluator_stats& st )
       : ntk_( ntk ),

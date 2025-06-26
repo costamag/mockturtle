@@ -32,7 +32,7 @@
 
 #pragma once
 
-#include "../mapped/augmented_library.hpp"
+#include "../../networks/mapped/bound_storage/augmented_library.hpp"
 #include "index_list.hpp"
 
 #include <algorithm>
@@ -226,13 +226,15 @@ private:
       sim( list2, inputs2 );
    \endverbatim
  */
-template<typename Gate, typename TT>
-class list_simulator<bound_list<Gate>, TT>
+template<bound::design_type_t DesignType, typename TT>
+class list_simulator<bound_list<DesignType>, TT>
 {
 public:
-  using outer_list_t = bound_list<Gate>;
+  using outer_list_t = bound_list<DesignType>;
   using inner_list_t = large_xag_index_list;
   using element_type = typename outer_list_t::element_type;
+  using library_t = bound::augmented_library<DesignType>;
+  using gate = typename library_t::gate;
 
   /*! \brief Construction requires the specification of the gate-library.
    *
@@ -243,9 +245,19 @@ public:
    *
    * \return A tuple containing a pointer to the simulation pattern and a flag for complementation.
    */
-  list_simulator( std::vector<Gate> const& library )
+  list_simulator( library_t& library )
       : library( library ),
         inner_simulator()
+  {
+    /* The value 20 allows us to store practical lists */
+    sims.resize( 20u );
+  }
+
+  template<
+      bound::design_type_t D = DesignType,
+      std::enable_if_t<D == bound::design_type_t::CELL_BASED, int> = 0>
+  list_simulator( std::vector<gate> const& library )
+      : inner_simulator()
   {
     /* The value 20 allows us to store practical lists */
     sims.resize( 20u );
@@ -341,7 +353,7 @@ private:
   /*! \brief Simulation patterns of the list's nodes */
   std::vector<TT> sims;
   /*! \brief Augmented library */
-  augmented_library<Gate> library;
+  library_t& library;
   /*! \brief Simulator engine for the individual nodes */
   list_simulator<inner_list_t, TT> inner_simulator;
 };

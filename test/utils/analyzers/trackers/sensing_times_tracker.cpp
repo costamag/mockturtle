@@ -29,7 +29,7 @@ std::string const test_library = "GATE   inv1    1 O=!a;            PIN * INV 1 
 
 TEST_CASE( "Sensing times in Bound networks", "[sensing_tracker]" )
 {
-  using bound_network = mockturtle::bound_network<2>;
+  using bound_network = mockturtle::bound_network<bound::design_type_t::CELL_BASED, 2>;
   using signal = typename bound_network::signal;
   std::vector<gate> gates;
 

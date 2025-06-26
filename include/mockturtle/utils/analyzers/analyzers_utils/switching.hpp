@@ -25,16 +25,7 @@
 
 /*!
   \file workload.hpp
-  \brief Analyze the power of a gate-level netlist including glitching
-
-  This engine can be used for power analysis of mapped network.
-  For each node, the following information is stored:
-  - The sensing time : the first time at which a transition can happen
-  - The arrival time : the first time at which the output is stable
-  - A vector of simulation patterns identifying quantized timesteps in this interval
-  The class has the following template parameters:
-  \param N : number of timesteps used for simulating each signal
-  \param I : number of inputs to be used for simulating the static truth table ( 2^I input pairs )
+  \brief Utilities to represent simulation patterns for power simulation
 
   \author Andrea Costamagna
 */
@@ -105,12 +96,12 @@ public:
     return dyn_power_;
   }
 
-  TT & operator[]( uint32_t const& step )
+  TT& operator[]( uint32_t const& step )
   {
     return sims_[step];
   }
 
-  signal_switching<TT, TimeSteps> const & operator[]( uint32_t const& step ) const
+  signal_switching<TT, TimeSteps> const& operator[]( uint32_t const& step ) const
   {
     return sims_[step];
   }
@@ -128,15 +119,15 @@ class workload
 public:
   workload( std::vector<TT> const& tts_init, std::vector<TT> const& tts_end )
       : num_inputs_( tts_init.size() )
-      {
-        for ( int i = 0; i < num_inputs_; ++i )
-        {
-          sims_.emplace_back( tts_init[i], tts_end[i] );
-        }
-      }
- 
-public :
-  std::vector<double> const & get_input_arrivals() const
+  {
+    for ( int i = 0; i < num_inputs_; ++i )
+    {
+      sims_.emplace_back( tts_init[i], tts_end[i] );
+    }
+  }
+
+public:
+  std::vector<double> const& get_input_arrivals() const
   {
     return arrival_;
   }
@@ -156,12 +147,12 @@ public :
     return sims_[0].num_bits();
   }
 
-  signal_switching<TT, TimeSteps> & operator[]( uint32_t const& step )
+  signal_switching<TT, TimeSteps>& operator[]( uint32_t const& step )
   {
     return sims_[step];
   }
 
-  signal_switching<TT, TimeSteps> const & operator[]( uint32_t const& step ) const
+  signal_switching<TT, TimeSteps> const& operator[]( uint32_t const& step ) const
   {
     return sims_[step];
   }

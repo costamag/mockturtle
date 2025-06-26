@@ -29,7 +29,7 @@ std::string const test_library = "GATE   inv1    1 O=!a;            PIN * INV 1 
 
 TEST_CASE( "Required times in Bound networks", "[required_tracker]" )
 {
-  using bound_network = mockturtle::bound_network<2>;
+  using bound_network = mockturtle::bound_network<bound::design_type_t::CELL_BASED, 2>;
   std::vector<gate> gates;
 
   std::istringstream in( test_library );

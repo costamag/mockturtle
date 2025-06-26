@@ -213,7 +213,7 @@ TEST_CASE( "simulation of bound_list with static truth tables", "[list_simulator
   auto result = lorina::read_genlib( in_genlib, genlib_reader( gates ) );
   CHECK( result == lorina::return_code::success );
 
-  bound_list<gate> list;
+  bound_list<bound::design_type_t::CELL_BASED> list;
   list.add_inputs( 4u );
   auto const a = list.pi_at( 0 );
   auto const b = list.pi_at( 1 );
@@ -241,7 +241,8 @@ TEST_CASE( "simulation of bound_list with static truth tables", "[list_simulator
     xs_r.emplace_back( &xs[i] );
   }
 
-  list_simulator<bound_list<gate>, kitty::static_truth_table<4u>> sim( gates );
+  bound::augmented_library<bound::design_type_t::CELL_BASED> lib( gates );
+  list_simulator<bound_list<bound::design_type_t::CELL_BASED>, kitty::static_truth_table<4u>> sim( lib );
   sim( list, xs_r );
   for ( auto i = 0u; i < xs.size(); ++i )
   {

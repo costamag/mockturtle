@@ -43,11 +43,11 @@
 #include "../../traits.hpp"
 #include "../../utils/algorithm.hpp"
 #include "../../utils/index_lists/list_simulator.hpp"
-#include "../../utils/mapped/augmented_library.hpp"
 #include "../../utils/truth_table_cache.hpp"
 #include "../detail/foreach.hpp"
 #include "../events.hpp"
 #include "../storage.hpp"
+#include "bound_storage/augmented_library.hpp"
 #include "bound_storage/bound_node.hpp"
 #include "bound_storage/bound_signal.hpp"
 #include "bound_storage/bound_storage.hpp"
@@ -65,7 +65,7 @@ namespace mockturtle
  *
  * \tparam MaxNumOutputs Maximum number of outputs of the cells in the library.
  */
-template<uint32_t MaxNumOutputs = 2u>
+template<bound::design_type_t DesignType = bound::design_type_t::CELL_BASED, uint32_t MaxNumOutputs = 2u>
 class bound_network
 {
 public:
@@ -74,7 +74,7 @@ public:
   static constexpr auto NumBitsOutputs = bound::bits_required<MaxNumOutputs>();
 
   /* aliases used in this class */
-  using storage_t = std::shared_ptr<bound::storage<NumBitsOutputs>>;
+  using storage_t = std::shared_ptr<bound::storage<DesignType, NumBitsOutputs>>;
   using list_t = large_xag_index_list;
   using node_t = bound::storage_node<NumBitsOutputs>;
   using signal_t = bound::storage_signal<NumBitsOutputs>;
@@ -85,7 +85,7 @@ public:
   static constexpr auto min_fanin_size = 1;
   static constexpr auto max_fanin_size = 32;
   static constexpr auto max_num_outputs = 1u << NumBitsOutputs;
-  using base_type = bound_network<MaxNumOutputs>;
+  using base_type = bound_network<DesignType, MaxNumOutputs>;
   using storage = storage_t;
   using signal = signal_t;
   using node = node_index_t;
@@ -94,8 +94,24 @@ public:
    *
    * \param gates The gates in the technology library.
    */
+  template<
+      bound::design_type_t D = DesignType,
+      std::enable_if_t<D == bound::design_type_t::CELL_BASED, int> = 0>
   bound_network( std::vector<gate> const& gates )
-      : _storage( std::make_shared<bound::storage<NumBitsOutputs>>( gates ) ),
+      : _storage( std::make_shared<bound::storage<DesignType, NumBitsOutputs>>( gates ) ),
+        _events( std::make_shared<typename decltype( _events )::element_type>() )
+  {
+  }
+
+  /*! \brief Constructor for array-based designs.
+   *
+   * \param gates The gates in the technology library.
+   */
+  template<
+      bound::design_type_t D = DesignType,
+      std::enable_if_t<D == bound::design_type_t::ARRAY_BASED, int> = 0>
+  bound_network()
+      : _storage( std::make_shared<bound::storage<DesignType, NumBitsOutputs>>() ),
         _events( std::make_shared<typename decltype( _events )::element_type>() )
   {
   }
@@ -108,7 +124,7 @@ public:
    *
    * \param storage The storage object containing the network data.
    */
-  bound_network( std::shared_ptr<bound::storage<NumBitsOutputs>> storage )
+  bound_network( std::shared_ptr<bound::storage<DesignType, NumBitsOutputs>> storage )
       : _storage( storage ),
         _events( std::make_shared<typename decltype( _events )::element_type>() )
   {
@@ -122,9 +138,9 @@ public:
    *
    * \return A new bound_network instance with cloned storage.
    */
-  bound_network<MaxNumOutputs> clone() const
+  bound_network<DesignType, MaxNumOutputs> clone() const
   {
-    return { std::make_shared<bound::storage<NumBitsOutputs>>( *_storage ) };
+    return { std::make_shared<bound::storage<DesignType, NumBitsOutputs>>( *_storage ) };
   }
 
 #pragma endregion
@@ -252,7 +268,6 @@ public:
       if ( it )
       {
         if ( !is_dead( *it ) )
-          ;
         {
           return { *it, 0 };
         }
@@ -269,6 +284,50 @@ public:
       ( *fn )( f.index );
     }
     return f;
+  }
+
+  /*! \brief Create a node from the truth table of its functionality.
+   *
+   * This method creates a new node from its functionality. If no function
+   * exists in the database containing the desired functionality, it is inserted
+   * in the truth table cache as a technology-independent gate for LUT-like
+   * storage. This functionality allows bound networks to represent LUT networks
+   *
+   * \param children The children signals of the new node.
+   * \param tt Truth table of the new node.
+   * \tparam DoStrash If true, the node will be created with strashing enabled.
+   * \return A signal representing the newly created node.
+   */
+  template<bool DoStrash = false,
+           bound::design_type_t D = DesignType,
+           std::enable_if_t<D == bound::design_type_t::ARRAY_BASED, int> = 0>
+  signal_t create_node( std::vector<signal_t> const& children,
+                        kitty::dynamic_truth_table const& tt )
+  {
+    auto const binding_id = _storage->insert( tt );
+    return create_node<DoStrash>( children, binding_id );
+  }
+
+  /*! \brief Create a node from the truth table of its functionality.
+   *
+   * This method creates a new node from its functionality. If no function
+   * exists in the database containing the desired functionality, it is inserted
+   * in the truth table cache as a technology-independent gate for LUT-like
+   * storage. This functionality allows bound networks to represent LUT networks
+   *
+   * \param children The children signals of the new node.
+   * \param tt Truth table of the new node.
+   * \tparam DoStrash If true, the node will be created with strashing enabled.
+   * \return A signal representing the newly created node.
+   */
+  template<bool DoStrash = false,
+           bound::design_type_t D = DesignType,
+           std::enable_if_t<D == bound::design_type_t::ARRAY_BASED, int> = 0>
+  signal_t create_node( std::vector<signal_t> const& children,
+                        std::vector<kitty::dynamic_truth_table> const& tts )
+  {
+    std::vector<uint32_t> const binding_ids = _storage->insert( tts );
+    return create_node<DoStrash>( children, binding_ids );
   }
 
   /*! \brief Create a node with a single binding ID.
@@ -498,6 +557,9 @@ public:
     return _storage->is_multioutput( n );
   }
 
+  template<bool DoStrash = false,
+           bound::design_type_t D = DesignType,
+           std::enable_if_t<D == bound::design_type_t::CELL_BASED, int> = 0>
   bool is_multioutput( std::string const& name ) const
   {
     return _storage->is_multioutput( name );
@@ -910,7 +972,7 @@ public:
 #pragma endregion
 
 public:
-  std::shared_ptr<bound::storage<NumBitsOutputs>> _storage;
+  std::shared_ptr<bound::storage<DesignType, NumBitsOutputs>> _storage;
   std::shared_ptr<network_events<base_type>> _events;
 };
 

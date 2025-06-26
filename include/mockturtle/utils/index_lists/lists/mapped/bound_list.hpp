@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../../../../networks/mapped/bound_storage/bound_utils.hpp"
 #include <cassert>
 #include <vector>
 
@@ -11,7 +12,7 @@ namespace mockturtle
  * The inputs are associated with the literals 0, ..., num_inputs - 1.
  * The subsequent literals identify the nodes in the chain.
  */
-template<typename Gate>
+template<bound::design_type_t DesignType>
 class bound_list
 {
 public:

@@ -55,6 +55,16 @@ namespace bound
 {
 
 /*!
+ * \brief Design type adopted by the Bound network
+ *
+ */
+enum class design_type_t : uint8_t
+{
+  ARRAY_BASED, //!< Gate array-based design type
+  CELL_BASED,  //!< Standard cell-based design type
+};
+
+/*!
  * \brief Computes the number of bits required to represent a given number.
  *
  * This function calculates the minimum number of bits needed to represent
