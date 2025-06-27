@@ -966,6 +966,24 @@ public:
   {
     return std::is_same<gate_t, mockturtle::gate>::value;
   }
+
+  double get_max_pin_delay( signal_t const& f, uint32_t i ) const
+  {
+    auto const& pin = nodes[f.index].outputs[f.output];
+    return library.get_max_pin_delay( pin.id, i );
+  }
+
+  double get_min_pin_delay( signal_t const& f, uint32_t i ) const
+  {
+    auto const& pin = nodes[f.index].outputs[f.output];
+    return library.get_min_pin_delay( pin.id, i );
+  }
+
+  double get_input_load( signal_t const& f, uint32_t i ) const
+  {
+    auto const& pin = nodes[f.index].outputs[f.output];
+    return library.get_input_load( pin.id, i );
+  }
 #pragma endregion
 
   /*! \brief Traversal ID for graph algorithms.

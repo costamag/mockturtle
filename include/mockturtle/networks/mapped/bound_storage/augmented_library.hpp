@@ -160,6 +160,21 @@ public:
     return gates_[id];
   }
 
+  double get_max_pin_delay( uint32_t id, uint32_t i ) const
+  {
+    return gates_[id].max_pin_time[i];
+  }
+
+  double get_min_pin_delay( uint32_t id, uint32_t i ) const
+  {
+    return gates_[id].min_pin_time[i];
+  }
+
+  double get_input_load( uint32_t id, uint32_t i ) const
+  {
+    return gates_[id].pins[i].input_load;
+  }
+
   /*! \brief Check if the gate is a multiple output gate from its name */
   bool is_multioutput( std::string const& name ) const
   {
@@ -265,6 +280,27 @@ public:
   gate_t const& get_gate( uint32_t id ) const
   {
     return gates_[id];
+  }
+
+  double get_max_pin_delay( uint32_t id, uint32_t i ) const
+  {
+    (void)id;
+    (void)i;
+    return 1.0;
+  }
+
+  double get_min_pin_delay( uint32_t id, uint32_t i ) const
+  {
+    (void)id;
+    (void)i;
+    return 1.0;
+  }
+
+  double get_input_load( uint32_t id, uint32_t i ) const
+  {
+    (void)id;
+    (void)i;
+    return 1.0;
   }
 
   /*! \brief Check if the gate is a multiple output gate from its name */

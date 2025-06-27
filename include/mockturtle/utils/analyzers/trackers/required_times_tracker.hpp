@@ -220,16 +220,7 @@ private:
     node_index_t const n = ntk_.get_node( f );
     auto const& children = ntk_.get_children( n );
 
-    double new_time;
-    if constexpr ( has_has_binding_v<Ntk> )
-    {
-      auto const& g = ntk_.get_binding( f );
-      new_time = times_[f] - g.max_pin_time[i];
-    }
-    else
-    {
-      new_time = times_[f] - 1;
-    }
+    double new_time = times_[f] - ntk_.get_max_pin_delay( f, i );
     if ( new_time < times_[children[i]] )
     {
       times_[children[i]] = new_time;
@@ -262,15 +253,7 @@ private:
         ntk_.foreach_fanin( no, [&]( auto const& fi, auto const ii ) {
           if ( fi == f )
           {
-            if constexpr ( has_has_binding_v<Ntk> )
-            {
-              auto const& g = ntk_.get_binding( fo );
-              new_time = std::min( times_[fo] - g.max_pin_time[ii], new_time );
-            }
-            else
-            {
-              new_time = std::min( times_[fo] - 1, new_time );
-            }
+            new_time = std::min( times_[fo] - ntk_.get_max_pin_delay( fo, ii ), new_time );
           }
         } );
       } );
@@ -298,15 +281,7 @@ private:
         ntk_.foreach_fanin( no, [&]( auto const& fi, auto const ii ) {
           if ( fi == f )
           {
-            if constexpr ( has_has_binding_v<Ntk> )
-            {
-              auto const& g = ntk_.get_binding( fo );
-              new_time = std::min( times_[fo] - g.max_pin_time[ii], new_time );
-            }
-            else
-            {
-              new_time = std::min( times_[fo] - 1, new_time );
-            }
+            new_time = std::min( times_[fo] - ntk_.get_max_pin_delay( fo, ii ), new_time );
           }
         } );
       } );

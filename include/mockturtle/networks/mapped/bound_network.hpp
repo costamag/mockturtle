@@ -945,6 +945,21 @@ public:
   {
     return _storage->get_children( n );
   }
+
+  double get_max_pin_delay( signal_t const& f, uint32_t i ) const
+  {
+    return _storage->get_max_pin_delay( f, i );
+  }
+
+  double get_min_pin_delay( signal_t const& f, uint32_t i ) const
+  {
+    return _storage->get_min_pin_delay( f, i );
+  }
+
+  double get_input_load( signal_t const& f, uint32_t i ) const
+  {
+    return _storage->get_input_load( f, i );
+  }
 #pragma endregion
 
 #pragma region General methods

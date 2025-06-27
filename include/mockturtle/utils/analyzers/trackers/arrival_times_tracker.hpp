@@ -274,19 +274,9 @@ private:
     else
     {
       double time = 0;
-      if constexpr ( has_has_binding_v<Ntk> )
-      {
-        auto const& g = ntk_.get_binding( f );
-        ntk_.foreach_fanin( n, [&]( auto const& fi, auto const ii ) {
-          time = std::max( time, times_[fi] + g.max_pin_time[ii] );
-        } );
-      }
-      else
-      {
-        ntk_.foreach_fanin( n, [&]( auto const& fi, auto const ii ) {
-          time = std::max( time, times_[fi] + 1u );
-        } );
-      }
+      ntk_.foreach_fanin( n, [&]( auto const& fi, auto const ii ) {
+        time = std::max( time, times_[fi] + ntk_.get_max_pin_delay( f, ii ) );
+      } );
       times_[f] = time;
     }
   }

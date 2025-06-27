@@ -101,34 +101,30 @@ public:
 
     add_event_ = ntk_.events().register_add_event( [&]( const node_index_t& n ) {
       loads_.resize();
-      ntk_.foreach_output( n, [&]( auto f ){
+      ntk_.foreach_output( n, [&]( auto f ) {
         loads_[f] = 0;
-        auto const& g = ntk_.get_binding( f );
-        ntk_.foreach_fanin( n, [&]( auto const& fi, auto ii ){
-          loads_[fi] += g.pins[ii].input_load;
+        ntk_.foreach_fanin( n, [&]( auto const& fi, auto ii ) {
+          loads_[fi] += ntk_.get_input_load( f, ii );
         } );
       } );
     } );
 
-
     delete_event_ = ntk_.events().register_delete_event( [&]( const node_index_t& n ) {
-      ntk_.foreach_output( n, [&]( auto f ){
+      ntk_.foreach_output( n, [&]( auto f ) {
         loads_[f] = 0;
-        auto const& g = ntk_.get_binding( f );
-        ntk_.foreach_fanin( n, [&]( auto const& fi, auto ii ){
-          loads_[fi] -= g.pins[ii].input_load;
+        ntk_.foreach_fanin( n, [&]( auto const& fi, auto ii ) {
+          loads_[fi] -= ntk_.get_input_load( f, ii );
         } );
       } );
     } );
 
     modified_event_ = ntk_.events().register_modified_event( [&]( const auto& n, auto old_children ) {
-      ntk_.foreach_output( n, [&]( auto const& f ){
-        auto const& g = ntk_.get_binding( f );
-        ntk_.foreach_fanin( n, [&]( auto const& fi, auto ii ){
+      ntk_.foreach_output( n, [&]( auto const& f ) {
+        ntk_.foreach_fanin( n, [&]( auto const& fi, auto ii ) {
           if ( fi != old_children[ii] )
           {
-            loads_[fi] += g.pins[ii].input_load;
-            loads_[old_children[ii]] -= g.pins[ii].input_load;
+            loads_[fi] += ntk_.get_input_load( f, ii );
+            loads_[old_children[ii]] -= ntk_.get_input_load( f, ii );
           }
         } );
       } );
@@ -195,11 +191,10 @@ private:
     {
       return;
     }
-    
-    auto const g = ntk_.get_binding( f );
+
     ntk_.foreach_fanin( n, [&]( auto fi, auto ii ) {
       compute_gate_load_tfi( fi );
-      loads_[fi] += g.pins[ii].input_load;
+      loads_[fi] += ntk_.get_input_load( f, ii );
     } );
 
     make_ready( n );
