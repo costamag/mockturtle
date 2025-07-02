@@ -183,5 +183,190 @@
       }
     ],
     "version": "ded32657"
+  },
+  {
+    "entries": [
+      {
+        "a(init)": 129,
+        "a(new)": 129,
+        "benchmark": "adder",
+        "d(init)": 126,
+        "d(new)": 128,
+        "eq(RS)": true,
+        "t(new)": 1.746
+      },
+      {
+        "a(init)": 512,
+        "a(new)": 512,
+        "benchmark": "bar",
+        "d(init)": 4,
+        "d(new)": 5,
+        "eq(RS)": true,
+        "t(new)": 1.655
+      },
+      {
+        "a(init)": 3090,
+        "a(new)": 3090,
+        "benchmark": "div",
+        "d(init)": 1100,
+        "d(new)": 1104,
+        "eq(RS)": true,
+        "t(new)": 92.159
+      },
+      {
+        "a(init)": 36836,
+        "a(new)": 36830,
+        "benchmark": "hyp",
+        "d(init)": 4384,
+        "d(new)": 4542,
+        "eq(RS)": true,
+        "t(new)": 2251.017
+      },
+      {
+        "a(init)": 6076,
+        "a(new)": 6072,
+        "benchmark": "log2",
+        "d(init)": 278,
+        "d(new)": 238,
+        "eq(RS)": true,
+        "t(new)": 99.896
+      },
+      {
+        "a(init)": 511,
+        "a(new)": 511,
+        "benchmark": "max",
+        "d(init)": 135,
+        "d(new)": 135,
+        "eq(RS)": true,
+        "t(new)": 2.7800000000000002
+      },
+      {
+        "a(init)": 4330,
+        "a(new)": 4326,
+        "benchmark": "multiplier",
+        "d(init)": 195,
+        "d(new)": 197,
+        "eq(RS)": true,
+        "t(new)": 33.63
+      },
+      {
+        "a(init)": 1053,
+        "a(new)": 1050,
+        "benchmark": "sin",
+        "d(init)": 92,
+        "d(new)": 83,
+        "eq(RS)": true,
+        "t(new)": 6.322
+      },
+      {
+        "a(init)": 2983,
+        "a(new)": 2979,
+        "benchmark": "sqrt",
+        "d(init)": 1526,
+        "d(new)": 1179,
+        "eq(RS)": false,
+        "t(new)": 36.811
+      },
+      {
+        "a(init)": 2959,
+        "a(new)": 2957,
+        "benchmark": "square",
+        "d(init)": 172,
+        "d(new)": 189,
+        "eq(RS)": false,
+        "t(new)": 20.527
+      },
+      {
+        "a(init)": 268,
+        "a(new)": 268,
+        "benchmark": "arbiter",
+        "d(init)": 70,
+        "d(new)": 73,
+        "eq(RS)": true,
+        "t(new)": 3.857
+      },
+      {
+        "a(init)": 50,
+        "a(new)": 50,
+        "benchmark": "cavlc",
+        "d(init)": 6,
+        "d(new)": 6,
+        "eq(RS)": true,
+        "t(new)": 3.585
+      },
+      {
+        "a(init)": 25,
+        "a(new)": 25,
+        "benchmark": "ctrl",
+        "d(init)": 2,
+        "d(new)": 9,
+        "eq(RS)": true,
+        "t(new)": 2.608
+      },
+      {
+        "a(init)": 264,
+        "a(new)": 264,
+        "benchmark": "dec",
+        "d(init)": 2,
+        "d(new)": 9,
+        "eq(RS)": true,
+        "t(new)": 29.622
+      },
+      {
+        "a(init)": 177,
+        "a(new)": 177,
+        "benchmark": "i2c",
+        "d(init)": 9,
+        "d(new)": 9,
+        "eq(RS)": true,
+        "t(new)": 3.54
+      },
+      {
+        "a(init)": 19,
+        "a(new)": 19,
+        "benchmark": "int2float",
+        "d(init)": 5,
+        "d(new)": 6,
+        "eq(RS)": true,
+        "t(new)": 2.987
+      },
+      {
+        "a(init)": 1708,
+        "a(new)": 1704,
+        "benchmark": "mem_ctrl",
+        "d(init)": 14,
+        "d(new)": 14,
+        "eq(RS)": true,
+        "t(new)": 2.387
+      },
+      {
+        "a(init)": 93,
+        "a(new)": 93,
+        "benchmark": "priority",
+        "d(init)": 30,
+        "d(new)": 30,
+        "eq(RS)": true,
+        "t(new)": 3.306
+      },
+      {
+        "a(init)": 19,
+        "a(new)": 19,
+        "benchmark": "router",
+        "d(init)": 5,
+        "d(new)": 5,
+        "eq(RS)": true,
+        "t(new)": 2.579
+      },
+      {
+        "a(init)": 1180,
+        "a(new)": 1178,
+        "benchmark": "voter",
+        "d(init)": 30,
+        "d(new)": 30,
+        "eq(RS)": true,
+        "t(new)": 8.059000000000001
+      }
+    ],
+    "version": "9f2b271c"
   }
 ]

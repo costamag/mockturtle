@@ -562,7 +562,7 @@ public:
     _decomposer.clear();
     auto lit_out = _decomposer.decompose( func, care, max_inserts, 0.0 );
 
-    if ( lit_out && _decomposer.num_luts() <= max_inserts )
+    if ( lit_out && _decomposer.num_luts() <= max_inserts ) //ACC
     {
       //printf("%f ", ((double)kitty::count_ones(care))/((double)care.num_bits())  );
       if(_decomposer.num_luts()==0) return lit_out;

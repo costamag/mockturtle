@@ -1902,7 +1902,6 @@ public:
 
   std::optional<std::vector<uint32_t>> try_enum3( )
   {
-
     std::shuffle( scored_divs.begin(), scored_divs.end(), RNG );
 
     _igraph.reset();
@@ -2120,7 +2119,6 @@ public:
   template<uint32_t FN>
   std::optional<std::vector<uint32_t>> try_exp( uint32_t start = 0, std::vector<uint32_t> supp0 = {} )
   {
-
     if( divisors.size() <= _max_support_size ) return std::nullopt;
     double H, Hmin, Hpre;
     Hmin = std::numeric_limits<double>::max();
@@ -2196,7 +2194,6 @@ public:
       }
       if( it >= 10 )
       {
-      //  printf("[w] exceeded runtime for sampling\n");
         return std::nullopt;
       }
     }
@@ -2226,7 +2223,7 @@ public:
 
     spfd_covering_manager_t<truth_table_t, 1 << IGCAP> _igraph;
     uint32_t nMax = std::numeric_limits<uint32_t>::max();
-    uint32_t nIters=100;
+    uint32_t nIters=10;
     uint32_t _max_support_size;
     std::vector<scored_div> scored_divs;
     support_selection_t _algo;

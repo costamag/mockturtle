@@ -79,8 +79,8 @@ Ntk abc_opto( Ntk const& ntk, std::string str_code, std::string abc_script = "re
 std::tuple<uint32_t,uint32_t,float> abc_mfs( lig_network& ntk, std::string benchmark, uint32_t M = 5000 )
 {//mfs2 -L 20 -ea
   mockturtle::write_bench( ntk, "/tmp/mfsin_"+benchmark+".bench" );
-  //std::string command = fmt::format( "abc -q \"read_bench /tmp/mfsin_{}.bench; mfs -D 0 -dea; write_bench /tmp/mfsout_{}.bench;\"", benchmark, benchmark );
-  std::string command = fmt::format( "abc -q \"read_bench /tmp/mfsin_{}.bench; mfs -W 4 -M " + std::to_string(M) + " -L 200; time; write_blif /tmp/mfsin_{}.blif; &get -mn; &ps;\"", benchmark, benchmark );
+  std::string command = fmt::format( "abc -q \"read_bench /tmp/mfsin_{}.bench; mfs -D 0 -dea; write_bench /tmp/mfsout_{}.bench;\"", benchmark, benchmark );
+  //std::string command = fmt::format( "abc -q \"read_bench /tmp/mfsin_{}.bench; mfs -W 4 -M " + std::to_string(M) + " -L 200; time; write_blif /tmp/mfsin_{}.blif; &get -mn; &ps;\"", benchmark, benchmark );
 
   std::array<char, 128> buffer;
   std::string result;
@@ -224,7 +224,7 @@ void abc_satlut( lig_network& ntk, std::string benchmark )
 {
   mockturtle::write_bench( ntk, "/tmp/satlut_"+benchmark+".bench" );
   //std::string command = fmt::format( "abc -q \"read_bench /tmp/mfsin_{}.bench; mfs -D 0 -dea; write_bench /tmp/mfsout_{}.bench;\"", benchmark, benchmark );
-  std::string command = fmt::format( "abc -q \"read_bench /tmp/satlut_{}.bench; &get; &if -a - K 4; &satlut; &put; write_blif /tmp/satlut_{}.blif;\"", benchmark, benchmark );
+  std::string command = fmt::format( "abc -q \"read_bench /tmp/satlut_{}.bench; &get; &satlut; &put; write_blif /tmp/satlut_{}.blif;\"", benchmark, benchmark );
 
   std::array<char, 128> buffer;
   std::string result;
@@ -391,7 +391,7 @@ template<class Ntk>
 lig_network abc_if( Ntk const& ntk, std::string str_code, uint32_t K=4u )
 {
   write_aiger( ntk, "/tmp/"+str_code+".aig" );
-  std::string command = "abc -q \"r /tmp/"+str_code+".aig; fraig; st; dch; if -a –C 12 -K "+std::to_string(K)+"; write_blif /tmp/" + str_code + ".blif\"";
+  std::string command = "abc -q \"r /tmp/"+str_code+".aig; fraig; st; if -a -K "+std::to_string(K)+"; write_blif /tmp/" + str_code + ".blif\"";
 
   std::array<char, 128> buffer;
   std::string result;
@@ -423,7 +423,7 @@ int main()
 
   experiment<std::string, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, double, double> exp( "lig_exp_3", "benchmark", "a(map)", "a(flow1)", "a(flow2)", "d(flow1)", "d(flow2)", "t(flow1)", "t(flow2)" );
 
-  static constexpr uint32_t K = 4;
+  static constexpr uint32_t K = 6;
 
 
   double  avg_flow1_g(0);
@@ -432,10 +432,10 @@ int main()
   double N{0};
   double Tmax=600;
 
-  for ( auto const& benchmark : all_benchmarks( ) )
+  for ( auto const& benchmark : all_benchmarks( experiments::div ) )
   {
     N++;
-    if( benchmark == "hyp" ) continue;
+    //if( benchmark == "hyp" ) continue;
     fmt::print( "[i] processing {}\n", benchmark );
 
     std::string tmp = benchmark + "_exp1.blif";
@@ -507,10 +507,10 @@ int main()
       printf(".mfs: %d \n", lig1.num_gates() );
       abc_lutpack( lig1, benchmark );
       printf(".lpk: %d \n", lig1.num_gates() );
-      //abc_satlut( lig1, benchmark );
-      //printf(".slt: %d \n", lig1.num_gates() );
-      lig1 = cleanup_dangling( lig1 );
+      abc_satlut( lig1, benchmark );
+      printf(".slt: %d \n", lig1.num_gates() );
       depth_view<lig_network> lig1_d{ lig1 };
+      lig1 = cleanup_dangling( lig1 );
 
       printf("FLOW1: %d %d\n", lig1.num_gates(), lig1_d.depth() );
 
@@ -554,8 +554,8 @@ int main()
 
       abc_lutpack( lig2, benchmark );
       printf(".lpk: %d \n", lig2.num_gates() );
-      //abc_satlut( lig2, benchmark );
-      //printf(".slt: %d \n", lig2.num_gates() );
+      abc_satlut( lig2, benchmark );
+      printf(".slt: %d \n", lig2.num_gates() );
       lig2 = cleanup_dangling( lig2 );
       depth_view<lig_network> lig2_d{ lig2 };
 

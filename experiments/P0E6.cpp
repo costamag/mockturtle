@@ -80,7 +80,7 @@ std::tuple<uint32_t,uint32_t,float> abc_mfs( lig_network& ntk, std::string bench
 {//mfs2 -L 20 -ea
   mockturtle::write_bench( ntk, "/tmp/mfsin_"+benchmark+".bench" );
   //std::string command = fmt::format( "abc -q \"read_bench /tmp/mfsin_{}.bench; mfs -D 0 -dea; write_bench /tmp/mfsout_{}.bench;\"", benchmark, benchmark );
-  std::string command = fmt::format( "abc -q \"read_bench /tmp/mfsin_{}.bench; mfs -W 4 -M " + std::to_string(M) + "; time; write_blif /tmp/mfsin_{}.blif; &get -mn; &ps;\"", benchmark, benchmark );
+  std::string command = fmt::format( "abc -q \"read_bench /tmp/mfsin_{}.bench; mfs -L 200 -M " + std::to_string(M) + "; time; write_blif /tmp/mfsin_{}.blif; &get -mn; &ps;\"", benchmark, benchmark );
 
   std::array<char, 128> buffer;
   std::string result;
@@ -153,7 +153,7 @@ std::tuple<uint32_t,uint32_t,float> abc_mfs2( lig_network& ntk, std::string benc
   mockturtle::write_bench( ntk, "/tmp/mfsin2_"+benchmark+".bench" ); 
 
   //std::string command = fmt::format( "abc -q \"read_bench /tmp/mfsin_{}.bench; mfs -D 0 -dea; write_bench /tmp/mfsout_{}.bench;\"", benchmark, benchmark );
-  std::string command = fmt::format( "abc -q \"read_bench /tmp/mfsin2_{}.bench; mfs2 -e -W 4 -M " + std::to_string(M) + "; time; write_blif /tmp/mfsin2_{}.blif; &get -mn; &ps;\"", benchmark, benchmark );
+  std::string command = fmt::format( "abc -q \"read_bench /tmp/mfsin2_{}.bench; mfs2 -e -L 200 -M " + std::to_string(M) + "; time; write_blif /tmp/mfsin2_{}.blif; &get -mn; &ps;\"", benchmark, benchmark );
 
   std::array<char, 128> buffer;
   std::string result;
@@ -227,7 +227,7 @@ void abc_satlut( lig_network& ntk, std::string benchmark )
 
   mockturtle::write_bench( ntk, "/tmp/satlut_"+benchmark+".bench" );
   //std::string command = fmt::format( "abc -q \"read_bench /tmp/mfsin_{}.bench; mfs -D 0 -dea; write_bench /tmp/mfsout_{}.bench;\"", benchmark, benchmark );
-  std::string command = fmt::format( "abc -q \"read_bench /tmp/satlut_{}.bench; &get; &if -a - K 4; &satlut; &put; write_blif /tmp/satlut_{}.blif;\"", benchmark, benchmark );
+  std::string command = fmt::format( "abc -q \"read_bench /tmp/satlut_{}.bench; &get; &if -a - K 4; &satlut -D 10000; &put; write_blif /tmp/satlut_{}.blif;\"", benchmark, benchmark );
 
   std::array<char, 128> buffer;
   std::string result;
@@ -257,7 +257,7 @@ std::tuple<uint32_t,uint32_t,float> abc_lutpack( lig_network& ntk, std::string b
 {
   mockturtle::write_bench( ntk, "/tmp/mfsin2_"+benchmark+".bench" );
   //std::string command = fmt::format( "abc -q \"read_bench /tmp/mfsin_{}.bench; mfs -D 0 -dea; write_bench /tmp/mfsout_{}.bench;\"", benchmark, benchmark );
-  std::string command = fmt::format( "abc -q \"read_bench /tmp/mfsin2_{}.bench; lutpack -S 3; time; write_blif /tmp/mfsin2_{}.blif; &get -mn; &ps;\"", benchmark, benchmark );
+  std::string command = fmt::format( "abc -q \"read_bench /tmp/mfsin2_{}.bench; lutpack -S 3 -L 200; time; write_blif /tmp/mfsin2_{}.blif; &get -mn; &ps;\"", benchmark, benchmark );
 
   std::array<char, 128> buffer;
   std::string result;
@@ -435,10 +435,10 @@ int main()
   double N{0};
   double Tmax=600;
 
-  for ( auto const& benchmark : all_benchmarks( experiments::hyp ) )
+  for ( auto const& benchmark : epfl_benchmarks() )
   {
     N++;
-    //if( benchmark == "hyp" ) continue;
+    if( benchmark == "hyp" ) continue;
     fmt::print( "[i] processing {}\n", benchmark );
 
     std::string tmp = benchmark + "_exp1.blif";
@@ -450,13 +450,13 @@ int main()
     }
 
     aig = abc_opto( aig, benchmark );
-    if( aig.num_gates() > 300000 )
-    {
-      aig = abc_opto( aig, benchmark );
-      aig = abc_opto( aig, benchmark );
-      aig = abc_opto( aig, benchmark );
-      aig = abc_opto( aig, benchmark );
-    }
+  //  if( aig.num_gates() > 300000 )
+  //  {
+  //    aig = abc_opto( aig, benchmark );
+  //    aig = abc_opto( aig, benchmark );
+  //    aig = abc_opto( aig, benchmark );
+  //    aig = abc_opto( aig, benchmark );
+  //  }
     if( aig.num_gates() > 300000 )
     {
       continue;
@@ -465,10 +465,11 @@ int main()
     boptimizer_params rps;
     rps.progress =true;
     rps.max_inserts = 20;
-    rps.max_trials = 1;
+    rps.max_trials = 3;
     rps.max_pis = 8;
     rps.verbose = false;
     rps.max_divisors = 128;
+    rps.use_delay_constraints = false;
 
     scopt::lut_map2_params ps;
     ps.cut_enumeration_ps.cut_size = K;
@@ -481,6 +482,9 @@ int main()
     //const auto lig_map = scopt::lut_map2( aig, ps, &st );
     const auto lig_map0 = benchmark == "hyp" ? scopt::lut_map2( aig, ps, &st ) : abc_if( aig, benchmark, K );
     const auto lig_map = cleanup_ligs( lig_map0 );
+
+    rps.max_depth = lig_map0.compute_worst_delay();
+
 
     write_blif( lig_map, tmp );
 
@@ -495,7 +499,7 @@ int main()
 
     uint32_t map_num_gates = lig.num_gates();
     uint32_t map_depth = lig_d.depth();
-    printf("MAP: %d %d\n", map_num_gates, map_depth );
+    printf("##########################   MAP: %d %d ###########################\n", map_num_gates, map_depth );
 
     /* MFS2 */
     lig_network lig1;
@@ -512,15 +516,27 @@ int main()
     double duration1{0};
     printf("ABC-FLOW\n");
     printf(">>>>: %d \n", lig1.num_gates() );
+    int iter1=0;
+    //while( iter1 < 2 )
     while( lig1.num_gates() < num_gates_1 && duration1 < Tmax )
     {
+      iter1++;
       num_gates_1 = lig1.num_gates();
-      abc_mfs2( lig1, benchmark, num_gates_1 );
-      printf(".mf2: %d \n", lig1.num_gates() );
       abc_lutpack( lig1, benchmark );
       printf(".lpk: %d \n", lig1.num_gates() );
-      //abc_satlut( lig1, benchmark+"abc" );
-      //printf(".slt: %d \n", lig1.num_gates() );
+      lig1 = cleanup_dangling( lig1 );
+      abc_satlut( lig1, benchmark+"abc" );
+      printf(".slt: %d \n", lig1.num_gates() );
+      if ( lig1.num_gates() >= num_gates_1 )
+      {
+        abc_mfs( lig1, benchmark, num_gates_1 );
+        printf(".mfs : %d \n", lig1.num_gates() );
+        if ( lig1.num_gates() >= num_gates_1 )
+        {
+          abc_mfs2( lig1, benchmark, num_gates_1 );
+          printf(".mf2: %d \n", lig1.num_gates() );
+        }
+      }
 
       lig1 = cleanup_dangling( lig1 );
       depth_view<lig_network> lig1_d{ lig1 };
@@ -550,58 +566,63 @@ int main()
     printf(">>>>: %d \n", lig2.num_gates() );
     auto beg2 = high_resolution_clock::now();
     double duration2{0};
+    int iter = 0;
+    //while( iter < 2 )
     while( lig2.num_gates() < num_gates_2 && duration2 < Tmax )
     {
+      iter++;
       num_gates_2 = lig2.num_gates();
       boptimizer_stats rst1;
-      
       depth_view<lig_network> lig2_d{ lig2 };
 
-      
-      rps.max_pis = 16;
-      rps.max_trials = 10;
-
-      if( lig2.num_gates() > 4000 ) 
-      {
-        if(lig2.num_gates() < 5000 )
-        {
-          rps.max_pis = 14;
-        }
-        else if( lig2.num_gates() < 6000 )
-        {
-          rps.max_pis = 12;
-        }
-        else if( lig2.num_gates() < 7000 )
-        {
-          rps.max_pis = 10;
-        }
-        else
-        {
-          rps.max_pis = 8u;
-        }
-      }
-
-      boptimize_klut<PV2, K, K>( lig2, rps, &rst1 );
-      lig2 = cleanup_dangling( lig2 );
-      printf(".r44[%d]: %d\n", rps.max_pis, lig2.num_gates() );
-
-      if( lig2.num_gates() == num_gates_2 )
-      {
-        boptimize_klut<EX2, K+2, K>( lig2, rps, &rst1 );
-        lig2 = cleanup_dangling( lig2 );
-        printf(".r64[%d]: %d\n", rps.max_pis, lig2.num_gates() );
-      }
-      lig2 = cleanup_dangling( lig2 );
       abc_lutpack( lig2, benchmark );
       printf(".lpk: %d \n", lig2.num_gates() );
       lig2 = cleanup_dangling( lig2 );
 
-      //abc_satlut( lig2, benchmark+"igs" );
-      //printf(".slt: %d \n", lig2.num_gates() );
+      abc_satlut( lig2, benchmark+"igs" );
+      printf(".slt: %d \n", lig2.num_gates() );
 
-      printf("FW2: %d %d\n", lig2.num_gates(), lig2_d.depth() );
-      auto sto2 = high_resolution_clock::now();
-      duration2 = (double)(duration_cast<seconds>(sto2 - beg2)).count()*1.0;
+      if ( lig2.num_gates() >= num_gates_2 )
+      {
+        rps.max_pis = 16;
+        rps.max_trials = 10;
+
+        if( lig2.num_gates() > 4000 ) 
+        {
+          if(lig2.num_gates() < 5000 )
+          {
+            rps.max_pis = 14;
+          }
+          else if( lig2.num_gates() < 6000 )
+          {
+            rps.max_pis = 12;
+          }
+          else if( lig2.num_gates() < 7000 )
+          {
+            rps.max_pis = 10;
+          }
+          else
+          {
+            rps.max_pis = 8u;
+          }
+        }
+
+        boptimize_klut<PV2, K, K>( lig2, rps, &rst1 );
+        lig2 = cleanup_dangling( lig2 );
+        printf(".r44[%d]: %d\n", rps.max_pis, lig2.num_gates() );
+
+        if( lig2.num_gates() == num_gates_2 )
+        {
+          boptimize_klut<EX2, K+2, K>( lig2, rps, &rst1 );
+          lig2 = cleanup_dangling( lig2 );
+          printf(".r64[%d]: %d\n", rps.max_pis, lig2.num_gates() );
+        }
+        lig2 = cleanup_dangling( lig2 );
+
+        printf("FW2: %d %d\n", lig2.num_gates(), lig2_d.depth() );
+        auto sto2 = high_resolution_clock::now();
+        duration2 = (double)(duration_cast<seconds>(sto2 - beg2)).count()*1.0;
+      }
     }
     auto sto2 = high_resolution_clock::now();
     duration2 = (double)(duration_cast<seconds>(sto2 - beg2)).count()*1.0;

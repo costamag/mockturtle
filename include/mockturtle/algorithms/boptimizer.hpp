@@ -109,6 +109,8 @@ struct boptimizer_params
   /*! \brief Whether to prevent from increasing depth. Currently only used by window-based resub engine. */
   bool preserve_depth{ false };
 
+  double max_depth{ std::numeric_limits<double>::max() };
+
   /****** simulation-based resub engine ******/
 
   /*! \brief Whether to use pre-generated patterns stored in a file.
@@ -857,7 +859,7 @@ public:
 
     //compute_required_time();
     double worst_delay = propagate_arrival_times();
-    propagate_required_times( worst_delay );
+    propagate_required_times( ps.max_depth );//worst_delay ); ACC
 
   }
 
@@ -1543,7 +1545,7 @@ void boptimize_sc( scopt::scg_network& ntk, boptimizer_params const& ps = {}, bo
 {
   using Ntk = scopt::scg_network;
   static constexpr uint32_t nPisLoc = 16u;
-  static constexpr uint32_t nPisGlb = 11u;
+  static constexpr uint32_t nPisGlb = 10u;
 
   using bopt_view_t = fanout_view<depth_view<Ntk>>;
   depth_view<Ntk> depth_view{ ntk };
@@ -1570,7 +1572,7 @@ void boptimize_sc( scopt::scg_network& ntk, boptimizer_params const& ps = {}, bo
     typename bopt_impl_t::engine_st_t engine_st;
     typename bopt_impl_t::collector_st_t collector_st;
 
-    bopt_impl_t p( bopt_view ,ps, st, engine_st, collector_st );
+    bopt_impl_t p( bopt_view, ps, st, engine_st, collector_st );
     p.run();
     st.time_resub -= engine_st.time_patgen;
     st.time_total -= engine_st.time_patgen + engine_st.time_patsave;

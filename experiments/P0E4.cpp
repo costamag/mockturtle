@@ -274,14 +274,13 @@ int main()
 
   for ( auto const& benchmark : epfl_benchmarks( ) )
   {
-    //if( benchmark == "log2" || benchmark == "hyp" ) continue;
+    //if( benchmark == "hyp" ) continue;
     fmt::print( "[i] processing {}\n", benchmark );
-    auto path = "best_results/size/" + benchmark + "_sizen.blif";
+    auto path = "../experiments/benchmarks/best_results/size/" + benchmark + "_sizen.blif";
 
-    
     klut_network klut_olig;
 
-    if ( lorina::read_blif( benchmark+"_dse8.blif", blif_reader( klut_olig ) ) != lorina::return_code::success )
+    if ( lorina::read_blif( path, blif_reader( klut_olig ) ) != lorina::return_code::success )//benchmark+"_dse_45.blif"
     {
       printf("unsuccessful read 1\n");
       continue;
@@ -310,58 +309,84 @@ int main()
     rps.progress = true;
     // ps.pattern_filename = "1024sa1/" + benchmark + ".pat";
     rps.max_inserts = 30;
-    rps.max_pis = 8;
+    rps.max_pis = 10;
     rps.max_divisors = 256;
     rps.verbose = false;
     uint32_t nGatesOld = lig1.num_gates()+1;
     printf("%d\n", lig1.num_gates());
-    rps.max_trials = 1;
+    rps.max_trials = 10;
 
     auto beg = high_resolution_clock::now();
 
     uint32_t runtime_limit = 600;
-    while( lig1.num_gates() < nGatesOld )
+    int it=46;
+   // while( lig1.num_gates() < nGatesOld )
     {
-      //abc_lutpack( lig1, benchmark );
-      //lig1 = cleanup_dangling( lig1 );    
-      //printf("LPK  %d\n", lig1.num_gates());
-      //abc_mfs2( lig1, benchmark );
-      //lig1 = cleanup_dangling( lig1 );    
-      //printf("MFS2 %d\n", lig1.num_gates());
-      //abc_mfs( lig1, benchmark );
-      //lig1 = cleanup_dangling( lig1 );    
-      //printf("MFS  %d\n", lig1.num_gates());
+  //    while( lig1.num_gates() < nGatesOld )
+      {
+        rps.max_trials = 1;
 
-      rps.max_trials = 1;
-      auto sto = high_resolution_clock::now();
-      if( (duration_cast<seconds>(sto - beg)).count() > runtime_limit ) break;
-      
-      nGatesOld=lig1.num_gates();
-      boptimize_klut<EX2, 6u, 6u>( lig1, rps, &rst );
+        it++;
+        nGatesOld=lig1.num_gates();
+
+        rps.max_trials = 1;
+        auto sto = high_resolution_clock::now();
+        //if( (duration_cast<seconds>(sto - beg)).count() > runtime_limit ) break;
+        
+        if( lig1.num_gates() == nGatesOld )
+        {
+        boptimize_klut<EX2, 6u, 6u>( lig1, rps, &rst );
+        lig1 = cleanup_dangling( lig1 );    
+        printf("P66L %d\n", lig1.num_gates());
+        sto = high_resolution_clock::now();
+        }
+        else
+        {
+          write_blif( lig1, benchmark+"_ini_"+std::to_string(it)+".blif" );
+        }
+        //if( (duration_cast<seconds>(sto - beg)).count() > runtime_limit ) break;
+
+        if( lig1.num_gates() == nGatesOld )
+        {
+          boptimize_klut<EX2, 8u, 6u>( lig1, rps, &rst );
+          lig1 = cleanup_dangling( lig1 );    
+          printf("P76L %d\n", lig1.num_gates());
+          sto = high_resolution_clock::now();
+          //if( (duration_cast<seconds>(sto - beg)).count() > runtime_limit ) break;
+        }
+        else
+        {
+          write_blif( lig1, benchmark+"_dse_"+std::to_string(it)+".blif" );
+        }
+
+        if( lig1.num_gates() == nGatesOld )
+        {
+          rps.max_trials = 100;
+          boptimize_klut<EX2, 8u, 6u>( lig1, rps, &rst );
+          lig1 = cleanup_dangling( lig1 );    
+          printf("P86H %d\n", lig1.num_gates());
+          sto = high_resolution_clock::now();
+          //if( (duration_cast<seconds>(sto - beg)).count() > runtime_limit ) break;
+        }
+        else
+        {
+          write_blif( lig1, benchmark+"_ini_"+std::to_string(it)+".blif" );
+        }
+      }
+
+#if 0
+      abc_lutpack( lig1, benchmark );
       lig1 = cleanup_dangling( lig1 );    
-      printf("P66L %d\n", lig1.num_gates());
-      sto = high_resolution_clock::now();
-      if( (duration_cast<seconds>(sto - beg)).count() > runtime_limit ) break;
-
-      if( lig1.num_gates() == nGatesOld )
-      {
-        boptimize_klut<EX2, 8u, 6u>( lig1, rps, &rst );
-        lig1 = cleanup_dangling( lig1 );    
-        printf("P76L %d\n", lig1.num_gates());
-        sto = high_resolution_clock::now();
-        if( (duration_cast<seconds>(sto - beg)).count() > runtime_limit ) break;
-      }
-
-      if( lig1.num_gates() == nGatesOld )
-      {
-        rps.max_trials = 100;
-        boptimize_klut<EX2, 8u, 6u>( lig1, rps, &rst );
-        lig1 = cleanup_dangling( lig1 );    
-        printf("P86H %d\n", lig1.num_gates());
-        sto = high_resolution_clock::now();
-        if( (duration_cast<seconds>(sto - beg)).count() > runtime_limit ) break;
-      }
+      printf("LPK  %d\n", lig1.num_gates());
+      abc_mfs2( lig1, benchmark );
+      lig1 = cleanup_dangling( lig1 );    
+      printf("MFS2 %d\n", lig1.num_gates());
+      abc_mfs( lig1, benchmark );
+      lig1 = cleanup_dangling( lig1 );    
+#endif
     }
+
+
 
     auto sto = high_resolution_clock::now();
     auto duration = (duration_cast<milliseconds>(sto - beg)).count()*0.001;;
@@ -372,14 +397,18 @@ int main()
 
     printf("|lig1|=%d  ", lig1.num_gates());
 
-    std::string tmp1 = benchmark + experiments/P0E5.cpp"_dse9.blif";
-    write_blif( lig1, tmp1 );
-
-    const auto cec1 = true;//(benchmark == "hyp" || benchmark == "log2") ? true : abc_cec( lig1, benchmark );
+    const auto cec1 = (benchmark == "sqrt" || benchmark == "square") ? false : abc_cec( lig1, benchmark );
     if( !cec1 )
     {
-        printf("NOT EQUIVALENT\n");
+        printf("NOT EQUIVALENT   D:   \n");
     }
+    else
+    {
+      printf("EQUIVALENT :) :) :) \n");
+    }
+
+    std::string tmp1 = benchmark + "_best_26052024.blif";
+    write_blif( lig1, tmp1 );
 
     exp( benchmark, lig0.num_gates(), lig0_d.depth(), lig1.num_gates(), lig1_d.depth(), duration, cec1 );
   }

@@ -420,7 +420,7 @@ int main()
   std::vector<double> tPV2;
   std::vector<double> tPV3;
 
-  for ( auto const& benchmark : all_benchmarks() )
+  for ( auto const& benchmark : all_benchmarks( epfl ) )
   {
     if( benchmark == "hyp" ) continue;
     fmt::print( "[i] processing {}\n", benchmark );
@@ -435,15 +435,15 @@ int main()
     if( aig.num_gates() > 300000 ) continue;
     aig = abc_opto( aig, benchmark );
 
-
     /* set up the parameters */
     boptimizer_params rps;
     rps.progress = true;
     rps.max_inserts = 20;
-    rps.max_trials = 1;
-    rps.max_pis = 16;
+    rps.max_trials = 3;
+    rps.max_pis = 8;
     rps.verbose = false;
-    rps.max_divisors = 300;
+    rps.max_divisors = 128;
+    rps.use_delay_constraints = false;
 
     scopt::lut_map2_params ps;
     ps.cut_enumeration_ps.cut_size = K;
@@ -456,7 +456,6 @@ int main()
     //const auto lig_map0 = scopt::lut_map2( aig, ps, &st );
     const auto lig_map0 = abc_if( aig, benchmark, K );
     const auto lig_map = cleanup_ligs( lig_map0 );
-
 
     write_blif( lig_map, tmp );
 
@@ -483,11 +482,13 @@ int main()
     if( lig_mfs.num_gates() != map_num_gates ) continue;
 
     auto beg_mfs = high_resolution_clock::now();
-    //auto mfs_res = abc_mfs( lig_mfs, benchmark, map_num_gates );
+    for( int i = 0; i < 3;  ++i )
+      abc_mfs( lig_mfs, benchmark, map_num_gates );
     auto end_mfs = high_resolution_clock::now();
     auto duration_mfs = (duration_cast<milliseconds>(end_mfs - beg_mfs)).count()*0.001;
+    auto mfs_res = abc_eval( lig_mfs, benchmark );
 
-    uint32_t mfs_num_gates = 0;//std::get<0>(mfs_res);
+    uint32_t mfs_num_gates = std::get<0>( mfs_res );
     printf("MFS: %6d\n", mfs_num_gates );
 
     /* MFS2 */
@@ -499,11 +500,13 @@ int main()
     }
     if( lig_mfs2.num_gates() != map_num_gates ) continue;
     auto beg_mfs2 = high_resolution_clock::now();
-    //auto mfs2_res = abc_mfs2( lig_mfs2, benchmark, map_num_gates );
+    for( int i = 0; i < 3;  ++i )
+      abc_mfs2( lig_mfs2, benchmark, map_num_gates );
     auto end_mfs2 = high_resolution_clock::now();
     auto duration_mfs2 = (duration_cast<milliseconds>(end_mfs2 - beg_mfs2)).count()*0.001;
+    auto mfs2_res = abc_eval( lig_mfs2, benchmark );
 
-    uint32_t mfs2_num_gates = 0;//std::get<0>(mfs2_res);
+    uint32_t mfs2_num_gates = std::get<0>( mfs2_res );
     printf("MF2: %6d\n", mfs2_num_gates );
 
     /* RANDOM */    
@@ -516,7 +519,8 @@ int main()
     if( lig_rand.num_gates() != map_num_gates ) continue;
     boptimizer_stats rst_rand;
     auto beg_rand = high_resolution_clock::now();
-    boptimize_klut<RND, K, K>( lig_rand, rps, &rst_rand );
+    for( int i = 0; i < 3;  ++i )
+      boptimize_klut<RND, K, K>( lig_rand, rps, &rst_rand );
     auto end_rand = high_resolution_clock::now();
     auto duration_rand = (duration_cast<milliseconds>(end_rand - beg_rand)).count()*0.001;
 
@@ -540,7 +544,8 @@ int main()
     if( lig_gre.num_gates() != map_num_gates ) continue;
     boptimizer_stats rst_gre;
     auto beg_gre = high_resolution_clock::now();
-    boptimize_klut<GRE, K, K>( lig_gre, rps, &rst_gre );
+    for( int i = 0; i < 3;  ++i )
+      boptimize_klut<GRE, K, K>( lig_gre, rps, &rst_gre );
     auto end_gre = high_resolution_clock::now();
     auto duration_gre = (duration_cast<milliseconds>(end_gre - beg_gre)).count()*0.001;
 
@@ -565,7 +570,8 @@ int main()
     if( lig_piv1.num_gates() != map_num_gates ) continue;
     boptimizer_stats rst_piv1;
     auto beg_piv1 = high_resolution_clock::now();
-    boptimize_klut<PV1, K, K>( lig_piv1, rps, &rst_piv1 );
+//    for( int i = 0; i < 3;  ++i )
+//      boptimize_klut<PV1, K, K>( lig_piv1, rps, &rst_piv1 );
     auto end_piv1 = high_resolution_clock::now();
     auto duration_piv1 = (duration_cast<milliseconds>(end_piv1 - beg_piv1)).count()*0.001;
     lig_piv1 = cleanup_ligs( lig_piv1 );
@@ -589,7 +595,8 @@ int main()
     boptimizer_stats rst_piv2;
 
     auto beg_piv2 = high_resolution_clock::now();
-    boptimize_klut<PV2, K, K>( lig_piv2, rps, &rst_piv2 );
+//    for( int i = 0; i < 3;  ++i )
+//      boptimize_klut<PV2, K, K>( lig_piv2, rps, &rst_piv2 );
     auto end_piv2 = high_resolution_clock::now();
     auto duration_piv2 = (duration_cast<milliseconds>(end_piv2 - beg_piv2)).count()*0.001;
 
@@ -613,7 +620,8 @@ int main()
     if( lig_piv3.num_gates() != map_num_gates ) continue;
     boptimizer_stats rst_piv3;
     auto beg_piv3 = high_resolution_clock::now();
-    boptimize_klut<PV3, K, K>( lig_piv3, rps, &rst_piv3 );
+//    for( int i = 0; i < 3;  ++i )
+//      boptimize_klut<PV3, K, K>( lig_piv3, rps, &rst_piv3 );
     auto end_piv3 = high_resolution_clock::now();
     auto duration_piv3 = (duration_cast<milliseconds>(end_piv3 - beg_piv3)).count()*0.001;
     lig_piv3 = cleanup_ligs( lig_piv3 );
@@ -637,7 +645,8 @@ int main()
     boptimizer_stats rst_exp1;
     
     auto beg_exp1 = high_resolution_clock::now();
-    boptimize_klut<EX1, K, K>( lig_exp1, rps, &rst_exp1 );
+    for( int i = 0; i < 3;  ++i )
+      boptimize_klut<EX1, K, K>( lig_exp1, rps, &rst_exp1 );
     auto end_exp1 = high_resolution_clock::now();
     auto duration_exp1 = (duration_cast<milliseconds>(end_exp1 - beg_exp1)).count()*0.001;
 
@@ -661,7 +670,8 @@ int main()
     if( lig_exp2.num_gates() != map_num_gates ) continue;
     boptimizer_stats rst_exp2;
     auto beg_exp2 = high_resolution_clock::now();
-    boptimize_klut<EX2, K, K>( lig_exp2, rps, &rst_exp2 );
+    for( int i = 0; i < 3;  ++i )
+      boptimize_klut<EX2, K, K>( lig_exp2, rps, &rst_exp2 );
     auto end_exp2 = high_resolution_clock::now();
     auto duration_exp2 = (duration_cast<milliseconds>(end_exp2 - beg_exp2)).count()*0.001;
 
@@ -685,7 +695,8 @@ int main()
     if( lig_exp3.num_gates() != map_num_gates ) continue;
     boptimizer_stats rst_exp3;
     auto beg_exp3 = high_resolution_clock::now();
-    boptimize_klut<EX3, K, K>( lig_exp3, rps, &rst_exp3 );
+    for( int i = 0; i < 3;  ++i )
+      boptimize_klut<EX3, K, K>( lig_exp3, rps, &rst_exp3 );
     auto end_exp3 = high_resolution_clock::now();
     auto duration_exp3 = (duration_cast<milliseconds>(end_exp3 - beg_exp3)).count()*0.001;
 

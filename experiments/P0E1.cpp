@@ -634,7 +634,7 @@ int main()
     }
     if( lig_exp2.num_gates() != map_num_gates ) continue;
     boptimizer_stats rst_exp2;
-    boptimize_klut<EX3, K, K>( lig_exp2, rps, &rst_exp2 );
+    boptimize_klut<EX2, K, K>( lig_exp2, rps, &rst_exp2 );
     lig_exp2 = cleanup_dangling( lig_exp2 );
     auto exp2_res = abc_eval( lig_exp2, benchmark );
     uint32_t exp2_num_gates = std::get<0>(exp2_res);

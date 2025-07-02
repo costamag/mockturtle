@@ -527,7 +527,7 @@ int main()
 
     boptimizer_stats rst_exp1;
 
-    boptimize_klut<EXP1, K, K>( lig_exp1, rps, &rst_exp1 );
+    boptimize_klut<EX1, K, K>( lig_exp1, rps, &rst_exp1 );
     lig_exp1 = cleanup_dangling( lig_exp1 );
     printf("EXP1: %6d [%6d]\n", lig_exp1.num_gates(), lig_exp1.max_num_fanins);
     auto exp1_res = abc_eval( lig_exp1, benchmark );
@@ -552,7 +552,7 @@ int main()
 
     boptimizer_stats rst_exp3;
 
-    boptimize_klut<GREEDY, K, K>( lig_exp3, rps, &rst_exp3 );
+    boptimize_klut<EX3, K, K>( lig_exp3, rps, &rst_exp3 );
     lig_exp3 = cleanup_dangling( lig_exp3 );
     printf("EXP3: %6d [%6d]\n", lig_exp3.num_gates(), lig_exp3.max_num_fanins);
     auto exp3_res = abc_eval( lig_exp3, benchmark );
