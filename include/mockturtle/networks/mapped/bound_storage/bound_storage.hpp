@@ -58,6 +58,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
+#include <queue>
 #include <vector>
 
 namespace mockturtle
@@ -92,6 +93,28 @@ public:
   using list_t = large_xag_index_list;
   using node_t = storage_node<NumBitsOutputs>;
   using signal_t = storage_signal<NumBitsOutputs>;
+
+  /*! \brief The storage constructor.
+   *
+   * This constructor initializes the storage with a given library of gates.
+   * It reserves space for a maximum number of nodes and initializes the first
+   * two nodes as constants (0 and 1).
+   *
+   * \param gates The gates to be included in the library.
+   */
+  template<
+      bound::design_type_t D = DesignType,
+      std::enable_if_t<D == bound::design_type_t::CELL_BASED, int> = 0>
+  storage( augmented_library_t const& library )
+      : library( library )
+  {
+    /* reserve space for nodes */
+    nodes.reserve( 10000u ); // reserve to avoid frequent reallocations
+
+    /* we reserve the first two nodes for constants */
+    nodes.emplace_back( pin_type_t::CONSTANT ); // 0
+    nodes.emplace_back( pin_type_t::CONSTANT ); // 1
+  }
 
   /*! \brief The storage constructor.
    *
@@ -160,10 +183,10 @@ public:
    */
   signal_t create_pi()
   {
-    const auto index = nodes.size();
+    const auto index = get_new_index();
     node_t input( pin_type_t::PI );
     input.children = { inputs.size() };
-    nodes.emplace_back( input );
+    nodes[index] = input;
     inputs.emplace_back( index );
     return signal_t{ index, 0 };
   }
@@ -245,6 +268,92 @@ public:
 
 #pragma endregion
 
+#pragma region Create special functions
+  template<bool DoStrash>
+  signal_t create_not( signal_t const& a )
+  {
+    static uint64_t _not = 0x1;
+    kitty::dynamic_truth_table tt_not( 1 );
+    kitty::create_from_words( tt_not, &_not, &_not + 1 );
+    return create_node<DoStrash>( std::vector<signal_t>{ a }, tt_not );
+  }
+
+  template<bool DoStrash>
+  signal_t create_and( signal_t const& a, signal_t const& b )
+  {
+    static uint64_t _and = 0x8;
+    kitty::dynamic_truth_table tt_and( 2 );
+    kitty::create_from_words( tt_and, &_and, &_and + 1 );
+    return create_node<DoStrash>( std::vector<signal_t>{ a, b }, tt_and );
+  }
+
+  template<bool DoStrash>
+  signal_t create_nand( signal_t const& a, signal_t const& b )
+  {
+    static uint64_t _nand = 0xE;
+    kitty::dynamic_truth_table tt_nand( 2 );
+    kitty::create_from_words( tt_nand, &_nand, &_nand + 1 );
+    return create_node<DoStrash>( std::vector<signal_t>{ a, b }, tt_nand );
+  }
+
+  template<bool DoStrash>
+  signal_t create_or( signal_t const& a, signal_t const& b )
+  {
+    static uint64_t _or = 0xe;
+    kitty::dynamic_truth_table tt_or( 2 );
+    kitty::create_from_words( tt_or, &_or, &_or + 1 );
+    return create_node<DoStrash>( std::vector<signal_t>{ a, b }, tt_or );
+  }
+
+  template<bool DoStrash>
+  signal_t create_xor( signal_t const& a, signal_t const& b )
+  {
+    static uint64_t _xor = 0x6;
+    kitty::dynamic_truth_table tt_xor( 2 );
+    kitty::create_from_words( tt_xor, &_xor, &_xor + 1 );
+    return create_node<DoStrash>( std::vector<signal_t>{ a, b }, tt_xor );
+  }
+
+  template<bool DoStrash>
+  signal_t create_maj( signal_t const& a, signal_t const& b, signal_t const& c )
+  {
+    static uint64_t _maj = 0xe8;
+    kitty::dynamic_truth_table tt_maj( 3 );
+    kitty::create_from_words( tt_maj, &_maj, &_maj + 1 );
+    return create_node<DoStrash>( std::vector<signal_t>{ a, b, c }, tt_maj );
+  }
+
+  template<bool DoStrash>
+  signal_t create_ite( signal_t const& a, signal_t const& b, signal_t const& c )
+  {
+    static uint64_t _ite = 0xd8;
+    kitty::dynamic_truth_table tt_ite( 3 );
+    kitty::create_from_words( tt_ite, &_ite, &_ite + 1 );
+    return create_node<DoStrash>( std::vector<signal_t>{ a, b, c }, tt_ite );
+  }
+
+  template<bool DoStrash>
+  signal_t create_xor3( signal_t const& a, signal_t const& b, signal_t const& c )
+  {
+    static uint64_t _xor3 = 0x96;
+    kitty::dynamic_truth_table tt_xor3( 3 );
+    kitty::create_from_words( tt_xor3, &_xor3, &_xor3 + 1 );
+    return create_node<DoStrash>( std::vector<signal_t>{ a, b, c }, tt_xor3 );
+  }
+
+  template<bool DoStrash = false>
+  signal_t create_node( std::vector<signal_t> const& children, kitty::dynamic_truth_table const& tt )
+  {
+    auto id = library.get_id( tt );
+    if ( !id )
+    {
+      std::cerr << "[e] No binding found for the AND gate in the library.\n";
+    }
+    node_t n = create_storage_node( children, std::vector<unsigned int>{ *id } );
+    return create_node( children, n );
+  }
+#pragma endregion
+
 #pragma region Create arbitrary functions
 
   /*! \brief Create a detailed node to be stored.
@@ -252,7 +361,7 @@ public:
    * \param children input signals.
    * \param ids binding identifier of the output pins.
    */
-  node_t create_storage_node( std::vector<signal_t> const& children, std::vector<uint32_t> const& ids )
+  node_t create_storage_node( std::vector<signal_t> const& children, std::vector<unsigned int> const& ids )
   {
     if constexpr ( DesignType == design_type_t::CELL_BASED )
     {
@@ -286,8 +395,8 @@ public:
    */
   signal_t create_node( std::vector<signal_t> const& children, node_t const& n )
   {
-    const auto index = nodes.size();
-    nodes.push_back( n );
+    const auto index = get_new_index();
+    nodes[index] = n;
 
     /* increase ref-count to children */
     for ( auto c : children )
@@ -501,6 +610,8 @@ public:
     }
     nodes[n].fanout_count = 0;
     nodes[n].children.clear();
+
+    dead_nodes.push( n );
   }
 
 #pragma endregion
@@ -750,9 +861,7 @@ public:
   template<typename Fn>
   void foreach_co( Fn&& fn ) const
   {
-    using IteratorType = decltype( outputs.begin() );
-    detail::foreach_element<IteratorType>(
-        outputs.begin(), outputs.end(), []( auto f ) { return signal_t( f ); }, fn );
+    detail::foreach_element( outputs.begin(), outputs.end(), fn );
   }
 
   template<typename Fn>
@@ -761,13 +870,19 @@ public:
     detail::foreach_element( inputs.begin(), inputs.end(), fn );
   }
 
+  // template<typename Fn>
+  // void foreach_po( Fn&& fn ) const
+  //{
+  //   for ( signal_t const& f : outputs )
+  //   {
+  //     fn( f );
+  //   }
+  // }
+
   template<typename Fn>
   void foreach_po( Fn&& fn ) const
   {
-    for ( signal_t const& f : outputs )
-    {
-      fn( f );
-    }
+    detail::foreach_element( outputs.begin(), outputs.end(), fn );
   }
 
   template<typename Fn>
@@ -783,14 +898,10 @@ public:
   template<typename Fn>
   void foreach_fanin( node_index_t const& n, Fn&& fn ) const
   {
-    if ( is_constant( n ) || is_ci( n ) || is_pi( n ) )
+    if ( n <= 1 || is_ci( n ) )
       return;
 
-    auto const& children = nodes[n].children;
-    for ( auto i = 0u; i < children.size(); ++i )
-    {
-      fn( children[i], i );
-    }
+    detail::foreach_element( nodes[n].children.begin(), nodes[n].children.end(), fn );
   }
 
   /*! \brief Iterate over the output pins of a node.
@@ -956,15 +1067,17 @@ public:
     return ids;
   }
 
+  /*! \brief Get the binding identifiers of the output pins in a node
+   */
+  std::vector<unsigned int> get_binding_ids( std::string const& name ) const
+  {
+    return library.get_binding_ids( name );
+  }
+
   auto const& get_binding( signal_t const& f ) const
   {
     auto const& pin = nodes[f.index].outputs[f.output];
     return library.get_gate( pin.id );
-  }
-
-  bool has_binding( node_index_t const& n ) const
-  {
-    return std::is_same<gate_t, mockturtle::gate>::value;
   }
 
   double get_max_pin_delay( signal_t const& f, uint32_t i ) const
@@ -984,6 +1097,58 @@ public:
     auto const& pin = nodes[f.index].outputs[f.output];
     return library.get_input_load( pin.id, i );
   }
+
+  std::vector<gate_t> const& get_library() const
+  {
+    return library.get_aug_gates();
+  }
+
+  node_index_t get_new_index()
+  {
+    if ( dead_nodes.empty() )
+    {
+      nodes.emplace_back( pin_type_t::NONE );
+      return static_cast<node_index_t>( nodes.size() - 1 );
+    }
+    auto n = dead_nodes.front();
+    dead_nodes.pop();
+    nodes[n].clear();
+    nodes[n] = node_t( pin_type_t::NONE );
+    return n;
+  }
+
+  uint32_t get_fanin_number( unsigned int id, std::string const& pin_name ) const
+  {
+    return library.get_fanin_number( id, pin_name );
+  }
+#pragma endregion
+
+#pragma region Bindings
+
+  bool has_binding( signal_t const& f ) const
+  {
+    return has_binding( f.index );
+  }
+
+  bool has_binding( node_index_t const& n ) const
+  {
+    return !is_constant( n ) && !is_ci( n ) && !is_pi( n );
+  }
+
+  bool has_gate( std::string const& name ) const
+  {
+    return library.has_gate( name );
+  }
+
+  bool is_input_pin( std::string const& gate_name, std::string const& pin_name ) const
+  {
+    return library.is_input_pin( gate_name, pin_name );
+  }
+
+  bool is_output_pin( std::string const& gate_name, std::string const& pin_name ) const
+  {
+    return library.is_output_pin( gate_name, pin_name );
+  }
 #pragma endregion
 
   /*! \brief Traversal ID for graph algorithms.
@@ -1000,6 +1165,9 @@ public:
    * internal nodes.
    */
   std::vector<node_t> nodes;
+
+  /*! \brief The nodes that were killed in the bound network */
+  std::queue<node_index_t> dead_nodes;
 
   /*! \brief The primary inputs of the bound network.
    *

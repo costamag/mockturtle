@@ -72,6 +72,8 @@ public:
 #pragma region Types and constructors
 
   static constexpr auto NumBitsOutputs = bound::bits_required<MaxNumOutputs>();
+  static constexpr bound::design_type_t design_t = DesignType;
+  static constexpr bool is_bound_network_type = true;
 
   /* aliases used in this class */
   using storage_t = std::shared_ptr<bound::storage<DesignType, NumBitsOutputs>>;
@@ -89,6 +91,19 @@ public:
   using storage = storage_t;
   using signal = signal_t;
   using node = node_index_t;
+
+  /*! \brief Constructor from a technology library.
+   *
+   * \param gates The gates in the technology library.
+   */
+  template<
+      bound::design_type_t D = DesignType,
+      std::enable_if_t<D == bound::design_type_t::CELL_BASED, int> = 0>
+  bound_network( bound::augmented_library<DesignType> const& library )
+      : _storage( std::make_shared<bound::storage<DesignType, NumBitsOutputs>>( library ) ),
+        _events( std::make_shared<typename decltype( _events )::element_type>() )
+  {
+  }
 
   /*! \brief Constructor from a technology library.
    *
@@ -239,6 +254,57 @@ public:
   {
     return _storage->constant_value( n );
   }
+#pragma endregion
+
+#pragma region Create special functions
+  template<bool DoStrash = false>
+  signal_t create_not( signal_t const& a )
+  {
+    return _storage->template create_not<DoStrash>( a );
+  }
+
+  template<bool DoStrash = false>
+  signal_t create_and( signal_t const& a, signal_t const& b )
+  {
+    return _storage->template create_and<DoStrash>( a, b );
+  }
+
+  template<bool DoStrash = false>
+  signal_t create_nand( signal_t const& a, signal_t const& b )
+  {
+    return _storage->template create_nand<DoStrash>( a, b );
+  }
+
+  template<bool DoStrash = false>
+  signal_t create_or( signal_t const& a, signal_t const& b )
+  {
+    return _storage->template create_or<DoStrash>( a, b );
+  }
+
+  template<bool DoStrash = false>
+  signal_t create_xor( signal_t const& a, signal_t const& b )
+  {
+    return _storage->template create_xor<DoStrash>( a, b );
+  }
+
+  template<bool DoStrash = false>
+  signal_t create_maj( signal_t const& a, signal_t const& b, signal_t const& c )
+  {
+    return _storage->template create_maj<DoStrash>( a, b, c );
+  }
+
+  template<bool DoStrash = false>
+  signal_t create_ite( signal_t const& a, signal_t const& b, signal_t const& c )
+  {
+    return _storage->template create_ite<DoStrash>( a, b, c );
+  }
+
+  template<bool DoStrash = false>
+  signal_t create_xor3( signal_t const& a, signal_t const& b, signal_t const& c )
+  {
+    return _storage->template create_xor3<DoStrash>( a, b, c );
+  }
+
 #pragma endregion
 
 #pragma region Create arbitrary functions
@@ -960,6 +1026,16 @@ public:
   {
     return _storage->get_input_load( f, i );
   }
+
+  auto const& get_library() const
+  {
+    return _storage->get_library();
+  }
+
+  uint32_t get_fanin_number( unsigned int id, std::string const& pin_name ) const
+  {
+    return _storage->get_fanin_number( id, pin_name );
+  }
 #pragma endregion
 
 #pragma region General methods
@@ -975,14 +1051,49 @@ public:
     return _storage->get_binding_ids( n );
   }
 
+  std::vector<unsigned int> get_binding_ids( std::string const& name ) const
+  {
+    return _storage->get_binding_ids( name );
+  }
+
+  uint32_t get_binding_index( node_index_t const& n ) const
+  {
+    return _storage->get_binding_ids( n )[0];
+  }
+
+  uint32_t get_binding_index( signal_t const& f ) const
+  {
+    return _storage->get_binding_ids( f.index )[f.output];
+  }
+
   auto const& get_binding( signal_t const& f ) const
   {
     return _storage->get_binding( f );
   }
 
-  auto const& has_binding( node_index_t const& n ) const
+  bool has_binding( signal_t const& f ) const
+  {
+    return _storage->has_binding( f );
+  }
+
+  bool has_binding( node_index_t const& n ) const
   {
     return _storage->has_binding( n );
+  }
+
+  bool has_gate( std::string const& name ) const
+  {
+    return _storage->has_gate( name );
+  }
+
+  bool is_input_pin( std::string const& gate_name, std::string const& pin_name ) const
+  {
+    return _storage->is_input_pin( gate_name, pin_name );
+  }
+
+  bool is_output_pin( std::string const& gate_name, std::string const& pin_name ) const
+  {
+    return _storage->is_output_pin( gate_name, pin_name );
   }
 #pragma endregion
 

@@ -83,6 +83,15 @@ struct storage_node
     outputs[0].type = type;
   }
 
+  void clear()
+  {
+    user_data = 0;
+    traversal_id = 0;
+    fanout_count = 0;
+    outputs.clear();
+    children.clear();
+  }
+
   /*! \brief Equality operator compares structural fan-in. */
   bool operator==( storage_node<MaxNumOutputBits> const& other ) const
   {

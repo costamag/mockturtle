@@ -123,6 +123,21 @@ template<class Ntk>
 inline constexpr bool is_crossed_network_type_v = is_crossed_network_type<Ntk>::value;
 #pragma endregion
 
+#pragma region is_aig_network_type
+template<class Ntk, class = void>
+struct is_bound_network_type : std::false_type
+{
+};
+
+template<class Ntk>
+struct is_bound_network_type<Ntk, std::enable_if_t<Ntk::is_bound_network_type, std::void_t<decltype( Ntk::is_bound_network_type )>>> : std::true_type
+{
+};
+
+template<class Ntk>
+inline constexpr bool is_bound_network_type_v = is_bound_network_type<Ntk>::value;
+#pragma endregion
+
 #pragma region has_clone
 template<class Ntk, class = void>
 struct has_clone : std::false_type

@@ -108,12 +108,23 @@ public:
    * which this constructor can synthesize an index list for each gate.
    */
   augmented_library( std::vector<gate> const& raw_gates )
-      : synth( st )
+      : synth( st ),
+        raw_gates_( raw_gates )
   {
     gates_.reserve( raw_gates.size() );
     for ( gate const& g : raw_gates )
     {
       add_gate( g );
+      name_to_ids_[g.name].push_back( g.id );
+    }
+
+    for ( gate const& g : raw_gates )
+    {
+      auto it = single_output.find( g.name );
+      if ( it != single_output.end() )
+      {
+        tt_to_index_[g.function] = g.id;
+      }
     }
   }
 
@@ -160,6 +171,12 @@ public:
     return gates_[id];
   }
 
+  /*! \brief Getter of the gate's area. */
+  double const& get_area( uint32_t id ) const
+  {
+    return gates_[id].area;
+  }
+
   double get_max_pin_delay( uint32_t id, uint32_t i ) const
   {
     return gates_[id].max_pin_time[i];
@@ -175,14 +192,103 @@ public:
     return gates_[id].pins[i].input_load;
   }
 
+  std::vector<gate> const& get_raw_gates() const
+  {
+    return raw_gates_;
+  }
+
+  std::vector<gate_t> const& get_aug_gates() const
+  {
+    return gates_;
+  }
+
+  std::vector<unsigned int> get_binding_ids( std::string const& gate_name ) const
+  {
+    auto const it = name_to_ids_.find( gate_name );
+    if ( it == name_to_ids_.end() )
+    {
+      std::cerr << "[e] No binding found for the gate " << gate_name << std::endl;
+      return {};
+    }
+    return it->second;
+  }
+
+  std::optional<unsigned int> get_id( kitty::dynamic_truth_table const& tt ) const
+  {
+    auto it = tt_to_index_.find( tt );
+    if ( it != tt_to_index_.end() )
+    {
+      return it->second;
+    }
+    return std::nullopt;
+  }
+
+  uint32_t get_fanin_number( unsigned int id, std::string const& pin_name ) const
+  {
+    auto const& g = gates_[id];
+    for ( uint32_t i = 0; i < g.num_vars; ++i )
+    {
+      if ( g.pins[i].name == pin_name )
+      {
+        return i;
+      }
+    }
+    std::cerr << "[e] Pin " << pin_name << " not found in gate " << g.name << std::endl;
+    return std::numeric_limits<uint32_t>::max();
+  }
+
   /*! \brief Check if the gate is a multiple output gate from its name */
   bool is_multioutput( std::string const& name ) const
   {
     return multiple_output.find( name ) != multiple_output.end();
   }
 
+  bool has_gate( std::string const& name ) const
+  {
+    return single_output.find( name ) != single_output.end() ||
+           multiple_output.find( name ) != multiple_output.end();
+  }
+
+  bool is_input_pin( std::string const& gate_name, std::string const& pin_name ) const
+  {
+    auto const it = name_to_ids_.find( gate_name );
+    if ( it == name_to_ids_.end() )
+    {
+      return false;
+    }
+    for ( auto const& id : it->second )
+    {
+      auto const& g = gates_[id];
+      for ( auto const& pin : g.pins )
+      {
+        if ( pin.name == pin_name )
+        {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  bool is_output_pin( std::string const& gate_name, std::string const& pin_name ) const
+  {
+    auto const it = name_to_ids_.find( gate_name );
+    if ( it == name_to_ids_.end() )
+    {
+      return false;
+    }
+    for ( auto const& id : it->second )
+    {
+      auto const& g = gates_[id];
+      if ( g.output_name == pin_name )
+        return true;
+    }
+    return false;
+  }
+
 private:
   /*! \brief Augmented technology library */
+  std::vector<gate> raw_gates_;
   std::vector<gate_t> gates_;
   /*! \brief Synthesis engine for AIG index lists */
   xag_synth_stats st;
@@ -190,6 +296,8 @@ private:
   /* contains the name of the multiple-output gates in the library */
   std::set<std::string> multiple_output;
   std::set<std::string> single_output;
+  phmap::flat_hash_map<kitty::dynamic_truth_table, unsigned int, kitty::hash<kitty::dynamic_truth_table>> tt_to_index_;
+  std::unordered_map<std::string, std::vector<unsigned int>> name_to_ids_;
 };
 
 template<>
@@ -276,6 +384,13 @@ public:
     return kitty::to_hex( gates_[id].function );
   }
 
+  /*! \brief Getter of the gate's area. */
+  double const& get_area( uint32_t id ) const
+  {
+    (void)id;
+    return 1.0;
+  }
+
   /*! \brief Getter of the augmented gate. */
   gate_t const& get_gate( uint32_t id ) const
   {
@@ -301,6 +416,21 @@ public:
     (void)id;
     (void)i;
     return 1.0;
+  }
+
+  std::vector<gate_t> const& get_aug_gates() const
+  {
+    return gates_;
+  }
+
+  std::optional<unsigned int> get_id( kitty::dynamic_truth_table const& tt ) const
+  {
+    auto it = tt_to_index_.find( tt );
+    if ( it != tt_to_index_.end() )
+    {
+      return it->second;
+    }
+    return std::nullopt;
   }
 
   /*! \brief Check if the gate is a multiple output gate from its name */

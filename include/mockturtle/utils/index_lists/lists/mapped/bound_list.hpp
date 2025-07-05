@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../../../../networks/mapped/bound_storage/bound_utils.hpp"
+#include "../../../symm_utils.hpp"
 #include <cassert>
 #include <vector>
 
@@ -125,6 +126,18 @@ public:
     return f;
   }
 
+  /*! \brief Replace in node */
+  void replace_in_node( uint32_t node, uint32_t fanin, element_type other )
+  {
+    auto& n = nodes[node];
+    n.fanins[fanin] = other;
+  }
+
+  /*! \brief Replace in node */
+  void replace_output( uint32_t index, element_type other )
+  {
+    outputs[index] = other;
+  }
 #pragma endregion
 
 #pragma region Iterators
@@ -195,6 +208,16 @@ public:
 
 #pragma region Getters
 
+  template<typename Lib>
+  [[nodiscard]] double get_area( Lib const& lib ) const
+  {
+    double area = 0;
+    foreach_gate( [&]( auto const& fanin, auto const& id, auto i ) {
+      area += lib.get_area( id );
+    } );
+    return area;
+  }
+
   [[nodiscard]] std::vector<node_t> get_nodes() const
   {
     return nodes;
@@ -227,5 +250,138 @@ private:
   std::vector<element_type> outputs;
   element_type num_inputs = 0;
 };
+
+/*! \brief Returns the longest path from the inputs to any output */
+template<bound::design_type_t DesignType, typename Lib>
+std::vector<double> get_longest_paths( bound_list<DesignType>& list, Lib& library )
+{
+  std::vector<double> input_delays( list.num_pis(), 0 );
+  std::vector<double> nodes_delays( list.num_pis() + list.num_gates(), 0 );
+  list.foreach_gate_rev( [&]( auto const& fanin, auto id, auto i ) {
+    for ( auto j = 0u; j < fanin.size(); ++j )
+    {
+      nodes_delays[fanin[j]] = std::min( nodes_delays[fanin[j]], nodes_delays[list.num_pis() + i] - library.get_max_pin_delay( id, j ) );
+      if ( list.is_pi( fanin[j] ) )
+        input_delays[fanin[j]] = nodes_delays[fanin[j]];
+    }
+  } );
+  for ( auto& d : input_delays )
+    d = -d;
+  return input_delays;
+}
+
+/*! \brief Permutes the input variables to have the ones closest to the output first
+ *
+ *    *
+ *   ***
+ *   \**
+ *    \**
+ *   0 \*
+ *    1 \*
+ *     2
+ *      3
+ *
+ * */
+template<bound::design_type_t DesignType, typename Lib>
+void time_canonize( bound_list<DesignType>& list, Lib& library, symmetries_t const& symm )
+{
+  std::vector<uint8_t> inputs( list.num_pis() );
+  std::iota( inputs.begin(), inputs.end(), 0 );
+
+  auto delays = get_longest_paths( list, library );
+
+  for ( uint8_t i = 0; i < list.num_pis(); ++i )
+  {
+    if ( symm.has_symmetries( i ) )
+    {
+      uint8_t k = i;
+      int j = i - 1;
+      double delay = delays[inputs[i]];
+      bool swapped = true;
+      while ( swapped && ( j >= 0 ) )
+      {
+        if ( symm.symmetric( inputs[k], inputs[j] ) )
+        {
+          if ( delay > delays[j] )
+          {
+            std::swap( inputs[k], inputs[j] );
+            std::swap( delays[k], delays[j] );
+            k = j;
+            swapped = true;
+          }
+          else
+          {
+            swapped = false;
+          }
+        }
+        j--;
+      }
+    }
+  }
+
+  permutation_t perm( inputs );
+
+  list.foreach_gate( [&]( auto& fanin, auto id, auto i ) {
+    for ( auto j = 0u; j < fanin.size(); ++j )
+    {
+      auto const lit = fanin[j];
+      if ( list.is_pi( lit ) )
+      {
+        list.replace_in_node( i, j, perm.inverse( lit ) );
+      }
+    }
+  } );
+
+  list.foreach_po( [&]( auto& lit, auto i ) {
+    if ( list.is_pi( lit ) )
+    {
+      list.replace_output( i, perm.inverse( lit ) );
+    }
+  } );
+}
+
+template<bound::design_type_t DesignType>
+void perm_canonize( bound_list<DesignType>& list, permutation_t const& perm )
+{
+  list.foreach_gate( [&]( auto& fanins, auto const& id, auto i ) {
+    for ( int j = 0; j < fanins.size(); ++j )
+    {
+      if ( list.is_pi( fanins[j] ) )
+      {
+        auto k = perm.inverse( fanins[j] );
+        list.replace_in_node( i, j, k );
+      }
+    }
+  } );
+
+  list.foreach_po( [&]( auto& output, auto i ) {
+    if ( list.is_pi( output ) )
+    {
+      auto k = perm.inverse( output );
+      list.replace_output( i, k );
+    }
+  } );
+}
+
+template<typename Ntk, bound::design_type_t DesignType, bool DoStrash = true>
+typename Ntk::signal_t insert( Ntk& ntk,
+                               std::vector<typename Ntk::signal_t> const& inputs,
+                               bound_list<DesignType> const& list )
+{
+  std::vector<typename Ntk::signal_t> fs;
+
+  for ( auto i = 0; i < list.num_pis(); ++i )
+    fs.emplace_back( inputs[i] );
+
+  list.foreach_gate( [&]( auto const& fanin, auto id, auto i ) {
+    std::vector<typename Ntk::signal_t> children( fanin.size() );
+    for ( auto i = 0u; i < fanin.size(); ++i )
+    {
+      children[i] = fs[fanin[i]];
+    }
+    fs.push_back( ntk.template create_node<DoStrash>( children, id ) );
+  } );
+  return fs[list.po_at( 0 )];
+}
 
 } // namespace mockturtle

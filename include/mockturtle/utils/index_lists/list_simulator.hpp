@@ -162,7 +162,7 @@ public:
     {
       return { &const0, list.is_complemented( lit ) };
     }
-    if ( list.num_pis() != inputs.size() )
+    if ( list.num_pis() > inputs.size() )
       throw std::invalid_argument( "Mismatch between number of PIs and input simulations." );
     if ( list.is_pi( lit ) )
     {
@@ -253,16 +253,6 @@ public:
     sims.resize( 20u );
   }
 
-  template<
-      bound::design_type_t D = DesignType,
-      std::enable_if_t<D == bound::design_type_t::CELL_BASED, int> = 0>
-  list_simulator( std::vector<gate> const& library )
-      : inner_simulator()
-  {
-    /* The value 20 allows us to store practical lists */
-    sims.resize( 20u );
-  }
-
   /*! \brief Simulate the list in topological order.
    *
    * This method updates the internal state of the simulator by
@@ -321,7 +311,7 @@ public:
                                           std::vector<TT const*> const& inputs,
                                           element_type const& lit )
   {
-    if ( list.num_pis() != inputs.size() )
+    if ( list.num_pis() > inputs.size() )
       throw std::invalid_argument( "Mismatch between number of PIs and input simulations." );
     if ( list.is_pi( lit ) )
     {
@@ -330,6 +320,21 @@ public:
     }
     uint32_t index = list.get_node_index( lit );
     return sims[index];
+  }
+
+  /*! \brief Return the number of switches
+   *
+   * \param list An XAIG index list, with or without separated header.
+   * \param inputs A vector of pointers to the input simulation patterns.
+   * \return The number of switches in the simulations.
+   */
+  [[nodiscard]] uint32_t get_switches( outer_list_t const& list )
+  {
+    uint32_t switches = 0;
+    list.foreach_gate( [&]( auto const& fanin, auto id, auto i ) {
+      switches += kitty::count_ones( sims[i] ) * kitty::count_zeros( sims[i] );
+    } );
+    return switches;
   }
 
   /*! \brief Extract the simulation of a literal
