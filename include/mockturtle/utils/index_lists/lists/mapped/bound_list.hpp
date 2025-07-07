@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../../../../networks/block.hpp"
 #include "../../../../networks/mapped/bound_storage/bound_utils.hpp"
 #include "../../../symm_utils.hpp"
 #include <cassert>
@@ -382,6 +383,68 @@ typename Ntk::signal_t insert( Ntk& ntk,
     fs.push_back( ntk.template create_node<DoStrash>( children, id ) );
   } );
   return fs[list.po_at( 0 )];
+}
+
+template<typename Ntk, bound::design_type_t DesignType>
+void extract( bound_list<DesignType>& list,
+              Ntk& ntk,
+              std::vector<typename Ntk::signal> const& inputs,
+              typename Ntk::signal const& output )
+{
+  using signal = typename Ntk::signal;
+  using node = typename Ntk::node;
+  using value_type = typename bound_list<DesignType>::element_type;
+
+  if ( list.num_pis() < inputs.size() )
+  {
+    std::cerr << "[e] not enough PIs in the list" << std::endl;
+    return;
+  }
+
+  // Recursive construction
+  std::function<void( signal )> construct_rec = [&]( signal f ) {
+    node n = ntk.get_node( f );
+
+    if ( ntk.visited( n ) == ntk.trav_id() )
+      return;
+
+    if ( ntk.is_pi( n ) )
+    {
+      std::cerr << "[e] unexpected unmarked PI in logic cone\n";
+      return;
+    }
+
+    std::vector<value_type> children;
+    unsigned id = 0;
+
+    if constexpr ( has_has_cell_v<Ntk> )
+    {
+      auto cell = ntk.get_cell( n );
+      assert( cell.gates.size() <= 1 && "[e] multiple output support not available" );
+      id = cell.gates[0].id;
+    }
+
+    ntk.foreach_fanin( n, [&]( auto const& fi, auto ) {
+      construct_rec( fi );
+      children.emplace_back( ntk.value( ntk.get_node( fi ) ) );
+    } );
+
+    auto v = list.add_gate( children, id );
+    ntk.set_value( n, v );
+    ntk.set_visited( n, ntk.trav_id() );
+  };
+
+  // Assign values to input nodes
+  ntk.incr_trav_id();
+  for ( std::size_t i = 0; i < inputs.size(); ++i )
+  {
+    auto const n = ntk.get_node( inputs[i] );
+    ntk.set_visited( n, ntk.trav_id() );
+    ntk.set_value( n, static_cast<int>( i ) ); // assign PI index
+  }
+
+  construct_rec( output );
+  list.add_output( ntk.value( ntk.get_node( output ) ) );
 }
 
 } // namespace mockturtle

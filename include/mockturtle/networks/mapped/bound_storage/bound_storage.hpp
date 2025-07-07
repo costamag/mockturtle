@@ -870,15 +870,6 @@ public:
     detail::foreach_element( inputs.begin(), inputs.end(), fn );
   }
 
-  // template<typename Fn>
-  // void foreach_po( Fn&& fn ) const
-  //{
-  //   for ( signal_t const& f : outputs )
-  //   {
-  //     fn( f );
-  //   }
-  // }
-
   template<typename Fn>
   void foreach_po( Fn&& fn ) const
   {

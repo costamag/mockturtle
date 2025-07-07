@@ -239,6 +239,19 @@ public:
     return is_inserted;
   }
 
+  /*! \brief Insert a mapped sub-network into the database
+   *
+   * The sub-network is identified by the input and output signals. The subnetwork
+   * is first converted to a list, which is then inserted into the database.
+   */
+  template<typename Ntk>
+  bool add( Ntk& ntk, std::vector<signal<Ntk>> const& inputs, signal<Ntk> const& output )
+  {
+    bound_list<design_t> list( MaxNumVars );
+    extract( list, ntk, inputs, output );
+    return add( list );
+  }
+
 private:
   bool add( bound_list<design_t>& list, uint64_t row )
   {
