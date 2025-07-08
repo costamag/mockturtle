@@ -1066,6 +1066,12 @@ public:
     return library.get_list( id );
   }
 
+  double const& get_area( node_index_t const& n ) const
+  {
+    auto const& g = get_binding( signal_t{ n, 0 } );
+    return g.area;
+  }
+
   /*! \brief Get the binding identifiers of the output pins in a node
    */
   std::vector<uint32_t> get_binding_ids( node_index_t const& n ) const

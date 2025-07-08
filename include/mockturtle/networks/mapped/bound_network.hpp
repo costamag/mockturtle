@@ -43,6 +43,7 @@
 #include "../../traits.hpp"
 #include "../../utils/algorithm.hpp"
 #include "../../utils/index_lists/list_simulator.hpp"
+#include "../../utils/signal_map.hpp"
 #include "../../utils/truth_table_cache.hpp"
 #include "../detail/foreach.hpp"
 #include "../events.hpp"
@@ -715,6 +716,15 @@ public:
   {
     return _storage->is_function( n );
   }
+
+  double area()
+  {
+    double total_area = 0;
+    foreach_gate( [&]( auto const& n ) {
+      total_area += get_area( n );
+    } );
+    return total_area;
+  }
 #pragma endregion
 
 #pragma region Functional properties
@@ -1015,6 +1025,11 @@ public:
   std::vector<node_index_t> const& get_fanins( node_index_t const& n ) const
   {
     return _storage->get_fanins( n );
+  }
+
+  double const& get_area( node_index_t const& n ) const
+  {
+    return _storage->get_area( n );
   }
 
   double get_max_pin_delay( signal_t const& f, uint32_t i ) const
