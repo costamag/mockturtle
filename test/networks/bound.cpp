@@ -8,6 +8,7 @@
 #include <mockturtle/io/super_reader.hpp>
 #include <mockturtle/networks/mapped/bound_network.hpp>
 #include <mockturtle/utils/tech_library.hpp>
+#include <mockturtle/views/depth_view.hpp>
 
 using namespace mockturtle;
 
@@ -451,4 +452,36 @@ TEST_CASE( "Array-based Bound network: Simulation", "[bound]" )
   res = ntk.compute( f2.index, sim_ptrs );
   CHECK( res.size() == 1 );
   CHECK( kitty::equal( res[0], tts[5] ) );
+}
+
+TEST_CASE( "Cell-based Bound network wrapped in a depth view", "[bound]" )
+{
+  using bound_network = mockturtle::bound_network<bound::design_type_t::CELL_BASED, 2>;
+  using signal = bound_network::signal;
+
+  std::vector<gate> gates;
+
+  std::istringstream in( test_library );
+  auto result = lorina::read_genlib( in, genlib_reader( gates ) );
+  CHECK( result == lorina::return_code::success );
+
+  bound_network ntk( gates );
+  auto const a = ntk.create_pi();
+  auto const b = ntk.create_pi();
+  auto const c = ntk.create_pi();
+  auto const f1 = ntk.create_node( { a, b, c }, { 12, 13 } ); // fa
+  auto const f2 = ntk.create_node( std::vector<signal>{ signal{ f1.index, 0 },
+                                                        signal{ f1.index, 1 } },
+                                   2u );                               // create a new node with carry and sum
+  auto const f3 = ntk.create_node( std::vector<signal>{ f2, c }, 2u ); // create a new node with carry and sum
+  ntk.create_po( signal{ f1.index, 0 } );
+  ntk.create_po( f2 );
+  ntk.create_po( signal{ f1.index, 1 } );
+  ntk.create_po( signal{ f1.index, 0 } );
+  ntk.create_po( f3 );
+
+  depth_view dntk( ntk );
+  CHECK( dntk.level( f1.index ) == 1u );
+  CHECK( dntk.level( f2.index ) == 2u );
+  CHECK( dntk.level( f3.index ) == 3u );
 }

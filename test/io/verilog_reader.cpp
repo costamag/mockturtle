@@ -360,3 +360,56 @@ TEST_CASE( "Read structural verilog to mapped network", "[verilog_reader]" )
                          "endmodule\n";
   CHECK( out.str() == expected );
 }
+
+TEST_CASE( "Read structural verilog to mapped network  with the inputs permutated", "[verilog_reader]" )
+{
+
+  using bound_network = mockturtle::bound_network<bound::design_type_t::CELL_BASED, 2>;
+  std::vector<gate> gates;
+
+  std::istringstream in_lib( test_library );
+  auto result_lib = lorina::read_genlib( in_lib, genlib_reader( gates ) );
+  CHECK( result_lib == lorina::return_code::success );
+
+  std::string file{
+      "module top( x0 , x1 , x2 , y0 , y1 , y2, y3 );\n"
+      "  input x0 , x1, x2 ;\n"
+      "  output y0 , y1 , y2, y3 ;\n"
+      "  wire n4 , n5 , n6 ;\n"
+      "  inv1 g0( .a (x0), .O (n4) );\n"
+      "  fa   g1( .b (x1), .C (n5), .a (n4), .c (x2), .S (n6) );\n"
+      "  inv1 g2( .a (n4), .O (y0) );\n"
+      "  xor2 g3( .a (n6), .O (y1), .b (x2) );\n"
+      "  buf g4( .a (n5), .O (y2) );\n"
+      "  buf g5( .O (y3), .a (n6) );\n"
+      "endmodule\n" };
+
+  std::istringstream in_ntk( file );
+
+  bound_network ntk( gates );
+  const auto result_ntk = lorina::read_verilog( in_ntk, verilog_reader( ntk ) );
+
+  /* structural checks */
+  CHECK( result_ntk == lorina::return_code::success );
+  CHECK( ntk.num_pis() == 3 );
+  CHECK( ntk.num_pos() == 4 );
+  CHECK( ntk.size() == 11 ); // 2 constants, 2 PIs, 3 buffers, 1 inverter, 3 crossings, 3 gates
+
+  CHECK( ntk.num_gates() == 6 );
+
+  std::ostringstream out;
+  write_verilog( ntk, out );
+
+  std::string expected = "module top( x0 , x1 , x2 , y0 , y1 , y2 , y3 );\n"
+                         "  input x0 , x1 , x2 ;\n"
+                         "  output y0 , y1 , y2 , y3 ;\n"
+                         "  wire n5 , n6_0 , n6_1 ;\n"
+                         "  inv1  g0( .a (x0), .O (n5) );\n"
+                         "  inv1  g1( .a (n5), .O (y0) );\n"
+                         "  fa    g2( .a (n5), .b (x1), .c (x2), .C (n6_0), .S (n6_1) );\n"
+                         "  xor2  g3( .a (n6_1), .b (x2), .O (y1) );\n"
+                         "  buf   g4( .a (n6_0), .O (y2) );\n"
+                         "  buf   g5( .a (n6_1), .O (y3) );\n"
+                         "endmodule\n";
+  CHECK( out.str() == expected );
+}

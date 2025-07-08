@@ -716,22 +716,22 @@ public:
     return nodes[n].fanout_count;
   }
 
-  uint32_t incr_fanout_size( node_index_t const& n ) const
+  uint32_t incr_fanout_size( node_index_t const& n )
   {
     return nodes[n].fanout_count++;
   }
 
-  uint32_t decr_fanout_size( node_index_t const& n ) const
+  uint32_t decr_fanout_size( node_index_t const& n )
   {
     return --nodes[n].fanout_count;
   }
 
-  uint32_t incr_fanout_size_pin( node_index_t const& n, uint32_t pin_index ) const
+  uint32_t incr_fanout_size_pin( node_index_t const& n, uint32_t pin_index )
   {
     return ++nodes[n].outputs[pin_index].fanout_count;
   }
 
-  uint32_t decr_fanout_size_pin( node_index_t const& n, uint32_t pin_index ) const
+  uint32_t decr_fanout_size_pin( node_index_t const& n, uint32_t pin_index )
   {
     return --nodes[n].outputs[pin_index].fanout_count;
   }
@@ -1039,6 +1039,24 @@ public:
   std::vector<signal_t> const& get_children( node_index_t const& n ) const
   {
     return nodes[n].children;
+  }
+
+  /*! \brief Get the fanin of a node.
+   *
+   * This method retrieves the fanin of a specified node.
+   * It returns a vector of node indeces in the immediate fanin.
+   *
+   * \param n The index of the node whose children are to be retrieved.
+   * \return A vector of node indices representing the children of the node.
+   */
+  std::vector<node_index_t> const& get_fanins( node_index_t const& n ) const
+  {
+    std::vector<node_index_t> fanin;
+    for ( auto const& child : nodes[n].children )
+    {
+      fanin.push_back( child.index );
+    }
+    return fanin;
   }
 
   /*! \brief

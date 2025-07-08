@@ -1012,6 +1012,11 @@ public:
     return _storage->get_children( n );
   }
 
+  std::vector<node_index_t> const& get_fanins( node_index_t const& n ) const
+  {
+    return _storage->get_fanins( n );
+  }
+
   double get_max_pin_delay( signal_t const& f, uint32_t i ) const
   {
     return _storage->get_max_pin_delay( f, i );
