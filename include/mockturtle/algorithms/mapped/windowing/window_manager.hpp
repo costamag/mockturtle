@@ -25,167 +25,98 @@
 
 /*!
   \file window_manager.hpp
-  \brief Manager of windows for peephole optimization.
-
-  This engine can be used to manage
-  \param N : number of timesteps used for simulating each signal
-  \param I : number of inputs to be used for simulating the static truth table ( 2^I input pairs )
+  \brief Construction of windows for mapped networks.
 
   \author Andrea Costamagna
 */
 
 #pragma once
 
-#include "../../../utils/node_map.hpp"
-#include "../../../views/depth_view.hpp"
-#include "../../cut_enumeration.hpp"
-#include "../../cut_enumeration/rewrite_cut.hpp"
-#include "../../reconv_cut.hpp"
-
 namespace mockturtle
 {
 
 struct window_manager_params
 {
-  window_manager_params()
-  {
-    /* 0 < Cut limit < 16 */
-    cut_enumeration_ps.cut_limit = 8; // 12
-    /* otherwise creates problem in the presence of reconvergence (A^B)^(B^C) becomes {A,C} */
-    cut_enumeration_ps.minimize_truth_table = true;
-  }
-
+  bool preserve_depth = true;
+  uint32_t odc_levels = 0;
+  uint32_t cut_limit = 8;
   uint32_t skip_fanout_limit_for_divisors{ 100 };
   uint32_t max_num_divisors{ 128 };
-  bool preserve_depth{ false };
-  cut_enumeration_params cut_enumeration_ps{};
 };
 
-template<typename Ntk>
 struct window_manager_stats
 {
-  /* stats of the cut computation engine */
-  typename detail::reconvergence_driven_cut_impl<Ntk>::statistics_type cuts_st;
 };
 
-template<class Ntk, uint32_t MaxNumLeaves = 12>
+template<class Ntk>
 class window_manager
 {
 public:
   using node_index_t = typename Ntk::node;
-  using cut_comp = detail::reconvergence_driven_cut_impl<Ntk>;
-  using cut_comp_parameters_type = typename cut_comp::parameters_type;
+  using signal_t = typename Ntk::signal;
 
   struct window_t
   {
-    using node_index_t = typename Ntk::node;
-    static constexpr auto null_node = std::numeric_limits<node_index_t>::max();
-
-    /* leaves of the window */
-    std::vector<node_index_t> leaves;
-    /* divisors of the window */
-    std::vector<node_index_t> divs;
-    /* portion of the network removed when the root is removed */
+    node_index_t pivot;
+    std::vector<node_index_t> tfos;
     std::vector<node_index_t> mffc;
-    /* root node for the window's construction */
-    node_index_t root;
-    /* flag set to true when a window is available */
-    bool valid = false;
-
-    void reset( node_index_t n = null_node )
-    {
-      root = n;
-      divs.clear();
-      mffc.clear();
-      leaves.clear();
-      valid = n != null_node;
-    }
-
-    void init( node_index_t const& n )
-    {
-      reset( n );
-    }
+    std::vector<node_index_t> divs;
+    std::vector<node_index_t> outputs;
+    std::vector<node_index_t> inputs;
   };
 
 public:
-  window_manager( Ntk& ntk, window_manager_params const& ps, window_manager_stats<Ntk>& st )
+  window_manager( Ntk& ntk, window_manager_params const& ps, window_manager_stats& st )
       : ntk_( ntk ),
         ps_( ps ),
-        st_( st ),
-        cuts_( ntk, cut_comp_parameters_type{ MaxNumLeaves }, st.cuts_st )
+        st_( st )
   {
   }
 
-  void reset()
+  [[nodiscard]] bool run( node_index_t const& n )
   {
-    window_.reset();
-  }
+    init( n );
 
-  bool run( node_index_t const& n )
-  {
-    window_.init( n );
-
-    /* set the flags for storage: visited should be trav_id(),
-     * value should be
-     * leaves : 0 | ( trav_id() << 2u )
-     * mffc   : 1 | ( trav_id() << 2u )
-     * divs   : 2 | ( trav_id() << 2u )
-     */
-    ntk_.incr_trav_id();
-    // find a reconvergence-driven cut
-    if ( ntk_.fanin_size( n ) == 1 )
+    // label the MFFC nodes
+    collect_mffc_nodes();
+    for ( auto const& m : window_.mffc )
     {
-      auto const& children = ntk_.get_children( n );
-      auto ni = ntk_.get_node( children[0] );
-      if ( ntk_.is_pi( ni ) )
-      {
-        window_.leaves = { ni };
-        window_.divs = { ni };
-        window_.mffc = { n };
-        return true;
-      }
-      else
-      {
-        window_.leaves = cuts_.run( { ni } ).first;
-      }
+      ntk_.set_visited( m, ntk_.trav_id() );
+      make_alien( m );
     }
-    else
+    window_.mffc.clear();
+
+    window_.inputs = { window_.pivot };
+    // expand the leaves until reaching the boundary of the MFFC
+    expand_leaves( [&]( node_index_t const& v ) { return ( ntk_.visited( v ) == ntk_.trav_id() ) && !ntk_.is_pi( v ); },
+                   [&]( node_index_t const& v ) { make_mffc( v ); } );
+
+    collect_mffc_nodes();
+
+    /* expand toward the tfo */
+    if ( ps_.odc_levels > 0 )
     {
-      window_.leaves = cuts_.run( { n } ).first;
-      while ( ( window_.leaves.size() == 1 ) && ( !ntk_.is_pi( n ) ) )
-        window_.leaves = ntk_.get_fanins( n );
+      collect_nodes_tfo();
+      // expand the divisors set to try removing upper-leaves with reconvergence
+      collect_side_divisors();
     }
 
-    for ( auto const& l : window_.leaves )
-    {
-      make_leaf( l );
-      window_.divs.emplace_back( l );
-    }
+    // expand the leaves to find reconvergences
+    expand_leaves( [&]( node_index_t const& n ) { return !ntk_.is_pi( n ); },
+                   [&]( node_index_t const& v ) { make_divisor( v ); } );
 
-    /* collect the maximum fanout free cone */
-    if ( !collect_mffc( n ) )
-    {
-      window_.valid = false;
-      std::cout << "failed collecting mffc" << std::endl;
-      return false;
-    }
+    // expand the divisors set to try removing upper-leaves with reconvergence
+    collect_side_divisors();
 
-    /* collect the divisors in the tfi */
-    if ( !collect_divs_tfi( n ) )
+    if ( ps_.odc_levels > 0 )
     {
-      window_.valid = false;
-      std::cout << "failed collecting divs tfi" << std::endl;
-
-      return false;
+      topological_sort( window_.tfos );
+      topological_sort( window_.outputs );
     }
-    /* TODO: expand divisors */
-    if ( !collect_divs_sides( n ) )
-    {
-      window_.valid = false;
-      std::cout << "failed collecting divs sides" << std::endl;
+    topological_sort( window_.mffc );
+    topological_sort( window_.divs );
+    topological_sort( window_.inputs );
 
-      return false;
-    }
     return true;
   }
 
@@ -195,39 +126,19 @@ public:
     return res;
   }
 
-  bool is_leaf( node_index_t const& n ) const
+  std::vector<node_index_t> const& get_tfos() const
   {
-    return ntk_.value( n ) == ( 3u | ( ntk_.trav_id() << 2u ) );
+    return window_.tfos;
   }
 
-  void make_leaf( node_index_t const& n ) const
+  std::vector<node_index_t> const& get_outputs() const
   {
-    ntk_.set_value( n, ( 3u | ( ntk_.trav_id() << 2u ) ) );
-  }
-
-  bool is_mffc( node_index_t const& n ) const
-  {
-    return ntk_.value( n ) == ( 1u | ( ntk_.trav_id() << 2u ) );
-  }
-
-  void make_mffc( node_index_t const& n ) const
-  {
-    ntk_.set_value( n, ( 1u | ( ntk_.trav_id() << 2u ) ) );
-  }
-
-  bool is_divisor( node_index_t const& n ) const
-  {
-    return ntk_.value( n ) == ( 2u | ( ntk_.trav_id() << 2u ) );
-  }
-
-  void make_divisor( node_index_t const& n ) const
-  {
-    ntk_.set_value( n, ( 2u | ( ntk_.trav_id() << 2u ) ) );
+    return window_.outputs;
   }
 
   std::vector<node_index_t> const& get_leaves() const
   {
-    return window_.leaves;
+    return window_.inputs;
   }
 
   std::vector<node_index_t> const& get_divs() const
@@ -242,31 +153,232 @@ public:
 
   node_index_t const& get_root() const
   {
-    return window_.root;
+    return window_.pivot;
   }
 
-#pragma region Mffc
+#pragma region Miscellanea
 private:
-  bool collect_mffc( node_index_t const& n )
+  void init( node_index_t const& n )
   {
-    for ( const auto& l : window_.leaves )
-      ntk_.incr_fanout_size( l );
-    /* dereference the node */
-    window_.mffc.emplace_back( n );
+    ntk_.incr_trav_id();
+    window_.pivot = n;
     make_mffc( n );
-    node_deref_rec( n );
-    std::reverse( window_.mffc.begin(), window_.mffc.end() );
-    for ( auto m : window_.mffc )
-    {
-      if ( ntk_.is_pi( m ) )
-        return false;
-    }
-    /* reference it back */
-    node_ref_rec( n );
-    for ( const auto& l : window_.leaves )
-      ntk_.decr_fanout_size( l );
+    window_.outputs.clear();
+    window_.tfos.clear();
+    window_.mffc.clear();
+    window_.divs.clear();
+    window_.inputs.clear();
+  }
 
-    return true;
+  void topological_sort( std::vector<node_index_t>& nodes )
+  {
+    std::stable_sort( nodes.begin(), nodes.end(), [&]( auto const& a, auto const& b ) {
+      return ntk_.level( a ) < ntk_.level( b );
+    } );
+  }
+
+  bool is_tfo( node_index_t const& n ) const
+  {
+    return ntk_.value( n ) == ( 4u | ( ntk_.trav_id() << 3u ) );
+  }
+
+  void make_tfo( node_index_t const& n ) const
+  {
+    ntk_.set_value( n, ( 4u | ( ntk_.trav_id() << 3u ) ) );
+  }
+
+  bool is_contained( node_index_t const& n ) const
+  {
+    return ( ( ntk_.value( n ) >> 3u ) == ntk_.trav_id() );
+  }
+
+  bool is_output( node_index_t const& n ) const
+  {
+    return ntk_.value( n ) == ( 5u | ( ntk_.trav_id() << 3u ) );
+  }
+
+  void make_output( node_index_t const& n ) const
+  {
+    ntk_.set_value( n, ( 5u | ( ntk_.trav_id() << 3u ) ) );
+  }
+
+  void make_alien( node_index_t const& n ) const
+  {
+    ntk_.set_value( n, 0u );
+  }
+
+  bool is_leaf( node_index_t const& n ) const
+  {
+    return ntk_.value( n ) == ( 3u | ( ntk_.trav_id() << 3u ) );
+  }
+
+  void make_leaf( node_index_t const& n ) const
+  {
+    ntk_.set_value( n, ( 3u | ( ntk_.trav_id() << 3u ) ) );
+  }
+
+  bool is_mffc( node_index_t const& n ) const
+  {
+    return ntk_.value( n ) == ( 1u | ( ntk_.trav_id() << 3u ) );
+  }
+
+  void make_mffc( node_index_t const& n ) const
+  {
+    ntk_.set_value( n, ( 1u | ( ntk_.trav_id() << 3u ) ) );
+  }
+
+  bool is_divisor( node_index_t const& n ) const
+  {
+    return ntk_.value( n ) == ( 2u | ( ntk_.trav_id() << 3u ) );
+  }
+
+  void make_divisor( node_index_t const& n ) const
+  {
+    ntk_.set_value( n, ( 2u | ( ntk_.trav_id() << 3u ) ) );
+  }
+#pragma endregion
+
+#pragma region TFO
+  void collect_nodes_tfo()
+  {
+    std::vector<node_index_t> outputs;
+    std::vector<node_index_t> inputs;
+    std::vector<node_index_t> tfos;
+    window_.outputs = { window_.pivot };
+    window_.tfos = {};
+
+    uint32_t num_leaves = window_.inputs.size();
+
+    for ( auto lev = 0; lev < ps_.odc_levels; ++lev )
+    {
+      outputs.clear();
+      inputs.clear();
+      tfos.clear();
+      for ( auto const& n : window_.outputs )
+      {
+        int cnt = 0;
+        ntk_.foreach_fanout( n, [&]( auto no ) {
+          if ( !is_tfo( no ) && !is_output( no ) )
+          {
+            outputs.push_back( no );
+            make_output( no );
+          }
+          cnt++;
+        } );
+        if ( cnt == 0 )
+        {
+          make_output( n );
+          outputs.push_back( n );
+        }
+        else if ( n != window_.pivot )
+        {
+          make_tfo( n );
+          tfos.push_back( n );
+        }
+      }
+      for ( node_index_t const& n : outputs )
+      {
+        ntk_.foreach_fanin( n, [&]( auto const& fi, auto ii ) {
+          auto const ni = ntk_.get_node( fi );
+          if ( !is_contained( ni ) )
+          {
+            inputs.push_back( ni );
+            make_leaf( ni );
+            num_leaves += 1;
+          }
+        } );
+      }
+      if ( num_leaves <= ps_.cut_limit )
+      {
+        window_.outputs = outputs;
+        for ( auto const& n : inputs )
+          window_.inputs.push_back( n );
+        for ( auto const& n : tfos )
+          window_.tfos.push_back( n );
+      }
+      else
+      {
+        for ( auto const& n : inputs )
+          make_alien( n );
+        for ( auto const& n : window_.outputs )
+          make_output( n );
+      }
+    }
+  }
+#pragma endregion
+
+#pragma region Leaves
+  template<typename DoExpandFn, typename Apply>
+  void expand_leaves( DoExpandFn&& do_expand, Apply&& apply )
+  {
+    while ( true )
+    {
+      int best_cost = ps_.cut_limit - window_.inputs.size() + 1;
+      std::optional<node_index_t> best_leaf;
+      for ( auto const& l : window_.inputs )
+      {
+        if ( do_expand( l ) )
+        {
+          int cost = compute_leaf_cost( l );
+          if ( cost < best_cost )
+          {
+            best_cost = cost;
+            best_leaf = std::make_optional( l );
+          }
+        }
+      }
+      if ( best_leaf )
+      {
+        ntk_.foreach_fanin( *best_leaf, [&]( auto const& fi, auto ii ) {
+          auto const ni = ntk_.get_node( fi );
+          if ( !is_contained( ni ) )
+          {
+            window_.inputs.push_back( ni );
+            make_leaf( ni );
+          }
+        } );
+        auto& leaves = window_.inputs;
+        apply( *best_leaf );
+        leaves.erase( std::remove( leaves.begin(), leaves.end(), *best_leaf ), leaves.end() );
+      }
+      else
+      {
+        return;
+      }
+    }
+  }
+
+  int compute_leaf_cost( node_index_t const& n )
+  {
+    if ( ntk_.is_pi( n ) )
+      return ps_.cut_limit;
+
+    int cost = -1;
+    ntk_.foreach_fanin( n, [&]( auto const& fi, auto ii ) {
+      auto const ni = ntk_.get_node( fi );
+      if ( !is_contained( ni ) )
+        cost += 1;
+    } );
+    return cost;
+  }
+#pragma endregion Leaves
+
+#pragma region Mffc
+  void collect_mffc_nodes()
+  {
+    /* dereference the node_index_t */
+    window_.mffc.clear();
+    make_mffc( window_.pivot );
+    window_.mffc = { window_.pivot };
+
+    for ( auto const& l : window_.inputs )
+      ntk_.incr_fanout_size( l );
+
+    node_deref_rec( window_.pivot );
+    node_ref_rec( window_.pivot );
+
+    for ( auto const& l : window_.inputs )
+      ntk_.decr_fanout_size( l );
   }
 
   /* ! \brief Dereference the node's MFFC */
@@ -274,15 +386,13 @@ private:
   {
     if ( ntk_.is_pi( n ) )
       return;
-
     ntk_.foreach_fanin( n, [&]( const auto& f ) {
       auto const& p = ntk_.get_node( f );
-
       ntk_.decr_fanout_size( p );
       if ( ntk_.fanout_size( p ) == 0 )
       {
-        window_.mffc.emplace_back( p );
         make_mffc( p );
+        window_.mffc.push_back( p );
         node_deref_rec( p );
       }
     } );
@@ -293,10 +403,8 @@ private:
   {
     if ( ntk_.is_pi( n ) )
       return;
-
     ntk_.foreach_fanin( n, [&]( const auto& f ) {
       auto const& p = ntk_.get_node( f );
-
       auto v = ntk_.fanout_size( p );
       ntk_.incr_fanout_size( p );
       if ( v == 0 )
@@ -308,179 +416,72 @@ private:
 #pragma endregion
 
 #pragma region Divisors
-  bool collect_divs_tfi( node_index_t const& n )
+  void collect_side_divisors()
   {
-    if ( is_leaf( n ) )
+    uint32_t max_level = std::numeric_limits<uint32_t>::min();
+    for ( auto const& n : window_.outputs )
     {
-      return true;
+      max_level = std::max( max_level, ntk_.level( n ) );
     }
-    if ( is_divisor( n ) )
-    {
-      return true;
-    }
-    /* PI and not leaf means error */
-    if ( ntk_.is_pi( n ) )
-    {
-      std::cout << "pi not leaf" << std::endl;
-      return false;
-    }
-    bool is_good = true;
-    ntk_.foreach_fanin( n, [&]( auto fi ) {
-      node_index_t const ni = ntk_.get_node( fi );
-      is_good &= collect_divs_tfi( ni );
-    } );
-    if ( !is_mffc( n ) && !is_leaf( n ) )
-    {
-      window_.divs.emplace_back( n );
-      make_divisor( n );
-    }
-    return is_good;
-  }
 
-  bool collect_divs_sides( node_index_t const& n )
-  {
-    bool quit = false;
-    bool is_good = true;
-    for ( auto i = 0u; i < window_.divs.size(); ++i )
-    {
-      auto const d = window_.divs.at( i );
+    window_.divs = window_.inputs;
 
-      if ( ntk_.fanout_size( d ) > ps_.skip_fanout_limit_for_divisors )
+    bool done = false;
+    while ( !done )
+    {
+      done = true;
+      uint32_t num_divs = window_.divs.size();
+      for ( auto i = 0u; i < num_divs; ++i )
       {
-        continue;
-      }
-      if ( window_.divs.size() >= ps_.max_num_divisors )
-      {
-        break;
-      }
-
-      /* if the fanout has all fanins in the set, add it */
-      bool add = true;
-      ntk_.foreach_fanout( d, [&]( node_index_t const& p ) {
-        if ( is_leaf( p ) || is_divisor( p ) || is_mffc( p ) )
-        {
-          return true; /* next fanout */
-        }
-        if ( ntk_.fanout_size( p ) <= 0 )
-        {
-          return true; /* next fanout */
-        }
-
-        bool all_fanins_visited = true;
-        ntk_.foreach_fanin( p, [&]( const auto& g ) {
-          if ( !is_leaf( ntk_.get_node( g ) ) && !is_divisor( ntk_.get_node( g ) ) )
-          {
-            all_fanins_visited = false;
-            return false; /* terminate fanin-loop */
-          }
-          return true; /* next fanin */
-        } );
-
-        if ( !all_fanins_visited )
-        {
-          add = false;
-          return true; /* next fanout */
-        }
-
-        bool has_root_as_child = false;
-        ntk_.foreach_fanin( p, [&]( const auto& g ) {
-          if ( ntk_.get_node( g ) == window_.root )
-          {
-            has_root_as_child = true;
-            return false; /* terminate fanin-loop */
-          }
-          return true; /* next fanin */
-        } );
-
-        if ( has_root_as_child )
-        {
-          std::cout << "has root as child " << window_.root << std::endl;
-          return true; /* next fanout */
-        }
-        is_good &= all_fanins_visited;
-        window_.divs.emplace_back( p );
-        make_divisor( p );
-
-        /* quit computing divisors if there are too many of them */
+        auto const d = window_.divs[i];
+        if ( ntk_.fanout_size( d ) > ps_.skip_fanout_limit_for_divisors )
+          continue;
         if ( window_.divs.size() >= ps_.max_num_divisors )
         {
-          quit = true;
-          return false; /* terminate fanout-loop */
+          done = true;
+          break;
         }
+        /* if the fanout has all fanins in the set, add it */
+        bool add = true;
+        ntk_.foreach_fanout( d, [&]( node_index_t const& n ) {
+          if ( window_.divs.size() >= ps_.max_num_divisors )
+          {
+            done = true;
+            return;
+          }
 
-        return true; /* next fanout */
-      } );
+          if ( ps_.preserve_depth && ( ntk_.level( n ) >= max_level ) )
+            return;
 
-      if ( quit )
-      {
-        break;
+          ntk_.foreach_fanin( n, [&]( const auto& f ) {
+            if ( !is_contained( ntk_.get_node( f ) ) )
+            {
+              add = false;
+              return;
+            }
+          } );
+
+          if ( add && !is_tfo( n ) && !is_output( n ) )
+          {
+            if ( is_leaf( n ) )
+            {
+              auto& leaves = window_.inputs;
+              leaves.erase( std::remove( leaves.begin(), leaves.end(), n ), leaves.end() );
+            }
+            window_.divs.push_back( n );
+            make_divisor( n );
+            done = false;
+          }
+        } );
       }
     }
-    return is_good;
-  }
-#pragma endregion
-
-public:
-  /*! \brief iterator to apply a lambda to all the nodes */
-  template<typename Fn>
-  void foreach_leaf( Fn&& fn ) const
-  {
-    for ( uint32_t i = 0; i < window_.leaves.size(); i++ )
-    {
-      fn( window_.leaves[i], i );
-    }
-  }
-
-  /*! \brief iterator to apply a lambda to all the nodes */
-  template<typename Fn>
-  void foreach_divisor( Fn&& fn ) const
-  {
-    for ( uint32_t i = 0; i < window_.divs.size(); i++ )
-    {
-      fn( window_.divs[i], i );
-    }
-  }
-
-  /*! \brief iterator to apply a lambda to all the nodes */
-  template<typename Fn>
-  void foreach_mffc( Fn&& fn ) const
-  {
-    for ( uint32_t i = 0; i < window_.mffc.size(); i++ )
-    {
-      fn( window_.mffc[i], i );
-    }
-  }
-
-  void print() const
-  {
-    std::cout << "leaves" << std::endl;
-    foreach_leaf( [&]( auto l, auto i ) {
-      std::cout << l << " ";
-    } );
-    std::cout << std::endl;
-    std::cout << "divs" << std::endl;
-    foreach_divisor( [&]( auto d, auto i ) {
-      std::cout << d << " ";
-    } );
-    std::cout << std::endl;
-    std::cout << "mffc" << std::endl;
-    foreach_mffc( [&]( auto m, auto i ) {
-      std::cout << m << " ";
-    } );
-    std::cout << std::endl;
-  }
-
-  bool is_valid() const
-  {
-    return window_.valid;
   }
 
 private:
   Ntk& ntk_;
-  window_manager_params const& ps_;
-  window_manager_stats<Ntk>& st_;
-  cut_comp cuts_;
   window_t window_;
+  window_manager_params const& ps_;
+  window_manager_stats& st_;
 };
 
 } // namespace mockturtle

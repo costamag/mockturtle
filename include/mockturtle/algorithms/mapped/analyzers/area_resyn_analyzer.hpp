@@ -44,6 +44,10 @@ public:
   using node_index_t = typename Ntk::node;
   using signal_t = typename Ntk::signal;
   using cost_t = double;
+  static cost_t constexpr min_cost = std::numeric_limits<cost_t>::min();
+  static cost_t constexpr max_cost = std::numeric_limits<cost_t>::max();
+  static bool constexpr pass_window = false;
+  static bool constexpr node_depend = false;
 
   struct node_with_cost_t
   {
@@ -72,8 +76,18 @@ public:
     return cost_deref;
   }
 
-  cost_t evaluate( node_index_t const& n, std::vector<signal_t> const& leaves )
+  cost_t evaluate( node_index_t const& n, std::vector<node_index_t> const& leaves )
   {
+    cost_t cost_deref = measure_mffc_deref( n, leaves );
+    cost_t cost_ref = measure_mffc_ref( n, leaves );
+    assert( std::abs( cost_ref - cost_deref ) < ps_.eps && "[e] Cost ref and deref should be the same" );
+    return cost_deref;
+  }
+
+  cost_t evaluate( node_index_t const& n, std::vector<signal_t> const& children )
+  {
+    std::vector<node_index_t> leaves( children.size() );
+    std::transform( children.begin(), children.end(), leaves.begin(), [&]( auto const f ) { return ntk_.get_node( f ); } );
     cost_t cost_deref = measure_mffc_deref( n, leaves );
     cost_t cost_ref = measure_mffc_ref( n, leaves );
     assert( std::abs( cost_ref - cost_deref ) < ps_.eps && "[e] Cost ref and deref should be the same" );
@@ -166,42 +180,38 @@ private:
     return area;
   }
 
-  cost_t measure_mffc_deref( node_index_t const& n, std::vector<signal_t> const& leaves )
+  cost_t measure_mffc_deref( node_index_t const& n, std::vector<node_index_t> const& leaves )
   {
     /* reference cut leaves */
-    for ( auto leaf : leaves )
+    for ( auto l : leaves )
     {
-      node_index_t const l = ntk_.get_node( leaf );
       ntk_.incr_fanout_size( l );
     }
 
     cost_t mffc_cost = recursive_deref( n );
 
     /* dereference leaves */
-    for ( auto leaf : leaves )
+    for ( auto l : leaves )
     {
-      node_index_t const l = ntk_.get_node( leaf );
       ntk_.decr_fanout_size( l );
     }
 
     return mffc_cost;
   }
 
-  cost_t measure_mffc_ref( node_index_t const& n, std::vector<signal_t> const& leaves )
+  cost_t measure_mffc_ref( node_index_t const& n, std::vector<node_index_t> const& leaves )
   {
     /* reference cut leaves */
-    for ( auto leaf : leaves )
+    for ( auto l : leaves )
     {
-      node_index_t const l = ntk_.get_node( leaf );
       ntk_.incr_fanout_size( l );
     }
 
     cost_t mffc_cost = recursive_ref( n );
 
     /* dereference leaves */
-    for ( auto leaf : leaves )
+    for ( auto l : leaves )
     {
-      node_index_t const l = ntk_.get_node( leaf );
       ntk_.decr_fanout_size( l );
     }
 

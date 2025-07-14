@@ -67,9 +67,9 @@ TEST_CASE( "Area analyzer for resynthesis of mapped networks", "[area_resyn_anal
   CHECK( ntk.area() == 14 );
   CHECK( sorted_nodes[0] == 11 );
   CHECK( sorted_nodes[1] == 9 );
-  CHECK( analyzer.evaluate( f6.index, { a, b, c, d } ) == 8 );
-  CHECK( analyzer.evaluate( f6.index, { f1, f2, f3 } ) == 6 );
-  CHECK( analyzer.evaluate( f6.index, { f4, f5 } ) == 2 );
+  CHECK( analyzer.evaluate( f6.index, std::vector<signal>( { a, b, c, d } ) ) == 8 );
+  CHECK( analyzer.evaluate( f6.index, std::vector<signal>( { f1, f2, f3 } ) ) == 6 );
+  CHECK( analyzer.evaluate( f6.index, std::vector<signal>( { f4, f5 } ) ) == 2 );
 
   bound_list<bound::design_type_t::CELL_BASED> list;
   list.add_inputs( 3 );
@@ -80,7 +80,7 @@ TEST_CASE( "Area analyzer for resynthesis of mapped networks", "[area_resyn_anal
   auto const l2 = list.add_gate( { lb, lc }, 2 );
   auto const l3 = list.add_gate( { l1, l2 }, 4 );
   list.add_output( l3 );
-  auto cost = analyzer.evaluate( list, { a, b, c } );
+  auto cost = analyzer.evaluate( list, std::vector<signal>( { a, b, c } ) );
   CHECK( cost == 4 );
   CHECK( ntk.area() == 14 );
 }
