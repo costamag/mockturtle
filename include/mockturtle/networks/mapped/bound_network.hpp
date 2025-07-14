@@ -687,6 +687,11 @@ public:
     return _storage->fanout_size( n );
   }
 
+  uint32_t fanout_size( signal_t const& f ) const
+  {
+    return fanout_size_pin( f.index, f.output );
+  }
+
   uint32_t incr_fanout_size( node_index_t const& n ) const
   {
     return _storage->incr_fanout_size( n );
@@ -858,6 +863,13 @@ public:
   template<typename Fn>
   void foreach_fanin( node_index_t const& n, Fn&& fn ) const
   {
+    _storage->foreach_fanin( n, fn );
+  }
+
+  template<typename Fn>
+  void foreach_fanin( signal_t const& f, Fn&& fn ) const
+  {
+    auto const n = get_node( f );
     _storage->foreach_fanin( n, fn );
   }
 

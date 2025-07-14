@@ -72,9 +72,9 @@ TEST_CASE( "Window construction simple inverter chain", "[window_manager]" )
   auto const tfos = window.get_tfos();
   CHECK( tfos == std::vector<typename Ntk::node_index_t>{} );
   auto const outputs = window.get_outputs();
-  CHECK( outputs == std::vector<typename Ntk::node_index_t>{ 18 } );
+  CHECK( outputs == std::vector<typename Ntk::signal_t>{ fs[13] } );
   auto const leaves = window.get_leaves();
-  CHECK( leaves == std::vector<typename Ntk::node_index_t>{ 13, 14, 15 } );
+  CHECK( leaves == std::vector<typename Ntk::signal_t>( { fs[8], fs[9], fs[10] } ) );
 
   ps.cut_limit = 8;
   mockturtle::window_manager<DNtk> window2( dntk, ps, st );
@@ -85,7 +85,7 @@ TEST_CASE( "Window construction simple inverter chain", "[window_manager]" )
   auto const tfos2 = window2.get_tfos();
   CHECK( tfos2 == std::vector<typename Ntk::node_index_t>{ 19, 20, 21, 22 } );
   auto const outputs2 = window2.get_outputs();
-  CHECK( outputs2 == std::vector<typename Ntk::node_index_t>{ 23, 24, 25 } );
+  CHECK( outputs2 == std::vector<typename Ntk::signal_t>( { fs[18], fs[19], fs[20] } ) );
   auto const leaves2 = window2.get_leaves();
-  CHECK( leaves2 == std::vector<typename Ntk::node_index_t>{ 2, 3, 4 } );
+  CHECK( leaves2 == std::vector<typename Ntk::signal_t>( { a, b, c } ) );
 }
