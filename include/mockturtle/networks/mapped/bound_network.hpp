@@ -1064,6 +1064,11 @@ public:
     return _storage->get_library();
   }
 
+  std::vector<kitty::dynamic_truth_table> const get_functions( node_index_t const& n ) const
+  {
+    return _storage->get_functions( n );
+  }
+
   uint32_t get_fanin_number( unsigned int id, std::string const& pin_name ) const
   {
     return _storage->get_fanin_number( id, pin_name );

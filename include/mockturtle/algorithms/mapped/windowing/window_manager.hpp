@@ -47,66 +47,6 @@ struct window_t
   std::vector<signal_t> divs;
   std::vector<signal_t> outputs;
   std::vector<signal_t> inputs;
-
-  size_t num_inputs() const
-  {
-    return inputs.size();
-  }
-
-  size_t size() const
-  {
-    return divs.size() + outputs.size() + ( tfos.size() * Ntk::max_num_outputs );
-  }
-
-  /*! \brief iterator to apply a lambda to all the nodes */
-  template<typename Fn>
-  void foreach_input( Fn&& fn ) const
-  {
-    for ( uint32_t i = 0; i < inputs.size(); i++ )
-    {
-      fn( inputs[i], i );
-    }
-  }
-
-  /*! \brief iterator to apply a lambda to all the nodes */
-  template<typename Fn>
-  void foreach_divisor( Fn&& fn ) const
-  {
-    for ( uint32_t i = 0; i < divs.size(); i++ )
-    {
-      fn( divs[i], i );
-    }
-  }
-
-  /*! \brief iterator to apply a lambda to all the nodes */
-  template<typename Fn>
-  void foreach_mffc( Fn&& fn ) const
-  {
-    for ( uint32_t i = 0; i < mffc.size(); i++ )
-    {
-      fn( mffc[i], i );
-    }
-  }
-
-  /*! \brief iterator to apply a lambda to all the nodes */
-  template<typename Fn>
-  void foreach_tfo( Fn&& fn ) const
-  {
-    for ( uint32_t i = 0; i < tfos.size(); i++ )
-    {
-      fn( tfos[i], i );
-    }
-  }
-
-  /*! \brief iterator to apply a lambda to all the nodes */
-  template<typename Fn>
-  void foreach_output( Fn&& fn ) const
-  {
-    for ( uint32_t i = 0; i < outputs.size(); i++ )
-    {
-      fn( outputs[i], i );
-    }
-  }
 };
 
 struct window_manager_params
@@ -161,6 +101,7 @@ public:
 
     collect_mffc_nodes();
 
+    window_.divs = window_.inputs;
     /* expand toward the tfo */
     if ( ps_.odc_levels > 0 )
     {
@@ -218,9 +159,14 @@ public:
     return window_.mffc;
   }
 
-  node_index_t const& get_root() const
+  node_index_t const& get_pivot() const
   {
     return window_.pivot;
+  }
+
+  window_t<Ntk> get_window() const
+  {
+    return window_;
   }
 
 #pragma region Miscellanea
@@ -251,6 +197,7 @@ private:
     } );
   }
 
+public:
   bool is_tfo( node_index_t const& n ) const
   {
     return ntk_.value( n ) == ( 4u | ( ntk_.trav_id() << 3u ) );
@@ -379,7 +326,10 @@ private:
       {
         window_.outputs = outputs;
         for ( auto const& f : inputs )
+        {
           window_.inputs.push_back( f );
+          window_.divs.push_back( f );
+        }
         for ( auto const& n : tfos )
           window_.tfos.push_back( n );
       }
@@ -401,7 +351,7 @@ private:
     while ( true )
     {
       int best_cost = ps_.cut_limit - window_.inputs.size() + 1;
-      std::optional<node_index_t> best_node;
+      std::optional<node_index_t> best_node = std::nullopt;
       for ( auto const& l : window_.inputs )
       {
         node_index_t leaf = ntk_.get_node( l );
@@ -438,6 +388,7 @@ private:
         return;
       }
     }
+    return;
   }
 
   int compute_leaf_cost( node_index_t const& n )
@@ -480,6 +431,8 @@ private:
       return;
     ntk_.foreach_fanin( n, [&]( const auto& f ) {
       auto const& p = ntk_.get_node( f );
+      if ( ntk_.is_pi( p ) )
+        return;
       ntk_.decr_fanout_size( p );
       if ( ntk_.fanout_size( p ) == 0 )
       {
@@ -497,9 +450,11 @@ private:
       return;
     ntk_.foreach_fanin( n, [&]( const auto& f ) {
       auto const& p = ntk_.get_node( f );
+      if ( ntk_.is_pi( p ) )
+        return;
       auto v = ntk_.fanout_size( p );
       ntk_.incr_fanout_size( p );
-      if ( v == 0 )
+      if ( v == 0 && !ntk_.is_pi( p ) )
       {
         node_ref_rec( p );
       }
@@ -512,64 +467,129 @@ private:
   {
     uint32_t max_level = std::numeric_limits<uint32_t>::min();
     for ( auto const& f : window_.outputs )
-    {
       max_level = std::max( max_level, ntk_.level( ntk_.get_node( f ) ) );
-    }
-
-    window_.divs = window_.inputs;
 
     bool done = false;
     while ( !done )
     {
       done = true;
-      uint32_t num_divs = window_.divs.size();
-      for ( auto i = 0u; i < num_divs; ++i )
+      // check if any leaf is contained by other leaves
+      for ( auto const& f : window_.inputs )
       {
-        auto const d = window_.divs[i];
-        if ( ntk_.fanout_size( d ) > ps_.skip_fanout_limit_for_divisors )
-          continue;
-        if ( window_.divs.size() >= ps_.max_num_divisors )
+        auto const n = ntk_.get_node( f );
+        if ( is_leaf( n ) && !ntk_.is_pi( n ) )
         {
-          done = true;
-          break;
-        }
-        /* if the fanout has all fanins in the set, add it */
-        bool add = true;
-        ntk_.foreach_fanout( d, [&]( node_index_t const& n ) {
-          if ( window_.divs.size() >= ps_.max_num_divisors )
-          {
-            done = true;
-            return;
-          }
-
-          if ( ps_.preserve_depth && ( ntk_.level( n ) >= max_level ) )
-            return;
-
-          ntk_.foreach_fanin( n, [&]( const auto& f ) {
-            if ( !is_contained( ntk_.get_node( f ) ) )
-            {
-              add = false;
-              return;
-            }
+          bool contained = true;
+          ntk_.foreach_fanin( n, [&]( auto const& fi, auto ii ) {
+            auto const ni = ntk_.get_node( fi );
+            contained &= is_contained( ni );
           } );
-
-          if ( add && !is_tfo( n ) && !is_output( n ) )
+          if ( contained )
           {
-            if ( is_leaf( n ) )
-            {
-              auto& leaves = window_.inputs;
-              ntk_.foreach_output( n, [&]( auto const fo ) {
-                leaves.erase( std::remove( leaves.begin(), leaves.end(), fo ), leaves.end() );
-              } );
-            }
-            ntk_.foreach_output( n, [&]( auto const fo ) {
-              window_.divs.push_back( fo );
-            } );
             make_divisor( n );
+          }
+        }
+      }
+
+      auto& inputs = window_.inputs;
+      inputs.erase( std::remove_if( inputs.begin(),
+                                    inputs.end(),
+                                    [&]( signal_t const& f ) { return is_divisor( ntk_.get_node( f ) ); } ),
+                    inputs.end() );
+
+      std::vector<signal_t> new_divs;
+      for ( auto const& f : window_.divs )
+      {
+        auto const n = ntk_.get_node( f );
+        ntk_.foreach_fanout( n, [&]( auto const& no ) {
+          if ( is_contained( no ) )
+            return;
+          if ( ps_.preserve_depth && ( ntk_.level( no ) >= max_level ) )
+            return;
+          bool add = true;
+          ntk_.foreach_fanin( no, [&]( auto const& fi, auto ii ) {
+            auto ni = ntk_.get_node( fi );
+            add &= is_contained( ni );
+          } );
+          if ( add )
+          {
+            make_divisor( no );
+            ntk_.foreach_output( no, [&]( auto const& fo ) {
+              new_divs.push_back( fo );
+            } );
             done = false;
           }
+          return;
         } );
       }
+      for ( auto d : new_divs )
+        window_.divs.push_back( d );
+    }
+  }
+
+public:
+  size_t num_inputs() const
+  {
+    return window_.inputs.size();
+  }
+
+  size_t num_outputs() const
+  {
+    return window_.outputs.size();
+  }
+
+  size_t size() const
+  {
+    return window_.divs.size() + window_.outputs.size() + ( window_.tfos.size() * Ntk::max_num_outputs );
+  }
+
+  /*! \brief iterator to apply a lambda to all the nodes */
+  template<typename Fn>
+  void foreach_input( Fn&& fn ) const
+  {
+    for ( uint32_t i = 0; i < window_.inputs.size(); i++ )
+    {
+      fn( window_.inputs[i], i );
+    }
+  }
+
+  /*! \brief iterator to apply a lambda to all the nodes */
+  template<typename Fn>
+  void foreach_divisor( Fn&& fn ) const
+  {
+    for ( uint32_t i = 0; i < window_.divs.size(); i++ )
+    {
+      fn( window_.divs[i], i );
+    }
+  }
+
+  /*! \brief iterator to apply a lambda to all the nodes */
+  template<typename Fn>
+  void foreach_mffc( Fn&& fn ) const
+  {
+    for ( uint32_t i = 0; i < window_.mffc.size(); i++ )
+    {
+      fn( window_.mffc[i], i );
+    }
+  }
+
+  /*! \brief iterator to apply a lambda to all the nodes */
+  template<typename Fn>
+  void foreach_tfo( Fn&& fn ) const
+  {
+    for ( uint32_t i = 0; i < window_.tfos.size(); i++ )
+    {
+      fn( window_.tfos[i], i );
+    }
+  }
+
+  /*! \brief iterator to apply a lambda to all the nodes */
+  template<typename Fn>
+  void foreach_output( Fn&& fn ) const
+  {
+    for ( uint32_t i = 0; i < window_.outputs.size(); i++ )
+    {
+      fn( window_.outputs[i], i );
     }
   }
 

@@ -1072,6 +1072,16 @@ public:
     return g.area;
   }
 
+  std::vector<kitty::dynamic_truth_table> get_functions( node_index_t const& n ) const
+  {
+    std::vector<kitty::dynamic_truth_table> tts;
+    foreach_output( n, [&]( auto const& f ) {
+      auto const& g = get_binding( signal_t{ n, 0 } );
+      tts.push_back( g.function );
+    } );
+    return tts;
+  }
+
   /*! \brief Get the binding identifiers of the output pins in a node
    */
   std::vector<uint32_t> get_binding_ids( node_index_t const& n ) const

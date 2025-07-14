@@ -13,8 +13,9 @@ std::string const test_library = "GATE   inv1    1.0 O=!a ;         PIN * INV 1 
                                  "GATE   and2    1.0 O=a*b;         PIN * INV 1   999 1.0 0.0 1.0 0.0\n"
                                  "GATE   xor2    1.0 O=a^b;         PIN * INV 1   999 3.0 0.0 3.0 0.0";
 
-TEST_CASE( "Window construction simple inverter chain", "[window_manager]" )
+TEST_CASE( "Window construction with reconvergent structure", "[window_manager]" )
 {
+
   using Ntk = mockturtle::bound_network<mockturtle::bound::design_type_t::CELL_BASED, 2>;
   std::vector<mockturtle::gate> gates;
 
