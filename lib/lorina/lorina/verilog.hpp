@@ -289,6 +289,21 @@ public:
     (void)op3;
   }
 
+  /*! \brief Callback method for parsed 2-to-1 multiplexer gate `LHS = OP1 ? OP2 : OP3 ;`.
+   *
+   * \param lhs Left-hand side of assignment
+   * \param op1 operand1 of assignment
+   * \param op2 operand2 of assignment
+   * \param op3 operand3 of assignment
+   */
+  virtual void on_cell( const std::vector<std::pair<std::string, std::string>>& input_map,
+                        const std::vector<std::pair<std::string, std::string>>& output_map, const std::vector<unsigned int>& ids ) const
+  {
+    (void)input_map;
+    (void)output_map;
+    (void)ids;
+  }
+
   /*! \brief Callback method for parsed comments `// comment string`.
    *
    * \param comment Comment string
@@ -302,6 +317,42 @@ public:
    *
    */
   virtual void on_endmodule() const {}
+
+  /*! \brief Check if a gate with the given name exists in teh representation.
+   *
+   */
+  virtual bool has_gate( std::string const& name ) const
+  {
+    (void)name;
+    return false;
+  }
+
+  /*! \brief Check if a gate has the given pin name among the inputs.
+   *
+   */
+  virtual bool is_input_pin( std::string const& gate_name, std::string const& pin_name ) const
+  {
+    (void)gate_name;
+    (void)pin_name;
+    return false;
+  }
+
+  /*! \brief Check if a gate has the given pin name among the outputs.
+   *
+   */
+  virtual bool is_output_pin( std::string const& gate_name, std::string const& pin_name ) const
+  {
+    (void)gate_name;
+    (void)pin_name;
+    return false;
+  }
+
+  virtual std::vector<unsigned int> get_binding_ids( std::string const& name ) const
+  {
+    (void)name;
+    return {};
+  }
+
 }; /* verilog_reader */
 
 /*! \brief A VERILOG reader for prettyprinting a simplistic VERILOG format.
@@ -512,7 +563,7 @@ public:
   }
 
   std::ostream& _os; /*!< Output stream */
-};                   /* verilog_pretty_printer */
+}; /* verilog_pretty_printer */
 
 /*! \brief A writer for a simplistic VERILOG format.
  *
@@ -772,7 +823,7 @@ public:
 
 protected:
   std::ostream& _os; /*!< Output stream */
-};                   /* verilog_writer */
+}; /* verilog_writer */
 
 /*! \brief Simple parser for VERILOG format.
  *
@@ -798,88 +849,93 @@ public:
   verilog_parser( std::istream& in,
                   const verilog_reader& reader,
                   diagnostic_engine* diag = nullptr )
-    : tok( in )
-    , reader( reader )
-    , diag( diag )
-    , on_action( PackedFns( GateFn( [&]( const std::vector<std::pair<std::string, bool>>& inputs,
-                                         const std::string output,
-                                         const std::string type )
-                                    {
-                                      if ( type == "assign" )
-                                      {
-                                        assert( inputs.size() == 1u );
-                                        reader.on_assign( output, inputs[0] );
-                                      }
-                                      else if ( type == "and2" )
-                                      {
-                                        assert( inputs.size() == 2u );
-                                        reader.on_and( output, inputs[0], inputs[1] );
-                                      }
-                                      else if ( type == "nand2" )
-                                      {
-                                        assert( inputs.size() == 2u );
-                                        reader.on_nand( output, inputs[0], inputs[1] );
-                                      }
-                                      else if ( type == "or2" )
-                                      {
-                                        assert( inputs.size() == 2u );
-                                        reader.on_or( output, inputs[0], inputs[1] );
-                                      }
-                                      else if ( type == "nor2" )
-                                      {
-                                        assert( inputs.size() == 2u );
-                                        reader.on_nor( output, inputs[0], inputs[1] );
-                                      }
-                                      else if ( type == "xor2" )
-                                      {
-                                        assert( inputs.size() == 2u );
-                                        reader.on_xor( output, inputs[0], inputs[1] );
-                                      }
-                                      else if ( type == "xnor2" )
-                                      {
-                                        assert( inputs.size() == 2u );
-                                        reader.on_xnor( output, inputs[0], inputs[1] );
-                                      }
-                                      else if ( type == "and3" )
-                                      {
-                                        assert( inputs.size() == 3u );
-                                        reader.on_and3( output, inputs[0], inputs[1], inputs[2] );
-                                      }
-                                      else if ( type == "or3" )
-                                      {
-                                        assert( inputs.size() == 3u );
-                                        reader.on_or3( output, inputs[0], inputs[1], inputs[2] );
-                                      }
-                                      else if ( type == "xor3" )
-                                      {
-                                        assert( inputs.size() == 3u );
-                                        reader.on_xor3( output, inputs[0], inputs[1], inputs[2] );
-                                      }
-                                      else if ( type == "maj3" )
-                                      {
-                                        assert( inputs.size() == 3u );
-                                        reader.on_maj3( output, inputs[0], inputs[1], inputs[2] );
-                                      }
-                                      else if ( type == "mux21" )
-                                      {
-                                        assert( inputs.size() == 3u );
-                                        reader.on_mux21( output, inputs[0], inputs[1], inputs[2] );
-                                      }
-                                      else
-                                      {
-                                        assert( false && "unknown gate function" );
-                                        std::cerr << "unknown gate function" << std::endl;
-                                        std::abort();
-                                      }
-                                    } ),
-                      ModuleInstFn( [&]( const std::string module_name,
-                                         const std::vector<std::string>& params,
-                                         const std::string instance_name,
-                                         const std::vector<std::pair<std::string, std::string>>& pin_to_pin )
-                                    {
-                                      reader.on_module_instantiation( module_name, params, instance_name, pin_to_pin );
-                                    } )
-                      ) )
+      : tok( in ), reader( reader ), diag( diag ), on_action( PackedFns( GateFn( [&]( const std::vector<std::pair<std::string, bool>>& inputs,
+                                                                                      const std::string output,
+                                                                                      const std::string type ) {
+                                                                           if ( type == "assign" )
+                                                                           {
+                                                                             assert( inputs.size() == 1u );
+                                                                             reader.on_assign( output, inputs[0] );
+                                                                           }
+                                                                           else if ( type == "and2" )
+                                                                           {
+                                                                             assert( inputs.size() == 2u );
+                                                                             reader.on_and( output, inputs[0], inputs[1] );
+                                                                           }
+                                                                           else if ( type == "nand2" )
+                                                                           {
+                                                                             assert( inputs.size() == 2u );
+                                                                             reader.on_nand( output, inputs[0], inputs[1] );
+                                                                           }
+                                                                           else if ( type == "or2" )
+                                                                           {
+                                                                             assert( inputs.size() == 2u );
+                                                                             reader.on_or( output, inputs[0], inputs[1] );
+                                                                           }
+                                                                           else if ( type == "nor2" )
+                                                                           {
+                                                                             assert( inputs.size() == 2u );
+                                                                             reader.on_nor( output, inputs[0], inputs[1] );
+                                                                           }
+                                                                           else if ( type == "xor2" )
+                                                                           {
+                                                                             assert( inputs.size() == 2u );
+                                                                             reader.on_xor( output, inputs[0], inputs[1] );
+                                                                           }
+                                                                           else if ( type == "xnor2" )
+                                                                           {
+                                                                             assert( inputs.size() == 2u );
+                                                                             reader.on_xnor( output, inputs[0], inputs[1] );
+                                                                           }
+                                                                           else if ( type == "and3" )
+                                                                           {
+                                                                             assert( inputs.size() == 3u );
+                                                                             reader.on_and3( output, inputs[0], inputs[1], inputs[2] );
+                                                                           }
+                                                                           else if ( type == "or3" )
+                                                                           {
+                                                                             assert( inputs.size() == 3u );
+                                                                             reader.on_or3( output, inputs[0], inputs[1], inputs[2] );
+                                                                           }
+                                                                           else if ( type == "xor3" )
+                                                                           {
+                                                                             assert( inputs.size() == 3u );
+                                                                             reader.on_xor3( output, inputs[0], inputs[1], inputs[2] );
+                                                                           }
+                                                                           else if ( type == "maj3" )
+                                                                           {
+                                                                             assert( inputs.size() == 3u );
+                                                                             reader.on_maj3( output, inputs[0], inputs[1], inputs[2] );
+                                                                           }
+                                                                           else if ( type == "mux21" )
+                                                                           {
+                                                                             assert( inputs.size() == 3u );
+                                                                             reader.on_mux21( output, inputs[0], inputs[1], inputs[2] );
+                                                                           }
+                                                                           else if ( reader.has_gate( type ) )
+                                                                           {
+                                                                             std::cout << "I am inside" << std::endl;
+                                                                           }
+                                                                           else
+                                                                           {
+                                                                             assert( false && "unknown gate function" );
+                                                                             std::cerr << "unknown gate function" << std::endl;
+                                                                             std::abort();
+                                                                           }
+                                                                         } ),
+                                                                         ModuleInstFn( [&]( const std::string module_name,
+                                                                                            const std::vector<std::string>& params,
+                                                                                            const std::string instance_name,
+                                                                                            const std::vector<std::pair<std::string, std::string>>& pin_to_pin ) {
+                                                                           reader.on_module_instantiation( module_name, params, instance_name, pin_to_pin );
+                                                                         } ),
+                                                                         CellFn( [&](
+                                                                                     const std::vector<std::pair<std::string, std::string>>& input_map,  // input map
+                                                                                     const std::vector<std::pair<std::string, std::string>>& output_map, // output map
+                                                                                     const std::vector<unsigned int>& ids )                              // some extra string parameter
+                                                                                 {
+                                                                                   reader.on_cell( input_map, output_map, ids );
+                                                                                 } ) ) )
   {
     on_action.declare_known( "0" );
     on_action.declare_known( "1" );
@@ -1049,6 +1105,22 @@ public:
       if ( token == "assign" )
       {
         success = parse_assign();
+        if ( !success )
+        {
+          if ( diag )
+          {
+            diag->report( diag_id::ERR_VERILOG_ASSIGNMENT );
+          }
+          return false;
+        }
+
+        valid = get_token( token );
+        if ( !valid )
+          return false;
+      }
+      else if ( reader.has_gate( token ) )
+      {
+        success = parse_bound_gate();
         if ( !success )
         {
           if ( diag )
@@ -1366,10 +1438,111 @@ public:
     return true;
   }
 
+  bool parse_bound_gate()
+  {
+    if ( reader.has_gate( token ) == false )
+      return false;
+
+    const std::string gate_name = token;
+
+    valid = get_token( token );
+    if ( !valid )
+      return false;
+    const std::string node_name = token;
+
+    /* true for pin name false for signal name */
+    std::vector<std::string> inputs;
+    std::vector<std::string> outputs;
+
+    valid = get_token( token );
+    if ( !valid )
+      return false;
+
+    enum class pin_state
+    {
+      INPUT_PIN,
+      OUTPUT_PIN,
+      UNKNOWN_PIN
+    };
+    pin_state state = pin_state::UNKNOWN_PIN;
+
+    std::vector<std::pair<std::string, std::string>> input_assigns;
+    std::vector<std::pair<std::string, std::string>> output_assigns;
+    auto const ids = reader.get_binding_ids( gate_name );
+
+    while ( token != ";" && token != "endmodule" )
+    {
+      if ( token == "(" || token == ")" || token == "," )
+      {
+        valid = get_token( token );
+        if ( !valid )
+          return false;
+        continue;
+      }
+      /* only signal names and pin names here */
+      if ( token[0] == '.' )
+      {
+        std::string pin_name = token.substr( 1 );
+        if ( reader.is_input_pin( gate_name, pin_name ) )
+        {
+          state = pin_state::INPUT_PIN;
+          input_assigns.emplace_back( pin_name, "" );
+        }
+        else if ( reader.is_output_pin( gate_name, pin_name ) )
+        {
+          state = pin_state::OUTPUT_PIN;
+          output_assigns.emplace_back( pin_name, "" );
+        }
+        else
+        {
+          if ( diag )
+          {
+            diag->report( diag_id::ERR_VERILOG_PIN_ASSIGNMENT )
+                .add_argument( token )
+                .add_argument( gate_name );
+          }
+          return false;
+        }
+      }
+      else
+      {
+        if ( state == pin_state::INPUT_PIN )
+        {
+          inputs.emplace_back( token );
+          input_assigns.back().second = token;
+        }
+        else if ( state == pin_state::OUTPUT_PIN )
+        {
+          outputs.emplace_back( token );
+          output_assigns.back().second = token;
+        }
+        else
+        {
+          if ( diag )
+          {
+            diag->report( diag_id::ERR_VERILOG_PIN_ASSIGNMENT )
+                .add_argument( token )
+                .add_argument( gate_name );
+          }
+          return false;
+        }
+      }
+
+      valid = get_token( token );
+      if ( !valid )
+        return false;
+    }
+
+    on_action.call_deferred<CELL_FN>( /* dependencies */ inputs, outputs,
+                                      /* gate-function params */ std::make_tuple( input_assigns, output_assigns, ids ) );
+
+    return token == ";";
+  }
+
   bool parse_module_instantiation()
   {
     bool success = true;
-    std::string const module_name{token}; // name of module
+    std::string const module_name{ token }; // name of module
 
     auto const it = modules.find( module_name );
     if ( it == std::end( modules ) )
@@ -1429,7 +1602,7 @@ public:
 
       if ( !valid )
         return false; // refers to signal
-      std::string const arg0{token};
+      std::string const arg0{ token };
 
       /* check if a signal with this name exists in the module declaration */
       if ( ( std::find( std::begin( info.inputs ), std::end( info.inputs ), arg0.substr( 1, arg0.size() ) ) == std::end( info.inputs ) ) &&
@@ -1521,38 +1694,34 @@ public:
     if ( std::regex_match( s, sm, verilog_regex::immediate_assign ) )
     {
       assert( sm.size() == 3u );
-      std::vector<std::pair<std::string, bool>> args{{sm[2], sm[1] == "~"}};
+      std::vector<std::pair<std::string, bool>> args{ { sm[2], sm[1] == "~" } };
 
       on_action.call_deferred<GATE_FN>( /* dependencies */ { sm[2] }, { lhs },
-                                        /* gate-function params */ std::make_tuple( args, lhs, "assign" )
-                                      );
+                                        /* gate-function params */ std::make_tuple( args, lhs, "assign" ) );
     }
     else if ( std::regex_match( s, sm, verilog_regex::binary_expression ) )
     {
       assert( sm.size() == 6u );
-      std::pair<std::string, bool> arg0 = {sm[2], sm[1] == "~"};
-      std::pair<std::string, bool> arg1 = {sm[5], sm[4] == "~"};
-      std::vector<std::pair<std::string, bool>> args{arg0, arg1};
+      std::pair<std::string, bool> arg0 = { sm[2], sm[1] == "~" };
+      std::pair<std::string, bool> arg1 = { sm[5], sm[4] == "~" };
+      std::vector<std::pair<std::string, bool>> args{ arg0, arg1 };
 
       auto op = sm[3];
 
       if ( op == "&" )
       {
         on_action.call_deferred<GATE_FN>( /* dependencies */ { arg0.first, arg1.first }, { lhs },
-                                          /* gate-function params */ std::make_tuple( args, lhs, "and2" )
-                                        );
+                                          /* gate-function params */ std::make_tuple( args, lhs, "and2" ) );
       }
       else if ( op == "|" )
       {
         on_action.call_deferred<GATE_FN>( /* dependencies */ { arg0.first, arg1.first }, { lhs },
-                                          /* gate-function params */ std::make_tuple( args, lhs, "or2" )
-                                        );
+                                          /* gate-function params */ std::make_tuple( args, lhs, "or2" ) );
       }
       else if ( op == "^" )
       {
         on_action.call_deferred<GATE_FN>( /* dependencies */ { arg0.first, arg1.first }, { lhs },
-                                          /* gate-function params */ std::make_tuple( args, lhs, "xor2" )
-                                        );
+                                          /* gate-function params */ std::make_tuple( args, lhs, "xor2" ) );
       }
       else
       {
@@ -1562,28 +1731,25 @@ public:
     else if ( std::regex_match( s, sm, verilog_regex::negated_binary_expression ) )
     {
       assert( sm.size() == 6u );
-      std::pair<std::string, bool> arg0 = {sm[2], sm[1] == "~"};
-      std::pair<std::string, bool> arg1 = {sm[5], sm[4] == "~"};
-      std::vector<std::pair<std::string,bool>> args{arg0, arg1};
+      std::pair<std::string, bool> arg0 = { sm[2], sm[1] == "~" };
+      std::pair<std::string, bool> arg1 = { sm[5], sm[4] == "~" };
+      std::vector<std::pair<std::string, bool>> args{ arg0, arg1 };
 
       auto op = sm[3];
       if ( op == "&" )
       {
         on_action.call_deferred<GATE_FN>( /* dependencies */ { arg0.first, arg1.first }, { lhs },
-                                          /* gate-function params */ std::make_tuple( args, lhs, "nand2" )
-                                        );
+                                          /* gate-function params */ std::make_tuple( args, lhs, "nand2" ) );
       }
       else if ( op == "|" )
       {
         on_action.call_deferred<GATE_FN>( /* dependencies */ { arg0.first, arg1.first }, { lhs },
-                                          /* gate-function params */ std::make_tuple( args, lhs, "nor2" )
-                                        );
+                                          /* gate-function params */ std::make_tuple( args, lhs, "nor2" ) );
       }
       else if ( op == "^" )
       {
         on_action.call_deferred<GATE_FN>( /* dependencies */ { arg0.first, arg1.first }, { lhs },
-                                          /* gate-function params */ std::make_tuple( args, lhs, "xnor2" )
-                                        );
+                                          /* gate-function params */ std::make_tuple( args, lhs, "xnor2" ) );
       }
       else
       {
@@ -1593,10 +1759,10 @@ public:
     else if ( std::regex_match( s, sm, verilog_regex::ternary_expression ) )
     {
       assert( sm.size() == 9u );
-      std::pair<std::string, bool> arg0 = {sm[2], sm[1] == "~"};
-      std::pair<std::string, bool> arg1 = {sm[5], sm[4] == "~"};
-      std::pair<std::string, bool> arg2 = {sm[8], sm[7] == "~"};
-      std::vector<std::pair<std::string,bool>> args{arg0, arg1, arg2};
+      std::pair<std::string, bool> arg0 = { sm[2], sm[1] == "~" };
+      std::pair<std::string, bool> arg1 = { sm[5], sm[4] == "~" };
+      std::pair<std::string, bool> arg2 = { sm[8], sm[7] == "~" };
+      std::vector<std::pair<std::string, bool>> args{ arg0, arg1, arg2 };
 
       auto op = sm[3];
       if ( sm[6] != op )
@@ -1604,8 +1770,7 @@ public:
         if ( sm[3] == "?" && sm[6] == ":" )
         {
           on_action.call_deferred<GATE_FN>( /* dependencies */ { arg0.first, arg1.first, arg2.first }, { lhs },
-                                            /* gate-function params */ std::make_tuple( args, lhs, "mux21" )
-                                          );
+                                            /* gate-function params */ std::make_tuple( args, lhs, "mux21" ) );
           return true;
         }
         return false;
@@ -1614,20 +1779,17 @@ public:
       if ( op == "&" )
       {
         on_action.call_deferred<GATE_FN>( /* dependencies */ { arg0.first, arg1.first, arg2.first }, { lhs },
-                                          /* gate-function params */ std::make_tuple( args, lhs, "and3" )
-                                        );
+                                          /* gate-function params */ std::make_tuple( args, lhs, "and3" ) );
       }
       else if ( op == "|" )
       {
         on_action.call_deferred<GATE_FN>( /* dependencies */ { arg0.first, arg1.first, arg2.first }, { lhs },
-                                          /* gate-function params */ std::make_tuple( args, lhs, "or3" )
-                                        );
+                                          /* gate-function params */ std::make_tuple( args, lhs, "or3" ) );
       }
       else if ( op == "^" )
       {
         on_action.call_deferred<GATE_FN>( /* dependencies */ { arg0.first, arg1.first, arg2.first }, { lhs },
-                                          /* gate-function params */ std::make_tuple( args, lhs, "xor3" )
-                                        );
+                                          /* gate-function params */ std::make_tuple( args, lhs, "xor3" ) );
       }
       else
       {
@@ -1637,12 +1799,12 @@ public:
     else if ( std::regex_match( s, sm, verilog_regex::maj3_expression ) )
     {
       assert( sm.size() == 13u );
-      std::pair<std::string, bool> a0 = {sm[2], sm[1] == "~"};
-      std::pair<std::string, bool> b0 = {sm[4], sm[3] == "~"};
-      std::pair<std::string, bool> a1 = {sm[6], sm[5] == "~"};
-      std::pair<std::string, bool> c0 = {sm[8], sm[7] == "~"};
-      std::pair<std::string, bool> b1 = {sm[10], sm[9] == "~"};
-      std::pair<std::string, bool> c1 = {sm[12], sm[11] == "~"};
+      std::pair<std::string, bool> a0 = { sm[2], sm[1] == "~" };
+      std::pair<std::string, bool> b0 = { sm[4], sm[3] == "~" };
+      std::pair<std::string, bool> a1 = { sm[6], sm[5] == "~" };
+      std::pair<std::string, bool> c0 = { sm[8], sm[7] == "~" };
+      std::pair<std::string, bool> b1 = { sm[10], sm[9] == "~" };
+      std::pair<std::string, bool> c1 = { sm[12], sm[11] == "~" };
 
       if ( a0 != a1 || b0 != b1 || c0 != c1 )
         return false;
@@ -1653,8 +1815,7 @@ public:
       args.push_back( c0 );
 
       on_action.call_deferred<GATE_FN>( /* dependencies */ { a0.first, b0.first, c0.first }, { lhs },
-                                        /* gate-function params */ std::make_tuple( args, lhs, "maj3" )
-                                      );
+                                        /* gate-function params */ std::make_tuple( args, lhs, "maj3" ) );
     }
     else
     {
@@ -1667,41 +1828,48 @@ public:
 private:
   /* Function signatures */
   using GateFn = detail::Func<
-                   std::vector<std::pair<std::string,bool>>,
-                   std::string,
-                   std::string
-                 >;
+      std::vector<std::pair<std::string, bool>>,
+      std::string,
+      std::string>;
   using ModuleInstFn = detail::Func<
-                         std::string,
-                         std::vector<std::string>,
-                         std::string,
-                         std::vector<std::pair<std::string, std::string>>
-                       >;
-
+      std::string,
+      std::vector<std::string>,
+      std::string,
+      std::vector<std::pair<std::string, std::string>>>;
+  using CellFn = detail::Func<
+      std::vector<std::pair<std::string, std::string>>, // input map
+      std::vector<std::pair<std::string, std::string>>, // output map
+      std::vector<unsigned int>                         // ids
+      >;
+  using CellParamMap = detail::ParamPackMap<
+      std::string,                                      // key
+      std::vector<std::pair<std::string, std::string>>, // input map
+      std::vector<std::pair<std::string, std::string>>, // output map
+      std::vector<unsigned int>                         // some extra string parameter
+      >;
   /* Parameter maps */
   using GateParamMap = detail::ParamPackMap<
-                         /* Key */
-                         std::string,
-                         /* Params */
-                         std::vector<std::pair<std::string,bool>>,
-                         std::string,
-                         std::string
-                       >;
+      /* Key */
+      std::string,
+      /* Params */
+      std::vector<std::pair<std::string, bool>>,
+      std::string,
+      std::string>;
   using ModuleInstParamMap = detail::ParamPackMap<
-                               /* Key */
-                               std::string,
-                               /* Param */
-                               std::string,
-                               std::vector<std::string>,
-                               std::string,
-                               std::vector<std::pair<std::string, std::string>>
-                             >;
+      /* Key */
+      std::string,
+      /* Param */
+      std::string,
+      std::vector<std::string>,
+      std::string,
+      std::vector<std::pair<std::string, std::string>>>;
 
-  constexpr static const int GATE_FN{0};
-  constexpr static const int MODULE_INST_FN{1};
+  constexpr static const int GATE_FN{ 0 };
+  constexpr static const int MODULE_INST_FN{ 1 };
+  constexpr static const int CELL_FN{ 2 };
 
-  using ParamMaps = detail::ParamPackMapN<GateParamMap, ModuleInstParamMap>;
-  using PackedFns = detail::FuncPackN<GateFn, ModuleInstFn>;
+  using ParamMaps = detail::ParamPackMapN<GateParamMap, ModuleInstParamMap, CellParamMap>;
+  using PackedFns = detail::FuncPackN<GateFn, ModuleInstFn, CellFn>;
 
 private:
   detail::tokenizer tok;

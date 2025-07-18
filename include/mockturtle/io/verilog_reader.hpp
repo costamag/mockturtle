@@ -27,6 +27,7 @@
   \file verilog_reader.hpp
   \brief Lorina reader for VERILOG files
 
+  \author Andrea Costamagna
   \author Heinz Riener
   \author Marcel Walter
   \author Mathias Soeken
@@ -48,6 +49,7 @@
 
 #include "../generators/arithmetic.hpp"
 #include "../generators/modular_arithmetic.hpp"
+#include "../networks/mapped/bound_network.hpp"
 #include "../traits.hpp"
 
 namespace mockturtle
@@ -358,6 +360,39 @@ public:
     signals_[lhs] = ntk_.create_ite( op1.second ? ntk_.create_not( a ) : a, op2.second ? ntk_.create_not( b ) : b, op3.second ? ntk_.create_not( c ) : c );
   }
 
+  void on_cell( const std::vector<std::pair<std::string, std::string>>& input_assign,
+                const std::vector<std::pair<std::string, std::string>>& output_assign,
+                const std::vector<unsigned int>& ids ) const override
+  {
+    if constexpr ( is_bound_network_type_v<Ntk> )
+    {
+      if ( name_ != top_module_name_ )
+        return;
+
+      if ( signals_.find( output_assign[0].second ) != signals_.end() )
+        return;
+
+      std::vector<signal<Ntk>> children( input_assign.size() );
+      for ( auto const& child : input_assign )
+      {
+        if ( signals_.find( child.second ) == signals_.end() )
+          fmt::print( stderr, "[w] undefined signal {} assigned 0\n", child.second );
+        auto const j = ntk_.get_fanin_number( ids[0], child.first );
+        children[j] = signals_[child.second];
+      }
+
+      auto signal = ntk_.create_node( children, ids );
+      for ( auto i = 0u; i < output_assign.size(); ++i )
+      {
+        signals_[output_assign[i].second] = { signal.index, i };
+      }
+    }
+    else
+    {
+      std::cerr << "[e] Ntk does not support create_node\n";
+    }
+  }
+
   void on_module_instantiation( std::string const& module_name, std::vector<std::string> const& params, std::string const& inst_name,
                                 std::vector<std::pair<std::string, std::string>> const& args ) const override
   {
@@ -570,6 +605,39 @@ public:
   const std::vector<std::pair<std::string, uint32_t>> output_names()
   {
     return output_names_;
+  }
+
+  bool has_gate( std::string const& name ) const
+  {
+    if constexpr ( is_bound_network_type_v<Ntk> )
+      return ntk_.has_gate( name );
+    return false;
+  }
+
+  std::vector<unsigned int> get_binding_ids( std::string const& name ) const
+  {
+    if constexpr ( is_bound_network_type_v<Ntk> )
+      return ntk_.get_binding_ids( name );
+    std::cerr << "[e] Ntk does not support get_binding_ids\n";
+    return {};
+  }
+
+  bool is_input_pin( std::string const& gate_name, std::string const& pin_name ) const
+  {
+    if constexpr ( is_bound_network_type_v<Ntk> )
+    {
+      return ntk_.is_input_pin( gate_name, pin_name );
+    }
+    return false;
+  }
+
+  bool is_output_pin( std::string const& gate_name, std::string const& pin_name ) const
+  {
+    if constexpr ( is_bound_network_type_v<Ntk> )
+    {
+      return ntk_.is_output_pin( gate_name, pin_name );
+    }
+    return false;
   }
 
 private:
