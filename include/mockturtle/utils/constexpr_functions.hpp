@@ -1,5 +1,5 @@
-/* kitty: C++ truth table library
- * Copyright (C) 2017-2025  EPFL
+/* mockturtle: C++ logic network library
+ * Copyright (C) 2018-2022  EPFL
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -24,48 +24,27 @@
  */
 
 /*!
-  \file kitty.hpp
-  \brief Main header for kitty
+  \file constexpr_functions.hpp
+  \brief Various functions for compile time evaluation
 
-  \author Mathias Soeken
+  \author Andrea Costamagna
 */
 
 #pragma once
 
-#include "dynamic_truth_table.hpp"
-#include "partial_truth_table.hpp"
-#include "static_truth_table.hpp"
+namespace mockturtle
+{
 
-#include "affine.hpp"
-#include "algorithm.hpp"
-#include "bit_operations.hpp"
-#include "cnf.hpp"
-#include "constructors.hpp"
-#include "cube.hpp"
-#include "decomposition.hpp"
-#include "enumeration.hpp"
-// #include "esop.hpp" // deprecated!
-#include "hash.hpp"
-#include "implicant.hpp"
-#include "isop.hpp"
-#include "karnaugh_map.hpp"
-#include "npn.hpp"
-#include "operations.hpp"
-#include "operators.hpp"
-#include "permutation.hpp"
-#include "print.hpp"
-#include "properties.hpp"
-#include "simd_operations.hpp"
-#include "spectral.hpp"
-#include "spp.hpp"
-#include "traits.hpp"
+constexpr uint32_t log2_ceil( uint32_t x )
+{
+  uint32_t r = 0;
+  uint32_t v = x - 1;
+  while ( v > 0 )
+  {
+    ++r;
+    v >>= 1;
+  }
+  return r;
+}
 
-/*
-         /\___/\
-        (  o o  )
-        /   *   \
-        \__\_/__/
-          /   \
-         / ___ \
-         \/___\/
-*/
+} /* namespace mockturtle */

@@ -46,13 +46,14 @@
 namespace mockturtle
 {
 
-template<class Ntk, uint32_t MaxNumLeaves = 12>
+template<class Ntk, uint32_t CubeSizeLeaves = 12>
 class window_simulator
 {
 public:
   using signal_t = typename Ntk::signal;
   using node_index_t = typename Ntk::node;
-  using signature_t = kitty::static_truth_table<MaxNumLeaves>;
+  using signature_t = kitty::static_truth_table<CubeSizeLeaves>;
+  static constexpr uint32_t num_bits = 1u << CubeSizeLeaves;
 
 public:
   window_simulator( Ntk& ntk )
@@ -66,7 +67,7 @@ public:
   void run( window_manager<Ntk> const& window )
   {
     sims_.reserve( window.size() );
-    sims_.resize( MaxNumLeaves );
+    sims_.resize( CubeSizeLeaves );
     sig_to_sim_.reset();
 
     assign_inputs( window );
@@ -205,14 +206,14 @@ public:
 private:
   void init()
   {
-    sims_.resize( MaxNumLeaves );
-    for ( auto i = 0u; i < MaxNumLeaves; ++i )
+    sims_.resize( CubeSizeLeaves );
+    for ( auto i = 0u; i < CubeSizeLeaves; ++i )
       kitty::create_nth_var( sims_[i], i );
   }
 
   void assign_inputs( window_manager<Ntk> const& window )
   {
-    sims_.resize( MaxNumLeaves );
+    sims_.resize( CubeSizeLeaves );
     window.foreach_input( [&]( auto const& f, auto i ) {
       sig_to_sim_[f] = i;
     } );

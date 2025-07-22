@@ -93,6 +93,7 @@ public:
     window_.inputs.clear();
     ntk_.foreach_output( n, [&]( auto const& f ) {
       window_.inputs.push_back( f );
+      window_.divs.push_back( f );
     } );
 
     // expand the leaves until reaching the boundary of the MFFC
@@ -132,6 +133,11 @@ public:
   std::vector<signal_t> const& get_divisors() const
   {
     return window_.divs;
+  }
+
+  signal_t const& get_divisor( uint32_t const& index ) const
+  {
+    return window_.divs[index];
   }
 
   std::vector<node_index_t> const& get_tfos() const
@@ -373,6 +379,7 @@ public:
           {
             ntk_.foreach_output( ni, [&]( auto const& fo ) {
               window_.inputs.push_back( fo );
+              window_.divs.push_back( fo );
             } );
             make_leaf( ni );
           }
@@ -536,6 +543,11 @@ public:
   size_t num_outputs() const
   {
     return window_.outputs.size();
+  }
+
+  size_t num_divisors() const
+  {
+    return window_.divs.size();
   }
 
   size_t size() const
