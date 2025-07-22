@@ -69,14 +69,12 @@ public:
     assert( ( std::is_same<signature_t, typename WinSim::signature_t>::value && "signatures have different type" ) );
     cuts_.clear();
 
-    signature_t care = simulator.compute_observability_careset( window );
-
     // initialize the approximate information manager
-    load_information( window, simulator, care );
+    load_information( window, simulator );
     // identify candidates through branch and bound
     identify_candidates( window, simulator );
     // check if the candidates are valid cuts. If not, complete them.
-    exactify_candidates( window, simulator, care );
+    exactify_candidates( window, simulator );
   }
 
   template<typename Fn>
@@ -120,9 +118,10 @@ private:
   }
 
   template<typename WinMng, typename WinSim>
-  void load_information( WinMng const& window, WinSim& simulator, signature_t const& care )
+  void load_information( WinMng const& window, WinSim& simulator )
   {
     assert( ( std::is_same<signature_t, typename WinSim::signature_t>::value && "signatures have different type" ) );
+    signature_t const& care = simulator.get_careset();
 
     auto const n = window.get_pivot();
 
@@ -210,31 +209,54 @@ private:
     return true;
   }
 
+  bool contains( std::vector<uint32_t> const& cut1, std::vector<uint32_t> const& cut2 )
+  {
+    if ( cut2.size() > cut1.size() )
+      return false;
+    bool contains = true;
+    auto i = 0;
+    auto j = 0;
+    while ( contains && ( i < cut1.size() ) && ( j < cut2.size() ) )
+    {
+      if ( cut1[i] < cut2[j] )
+        i++;
+      else if ( cut1[i] == cut2[j] )
+      {
+        i++;
+        j++;
+      }
+      else if ( cut1[i] > cut2[j] )
+        contains = false;
+    }
+    if ( contains && ( j == cut2.size() ) )
+      return true;
+    return false;
+  }
+
   bool contains_previous( std::vector<uint32_t> const& cut, std::vector<std::vector<uint32_t>> const& cuts )
   {
     for ( auto const& other : cuts )
     {
-      if ( other.size() > cut.size() )
-        continue;
-      bool contains = true;
-      auto i = 0;
-      auto j = 0;
-      while ( contains && ( i < cut.size() ) && ( j < other.size() ) )
-      {
-        if ( cut[i] < other[j] )
-          i++;
-        else if ( cut[i] == other[j] )
-        {
-          i++;
-          j++;
-        }
-        else if ( cut[i] > other[j] )
-          contains = false;
-      }
-      if ( contains && ( j == other.size() ) )
+      if ( contains( cut, other ) )
         return true;
     }
     return false;
+  }
+
+  void add_to_cuts( std::vector<uint32_t> const& cut, std::vector<std::vector<uint32_t>>& cuts )
+  {
+    std::vector<uint32_t> erase;
+    for ( auto i = 0u; i < cuts.size(); ++i )
+    {
+      auto const other = cuts[i];
+      if ( contains( other, cut ) )
+        erase.push_back( i );
+    }
+    for ( auto it = erase.rbegin(); it < erase.rend(); ++it )
+    {
+      cuts.erase( cuts.begin() + *it );
+    }
+    cuts.push_back( cut );
   }
 
   void identify_candidates_recursive( std::vector<std::vector<uint32_t>>& cuts,
@@ -246,7 +268,7 @@ private:
       return;
     if ( is_done( todos ) )
     {
-      cuts.push_back( cut );
+      add_to_cuts( cut, cuts );
       return;
     }
     if ( ( begin >= divs_info_.size() ) )
@@ -275,6 +297,7 @@ private:
     identify_candidates_recursive( cuts, cut, begin, todos );
 
     auto const n = window.get_pivot();
+    cuts_.clear();
     for ( auto const& cut : cuts )
     {
       std::vector<signal_t> leaves;
@@ -282,8 +305,7 @@ private:
       {
         leaves.push_back( window.get_divisor( index ) );
       }
-      kitty::ternary_truth_table<kitty::static_truth_table<MaxNumVars>> const sign;
-      cuts_.emplace_back( dependency_t::WINDOW_DEP, n, leaves, sign );
+      cuts_.emplace_back( dependency_t::WINDOW_DEP, n, leaves );
     }
   }
 
@@ -291,9 +313,10 @@ private:
 
 #pragma region Exactify Candidates
   template<typename WinMng, typename WinSim>
-  void exactify_candidates( WinMng const& window, WinSim& simulator, signature_t const& care )
+  void exactify_candidates( WinMng const& window, WinSim& simulator )
   {
     assert( ( std::is_same<signature_t, typename WinSim::signature_t>::value && "signatures have different type" ) );
+    signature_t const& care = simulator.get_careset();
 
     static constexpr uint32_t capacity = ( 1u << MaxNumVars );
 

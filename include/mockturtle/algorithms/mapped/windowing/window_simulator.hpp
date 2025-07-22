@@ -92,11 +92,18 @@ public:
       if ( f.output == 0 )
         compute( window, ntk_.get_node( f ) );
     } );
+
+    care_ = compute_observability_careset( window );
   }
 
   signature_t const& get( signal_t const& f ) const
   {
     return sims_[sig_to_sim_[f]];
+  }
+
+  signature_t const get_careset() const
+  {
+    return care_;
   }
 
   signature_t const compute_observability_careset( window_manager<Ntk> const& window )
@@ -222,6 +229,7 @@ private:
 private:
   Ntk& ntk_;
   std::vector<signature_t> sims_;
+  signature_t care_;
   incomplete_signal_map<uint32_t, Ntk> sig_to_sim_;
 };
 

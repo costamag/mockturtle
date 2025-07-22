@@ -59,6 +59,10 @@ public:
       : type( type ), root( root ), leaves( leaves ), func( { func } )
   {}
 
+  dependency_cut_t( dependency_t const& type, node_index_t const& root, leaves_t const& leaves )
+      : type( type ), root( root ), leaves( leaves )
+  {}
+
   void add_leaf( signal_t const& f )
   {
     leaves.push_back( f );
