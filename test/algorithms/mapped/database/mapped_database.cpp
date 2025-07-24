@@ -5,10 +5,11 @@
 #include <vector>
 
 #include <lorina/genlib.hpp>
+#include <mockturtle/algorithms/mapped/database/mapped_database.hpp>
 #include <mockturtle/io/genlib_reader.hpp>
 #include <mockturtle/io/super_reader.hpp>
 #include <mockturtle/networks/mapped/bound_network.hpp>
-#include <mockturtle/utils/databases/mapped/mapped_database.hpp>
+#include <mockturtle/utils/analyzers/trackers/arrival_times_tracker.hpp>
 #include <mockturtle/utils/tech_library.hpp>
 
 using namespace mockturtle;
@@ -89,7 +90,15 @@ std::string const symmetric_library =
     "GATE FA                       3.00  S=( (A ^ B) ^ C );              \n"
     "    PIN  A  UNKNOWN   1 999    35.00     0.00    35.00     0.00     \n"
     "    PIN  B  UNKNOWN   1 999    30.00     0.00    30.00     0.00     \n"
-    "    PIN  C  UNKNOWN   1 999    25.00     0.00    25.00     0.00     \n";
+    "    PIN  C  UNKNOWN   1 999    25.00     0.00    25.00     0.00     \n"
+    "GATE RND4_2                     3.00  Y=(((A * B) * C)^D);          \n"
+    "    PIN  A  UNKNOWN   1 999    35.00     0.00    35.00     0.00     \n"
+    "    PIN  B  UNKNOWN   1 999    30.00     0.00    30.00     0.00     \n"
+    "    PIN  C  UNKNOWN   1 999    25.00     0.00    25.00     0.00     \n"
+    "    PIN  D  UNKNOWN   1 999    65.00     0.00    25.00     0.00     \n"
+    "GATE OR2                        2.00  Y=(A + B);                    \n"
+    "    PIN  A  UNKNOWN   1 999    10.00     0.00    10.00     0.00     \n"
+    "    PIN  B  UNKNOWN   1 999    10.00     0.00    10.00     0.00     \n";
 
 TEST_CASE( "Inserting lists with one-input node in mapped databases", "[mapped_database]" )
 {
@@ -453,10 +462,138 @@ TEST_CASE( "Saving a mapped database", "[mapped_database]" )
       "  input x0 , x1 , x2 , x3 , x4 , x5 ;\n"
       "  output y0 , y1 ;\n"
       "  wire n10 , n12 ;\n"
-      "  XOR2 g0( .A (x4), .B (x5), .Y (y0) );\n"
-      "  AND4 g1( .A (x3), .B (x4), .C (x5), .D (x2), .Y (n12) );\n"
-      "  INV  g2( .A (n12), .Y (n10) );\n"
-      "  AND2 g3( .A (x0), .B (n10), .Y (y1) );\n"
+      "  XOR2   g0( .A (x4), .B (x5), .Y (y0) );\n"
+      "  AND4   g1( .A (x3), .B (x4), .C (x5), .D (x2), .Y (n12) );\n"
+      "  INV    g2( .A (n12), .Y (n10) );\n"
+      "  AND2   g3( .A (x0), .B (n10), .Y (y1) );\n"
       "endmodule\n";
   CHECK( out.str() == expected );
+}
+TEST_CASE( "Database look-up with 2-input completely specified function", "[mapped_database]" )
+{
+  using bound_network = mockturtle::bound_network<bound::design_type_t::CELL_BASED, 2>;
+  using signal = typename bound_network::signal;
+  std::vector<gate> gates;
+
+  std::istringstream in( symmetric_library );
+  auto result = lorina::read_genlib( in, genlib_reader( gates ) );
+  CHECK( result == lorina::return_code::success );
+
+  bound::augmented_library<bound::design_type_t::CELL_BASED> lib( gates );
+
+  static constexpr uint32_t MaxNumVars = 3u;
+  mapped_database<bound_network, MaxNumVars> db( lib );
+
+  bound_list<bound::design_type_t::CELL_BASED> list;
+  list.add_inputs( MaxNumVars );
+  list.add_output( list.add_gate( { list.add_gate( { 0 }, 0 ), 1 }, 1 ) );
+  CHECK( db.add( list ) );
+
+  using TT = kitty::static_truth_table<MaxNumVars>;
+
+  bound_network ntk( gates );
+  std::array<TT, 3u> xs;
+  std::vector<signal> fs;
+  std::vector<TT const*> sim_ptrs;
+  for ( auto i = 0u; i < 3u; ++i )
+  {
+    kitty::create_nth_var( xs[i], i );
+    sim_ptrs.push_back( &xs[i] );
+    fs.push_back( ntk.create_pi() );
+  }
+
+  std::vector<uint32_t> input{ 0, 1 };
+  std::vector<double> times{ 0, 10 };
+
+  // symmetric function
+
+  list_simulator<bound_list<bound::design_type_t::CELL_BASED>, TT> sim( lib );
+
+  auto tt = ( ~xs[0] ) & xs[1];
+  auto fs_c = fs;
+  auto times_c = times;
+  auto match = db.boolean_matching( tt, fs_c, times_c );
+  CHECK( match );
+  db.foreach_entry( *match, [&]( auto const& entry ) {
+    auto const n = db.write( entry, ntk, fs_c );
+
+    bound_list<bound::design_type_t::CELL_BASED> list_res( MaxNumVars );
+    extract( list_res, ntk, fs, ntk.make_signal( n ) );
+    sim( list_res, sim_ptrs );
+
+    auto const res = sim.get_simulation( list_res, sim_ptrs, list_res.po_at( 0 ) );
+    if ( !kitty::equal( res, tt ) )
+    {
+      kitty::print_binary( tt );
+      std::cout << std::endl;
+      kitty::print_binary( res );
+      std::cout << std::endl;
+    }
+    CHECK( kitty::equal( res, tt ) );
+  } );
+}
+
+TEST_CASE( "Database look-up with 3-input completely specified function", "[mapped_database]" )
+{
+  using bound_network = mockturtle::bound_network<bound::design_type_t::CELL_BASED, 2>;
+  using signal = typename bound_network::signal;
+  std::vector<gate> gates;
+
+  std::istringstream in( symmetric_library );
+  auto result = lorina::read_genlib( in, genlib_reader( gates ) );
+  CHECK( result == lorina::return_code::success );
+
+  bound::augmented_library<bound::design_type_t::CELL_BASED> lib( gates );
+
+  static constexpr uint32_t MaxNumVars = 4u;
+  mapped_database<bound_network, MaxNumVars> db( lib );
+
+  bound_list<bound::design_type_t::CELL_BASED> list;
+  list.add_inputs( MaxNumVars );
+  auto const l0 = list.add_gate( { 0u }, 0u );
+  auto const l1 = list.add_gate( { 1u, 2u }, 1u );
+  auto const l2 = list.add_gate( { l0, l1 }, 10u );
+  list.add_output( l2 );
+  CHECK( db.add( list ) );
+
+  using TT = kitty::static_truth_table<MaxNumVars>;
+
+  bound_network ntk( gates );
+  std::array<TT, MaxNumVars> xs;
+  std::vector<signal> fs;
+  std::vector<TT const*> sim_ptrs;
+  for ( auto i = 0u; i < MaxNumVars; ++i )
+  {
+    kitty::create_nth_var( xs[i], i );
+    sim_ptrs.push_back( &xs[i] );
+    fs.push_back( ntk.create_pi() );
+  }
+
+  std::vector<double> times{ 0, 10, 20, 40 };
+  arrival_times_tracker arrival( ntk, times );
+
+  list_simulator<bound_list<bound::design_type_t::CELL_BASED>, TT> sim( lib );
+
+  int i = 0;
+  auto tt = ( ~xs[1] ) | ( xs[2] & xs[3] );
+  auto fs_c = fs;
+  auto match = db.boolean_matching( tt, fs_c, times );
+  CHECK( match );
+  db.foreach_entry( *match, [&]( auto const& entry ) {
+    auto const n = db.write( entry, ntk, fs_c );
+    ntk.create_po( ntk.make_signal( n ) );
+    bound_list<bound::design_type_t::CELL_BASED> list_res( MaxNumVars );
+    extract( list_res, ntk, fs, ntk.make_signal( n ) );
+    sim( list_res, sim_ptrs );
+
+    auto const res = sim.get_simulation( list_res, sim_ptrs, list_res.po_at( 0 ) );
+    CHECK( kitty::equal( res, tt ) );
+    CHECK( fs_c[0] == fs[2] );
+    CHECK( fs_c[1] == fs[3] );
+    CHECK( fs_c[2] == fs[0] );
+    CHECK( times[0] == 20 );
+    CHECK( times[1] == 40 );
+  } );
+
+  CHECK( arrival.worst_delay() == 70 );
 }

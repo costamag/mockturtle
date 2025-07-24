@@ -39,7 +39,7 @@
 namespace mockturtle
 {
 
-template<class Ntk, uint32_t CubeSizeLeaves = 6u, uint32_t MaxNumVars = 6u, uint32_t MaxCubeSize = 12u>
+template<class Ntk, uint32_t CubeSizeLeaves = 6u, uint32_t MaxCutSize = 6u, uint32_t MaxCubeSize = 12u>
 class window_dependencies
 {
 
@@ -273,7 +273,7 @@ private:
     }
     if ( ( begin >= divs_info_.size() ) )
       return;
-    if ( cut.size() >= MaxNumVars )
+    if ( cut.size() >= MaxCutSize )
       return;
 
     if ( ( begin < ( divs_info_.size() - 1 ) ) && is_possible_from( begin + 1, todos ) )
@@ -318,7 +318,7 @@ private:
     assert( ( std::is_same<signature_t, typename WinSim::signature_t>::value && "signatures have different type" ) );
     signature_t const& care = simulator.get_careset();
 
-    static constexpr uint32_t capacity = ( 1u << MaxNumVars );
+    static constexpr uint32_t capacity = ( 1u << MaxCutSize );
 
     auto const n = window.get_pivot();
     std::vector<signature_t const*> funcs_ptrs;
@@ -339,7 +339,7 @@ private:
         for ( auto const& l : cut )
           in_ptrs.push_back( &simulator.get( l ) );
         ntk_.foreach_output( n, [&]( auto const& f ) {
-          auto const func = extract_function<signature_t, MaxNumVars>( in_ptrs, simulator.get( f ), care );
+          auto const func = extract_function<signature_t, MaxCutSize>( in_ptrs, simulator.get( f ), care );
           cut.add_func( func );
         } );
       }
@@ -351,7 +351,7 @@ private:
   }
 
   template<typename WinMng, typename WinSim>
-  bool exactify_candidates_greedy( dependency_cut_t<Ntk, MaxNumVars>& cut, WinMng const& window, WinSim& simulator )
+  bool exactify_candidates_greedy( dependency_cut_t<Ntk, MaxCutSize>& cut, WinMng const& window, WinSim& simulator )
   {
     spfds_.reset();
     for ( auto const& l : cut )
@@ -359,7 +359,7 @@ private:
 
     auto cnt = cut.size();
     uint32_t best_num_edges = spfds_.get_num_edges();
-    while ( !spfds_.is_covered() && !spfds_.is_saturated() && ( cnt < MaxNumVars ) )
+    while ( !spfds_.is_covered() && !spfds_.is_saturated() && ( cnt < MaxCutSize ) )
     {
       std::optional<uint32_t> best_div;
       window.foreach_divisor( [&]( auto const& d, auto i ) {
@@ -384,12 +384,12 @@ private:
 
 private:
   Ntk& ntk_;
-  std::vector<dependency_cut_t<Ntk, MaxNumVars>> cuts_;
+  std::vector<dependency_cut_t<Ntk, MaxCutSize>> cuts_;
   std::vector<information_t> divs_info_;
   std::vector<information_t> info_from_;
   std::vector<bool> certain_from_;
   std::vector<information_t> root_info_;
-  spfd_manager<signature_t, ( 1u << MaxNumVars )> spfds_;
+  spfd_manager<signature_t, ( 1u << MaxCutSize )> spfds_;
 };
 
 } // namespace mockturtle

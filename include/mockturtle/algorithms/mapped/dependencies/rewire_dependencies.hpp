@@ -37,13 +37,13 @@
 namespace mockturtle
 {
 
-template<class Ntk, uint32_t MaxNumVars = 6u>
+template<class Ntk, uint32_t MaxCutSize = 6u>
 class rewire_dependencies
 {
 public:
   using signal_t = typename Ntk::signal;
   using node_index_t = typename Ntk::node;
-  using truth_table_t = kitty::static_truth_table<MaxNumVars>;
+  using truth_table_t = kitty::static_truth_table<MaxCutSize>;
   using functionality_t = kitty::ternary_truth_table<truth_table_t>;
 
 public:
@@ -60,7 +60,7 @@ public:
     cuts.clear();
     auto const n = window.get_pivot();
 
-    if ( ntk_.fanin_size( n ) > MaxNumVars )
+    if ( ntk_.fanin_size( n ) > MaxCutSize )
       return;
 
     std::vector<signature_t const*> sim_ptrs;
@@ -95,7 +95,7 @@ public:
           if ( kitty::equal( sim_curr & care, sim_cand & care ) )
           {
             leaves[ii] = f;
-            auto func = extract_function<signature_t, MaxNumVars>( sim_ptrs, sim_curr, care );
+            auto func = extract_function<signature_t, MaxCutSize>( sim_ptrs, sim_curr, care );
             cuts.emplace_back( dependency_t::REWIRE_DEP, n, leaves, func );
           }
         }
@@ -116,7 +116,7 @@ public:
 
 private:
   Ntk& ntk_;
-  std::vector<dependency_cut_t<Ntk, MaxNumVars>> cuts;
+  std::vector<dependency_cut_t<Ntk, MaxCutSize>> cuts;
 };
 
 } // namespace mockturtle

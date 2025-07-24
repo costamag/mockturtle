@@ -401,6 +401,8 @@ void extract( bound_list<DesignType>& list,
     return;
   }
 
+  std::unordered_map<uint64_t, value_type> sig_to_lit;
+
   // Recursive construction
   std::function<void( signal )> construct_rec = [&]( signal f ) {
     node n = ntk.get_node( f );
@@ -415,22 +417,31 @@ void extract( bound_list<DesignType>& list,
     }
 
     std::vector<value_type> children;
-    unsigned id = 0;
 
+    ntk.foreach_fanin( n, [&]( auto const& fi, auto ) {
+      construct_rec( fi );
+      children.emplace_back( sig_to_lit[fi] );
+    } );
+
+    value_type v;
     if constexpr ( has_has_cell_v<Ntk> )
     {
       auto cell = ntk.get_cell( n );
       assert( cell.gates.size() <= 1 && "[e] multiple output support not available" );
-      id = cell.gates[0].id;
+      auto const id = cell.gates[0].id;
+      v = list.add_gate( children, id );
+      sig_to_lit[f] = v;
+    }
+    else
+    {
+      auto const ids = ntk.get_binding_ids( n );
+      for ( auto i = 0u; i < ids.size(); ++i )
+      {
+        v = list.add_gate( children, ids[i] );
+        sig_to_lit[signal( { n, i } )] = v;
+      }
     }
 
-    ntk.foreach_fanin( n, [&]( auto const& fi, auto ) {
-      construct_rec( fi );
-      children.emplace_back( ntk.value( ntk.get_node( fi ) ) );
-    } );
-
-    auto v = list.add_gate( children, id );
-    ntk.set_value( n, v );
     ntk.set_visited( n, ntk.trav_id() );
   };
 
@@ -440,11 +451,11 @@ void extract( bound_list<DesignType>& list,
   {
     auto const n = ntk.get_node( inputs[i] );
     ntk.set_visited( n, ntk.trav_id() );
-    ntk.set_value( n, static_cast<int>( i ) ); // assign PI index
+    sig_to_lit[inputs[i]] = static_cast<value_type>( i ); // assign PI index
   }
 
   construct_rec( output );
-  list.add_output( ntk.value( ntk.get_node( output ) ) );
+  list.add_output( sig_to_lit[output] );
 }
 
 } // namespace mockturtle

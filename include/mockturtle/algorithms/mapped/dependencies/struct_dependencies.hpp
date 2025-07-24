@@ -39,7 +39,7 @@
 namespace mockturtle
 {
 
-template<class Ntk, uint32_t CubeSizeLeaves = 6u, uint32_t MaxNumVars = 6u>
+template<class Ntk, uint32_t CubeSizeLeaves = 6u, uint32_t MaxCutSize = 6u>
 class struct_dependencies
 {
 
@@ -151,7 +151,7 @@ public:
           new_leaves.push_back( fi );
         return;
       } );
-      if ( !abort && ( new_leaves.size() < MaxNumVars ) )
+      if ( !abort && ( new_leaves.size() < MaxCutSize ) )
       {
         if ( !contains( new_leaves, leaves_vec ) )
         {
@@ -189,12 +189,12 @@ public:
     {
       if ( !contains( leaves, leaves_vec ) )
       {
-        dependency_cut_t<Ntk, MaxNumVars> cut( dependency_t::STRUCT_DEP, n, leaves );
+        dependency_cut_t<Ntk, MaxCutSize> cut( dependency_t::STRUCT_DEP, n, leaves );
         std::vector<signature_t const*> in_ptrs;
         for ( auto const& l : leaves )
           in_ptrs.push_back( &simulator.get( l ) );
         ntk_.foreach_output( n, [&]( auto const& f ) {
-          auto const func = extract_function<signature_t, MaxNumVars>( in_ptrs, simulator.get( f ), care );
+          auto const func = extract_function<signature_t, MaxCutSize>( in_ptrs, simulator.get( f ), care );
           cut.add_func( func );
         } );
         cuts_.push_back( cut );
@@ -206,7 +206,7 @@ public:
 
 private:
   Ntk& ntk_;
-  std::vector<dependency_cut_t<Ntk, MaxNumVars>> cuts_;
+  std::vector<dependency_cut_t<Ntk, MaxCutSize>> cuts_;
 };
 
 } // namespace mockturtle

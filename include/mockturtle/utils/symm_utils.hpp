@@ -90,6 +90,53 @@ struct symmetries_t
   }
 };
 
+/*! \brief Permutes the input variables to have the ones closest to the output last
+ *
+ *  if fn = a < b and all variables are symmetric
+ *    3
+ *   2
+ *  1
+ * 0
+ * */
+template<typename E, typename V, typename CompFn>
+void sort_symmetric( std::vector<E>& entries, std::vector<V>& values, symmetries_t const& symm, CompFn&& fn )
+{
+  assert( ( entries.size() == values.size() ) &&
+          "[e] entries and values should have the same size" );
+  std::vector<uint8_t> inputs( entries.size() );
+  std::iota( inputs.begin(), inputs.end(), 0 );
+
+  for ( uint8_t i = 0; i < entries.size(); ++i )
+  {
+    if ( symm.has_symmetries( i ) )
+    {
+      uint8_t k = i;
+      int j = i - 1;
+      V value = values[inputs[i]];
+      bool swapped = true;
+      while ( swapped && ( j >= 0 ) )
+      {
+        if ( symm.symmetric( inputs[k], inputs[j] ) )
+        {
+          if ( fn( value, values[j] ) )
+          {
+            std::swap( entries[k], entries[j] );
+            std::swap( values[k], values[j] );
+            std::swap( inputs[k], inputs[j] );
+            k = j;
+            swapped = true;
+          }
+          else
+          {
+            swapped = false;
+          }
+        }
+        j--;
+      }
+    }
+  }
+}
+
 /*! \brief Store permutation transformations for up to 16 inputs */
 struct permutation_t
 {
@@ -144,6 +191,64 @@ std::vector<T> inverse_permute( permutation_t const& perm, std::vector<T> const&
     res[i] = vec[perm.inverse( i )];
   }
   return res;
+}
+
+template<typename T>
+std::vector<T> forward_permute( permutation_t const& perm, std::vector<T> const& vec )
+{
+  assert( vec.size() < 16 );
+  std::vector<T> res( vec.size() );
+  for ( auto i = 0u; i < vec.size(); ++i )
+  {
+    res[i] = vec[perm.forward( i )];
+  }
+  return res;
+}
+
+template<typename T>
+void inverse_permute_inplace_single( permutation_t const& perm, std::vector<T>& vec )
+{
+  vec = inverse_permute( perm, vec );
+}
+
+template<typename... Vecs>
+void inverse_permute_inplace( permutation_t const& perm, Vecs&... vecs )
+{
+  ( inverse_permute_inplace_single( perm, vecs ), ... );
+}
+
+template<typename T>
+void forward_permute_inplace_single( permutation_t const& perm, std::vector<T>& vec )
+{
+  vec = forward_permute( perm, vec );
+}
+
+template<typename... Vecs>
+void forward_permute_inplace( permutation_t const& perm, Vecs&... vecs )
+{
+  ( forward_permute_inplace_single( perm, vecs ), ... );
+}
+
+template<typename T, typename Fn>
+void foreach_permutation( std::vector<T>& vec, Fn&& fn )
+{
+  auto const n = vec.size();
+  auto perms = [&]( int i, auto&& perms_ref ) -> void {
+    if ( i >= n )
+    {
+      fn( vec );
+      return;
+    }
+
+    for ( int j = i; j < n; ++j )
+    {
+      std::swap( vec[i], vec[j] );
+      perms_ref( i + 1, perms_ref );
+      std::swap( vec[i], vec[j] ); // backtrack
+    }
+  };
+
+  perms( 0, perms );
 }
 
 } // namespace mockturtle

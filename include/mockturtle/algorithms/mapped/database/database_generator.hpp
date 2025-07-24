@@ -31,16 +31,16 @@
 */
 #pragma once
 
-#include "../../../algorithms/emap.hpp"
-#include "../../../algorithms/klut_to_graph.hpp"
-#include "../../../algorithms/rewrite.hpp"
-#include "../../../io/genlib_reader.hpp"
-#include "../../../io/write_verilog.hpp"
-#include "../../../networks/block.hpp"
-#include "../../../networks/mapped/bound_network.hpp"
-#include "../../../views/cell_view.hpp"
-#include "../../index_lists/lists/mapped/bound_list.hpp"
-#include "../../symm_utils.hpp"
+#include "../../../../io/genlib_reader.hpp"
+#include "../../../../io/write_verilog.hpp"
+#include "../../../../networks/block.hpp"
+#include "../../../../networks/mapped/bound_network.hpp"
+#include "../../../../symm_utils.hpp"
+#include "../../../../utils/index_lists/lists/mapped/bound_list.hpp"
+#include "../../../../views/cell_view.hpp"
+#include "../../../emap.hpp"
+#include "../../../klut_to_graph.hpp"
+#include "../../../rewrite.hpp"
 
 namespace mockturtle
 {
