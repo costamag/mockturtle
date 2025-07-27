@@ -44,7 +44,7 @@ enum dependency_t
   SIMULA_DEP  // non-structural dependency. Requires verification
 };
 
-template<class Ntk, uint32_t MaxNumVars>
+template<class Ntk, uint32_t MaxCutSize>
 struct dependency_cut_t
 {
 
@@ -52,7 +52,7 @@ public:
   using signal_t = typename Ntk::signal;
   using leaves_t = std::vector<signal_t>;
   using node_index_t = typename Ntk::node;
-  using truth_table_t = kitty::static_truth_table<MaxNumVars>;
+  using truth_table_t = kitty::static_truth_table<MaxCutSize>;
   using functionality_t = kitty::ternary_truth_table<truth_table_t>;
 
   dependency_cut_t( dependency_t const& type, node_index_t const& root, leaves_t const& leaves, functionality_t const& func )
