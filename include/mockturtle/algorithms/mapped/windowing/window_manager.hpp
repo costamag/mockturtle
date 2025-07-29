@@ -49,20 +49,21 @@ struct window_t
   std::vector<signal_t> inputs;
 };
 
-struct window_manager_params
+struct default_window_manager_params
 {
+  static constexpr uint32_t max_num_leaves = 8;
+  uint32_t max_num_divisors = 128;
   bool preserve_depth = true;
-  uint32_t odc_levels = 0;
-  uint32_t cut_limit = 8;
+  int32_t odc_levels = 0;
   uint32_t skip_fanout_limit_for_divisors{ 100 };
-  uint32_t max_num_divisors{ 128 };
 };
 
 struct window_manager_stats
 {
+  bool valid = false;
 };
 
-template<class Ntk>
+template<class Ntk, typename Params = default_window_manager_params>
 class window_manager
 {
 public:
@@ -70,7 +71,7 @@ public:
   using signal_t = typename Ntk::signal;
 
 public:
-  window_manager( Ntk& ntk, window_manager_params const& ps, window_manager_stats& st )
+  window_manager( Ntk& ntk, Params const& ps, window_manager_stats& st )
       : ntk_( ntk ),
         ps_( ps ),
         st_( st )
@@ -79,6 +80,7 @@ public:
 
   [[nodiscard]] bool run( node_index_t const& n )
   {
+    st_.valid = false;
     init( n );
 
     // label the MFFC nodes
@@ -110,6 +112,12 @@ public:
       // expand the divisors set to try removing upper-leaves with reconvergence
       collect_side_divisors();
     }
+    else
+    {
+      ntk_.foreach_output( n, [&]( auto f ) {
+        window_.outputs.push_back( f );
+      } );
+    }
 
     // expand the leaves to find reconvergences
     expand_leaves( [&]( node_index_t const& n ) { return !ntk_.is_pi( n ); },
@@ -127,6 +135,7 @@ public:
     topological_sort( window_.divs );
     topological_sort( window_.inputs );
 
+    st_.valid = true;
     return true;
   }
 
@@ -263,6 +272,11 @@ public:
   {
     ntk_.set_value( n, ( 2u | ( ntk_.trav_id() << 3u ) ) );
   }
+
+  bool is_valid()
+  {
+    return st_.valid;
+  }
 #pragma endregion
 
 #pragma region TFO
@@ -328,7 +342,7 @@ public:
           }
         } );
       }
-      if ( num_leaves <= ps_.cut_limit )
+      if ( num_leaves <= ps_.max_num_leaves )
       {
         window_.outputs = outputs;
         for ( auto const& f : inputs )
@@ -356,7 +370,7 @@ public:
   {
     while ( true )
     {
-      int best_cost = ps_.cut_limit - window_.inputs.size() + 1;
+      int best_cost = ps_.max_num_leaves - window_.inputs.size() + 1;
       std::optional<node_index_t> best_node = std::nullopt;
       for ( auto const& l : window_.inputs )
       {
@@ -401,7 +415,7 @@ public:
   int compute_leaf_cost( node_index_t const& n )
   {
     if ( ntk_.is_pi( n ) )
-      return ps_.cut_limit;
+      return ps_.max_num_leaves;
 
     int cost = -static_cast<int>( ntk_.num_outputs( n ) );
     ntk_.foreach_fanin( n, [&]( auto const& fi, auto ii ) {
@@ -608,7 +622,7 @@ public:
 private:
   Ntk& ntk_;
   window_t<Ntk> window_;
-  window_manager_params const& ps_;
+  Params const& ps_;
   window_manager_stats& st_;
 };
 

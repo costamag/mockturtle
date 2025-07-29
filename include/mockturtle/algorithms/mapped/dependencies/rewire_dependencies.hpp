@@ -37,14 +37,21 @@
 namespace mockturtle
 {
 
-template<class Ntk, uint32_t MaxCutSize = 6u>
+struct default_rewire_params
+{
+  static constexpr uint32_t max_cuts_size = 6u;
+};
+
+template<class Ntk, typename StaticParams = default_rewire_params>
 class rewire_dependencies
 {
 public:
+  static constexpr uint32_t max_cuts_size = StaticParams::max_cuts_size;
   using signal_t = typename Ntk::signal;
   using node_index_t = typename Ntk::node;
-  using truth_table_t = kitty::static_truth_table<MaxCutSize>;
+  using truth_table_t = kitty::static_truth_table<max_cuts_size>;
   using functionality_t = kitty::ternary_truth_table<truth_table_t>;
+  using cut_t = dependency_cut_t<Ntk, max_cuts_size>;
 
 public:
   rewire_dependencies( Ntk& ntk )
@@ -60,7 +67,7 @@ public:
     cuts.clear();
     auto const n = window.get_pivot();
 
-    if ( ntk_.fanin_size( n ) > MaxCutSize )
+    if ( ntk_.fanin_size( n ) > max_cuts_size )
       return;
 
     std::vector<signature_t const*> sim_ptrs;
@@ -76,16 +83,17 @@ public:
       tts_curr.push_back( simulator.get( f ) );
     } );
 
-    signature_t obs_care = simulator.compute_observability_careset( window );
+    signature_t obs_care = simulator.get_careset();
     ntk_.foreach_fanin( n, [&]( auto fi, auto ii ) {
       signature_t flipped = ~simulator.get( fi );
       sim_ptrs[ii] = &flipped;
       auto tts_flip = ntk_.compute( n, sim_ptrs );
-      signature_t care = obs_care;
+      signature_t dont_care = ~obs_care;
       for ( auto i = 0u; i < tts_curr.size(); ++i )
       {
-        care &= ( tts_flip[i] ^ tts_curr[i] );
+        dont_care |= ~( tts_flip[i] ^ tts_curr[i] );
       }
+      auto const care = ~dont_care;
       std::vector<signal_t> leaves = leaves_curr;
       window.foreach_divisor( [&]( auto const& f, auto i ) {
         if ( f != fi )
@@ -95,7 +103,7 @@ public:
           if ( kitty::equal( sim_curr & care, sim_cand & care ) )
           {
             leaves[ii] = f;
-            auto func = extract_function<signature_t, MaxCutSize>( sim_ptrs, sim_curr, care );
+            auto func = extract_function<signature_t, max_cuts_size>( sim_ptrs, sim_curr, care );
             cuts.emplace_back( dependency_t::REWIRE_DEP, n, leaves, func );
           }
         }
@@ -116,7 +124,7 @@ public:
 
 private:
   Ntk& ntk_;
-  std::vector<dependency_cut_t<Ntk, MaxCutSize>> cuts;
+  std::vector<cut_t> cuts;
 };
 
 } // namespace mockturtle

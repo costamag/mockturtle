@@ -789,7 +789,7 @@ public:
 
   uint64_t signal_to_index( signal_t const& f ) const
   {
-    return static_cast<uint32_t>( f.data );
+    return static_cast<uint64_t>( f.data );
   }
 
   node_index_t ci_at( uint32_t index ) const

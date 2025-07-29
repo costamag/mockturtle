@@ -1,6 +1,6 @@
 #pragma once
 
-class analyzer_params
+class evaluator_params
 {
 public:
   uint32_t max_num_roots = std::numeric_limits<uint32_t>::max();

@@ -32,6 +32,7 @@
 
 #pragma once
 
+#include "../../../networks/events.hpp"
 #include "../../network_exploration/tfo_manager.hpp"
 #include "../../signal_map.hpp"
 #include <limits>

@@ -39,27 +39,37 @@
 namespace mockturtle
 {
 
-template<class Ntk, uint32_t CubeSizeLeaves = 6u, uint32_t MaxCutSize = 6u, uint32_t MaxCubeSize = 12u>
+struct default_window_params
+{
+  static constexpr uint32_t num_vars_sign = 6u;
+  static constexpr uint32_t max_cuts_size = 6u;
+  static constexpr uint32_t max_cube_spfd = 12u;
+};
+
+template<typename Ntk, typename StaticParams = default_window_params>
 class window_dependencies
 {
 
 public:
+  static constexpr uint32_t num_vars_sign = StaticParams::num_vars_sign;
+  static constexpr uint32_t max_cuts_size = StaticParams::max_cuts_size;
+  static constexpr uint32_t max_cube_spfd = StaticParams::max_cube_spfd;
   using signal_t = typename Ntk::signal;
   using node_index_t = typename Ntk::node;
-  static constexpr uint32_t NumBits = 1u << CubeSizeLeaves;
-  static constexpr uint32_t ExaNumPairs = log2_ceil( NumBits * ( NumBits - 1 ) / 2 );
-  static constexpr uint32_t NumPairs = std::min( MaxCubeSize, ExaNumPairs );
-  using information_t = kitty::static_truth_table<NumPairs>;
-  using signature_t = kitty::static_truth_table<CubeSizeLeaves>;
+  static constexpr uint32_t num_bits = 1u << num_vars_sign;
+  static constexpr uint32_t exact_num_pairs = log2_ceil( num_bits * ( num_bits - 1 ) / 2 );
+  static constexpr uint32_t num_pairs = std::min( max_cube_spfd, exact_num_pairs );
+  using information_t = kitty::static_truth_table<num_pairs>;
+  using signature_t = kitty::static_truth_table<num_vars_sign>;
 
 public:
   window_dependencies( Ntk& ntk )
       : ntk_( ntk )
   {
-    if constexpr ( CubeSizeLeaves > 6u )
+    if constexpr ( num_vars_sign > 6u )
     {
       signature_t tmp;
-      kitty::simd::test_avx2_advantage( tmp, CubeSizeLeaves );
+      kitty::simd::test_avx2_advantage( tmp, num_vars_sign );
     }
   }
 
@@ -273,7 +283,7 @@ private:
     }
     if ( ( begin >= divs_info_.size() ) )
       return;
-    if ( cut.size() >= MaxCutSize )
+    if ( cut.size() >= max_cuts_size )
       return;
 
     if ( ( begin < ( divs_info_.size() - 1 ) ) && is_possible_from( begin + 1, todos ) )
@@ -318,7 +328,7 @@ private:
     assert( ( std::is_same<signature_t, typename WinSim::signature_t>::value && "signatures have different type" ) );
     signature_t const& care = simulator.get_careset();
 
-    static constexpr uint32_t capacity = ( 1u << MaxCutSize );
+    static constexpr uint32_t capacity = ( 1u << max_cuts_size );
 
     auto const n = window.get_pivot();
     std::vector<signature_t const*> funcs_ptrs;
@@ -339,7 +349,7 @@ private:
         for ( auto const& l : cut )
           in_ptrs.push_back( &simulator.get( l ) );
         ntk_.foreach_output( n, [&]( auto const& f ) {
-          auto const func = extract_function<signature_t, MaxCutSize>( in_ptrs, simulator.get( f ), care );
+          auto const func = extract_function<signature_t, max_cuts_size>( in_ptrs, simulator.get( f ), care );
           cut.add_func( func );
         } );
       }
@@ -351,7 +361,7 @@ private:
   }
 
   template<typename WinMng, typename WinSim>
-  bool exactify_candidates_greedy( dependency_cut_t<Ntk, MaxCutSize>& cut, WinMng const& window, WinSim& simulator )
+  bool exactify_candidates_greedy( dependency_cut_t<Ntk, max_cuts_size>& cut, WinMng const& window, WinSim& simulator )
   {
     spfds_.reset();
     for ( auto const& l : cut )
@@ -359,7 +369,7 @@ private:
 
     auto cnt = cut.size();
     uint32_t best_num_edges = spfds_.get_num_edges();
-    while ( !spfds_.is_covered() && !spfds_.is_saturated() && ( cnt < MaxCutSize ) )
+    while ( !spfds_.is_covered() && !spfds_.is_saturated() && ( cnt < max_cuts_size ) )
     {
       std::optional<uint32_t> best_div;
       window.foreach_divisor( [&]( auto const& d, auto i ) {
@@ -384,12 +394,12 @@ private:
 
 private:
   Ntk& ntk_;
-  std::vector<dependency_cut_t<Ntk, MaxCutSize>> cuts_;
+  std::vector<dependency_cut_t<Ntk, max_cuts_size>> cuts_;
   std::vector<information_t> divs_info_;
   std::vector<information_t> info_from_;
   std::vector<bool> certain_from_;
   std::vector<information_t> root_info_;
-  spfd_manager<signature_t, ( 1u << MaxCutSize )> spfds_;
+  spfd_manager<signature_t, ( 1u << max_cuts_size )> spfds_;
 };
 
 } // namespace mockturtle

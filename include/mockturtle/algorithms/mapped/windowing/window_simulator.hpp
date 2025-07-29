@@ -64,7 +64,8 @@ public:
     init();
   }
 
-  void run( window_manager<Ntk> const& window )
+  template<typename WinMngr>
+  void run( WinMngr const& window )
   {
     sims_.reserve( window.size() );
     sims_.resize( CubeSizeLeaves );
@@ -106,7 +107,8 @@ public:
     return care_;
   }
 
-  signature_t const compute_observability_careset( window_manager<Ntk> const& window )
+  template<typename WinMngr>
+  signature_t const compute_observability_careset( WinMngr const& window )
   {
     signature_t care;
     auto n = window.get_pivot();
@@ -136,19 +138,21 @@ public:
         re_compute( window, no );
       } );
 
-      window.foreach_output( [&]( auto f, auto io ) {
-        if ( f.output == 0 )
+      window.foreach_output( [&]( auto fo, auto io ) {
+        if ( fo.output == 0 )
         {
-          auto const n = ntk_.get_node( f );
+          auto const no = ntk_.get_node( fo );
           std::vector<signature_t> old;
-          ntk_.foreach_output( n, [&]( auto const& fo ) {
-            old.push_back( sims_[sig_to_sim_[fo]] );
+          ntk_.foreach_output( no, [&]( auto const& foo ) {
+            old.push_back( sims_[sig_to_sim_[foo]] );
           } );
 
-          re_compute( window, n );
+          re_compute( window, no );
 
-          ntk_.foreach_output( n, [&]( auto const& fo ) {
-            care |= ( old[io] ^ sims_[sig_to_sim_[fo]] );
+          int ioo = 0;
+          ntk_.foreach_output( no, [&]( auto const& foo ) {
+            assert( old[ioo].num_vars() == sims_[sig_to_sim_[foo]].num_vars() );
+            care |= ( old[ioo++] ^ sims_[sig_to_sim_[foo]] );
           } );
         }
       } );
@@ -172,7 +176,8 @@ public:
     return care;
   }
 
-  void compute( window_manager<Ntk> const& window, node_index_t const& n )
+  template<typename WinMngr>
+  void compute( WinMngr const& window, node_index_t const& n )
   {
     if ( window.is_leaf( n ) )
       return;
@@ -193,7 +198,8 @@ public:
     return;
   }
 
-  void re_compute( window_manager<Ntk> const& window, node_index_t const& n )
+  template<typename WinMngr>
+  void re_compute( WinMngr const& window, node_index_t const& n )
   {
     if ( window.is_leaf( n ) )
       return;
@@ -218,7 +224,8 @@ private:
       kitty::create_nth_var( sims_[i], i );
   }
 
-  void assign_inputs( window_manager<Ntk> const& window )
+  template<typename WinMngr>
+  void assign_inputs( WinMngr const& window )
   {
     sims_.resize( CubeSizeLeaves );
     window.foreach_input( [&]( auto const& f, auto i ) {

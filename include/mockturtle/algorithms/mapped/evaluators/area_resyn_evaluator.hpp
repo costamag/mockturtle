@@ -24,7 +24,7 @@
  */
 
 /*!
-  \file area_analyzer.hpp
+  \file area_evaluator.hpp
   \brief Analyzer of the area
 
   \author Andrea Costamagna
@@ -32,13 +32,14 @@
 
 #pragma once
 
-#include "analyzers_utils.hpp"
+#include "../../../utils/analyzers/trackers/arrival_times_tracker.hpp"
+#include "evaluators_utils.hpp"
 
 namespace mockturtle
 {
 
 template<class Ntk>
-class area_resyn_analyzer
+class area_resyn_evaluator
 {
 public:
   using node_index_t = typename Ntk::node;
@@ -48,6 +49,7 @@ public:
   static cost_t constexpr max_cost = std::numeric_limits<cost_t>::max();
   static bool constexpr pass_window = false;
   static bool constexpr node_depend = false;
+  static bool constexpr has_arrival = true;
 
   struct node_with_cost_t
   {
@@ -56,11 +58,17 @@ public:
   };
 
 public:
-  area_resyn_analyzer( Ntk& ntk, analyzer_params const& ps )
+  area_resyn_evaluator( Ntk& ntk, evaluator_params const& ps )
       : ntk_( ntk ),
         ps_( ps ),
-        nodes_( ntk_.size() )
+        nodes_( ntk_.size() ),
+        arrival_( ntk_ )
   {
+  }
+
+  double get_arrival( signal_t const& f ) const
+  {
+    return arrival_.get_time( f );
   }
 
   template<class List_t>
@@ -74,6 +82,27 @@ public:
     if ( ntk_.fanout_size( n ) == 0 )
       ntk_.take_out_node( n );
     return cost_deref;
+  }
+
+  cost_t evaluate_rewiring( node_index_t const& n, std::vector<signal_t> const& new_children, std::vector<signal_t> const& win_leaves )
+  {
+    for ( auto const& f : new_children )
+      ntk_.incr_fanout_size( ntk_.get_node( f ) );
+
+    auto const cost = evaluate( n, win_leaves ) - ntk_.get_area( n );
+
+    for ( auto const& f : new_children )
+      ntk_.decr_fanout_size( ntk_.get_node( f ) );
+
+    return cost;
+  }
+
+  cost_t evaluate( std::vector<node_index_t> const& mffc ) const
+  {
+    cost_t cost = 0;
+    for ( auto const& m : mffc )
+      cost += ntk_.get_area( m );
+    return cost;
   }
 
   cost_t evaluate( node_index_t const& n, std::vector<node_index_t> const& leaves )
@@ -230,8 +259,9 @@ private:
 
 private:
   Ntk& ntk_;
-  analyzer_params const& ps_;
+  evaluator_params const& ps_;
   std::vector<node_with_cost_t> nodes_;
+  arrival_times_tracker<Ntk> arrival_;
 };
 
 } /* namespace mockturtle */

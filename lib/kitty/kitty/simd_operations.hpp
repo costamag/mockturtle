@@ -164,6 +164,8 @@ constexpr auto scalar_operation()
 template<Operation Op, bool UseCache, typename TT>
 inline TT binary_operation( const TT& tta, const TT& ttb )
 {
+  assert( tta.num_blocks() == ttb.num_blocks() );
+
   TT result = tta;
   auto& datar = result._bits;
   const auto& data2 = ttb._bits;
@@ -186,6 +188,8 @@ inline TT binary_operation( const TT& tta, const TT& ttb )
 #endif
   /* Fallback to the scalar version for the remaining words. */
   auto scalar_op = scalar_operation<Op, T>();
+  assert( datar.size() == data2.size() );
+  assert( datar.size() >= i );
   std::transform( datar.cbegin() + i, datar.cend(), data2.cbegin() + i, datar.begin() + i, scalar_op );
 
   result.mask_bits();

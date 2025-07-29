@@ -15,6 +15,11 @@ std::string const test_library = "GATE   inv1    1.0 O=!a ;         PIN * INV 1 
                                  "GATE   or2     1.0 O=a+b;         PIN * INV 1   999 1.0 0.0 1.0 0.0\n"
                                  "GATE   xor2    1.0 O=a^b;         PIN * INV 1   999 3.0 0.0 3.0 0.0";
 
+struct window_manager_params : mockturtle::default_window_manager_params
+{
+  static constexpr uint32_t max_num_leaves = 8u;
+};
+
 TEST_CASE( "Simulate a small window", "[window_simulator]" )
 {
   using Ntk = mockturtle::bound_network<mockturtle::bound::design_type_t::CELL_BASED, 2>;
@@ -51,9 +56,9 @@ TEST_CASE( "Simulate a small window", "[window_simulator]" )
   mockturtle::window_manager_stats st;
   DNtk dntk( ntk );
 
-  mockturtle::window_manager_params ps;
-  ps.odc_levels = 4;
-  ps.cut_limit = 8;
+  window_manager_params ps;
+  ps.odc_levels = 4u;
+
   mockturtle::window_manager<DNtk> window( dntk, ps, st );
   CHECK( window.run( dntk.get_node( fs[2] ) ) );
   mockturtle::window_simulator sim( dntk );

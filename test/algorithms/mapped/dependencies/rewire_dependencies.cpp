@@ -17,6 +17,11 @@ std::string const test_library = "GATE   and2    1.0 O=a*b;                 PIN 
                                  "GATE   or3     1.0 O=a+b+c;               PIN * INV 1   999 1.0 0.0 1.0 0.0\n"
                                  "GATE   maj3    1.0 O=(a*b)+(b*c)+(a*c);   PIN * INV 1   999 1.0 0.0 1.0 0.0";
 
+struct window_manager_params : mockturtle::default_window_manager_params
+{
+  static constexpr uint32_t max_num_leaves = 16u;
+};
+
 TEST_CASE( "Rewiring analysis for reconvergent network", "[rewire_dependencies]" )
 {
   using Ntk = mockturtle::bound_network<mockturtle::bound::design_type_t::CELL_BASED, 2>;
@@ -62,10 +67,10 @@ TEST_CASE( "Rewiring analysis for reconvergent network", "[rewire_dependencies]"
   mockturtle::window_manager_stats st;
   DNtk dntk( ntk );
 
-  mockturtle::window_manager_params ps;
-  ps.odc_levels = 4;
-  ps.cut_limit = 16;
-  mockturtle::window_manager<DNtk> window( dntk, ps, st );
+  window_manager_params ps;
+  ps.odc_levels = 4u;
+
+  mockturtle::window_manager<DNtk, window_manager_params> window( dntk, ps, st );
   CHECK( window.run( dntk.get_node( fs[17] ) ) );
   mockturtle::window_simulator sim( dntk );
   sim.run( window );
@@ -75,7 +80,7 @@ TEST_CASE( "Rewiring analysis for reconvergent network", "[rewire_dependencies]"
   auto ttd = sim.get( fs[5] );
   auto tte = sim.get( fs[6] );
   auto ttf = sim.get( fs[7] );
-  auto care = sim.compute_observability_careset( window );
+  auto care = sim.get_careset();
   CHECK( kitty::equal( care, ~( ( tta & ttb ) | ( ttc & ttd ) | ( tte & ttf ) ) ) );
 
   mockturtle::rewire_dependencies dep( ntk );

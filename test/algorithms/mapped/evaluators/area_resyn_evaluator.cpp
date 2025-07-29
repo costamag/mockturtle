@@ -4,7 +4,7 @@
 #include <vector>
 
 #include <lorina/genlib.hpp>
-#include <mockturtle/algorithms/mapped/analyzers/area_resyn_analyzer.hpp>
+#include <mockturtle/algorithms/mapped/evaluators/area_resyn_evaluator.hpp>
 #include <mockturtle/io/genlib_reader.hpp>
 #include <mockturtle/io/super_reader.hpp>
 #include <mockturtle/networks/mapped/bound_network.hpp>
@@ -28,7 +28,7 @@ std::string const test_library = "GATE   inv1    1 O=!a;            PIN * INV 1 
                                  "GATE   fa      6 C=a*b+a*c+b*c;   PIN * INV 1 999 2.1 0.4 2.1 0.4\n"
                                  "GATE   fa      6 S=a^b^c;         PIN * INV 1 999 3.0 0.4 3.0 0.4";
 
-TEST_CASE( "Area analyzer for resynthesis of mapped networks", "[area_resyn_analyzer]" )
+TEST_CASE( "Area evaluator for resynthesis of mapped networks", "[area_resyn_evaluator]" )
 {
   using bound_network = mockturtle::bound_network<bound::design_type_t::CELL_BASED, 2>;
   using signal = bound_network::signal;
@@ -55,21 +55,21 @@ TEST_CASE( "Area analyzer for resynthesis of mapped networks", "[area_resyn_anal
   ntk.create_po( f6 );
   ntk.create_po( f7 );
 
-  analyzer_params ps;
+  evaluator_params ps;
   ps.max_num_roots = 7;
-  area_resyn_analyzer analyzer( ntk, ps );
+  area_resyn_evaluator evaluator( ntk, ps );
 
   std::vector<node> sorted_nodes;
-  analyzer.foreach_gate( [&]( auto n ) {
+  evaluator.foreach_gate( [&]( auto n ) {
     sorted_nodes.push_back( n );
   } );
 
   CHECK( ntk.area() == 14 );
   CHECK( sorted_nodes[0] == 11 );
   CHECK( sorted_nodes[1] == 9 );
-  CHECK( analyzer.evaluate( f6.index, std::vector<signal>( { a, b, c, d } ) ) == 8 );
-  CHECK( analyzer.evaluate( f6.index, std::vector<signal>( { f1, f2, f3 } ) ) == 6 );
-  CHECK( analyzer.evaluate( f6.index, std::vector<signal>( { f4, f5 } ) ) == 2 );
+  CHECK( evaluator.evaluate( f6.index, std::vector<signal>( { a, b, c, d } ) ) == 8 );
+  CHECK( evaluator.evaluate( f6.index, std::vector<signal>( { f1, f2, f3 } ) ) == 6 );
+  CHECK( evaluator.evaluate( f6.index, std::vector<signal>( { f4, f5 } ) ) == 2 );
 
   bound_list<bound::design_type_t::CELL_BASED> list;
   list.add_inputs( 3 );
@@ -80,7 +80,7 @@ TEST_CASE( "Area analyzer for resynthesis of mapped networks", "[area_resyn_anal
   auto const l2 = list.add_gate( { lb, lc }, 2 );
   auto const l3 = list.add_gate( { l1, l2 }, 4 );
   list.add_output( l3 );
-  auto cost = analyzer.evaluate( list, std::vector<signal>( { a, b, c } ) );
+  auto cost = evaluator.evaluate( list, std::vector<signal>( { a, b, c } ) );
   CHECK( cost == 4 );
   CHECK( ntk.area() == 14 );
 }

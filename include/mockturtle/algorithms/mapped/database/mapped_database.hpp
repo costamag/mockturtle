@@ -34,6 +34,7 @@
 #include "../../../io/write_verilog.hpp"
 #include "../../../utils/index_lists/lists/mapped/bound_list.hpp"
 #include "../../../utils/symm_utils.hpp"
+#include <kitty/kitty.hpp>
 
 namespace mockturtle
 {
@@ -293,6 +294,27 @@ public:
     times.resize( MaxNumVars, std::numeric_limits<double>::max() );
     // check if the representative is already
     auto match = get_match( func );
+    if ( match )
+    {
+      auto const row_index = ( *match ).row;
+      database_row_t const& row = database_[row_index];
+      auto const perm = ( *match ).perm;
+      auto const symm = row.symm;
+      perm_matching( leaves, times, perm );
+      time_matching( leaves, times, symm );
+      return row_index;
+    }
+    return std::nullopt;
+  }
+
+  template<typename E, typename T>
+  std::optional<uint64_t> boolean_matching( std::vector<kitty::ternary_truth_table<truth_table_t>> const& funcs, std::vector<E>& leaves, std::vector<T>& times )
+  {
+    leaves.resize( MaxNumVars, std::numeric_limits<uint64_t>::max() );
+    times.resize( MaxNumVars, std::numeric_limits<double>::max() );
+    assert( funcs.size() == 1u && "[e] Boolean matching for multiple output functions not yet implemented" );
+    // check if the representative is already
+    auto match = get_match( funcs[0]._bits );
     if ( match )
     {
       auto const row_index = ( *match ).row;

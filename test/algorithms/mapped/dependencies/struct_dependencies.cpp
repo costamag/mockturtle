@@ -17,6 +17,17 @@ std::string const test_library = "GATE   and2    1.0 O=a*b;                 PIN 
                                  "GATE   or3     1.0 O=a+b+c;               PIN * INV 1   999 1.0 0.0 1.0 0.0\n"
                                  "GATE   maj3    1.0 O=(a*b)+(b*c)+(a*c);   PIN * INV 1   999 1.0 0.0 1.0 0.0";
 
+struct custom_struct_params
+{
+  static constexpr uint32_t num_vars_sign = 6u;
+  static constexpr uint32_t max_cuts_size = 6u;
+};
+
+struct window_manager_params : mockturtle::default_window_manager_params
+{
+  static constexpr uint32_t max_num_leaves = 6u;
+};
+
 TEST_CASE( "Enumerate structural dependency cuts", "[struct_dependencies]" )
 {
   using Ntk = mockturtle::bound_network<mockturtle::bound::design_type_t::CELL_BASED, 2>;
@@ -50,19 +61,16 @@ TEST_CASE( "Enumerate structural dependency cuts", "[struct_dependencies]" )
   mockturtle::window_manager_stats st;
   DNtk dntk( ntk );
 
-  static constexpr uint32_t MaxNumLeaves = 6u;
-  static constexpr uint32_t MaxNumVars = 6u;
-
-  mockturtle::window_manager_params ps;
+  window_manager_params ps;
   ps.odc_levels = 4;
-  ps.cut_limit = MaxNumLeaves;
   mockturtle::window_manager<DNtk> window( dntk, ps, st );
   CHECK( window.run( dntk.get_node( fs[8] ) ) );
   auto const leaves = window.get_leaves();
   auto const divs = window.get_divisors();
-  mockturtle::window_simulator<DNtk, MaxNumLeaves> sim( dntk );
+  mockturtle::window_simulator<DNtk, custom_struct_params::max_cuts_size> sim( dntk );
   sim.run( window );
-  mockturtle::struct_dependencies<DNtk, MaxNumLeaves, MaxNumVars> dep( dntk );
+
+  mockturtle::struct_dependencies<DNtk, custom_struct_params> dep( dntk );
   dep.run( window, sim );
 
   std::set<std::set<signal>> sets;

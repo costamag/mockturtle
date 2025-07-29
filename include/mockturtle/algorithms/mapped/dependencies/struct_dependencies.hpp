@@ -39,15 +39,22 @@
 namespace mockturtle
 {
 
-template<class Ntk, uint32_t CubeSizeLeaves = 6u, uint32_t MaxCutSize = 6u>
+struct default_struct_params
+{
+  static constexpr uint32_t num_vars_sign = 6u;
+  static constexpr uint32_t max_cuts_size = 6u;
+};
+
+template<class Ntk, typename StaticParams = default_struct_params>
 class struct_dependencies
 {
 
 public:
+  static constexpr uint32_t num_vars_sign = StaticParams::num_vars_sign;
+  static constexpr uint32_t max_cuts_size = StaticParams::max_cuts_size;
   using signal_t = typename Ntk::signal;
   using node_index_t = typename Ntk::node;
-  static constexpr uint32_t NumBits = 1u << CubeSizeLeaves;
-  using signature_t = kitty::static_truth_table<CubeSizeLeaves>;
+  using signature_t = kitty::static_truth_table<num_vars_sign>;
 
 public:
   struct_dependencies( Ntk& ntk )
@@ -151,7 +158,7 @@ public:
           new_leaves.push_back( fi );
         return;
       } );
-      if ( !abort && ( new_leaves.size() < MaxCutSize ) )
+      if ( !abort && ( new_leaves.size() < max_cuts_size ) )
       {
         if ( !contains( new_leaves, leaves_vec ) )
         {
@@ -189,12 +196,12 @@ public:
     {
       if ( !contains( leaves, leaves_vec ) )
       {
-        dependency_cut_t<Ntk, MaxCutSize> cut( dependency_t::STRUCT_DEP, n, leaves );
+        dependency_cut_t<Ntk, max_cuts_size> cut( dependency_t::STRUCT_DEP, n, leaves );
         std::vector<signature_t const*> in_ptrs;
         for ( auto const& l : leaves )
           in_ptrs.push_back( &simulator.get( l ) );
         ntk_.foreach_output( n, [&]( auto const& f ) {
-          auto const func = extract_function<signature_t, MaxCutSize>( in_ptrs, simulator.get( f ), care );
+          auto const func = extract_function<signature_t, max_cuts_size>( in_ptrs, simulator.get( f ), care );
           cut.add_func( func );
         } );
         cuts_.push_back( cut );
@@ -206,7 +213,7 @@ public:
 
 private:
   Ntk& ntk_;
-  std::vector<dependency_cut_t<Ntk, MaxCutSize>> cuts_;
+  std::vector<dependency_cut_t<Ntk, max_cuts_size>> cuts_;
 };
 
 } // namespace mockturtle

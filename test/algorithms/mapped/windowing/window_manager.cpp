@@ -13,6 +13,16 @@ std::string const test_library = "GATE   inv1    1.0 O=!a ;         PIN * INV 1 
                                  "GATE   and2    1.0 O=a*b;         PIN * INV 1   999 1.0 0.0 1.0 0.0\n"
                                  "GATE   xor2    1.0 O=a^b;         PIN * INV 1   999 3.0 0.0 3.0 0.0";
 
+struct window_manager_params1 : mockturtle::default_window_manager_params
+{
+  static constexpr uint32_t max_num_leaves = 3u;
+};
+
+struct window_manager_params2 : mockturtle::default_window_manager_params
+{
+  static constexpr uint32_t max_num_leaves = 8u;
+};
+
 TEST_CASE( "Window construction with reconvergent structure", "[window_manager]" )
 {
 
@@ -62,10 +72,10 @@ TEST_CASE( "Window construction with reconvergent structure", "[window_manager]"
   mockturtle::window_manager_stats st;
   DNtk dntk( ntk );
 
-  mockturtle::window_manager_params ps;
-  ps.odc_levels = 3;
-  ps.cut_limit = 3;
-  mockturtle::window_manager<DNtk> window( dntk, ps, st );
+  window_manager_params1 ps1;
+  ps1.odc_levels = 3u;
+
+  mockturtle::window_manager<DNtk, window_manager_params1> window( dntk, ps1, st );
 
   CHECK( window.run( dntk.get_node( fs[13] ) ) );
   auto const mffc = window.get_mffc();
@@ -77,8 +87,10 @@ TEST_CASE( "Window construction with reconvergent structure", "[window_manager]"
   auto const leaves = window.get_leaves();
   CHECK( leaves == std::vector<typename Ntk::signal_t>( { fs[8], fs[9], fs[10] } ) );
 
-  ps.cut_limit = 8;
-  mockturtle::window_manager<DNtk> window2( dntk, ps, st );
+  window_manager_params2 ps2;
+  ps2.odc_levels = 3u;
+
+  mockturtle::window_manager<DNtk, window_manager_params2> window2( dntk, ps2, st );
 
   CHECK( window2.run( dntk.get_node( fs[13] ) ) );
   auto const mffc2 = window2.get_mffc();

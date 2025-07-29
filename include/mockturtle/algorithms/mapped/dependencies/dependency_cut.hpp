@@ -55,6 +55,8 @@ public:
   using truth_table_t = kitty::static_truth_table<MaxCutSize>;
   using functionality_t = kitty::ternary_truth_table<truth_table_t>;
 
+  dependency_cut_t() = default;
+
   dependency_cut_t( dependency_t const& type, node_index_t const& root, leaves_t const& leaves, functionality_t const& func )
       : type( type ), root( root ), leaves( leaves ), func( { func } )
   {}
@@ -71,6 +73,16 @@ public:
   void add_func( functionality_t const& tt )
   {
     func.push_back( tt );
+  }
+
+  typename std::vector<signal_t>::iterator cbegin()
+  {
+    return leaves.cbegin();
+  }
+
+  typename std::vector<signal_t>::iterator cend()
+  {
+    return leaves.cend();
   }
 
   typename std::vector<signal_t>::iterator begin()
