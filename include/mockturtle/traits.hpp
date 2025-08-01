@@ -123,6 +123,21 @@ template<class Ntk>
 inline constexpr bool is_crossed_network_type_v = is_crossed_network_type<Ntk>::value;
 #pragma endregion
 
+#pragma region is_aig_network_type
+template<class Ntk, class = void>
+struct is_bound_network_type : std::false_type
+{
+};
+
+template<class Ntk>
+struct is_bound_network_type<Ntk, std::enable_if_t<Ntk::is_bound_network_type, std::void_t<decltype( Ntk::is_bound_network_type )>>> : std::true_type
+{
+};
+
+template<class Ntk>
+inline constexpr bool is_bound_network_type_v = is_bound_network_type<Ntk>::value;
+#pragma endregion
+
 #pragma region has_clone
 template<class Ntk, class = void>
 struct has_clone : std::false_type
@@ -873,6 +888,21 @@ template<class Ntk>
 inline constexpr bool has_size_v = has_size<Ntk>::value;
 #pragma endregion
 
+#pragma region has_signal_size
+template<class Ntk, class = void>
+struct has_signal_size : std::false_type
+{
+};
+
+template<class Ntk>
+struct has_signal_size<Ntk, std::void_t<decltype( std::declval<Ntk>().signal_size() )>> : std::true_type
+{
+};
+
+template<class Ntk>
+inline constexpr bool has_signal_size_v = has_signal_size<Ntk>::value;
+#pragma endregion
+
 #pragma region has_num_cis
 template<class Ntk, class = void>
 struct has_num_cis : std::false_type
@@ -1563,6 +1593,21 @@ template<class Ntk>
 inline constexpr bool has_node_to_index_v = has_node_to_index<Ntk>::value;
 #pragma endregion
 
+#pragma region has_signal_to_index
+template<class Ntk, class = void>
+struct has_signal_to_index : std::false_type
+{
+};
+
+template<class Ntk>
+struct has_signal_to_index<Ntk, std::void_t<decltype( std::declval<Ntk>().signal_to_index( std::declval<signal<Ntk>>() ) )>> : std::true_type
+{
+};
+
+template<class Ntk>
+inline constexpr bool has_signal_to_index_v = has_signal_to_index<Ntk>::value;
+#pragma endregion
+
 #pragma region has_index_to_node
 template<class Ntk, class = void>
 struct has_index_to_node : std::false_type
@@ -1951,6 +1996,21 @@ struct has_foreach_fanout<Ntk, std::void_t<decltype( std::declval<Ntk>().foreach
 
 template<class Ntk>
 inline constexpr bool has_foreach_fanout_v = has_foreach_fanout<Ntk>::value;
+#pragma endregion
+
+#pragma region has_foreach_output
+template<class Ntk, class = void>
+struct has_foreach_output : std::false_type
+{
+};
+
+template<class Ntk>
+struct has_foreach_output<Ntk, std::void_t<decltype( std::declval<Ntk>().foreach_output( std::declval<node<Ntk>>(), std::declval<void( signal<Ntk> )>() ) )>> : std::true_type
+{
+};
+
+template<class Ntk>
+inline constexpr bool has_foreach_output_v = has_foreach_output<Ntk>::value;
 #pragma endregion
 
 #pragma region has_foreach_choice
@@ -2670,5 +2730,12 @@ using iterates_over_truth_table_t = std::enable_if_t<kitty::is_truth_table<typen
 
 template<class Iterator, typename T>
 inline constexpr bool iterates_over_v = std::is_same_v<typename Iterator::value_type, T>;
+
+/*! \brief Conditiional false value for static assertions.
+ */
+template<typename Ntk>
+struct dependent_false : std::false_type
+{
+};
 
 } /* namespace mockturtle */

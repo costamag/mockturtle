@@ -1,5 +1,5 @@
 /* kitty: C++ truth table library
- * Copyright (C) 2017-2025  EPFL
+ * Copyright (C) 2017-2022  EPFL
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -635,6 +635,7 @@ inline bool is_const0( const ternary_truth_table<TT>& tt )
     return is_const0( tt._bits | ~tt._care );
   }
 }
+
 
 /*! \brief Checks whether a quaternary truth table is constant composed by only - and 0.
 

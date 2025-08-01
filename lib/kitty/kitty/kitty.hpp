@@ -32,9 +32,9 @@
 
 #pragma once
 
-#include "static_truth_table.hpp"
 #include "dynamic_truth_table.hpp"
 #include "partial_truth_table.hpp"
+#include "static_truth_table.hpp"
 
 #include "affine.hpp"
 #include "algorithm.hpp"
@@ -44,7 +44,7 @@
 #include "cube.hpp"
 #include "decomposition.hpp"
 #include "enumeration.hpp"
-//#include "esop.hpp" // deprecated!
+// #include "esop.hpp" // deprecated!
 #include "hash.hpp"
 #include "implicant.hpp"
 #include "isop.hpp"
@@ -55,6 +55,7 @@
 #include "permutation.hpp"
 #include "print.hpp"
 #include "properties.hpp"
+#include "simd_operations.hpp"
 #include "spectral.hpp"
 #include "spp.hpp"
 #include "traits.hpp"

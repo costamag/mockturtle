@@ -36,10 +36,10 @@ namespace detail
 {
 
 /* std::apply in C++14 taken from https://stackoverflow.com/a/36656413 */
-template<typename Function, typename Tuple, size_t ... I>
-auto apply( Function f, Tuple t, std::index_sequence<I ...> )
+template<typename Function, typename Tuple, size_t... I>
+auto apply( Function f, Tuple t, std::index_sequence<I...> )
 {
-  return f( std::get<I>(t)... );
+  return f( std::get<I>( t )... );
 }
 
 template<typename Function, typename Tuple>
@@ -69,11 +69,11 @@ public:
   explicit ParamPack() {}
 
   explicit ParamPack( Args... params )
-    : params_( std::make_tuple( params... ) )
+      : params_( std::make_tuple( params... ) )
   {}
 
   explicit ParamPack( const std::tuple<Args...>& tup )
-    : params_( tup )
+      : params_( tup )
   {}
 
   void set( Args... params )
@@ -111,7 +111,7 @@ public:
   {}
 
   explicit ParamPackN( ParamPacks... packs )
-    : packs_( std::make_tuple( packs... ) )
+      : packs_( std::make_tuple( packs... ) )
   {}
 
   template<int I>
@@ -224,8 +224,8 @@ public:
   using Tuple = std::tuple<Args...>;
 
 public:
-  Func( std::function<void(Args...)> fn )
-    : fn_( fn )
+  Func( std::function<void( Args... )> fn )
+      : fn_( fn )
   {}
 
   void operator()( Tuple const& tup )
@@ -234,7 +234,7 @@ public:
   }
 
 private:
-  std::function<void(Args...)> fn_;
+  std::function<void( Args... )> fn_;
 }; // FuncPack
 
 /* \brief Multiple packed functions
@@ -260,11 +260,11 @@ class FuncPackN
 {
 public:
   explicit FuncPackN( std::tuple<Fns...> fns )
-    : fns_( fns )
+      : fns_( fns )
   {}
 
   explicit FuncPackN( Fns... fns )
-    : fns_( std::make_tuple( fns... ) )
+      : fns_( std::make_tuple( fns... ) )
   {}
 
   template<int I>
@@ -288,7 +288,7 @@ public:
 
 public:
   explicit call_in_topological_order( FuncPackN<Fns...> fns )
-    : fns_( fns )
+      : fns_( fns )
   {}
 
   void declare_known( const std::string& name )
@@ -298,20 +298,20 @@ public:
 
   template<int I>
   void call_deferred( const std::vector<std::string>& inputs,
-		      const std::vector<std::string>& outputs,
-		      const typename std::tuple_element<I, std::tuple<Params...>>::type::ValueType& tup )
+                      const std::vector<std::string>& outputs,
+                      const typename std::tuple_element<I, std::tuple<Params...>>::type::ValueType& tup )
   {
     /* do we have all inputs */
     std::unordered_set<std::string> unknown;
     for ( const auto& input : inputs )
     {
       if ( known_.find( input ) != std::end( known_ ) )
-	continue;
+        continue;
 
       const auto it = waits_for_.find( input );
       if ( it == std::end( waits_for_ ) || !it->second.empty() )
       {
-	unknown.insert( input );
+        unknown.insert( input );
       }
     }
 
@@ -326,11 +326,11 @@ public:
       /* defer computation */
       for ( const auto& input : unknown )
       {
-	for ( const auto& output : outputs )
-	{
-	  triggers_[input].insert( output );
-	  waits_for_[output].insert( input );
-	}
+        for ( const auto& output : outputs )
+        {
+          triggers_[input].insert( output );
+          waits_for_[output].insert( input );
+        }
       }
       return;
     }
@@ -341,6 +341,51 @@ public:
       compute_dependencies<I>( output );
     }
   }
+
+#if 0
+  template<int I>
+  void call_deferred( const std::vector<std::pair<std::string, std::string>>& inputs,
+		      const std::vector<std::pair<std::string, std::string>>& outputs,
+		      const typename std::tuple_element<I, std::tuple<Params...>>::type::ValueType& tup )
+  {
+    /* do we have all inputs */
+    std::unordered_set<std::string> unknown;
+    for ( const auto& input : inputs )
+    {
+      if ( known_.find( input.second ) != std::end( known_ ) )
+	      continue;
+
+      const auto it = waits_for_.find( input.second );
+      if ( it == std::end( waits_for_ ) || !it->second.empty() )
+      {
+	      unknown.insert( input.second );
+      }
+    }
+
+    /* store the parameters */
+    for ( const auto& output : outputs )
+    {
+      param_maps_.template get<I>()[output.second] = ParamPack( tup );
+    }
+
+    if ( !unknown.empty() )
+    {
+      /* defer computation */
+      for ( const auto& input : unknown )
+      {
+        for ( const auto& output : outputs )
+        {
+          triggers_[input].insert( output.second );
+          waits_for_[output.second].insert( input );
+        }
+      }
+      return;
+    }
+
+    /* trigger dependency computation */
+    compute_dependencies<I>( outputs );
+  }
+#endif
 
   template<int I>
   void compute_dependencies( const std::string& output )
@@ -364,11 +409,11 @@ public:
       /* activate all the triggers */
       for ( const auto& other : triggers_[next] )
       {
-	waits_for_[other].erase( next );
-	if ( waits_for_[other].empty() )
-	{
-	  computed.push( other );
-	}
+        waits_for_[other].erase( next );
+        if ( waits_for_[other].empty() )
+        {
+          computed.push( other );
+        }
       }
       triggers_[next].clear();
     }
@@ -383,12 +428,12 @@ public:
       auto const& wait_list = item.second;
 
       if ( wait_list.empty() )
-	continue;
+        continue;
 
       /* collect all keys that are still waiting for an item */
       for ( const auto& entry : wait_list )
       {
-	deps.emplace_back( key, entry );
+        deps.emplace_back( key, entry );
       }
     }
     return deps;

@@ -27,6 +27,7 @@
   \file network_utils.hpp
   \brief Utility functions to insert a network into another network.
 
+  \author Andrea Costamagna
   \author Siang-Yun (Sonia) Lee
 */
 
@@ -35,6 +36,7 @@
 #include "../traits.hpp"
 #include "node_map.hpp"
 
+#include <functional>
 #include <vector>
 
 namespace mockturtle
@@ -232,6 +234,48 @@ void insert_ntk( Ntk& ntk, BeginIter begin, EndIter end, SubNtk const& subntk, F
   subntk.foreach_po( [&]( auto const& f ) {
     fn( subntk.is_complemented( f ) ? ntk.create_not( node_to_signal[subntk.get_node( f )] ) : node_to_signal[subntk.get_node( f )] );
   } );
+}
+
+/*! \brief Count the number of nodes in the transitive fanin
+ *
+ * **Required network functions for the network Ntk:**
+ * - `is_pi`
+ * - `foreach_fanin`
+ * - `get_node`
+ * - `incr_trav_id`
+ * - `set_visited`
+ * - `trav_id`
+ *
+ * \param ntk The logic network
+ * \param f The root signal of the logic cone
+ */
+
+template<typename Ntk>
+size_t count_nodes( Ntk& ntk, signal<Ntk> const& f )
+{
+  static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
+  static_assert( has_foreach_fanin_v<Ntk>, "Ntk does not implement the foreach_fanin method" );
+  static_assert( has_get_node_v<Ntk>, "Ntk does not implement the get_node method" );
+  static_assert( has_incr_trav_id_v<Ntk>, "Ntk does not implement the incr_trav_id method" );
+  static_assert( has_set_visited_v<Ntk>, "Ntk does not implement the set_visited method" );
+  static_assert( has_trav_id_v<Ntk>, "Ntk does not implement the trav_id method" );
+  ntk.incr_trav_id();
+
+  std::function<size_t( signal<Ntk> const& )> count_nodes_r = [&]( signal<Ntk> const& s ) {
+    node<Ntk> n = ntk.get_node( s );
+    if ( ntk.is_pi( n ) || ( ntk.visited( n ) == ntk.trav_id() ) )
+    {
+      return static_cast<size_t>( 0u );
+    }
+    ntk.set_visited( n, ntk.trav_id() );
+    size_t num_nodes = 1u;
+    ntk.foreach_fanin( n, [&]( auto fi ) {
+      num_nodes += count_nodes_r( fi );
+    } );
+    return num_nodes;
+  };
+
+  return count_nodes_r( f );
 }
 
 } // namespace mockturtle

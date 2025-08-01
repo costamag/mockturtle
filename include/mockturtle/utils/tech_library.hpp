@@ -248,7 +248,7 @@ public:
     }
   }
 
-  tech_library ( const tech_library& ) = delete;
+  tech_library( const tech_library& ) = delete;
   tech_library& operator=( const tech_library& ) = delete;
 
   /*! \brief Get the gates matching the function.
@@ -1165,8 +1165,8 @@ private:
 
   bool _use_supergates;
 
-  std::vector<gate> const _gates;    /* collection of gates */
-  super_lib const _supergates_spec;  /* collection of supergates declarations */
+  std::vector<gate> const _gates;   /* collection of gates */
+  super_lib const _supergates_spec; /* collection of supergates declarations */
   tech_library_params const _ps;
 
   std::vector<standard_cell> const _cells; /* collection of standard cells */
@@ -1240,6 +1240,10 @@ struct exact_library_params
 template<typename Ntk, unsigned NInputs = 4u>
 class exact_library
 {
+public:
+  static constexpr unsigned num_vars = NInputs;
+
+private:
   using supergates_list_t = std::vector<exact_supergate<Ntk, NInputs>>;
   using TT = kitty::static_truth_table<NInputs>;
   using tt_hash = kitty::hash<TT>;
