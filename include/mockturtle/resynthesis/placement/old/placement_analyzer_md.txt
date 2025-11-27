@@ -1,0 +1,1067 @@
+/* mockturtle: C++ logic network library
+ * Copyright (C) 2018-2022  EPFL
+ *
+ * Permission is hereby granted, free of charge, to any person
+ * obtaining a copy of this software and associated documentation
+ * files (the "Software"), to deal in the Software without
+ * restriction, including without limitation the rights to use,
+ * copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following
+ * conditions:
+ *
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+ * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+ * HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
+ */
+
+/*!
+  \file timing.hpp
+  \brief Compute timing information of a network.
+
+  This engine can be used for power analysis of mapped network.
+  For each node, the following information is stored:
+  - The sensing time : the first time at which a transition can happen
+  - The arrival time : the first time at which the output is stable
+  - A vector of simulation patterns identifying quantized timesteps in this interval
+  The class has the following template parameters:
+  \param N : number of timesteps used for simulating each signal
+  \param I : number of inputs to be used for simulating the static truth table ( 2^I input pairs )
+
+  \author Andrea Costamagna
+*/
+
+#pragma once
+
+#include "../../utils/node_map.hpp"
+#include "../database/mapped_list.hpp"
+#include <math.h>
+#include <set>
+#include <queue>
+#include <array>
+#include <SFML/Graphics.hpp>
+
+namespace mockturtle
+{
+
+
+class particle_t
+{
+  static constexpr double DOUBLE_MAX = std::numeric_limits<double>::max();
+public:
+  particle_t( std::array<double, 2> const& positions, std::array<double, 2> const& moments, std::array<double, 2> const& forces, double degree, double range )
+    : q( positions ), p( moments ), F( forces ), Q( degree ), R( range )
+  {}
+
+  particle_t( particle_t const& other )
+    : particle_t( other.get_positions(), other.get_moments(), other.get_forces(), other.get_charge(), other.get_range() )
+  {}
+
+  particle_t()
+    : particle_t ( { 0, 0 }, { 0, 0 }, { 0, 0 }, DOUBLE_MAX, DOUBLE_MAX )
+  {}
+
+  void reset_force()
+  {
+    F = std::array<double, 2>{ 0, 0 };
+  }
+
+  void update_forces( std::array<double, 2> const& Fnew )
+  {
+    F = Fnew;
+  }
+
+  void update_positions( std::array<double, 2> const& qnew )
+  {
+    q = qnew;
+  }
+
+  void update_moments( std::array<double, 2> const& pnew )
+  {
+    p = pnew;
+  }
+
+  void update_charge( double Qnew )
+  {
+    Q = Qnew;
+  }
+
+  void update_range( double Rnew )
+  {
+    R = Rnew;
+  }
+
+  /*! \brief Returns the position vector */
+  std::array<double, 2> const& get_positions() const
+  {
+    return q;
+  }
+
+  /*! \brief Returns the moments vector */
+  std::array<double, 2> const& get_moments() const
+  {
+    return p;
+  }
+
+  /*! \brief Returns the moments vector */
+  std::array<double, 2> const& get_forces() const
+  {
+    return F;
+  }
+
+  /*! \brief Returns the charge */
+  double const& get_charge() const
+  {
+    return Q;
+  }
+
+  /*! \brief Returns the radius of the cell */
+  double const& get_range() const
+  {
+    return R;
+  }
+
+private:
+  /*! \brief position vector */
+  std::array<double, 2> q;
+  /*! \brief moments vector */
+  std::array<double, 2> p;
+  /*! \brief forces */
+  std::array<double, 2> F;
+  /*! \brief charge */
+  double Q;
+  /*! \brief range */
+  double R;
+};
+
+template<class Ntk, uint32_t Nx, uint32_t Ny>
+class placer_t
+{
+public:
+  using node = typename Ntk::node;
+
+  placer_t( Ntk & ntk, double density )
+    : ntk( ntk ),
+      gen( 336 ),
+      placement( ntk )
+  {
+    auto const & lib = ntk.get_library();
+    for ( auto g : lib )
+    {
+      max_range = std::max( max_range, sqrt( g.area / M_PI ) );
+    }
+    unit_length = sqrt( ntk.area()/( density * Nx * Ny ) );
+    /* This unit length guaranteees that only nearest neghbors interact */
+    unit_length = std::max( 10*max_range, unit_length );
+  }
+
+  void reset_forces()
+  {
+    ntk.foreach_node( [&]( auto n ){
+      placement[n].reset_force();
+    } );
+  }
+
+  double range( node const& n1, node const& n2 )
+  {
+    return placement[n1].get_range() + placement[n2].get_range();
+  }
+
+  double range( particle_t const& v1, particle_t const& v2 )
+  {
+    return v1.get_range() + v2.get_range();
+  }
+
+  double distance2( node const& n1, node const& n2 )
+  {
+    auto const& q1 = placement[n1].get_positions();
+    auto const& q2 = placement[n2].get_positions();
+    double dx = q1[0] - q2[0];
+    double dy = q1[1] - q2[1];
+    return pow( dx, 2 ) + pow( dy, 2 );
+  }
+
+  double distance( node const& n1, node const& n2 )
+  {
+    return sqrt( distance2( n1, n2 ) );
+  }
+
+  double distance2( particle_t const& v1, particle_t const& v2 )
+  {
+    auto const& q1 = v1.get_positions();
+    auto const& q2 = v2.get_positions();
+    return pow( q1[0] - q2[0], 2 ) + pow( q1[1] - q2[1], 2 );
+  }
+
+  double distance( particle_t const& v1, particle_t const& v2 )
+  {
+    return sqrt( distance2( v1, v2 ) );
+  }
+
+  double get_unit_length()
+  {
+    return unit_length;
+  }
+
+  void update_positions( node const& n, std::array<double, 2> const& qnew )
+  {
+    auto const& qold = placement[n].get_positions();
+    auto [xold, yold] = get_bin( qold );
+    auto [xnew, ynew] = get_bin( qnew );
+    auto Q = ntk.get_degree( n );
+    grid[xold][yold].erase( n );
+    grid[xnew][ynew].insert( n );
+    placement[n].update_positions( qnew );
+  }
+
+  void update_moments( node const& n, std::array<double, 2> const& pnew )
+  {
+    placement[n].update_moments( pnew );
+  }
+
+  particle_t get( node n )
+  {
+    return placement[n];
+  }
+
+  void add( node n )
+  {
+    std::uniform_real_distribution<> Ux( 0, get_length( 0 ) );
+    std::uniform_real_distribution<> Uy( 0, get_length( 1 ) );
+    auto Q = ntk.get_degree( n );
+    auto R = ntk.get_range( n );
+    std::array<double, 2> const F = { 0, 0 };
+    std::array<double, 2> const p = { 0, 0 };
+    std::array<double, 2> q = { Ux( gen ), Uy( gen ) };
+    placement[n] = particle_t( q, p, F, Q, R );
+  }
+
+  void erase( node n )
+  {
+    auto Q = ntk.get_degree( n );
+    auto [x, y] = get_bin( n );
+    grid[x][y].erase( n );
+    placement.erase( n );
+  }
+
+  std::tuple<int, int> get_bin( std::array<double, 2> const& q )
+  {
+    int const x = std::max( 0, std::min( int( Nx - 1 ), int( floor( q[0] / unit_length ) ) ) );
+    int const y = std::max( 0, std::min( int( Ny - 1 ), int( floor( q[1] / unit_length ) ) ) );
+    return std::make_tuple( x, y );
+  }
+
+  void update_force( node const& n, std::array<double, 2> const& F )
+  {
+    placement[n].update_forces( F );
+  }
+
+  std::tuple<int, int> left_down_bin( int x, int y )
+  {
+    x = std::max( 0, std::min( int( Nx - 1 ), x - 1 ) );
+    y = std::max( 0, std::min( int( Ny - 1 ), y - 1 ) );
+    return std::make_tuple( x, y );
+  }
+
+  std::tuple<int, int> right_top_bin( int x, int y )
+  {
+    x = std::max( 0, std::min( int( Nx - 1 ), x + 1 ) );
+    y = std::max( 0, std::min( int( Ny - 1 ), y + 1 ) );
+    return std::make_tuple( x, y );
+  }
+
+  std::tuple<int, int> get_bin( node const& n )
+  {
+    auto const& q = placement[n].get_positions();
+    int const x = std::max( 0, std::min( int( Nx - 1 ), int( floor( q[0] / unit_length ) ) ) );
+    int const y = std::max( 0, std::min( int( Ny - 1 ), int( floor( q[1] / unit_length ) ) ) );
+    return std::make_tuple( x, y );
+  } 
+
+  std::set<node> const& get_nodes( int x, int y )
+  {
+    return grid[x][y];
+  } 
+
+  double get_length( int i )
+  {
+    assert( ( ( i == 0 ) || ( i == 1 ) ) );
+    return i == 0 ? unit_length * ( Nx - 1 ) : unit_length * ( Ny - 1 );
+  }
+
+  void project_to_side( node const& n )
+  {
+    auto qnew = placement[n].get_positions();
+    project_to_side( qnew );
+    placement[n].update_positions( qnew );
+  }
+
+  void project_to_side( std::array<double, 2> & q )
+  {
+    auto [x, y] = get_bin( q );
+    std::array<std::pair<int, double>, 4> distances;
+    for ( int i = 1; i >= 0; --i )
+    {
+      distances[i] = std::make_pair( i, abs( double( i*x + ( 1 - i )*( Nx - 1 - x ) ) ) );
+      distances[2+i] = std::make_pair( 2+i, abs( double( i*y + ( 1 - i )*( Ny - 1 - y ) ) ) );
+    }
+    std::stable_sort( distances.begin(), distances.end(), [&]( auto a, auto b ){
+      return a.second < b.first;
+    } );
+    
+    switch ( distances[0].first ) {
+    case 0:
+        q[0] = 0;
+        break;
+    case 1:
+        q[0] = get_length( 0 );
+        break;
+    case 2:
+        q[1] = 0;
+        break;
+    case 3:
+        q[1] = get_length( 1 );
+        break;
+    default:
+        std::cerr << "[e] Unknown branching" << std::endl;
+        break;
+    }
+  }
+
+  /*! \brief Returns the position vector */
+  std::array<double, 2> const& get_positions( node const& n ) const
+  {
+    return placement[n].get_positions();
+  }
+
+  /*! \brief Returns the moments vector */
+  std::array<double, 2> const& get_moments( node const& n ) const
+  {
+    return placement[n].get_moments();
+  }
+
+  /*! \brief Returns the moments vector */
+  std::array<double, 2> const& get_forces( node const& n ) const
+  {
+    return placement[n].get_forces();
+  }
+
+  /*! \brief Returns the charge */
+  double const& get_charge( node const& n ) const
+  {
+    return placement[n].get_charge();
+  }
+
+  /*! \brief Returns the radius of the cell */
+  double const& get_range( node const& n ) const
+  {
+    return placement[n].get_range();
+  }
+
+  double get_max_range()
+  {
+    return max_range;
+  }
+
+  void randomize_moments( double amplitude )
+  {
+    std::uniform_real_distribution<> R( -1, 1 );
+    ntk.foreach_node( [&]( auto n ){
+      if ( ntk.is_dead( n ) )
+      {
+        return true;
+      }
+      auto p = placement[n].get_moments();
+      p = { p[0] + amplitude*R(gen), p[1] + amplitude*R(gen) };
+      placement[n].update_moments( p );
+      return true;
+    } );
+  }
+
+private:
+  Ntk & ntk;
+  std::mt19937 gen; // mersenne_twister_engine seeded with rd()
+
+  std::array<std::array<std::set<node>, Ny>, Nx> grid;
+
+    /*! \brief Hash table connecting each node to a placement element */
+  incomplete_node_map<particle_t, Ntk> placement;
+
+  /*! \brief Distance between two grid points */
+  double unit_length;
+
+  double max_range{ 0 };
+};
+
+struct placement_stats 
+{
+};
+
+struct placement_params 
+{
+  /*! \brief Precision */
+  double eps { 0.01 };
+
+  /*! \brief Constraint the PIs and POs to the boundaries */
+  bool constraint_terminal{ false };
+
+  /*! \brief Stiffness/Repulsion ration */
+  double k_place { 1 };
+
+  /*! \brief Stiffness/Repulsion ration */
+  double k_route { 1 };
+
+  /*! \brief Stiffness/Repulsion ration */
+  double lambda_route { 1 };
+
+  /*! \brief Inverse temperature */
+  double beta{ 1000 };
+
+  /*! \brief Integration time step */
+  double time_step{ 0.005 };
+
+  /*! \brief Area occupied by the system */
+  double density{ 0.1 };
+
+  /*! \brief Number of steps */
+  uint32_t num_steps{ 1000 };
+};
+
+template<class Ntk, int Nx, int Ny>
+class placement_analyzer
+{
+public:
+  using node = typename Ntk::node;
+  using signal = typename Ntk::signal;
+
+  placement_analyzer( Ntk & ntk, placement_params ps = {} )
+    : ps( ps ),
+      ntk( ntk ),
+      placer( ntk, ps.density ),
+      gen( 336u )
+  {
+    _init();
+
+    add_event = ntk.events().register_add_event( [&]( const auto& n ) {
+      placer.add( n );
+    } );
+
+    modified_event = ntk.events().register_modified_event( [&]( const auto& n, auto old_children ) {
+    } );
+
+    delete_event = ntk.events().register_delete_event( [&]( const auto& n ) {
+    } );
+
+  }
+
+  ~placement_analyzer()
+  {
+    if ( add_event )
+    {
+      ntk.events().release_add_event( add_event );
+    }
+
+    if ( modified_event )
+    {
+      ntk.events().release_modified_event( modified_event );
+    }
+  }
+
+  /*! \brief Random initializer setting the positions at random places */
+  void _init()
+  {
+      placer.add( 0 );
+      placer.add( 1 );
+
+    ntk.foreach_node( [&]( auto n ){
+      if ( ntk.is_dead( n ) )
+      {
+        return true;
+      }
+std::cout << "node " << n << std::endl;
+      placer.add( n );
+      if ( ps.constraint_terminal && ( ntk.is_pi( n ) || ntk.is_po( n ) ) )
+      {
+        placer.project_to_side( n );
+      }
+      return true;
+    } );
+    ps.lambda_route = 1/( 2*placer.get_max_range() );
+
+  }
+
+  std::array<double, 2> get_positions( node n )
+  {
+    return placer.get_positions( n );
+  }
+
+  bool on_side( node n )
+  {
+    auto const& q = placer.get_positions( n );
+    return ( q[0] == 0 ) || ( q[1] == 0 ) || ( q[0] == placer.get_length(0) ) || ( q[1] == placer.get_length(1) );
+  }
+
+  void monte_carlo_sweep( double beta = -1 )
+  {
+    std::uniform_real_distribution<> U( 0, 1 );
+    beta = beta == -1 ? ps.beta : beta;
+    for ( uint32_t i = 0; i < ps.num_steps; ++i )
+    {
+      ntk.foreach_node( [&]( auto n, auto i ){
+        if ( ntk.is_dead( n ) )
+        {
+          return true;
+        }
+        std::array<double, 2> qnew = placer.get_positions( n );
+        randomize_position( qnew, placer.get_unit_length() );
+        if ( ps.constraint_terminal && ( ntk.is_pi( n ) || ntk.is_po( n ) ) )
+        {
+          placer.project_to_side( qnew );
+        }
+        auto const dE = compute_energy_variation( n, qnew );
+        double const alpha = std::min( 1.0, exp( -ps.beta*dE ) );
+        if ( U( gen ) < alpha )
+        {
+          placer.update_positions( n, qnew );
+        }
+        return true;
+      } );
+    }
+  }
+
+  void simulated_annealing( double beta_start, double beta_end, int num_steps )
+  {
+    std::uniform_real_distribution<> U( 0, 1 );
+    for ( uint32_t i = 0; i < num_steps; ++i )
+    {
+      double beta = beta_start + i * ( beta_end - beta_start )/ ( ( double )num_steps - 1 );
+      monte_carlo_sweep( beta );
+    }
+  }
+
+  double compute_energy_variation( node const& n, std::array<double, 2> const& qnew )
+  {
+    auto vold = placer.get( n );
+    auto vnew = vold;
+    vnew.update_positions( qnew );
+    double res ( 0 );
+    ntk.foreach_fanin( n, [&]( auto fi, auto ii ){
+      auto ni = ntk.get_node( fi );
+      if ( !ntk.is_dead( ni ) )
+      {
+        auto voth = placer.get( ni );
+        res = res + compute_energy_place( vnew, voth );
+        res = res - compute_energy_place( vold, voth );
+      }
+    } );
+    ntk.foreach_fanout( n, [&]( auto fo, auto io ){
+      auto no = ntk.get_node( fo );
+        return true;
+      if ( !ntk.is_dead( no ) )
+      {
+        auto voth = placer.get( no );
+        res = res + compute_energy_place( vnew, voth );
+        res = res - compute_energy_place( vold, voth );
+      }
+    } );
+
+    res = res + compute_energy_route( n, vnew );
+    res = res - compute_energy_route( n, vold );
+
+    return res;
+  }
+
+  double compute_kinetic_energy()
+  {
+    double res = 0;
+    ntk.foreach_node( [&]( auto n ){
+      if ( ntk.is_dead( n ) )
+      {
+        return true;
+      }
+      auto const& p = placer.get_moments( n );
+      res += 0.5*( pow( p[0], 2 ) + pow( p[1], 2 ) );
+      return true;
+    } );
+    return res;
+  }
+
+  /*! \brief Force acting on u due to the interaction with v */
+  std::array<double, 2> compute_force_place( node const& nu, node const& nv )
+  {
+    std::array<double, 2> res;
+    auto const& qu = placer.get_positions( nu );
+    auto const& qv = placer.get_positions( nv );
+    auto const& Ru = placer.get_range( nu );
+    auto const& Rv = placer.get_range( nv );
+    auto const Ruv = sqrt( pow( Ru, 2 ) + pow( Rv, 2 ) );
+    auto const ru = sqrt( pow( qu[0], 2 ) + pow( qu[1], 2 ) );
+    auto const rv = sqrt( pow( qv[0], 2 ) + pow( qv[1], 2 ) );
+    auto const ruv = sqrt( pow( ru, 2 ) + pow( rv, 2 )-2*qu[0]*qv[0]-2*qu[1]*qv[1] );
+    double factor = ps.k_place * ( 1 - Ruv / ruv );
+    res[0] = ( qv[0] - qu[0] )*factor;
+    res[1] = ( qv[1] - qu[1] )*factor;
+    return res;
+
+  }
+
+  /*! \brief Force acting on u due to the interaction with v */
+  std::array<double, 2> compute_force_place( node const& nu, node const& nv, std::array<double, 2> const& qu )
+  {
+    std::array<double, 2> res;
+    auto const& qv = placer.get_positions( nv );
+    auto const& Ru = placer.get_range( nu );
+    auto const& Rv = placer.get_range( nv );
+    auto const Ruv = sqrt( pow( Ru, 2 ) + pow( Rv, 2 ) );
+    auto const ru = sqrt( pow( qu[0], 2 ) + pow( qu[1], 2 ) );
+    auto const rv = sqrt( pow( qv[0], 2 ) + pow( qv[1], 2 ) );
+    auto const ruv = sqrt( pow( ru, 2 ) + pow( rv, 2 )-2*qu[0]*qv[0]-2*qu[1]*qv[1] );
+    double factor = ps.k_place * ( 1 - Ruv / ruv );
+    res[0] = ( qv[0] - qu[0] )*factor;
+    res[1] = ( qv[1] - qu[1] )*factor;
+    return res;
+
+  }
+
+  /*! \brief Update because it increments over the stored value 
+    explores all the fanins and increments both the node and the fanin using action reaction theorem
+  */
+  void update_forces_place()
+  {
+    ntk.foreach_node( [&]( auto nu ){
+      if ( ntk.is_dead( nu ) )
+        return true;
+
+      ntk.foreach_fanin( nu, [&]( auto fv, auto iv ){
+        auto nv = ntk.get_node( fv );
+        if ( !ntk.is_dead( nv ) )
+        {
+          auto qu = placer.get_positions( nu );
+          auto qv = placer.get_positions( nv );
+          auto Fu = placer.get_forces( nu );
+          auto Fv = placer.get_forces( nv );
+          auto const dFuv = compute_force_place( nu, nv );
+          Fu[0] += dFuv[0];
+          Fu[1] += dFuv[1];
+          Fv[0] -= dFuv[0];
+          Fv[1] -= dFuv[1];
+          placer.update_force( nu, Fu );
+          placer.update_force( nv, Fv );
+        }
+      } );
+      return true;
+    } );
+  }
+
+  void modify_forces_place( node const& nu, std::array<double, 2> const& qu )
+  {
+    auto Fu = placer.get_forces( nu );
+    ntk.foreach_fanin( nu, [&]( auto fv, auto iv ){
+      auto nv = ntk.get_node( fv );
+      if ( !ntk.is_dead( nv ) )
+      {
+        auto qv = placer.get_positions( nv );
+        auto Fv = placer.get_forces( nv );
+        auto const dFuv_del = compute_force_place( nu, nv );
+        auto const dFuv_add = compute_force_place( nu, nv, qu );
+        Fu[0] -= dFuv_del[0];
+        Fu[1] -= dFuv_del[1];
+        Fv[0] += dFuv_del[0];
+        Fv[1] += dFuv_del[1];
+        Fu[0] += dFuv_add[0];
+        Fu[1] += dFuv_add[1];
+        Fv[0] -= dFuv_add[0];
+        Fv[1] -= dFuv_add[1];
+        placer.update_force( nv, Fv );
+      }
+    } );
+    ntk.foreach_fanout( nu, [&]( auto fv, auto iv ){
+      auto nv = ntk.get_node( fv );
+      if ( !ntk.is_dead( nv ) )
+      {
+        auto qv = placer.get_positions( nv );
+        auto Fv = placer.get_forces( nv );
+        auto const dFuv_del = compute_force_place( nu, nv );
+        auto const dFuv_add = compute_force_place( nu, nv, qu );
+        Fu[0] -= dFuv_del[0];
+        Fu[1] -= dFuv_del[1];
+        Fv[0] += dFuv_del[0];
+        Fv[1] += dFuv_del[1];
+        Fu[0] += dFuv_add[0];
+        Fu[1] += dFuv_add[1];
+        Fv[0] -= dFuv_add[0];
+        Fv[1] -= dFuv_add[1];
+        placer.update_force( nv, Fv );
+      }
+    } );
+    placer.update_force( nu, Fu );
+  }
+
+  /*! \brief Acting on u because of v */
+  std::array<double, 2> compute_force_route( node nu, node nv )
+  {
+    std::array<double, 2> F { 0, 0 };
+    auto const& qu = placer.get_positions( nu );
+    auto const& qv = placer.get_positions( nv );
+    auto const& Ru = placer.get_range( nu );
+    auto const& Rv = placer.get_range( nv );
+    auto const& Qu = placer.get_charge( nu );
+    auto const& Qv = placer.get_charge( nv );
+    auto const Ruv = sqrt( pow( Ru, 2 ) + pow( Rv, 2 ) );
+    auto const ru = sqrt( pow( qu[0], 2 ) + pow( qu[1], 2 ) );
+    auto const rv = sqrt( pow( qv[0], 2 ) + pow( qv[1], 2 ) );
+    auto const ruv = sqrt( pow( ru, 2 ) + pow( rv, 2 )-2*qu[0]*qv[0]-2*qu[1]*qv[1] );
+    double num = ps.k_route * Qu * Qv * exp( -ps.lambda_route * ruv ) * ( ruv + ps.lambda_route );
+    double den = pow( pow( ruv, 2 ) + pow( Ruv, 2 ), 1.5 ) * ruv;
+    double const fact = num/den;
+    F[0] = fact * ( qu[0] - qv[0] );
+    F[1] = fact * ( qu[1] - qv[1] );
+    return F;
+  }
+
+  /*! \brief Acting on u because of v */
+  std::array<double, 2> compute_force_route( node nu, node nv, std::array<double, 2> const& qu )
+  {
+    std::array<double, 2> F { 0, 0 };
+    auto const& qv = placer.get_positions( nv );
+    auto const& Ru = placer.get_range( nu );
+    auto const& Rv = placer.get_range( nv );
+    auto const& Qu = placer.get_charge( nu );
+    auto const& Qv = placer.get_charge( nv );
+    auto const Ruv = sqrt( pow( Ru, 2 ) + pow( Rv, 2 ) );
+    auto const ru = sqrt( pow( qu[0], 2 ) + pow( qu[1], 2 ) );
+    auto const rv = sqrt( pow( qv[0], 2 ) + pow( qv[1], 2 ) );
+    auto const ruv = sqrt( pow( ru, 2 ) + pow( rv, 2 )-2*qu[0]*qv[0]-2*qu[1]*qv[1] );
+    double num = ps.k_route * Qu * Qv * exp( -ps.lambda_route * ruv ) * ( ruv + ps.lambda_route );
+    double den = pow( pow( ruv, 2 ) + pow( Ruv, 2 ), 1.5 ) * ruv;
+    double const fact = num/den;
+    F[0] = fact * ( qu[0] - qv[0] );
+    F[1] = fact * ( qu[1] - qv[1] );
+    return F;
+  }
+
+  void update_forces_route()
+  {
+    /* explore the grid */
+    for ( int x = 0; x < Nx; ++x )
+    {
+      for ( int y = 0; y < Ny; ++y )
+      {
+        auto [xr, yr] = placer.right_top_bin( x, y );
+        auto nodesu = placer.get_nodes( x, y );
+        for ( int ix = x; ix <= xr; ix++ )
+        {
+          for ( int iy = y; iy <= yr; ++iy )
+          {
+            auto nodesv = placer.get_nodes( ix, iy );
+            for ( auto const& nu : nodesu )
+            {
+              auto Fu = placer.get_forces( nu );
+              for ( auto const& nv : nodesv )
+              {
+                if ( nu == nv )
+                  continue;
+                auto Fv = placer.get_forces( nv );
+                auto const dFuv = compute_force_route( nu, nv );
+                Fu[0] += dFuv[0];
+                Fu[1] += dFuv[1];
+                Fv[0] -= dFuv[0];
+                Fv[1] -= dFuv[1];
+                placer.update_force( nv, Fv );
+              } 
+              placer.update_force( nu, Fu );
+            }
+          }
+        }
+      }
+    }
+  }
+
+  void modify_forces_route( node const& nu, std::array<double, 2> const& qnew )
+  {
+    auto Fu = placer.get_forces( nu );
+    auto const& q = placer.get_positions( nu );
+    auto [x, y] = placer.get_bin( q );
+    auto [xl, yl] = placer.left_down_bin( x, y );
+    auto [xr, yr] = placer.right_top_bin( x, y );
+    for ( int ix = xl; ix <= xr; ix++ )
+    {
+      for ( int iy = yl; iy <= yr; ++iy )
+      {
+        auto nodesv = placer.get_nodes( ix, iy );
+        for ( auto const& nv : nodesv )
+        {
+          if ( nu == nv )
+            continue;
+          auto Fv = placer.get_forces( nv );
+          auto const dFuv = compute_force_route( nu, nv );
+          Fu[0] -= dFuv[0];
+          Fu[1] -= dFuv[1];
+          Fv[0] += dFuv[0];
+          Fv[1] += dFuv[1];
+          placer.update_force( nv, Fv );
+        } 
+      }
+    }
+
+    auto [xnew, ynew] = placer.get_bin( qnew );
+    auto [xnewl, ynewl] = placer.left_down_bin( xnew, ynew );
+    auto [xnewr, ynewr] = placer.right_top_bin( xnew, ynew );
+    for ( int ix = xnewl; ix <= xnewr; ix++ )
+    {
+      for ( int iy = ynewl; iy <= ynewr; ++iy )
+      {
+        auto nodesv = placer.get_nodes( ix, iy );
+        for ( auto const& nv : nodesv )
+        {
+          if ( nu == nv )
+            continue;
+          auto Fv = placer.get_forces( nv );
+          auto const dFuv = compute_force_route( nu, nv, qnew );
+          Fu[0] += dFuv[0];
+          Fu[1] += dFuv[1];
+          Fv[0] -= dFuv[0];
+          Fv[1] -= dFuv[1];
+          placer.update_force( nv, Fv );
+        } 
+      }
+    }
+
+    placer.update_force( nu, Fu );
+  }
+
+  void compute_forces()
+  {
+    placer.reset_forces();
+    update_forces_place();
+    update_forces_route();
+  }
+
+  void modify_forces( node const& n, std::array<double, 2> const& qnew )
+  {
+    modify_forces_place( n, qnew );
+    modify_forces_route( n, qnew );
+  }
+
+  void velocity_verlet( double gamma = 1 )
+  {
+    placer.randomize_moments( 0.1 * placer.get_unit_length() / ps.time_step );
+    double K = compute_kinetic_energy();
+    double U = compute_potential_energy();
+    double H = K + U;
+    compute_forces();
+
+    //while ( K > ps.eps )
+    for ( int i = 0; i < ps.num_steps; ++i )
+    {
+      ntk.foreach_node( [&]( auto n, auto i ){
+        if ( ntk.is_dead( n ) )
+        {
+          return true;
+        }
+        auto q = placer.get_positions( n );
+        auto p = placer.get_moments( n );
+        auto F = placer.get_forces( n );
+
+        p[0] += 0.5*( F[0] - gamma * p[0] )*ps.time_step;
+        p[1] += 0.5*( F[1] - gamma * p[1] )*ps.time_step;
+
+        q[0] += p[0]*ps.time_step;
+        q[1] += p[1]*ps.time_step;
+
+        p[0] += 0.5*( F[0] - gamma * p[0] )*ps.time_step;
+        p[1] += 0.5*( F[1] - gamma * p[1] )*ps.time_step;
+        
+        modify_forces( n, q );
+
+        placer.update_positions( n, q );
+        placer.update_moments( n, p );
+        return true;
+      } );
+      K = compute_kinetic_energy();
+      U = compute_potential_energy();
+      std::cout << "K= " << K << " U=" << U << std::endl;
+    }
+  }
+
+  void analytic()
+  {
+    double U = compute_potential_energy();
+    compute_forces();
+
+    for ( int i = 0; i < ps.num_steps; ++i )
+    {
+      ntk.foreach_node( [&]( auto n, auto i ){
+        if ( ntk.is_dead( n ) )
+        {
+          return true;
+        }
+        auto q = placer.get_positions( n );
+        auto F = placer.get_forces( n );
+
+        q[0] += F[0]*ps.time_step;
+        q[1] += F[1]*ps.time_step;
+        
+        modify_forces( n, q );
+
+        placer.update_positions( n, q );
+        return true;
+      } );
+      U = compute_potential_energy();
+      std::cout << " U=" << U << std::endl;
+    }
+  }
+
+  void randomize_position( std::array<double, 2> & q, double delta )
+  {
+    std::uniform_real_distribution<> R( -1, 1 );
+
+    for ( int i = 0; i < 2; ++i )
+    {
+      q[i] += R( gen ) * delta;
+      q[i] = std::min( std::max( 0.0, q[i] ), placer.get_length( i ) );
+    }
+  }
+
+  void randomize_moment( std::array<double, 2> & p, double delta )
+  {
+    std::uniform_real_distribution<> R( -1, 1 );
+
+    for ( int i = 0; i < 2; ++i )
+    {
+      p[i] += R( gen ) * delta;
+    }
+  }
+
+  double compute_energy_place( particle_t const& u, particle_t const& v )
+  {
+    auto const& r = placer.distance( u, v );
+    auto const& Ru = u.get_range();
+    auto const& Rv = v.get_range();
+    auto const& R = sqrt( pow( Ru, 2 ) + pow( Rv, 2 ) );
+    return double( 0.5*ps.k_place*pow( r - R, 2 ) );
+  }
+
+  double compute_energy_route( node const& n, particle_t const& v )
+  {
+    double res( 0 );
+    auto q = v.get_positions();
+    auto [ x, y ] = placer.get_bin( q );
+    auto [ xl, yl ] = placer.left_down_bin( x, y );
+    auto [ xr, yr ] = placer.right_top_bin( x, y );
+    for ( int ix = xl; ix <= xr; ++ix )
+    {
+      for ( int iy = yl; iy <= yr; ++iy )
+      {
+        auto const& nodes = placer.get_nodes( ix, iy );
+        for ( auto const& noth : nodes )
+        {
+          if ( noth != n )
+          {
+            res = res + 0.5*compute_energy_route( v, placer.get( noth ) );
+          }
+        }
+      }
+    }
+    return res;
+  }
+
+
+  double compute_energy_route( particle_t const& u, particle_t const& v )
+  {
+    auto const& r = placer.distance( u, v );
+    auto const Ru = u.get_range();
+    auto const Rv = v.get_range();
+    auto const& Ruv2 = pow( Ru, 2 ) + pow( Rv, 2 );
+    double const Qu = u.get_charge();
+    double const Qv = v.get_charge();
+
+    double num = Qu*Qv*ps.k_route*exp( -ps.lambda_route*r );
+    double den = sqrt( pow( r, 2 ) + Ruv2 );
+
+    return num/den;
+  }
+
+  double compute_energy_place()
+  {
+    double res = 0;
+    ntk.foreach_gate( [&]( auto n ){
+      if ( ntk.is_dead( n ) )
+        return true;
+      ntk.foreach_fanin( n, [&]( auto fi, auto ii ){
+        auto ni = ntk.get_node( fi );
+        if ( !ntk.is_dead( ni ) )
+          res += compute_energy_place( placer.get( n ), placer.get( ni ) );
+      } );
+      return true;
+    } );
+    return res;
+  }
+
+  double compute_energy_route()
+  {
+    double res = 0;
+    ntk.foreach_node( [&]( node n ){
+      if ( ntk.is_dead( n ) )
+        return true;
+      particle_t const& v = placer.get( n );
+      auto q = v.get_positions();
+      auto [ x, y ] = placer.get_bin( q );
+      auto [ xl, yl ] = placer.left_down_bin( x, y );
+      auto [ xr, yr ] = placer.right_top_bin( x, y );
+      for ( int ix = xl; ix <= xr; ++ix )
+      {
+        for ( int iy = yl; iy <= yr; ++iy )
+        {
+          auto const& nodes = placer.get_nodes( ix, iy );
+          for ( auto const& noth : nodes )
+          {
+            if ( noth != n )
+            {
+              res = res + 0.5*compute_energy_route( v, placer.get( noth ) );
+            }
+          }
+        }
+      }
+      return true;
+      } );
+    return res;
+  }
+
+  double compute_potential_energy()
+  {
+    double res = 0;
+    res += compute_energy_place();
+    res += compute_energy_route();
+    return res;
+  }
+
+private:
+
+  placement_stats st;
+  placement_params ps;
+
+  /*! \brief Pointer to the network to be placed */
+  Ntk & ntk;
+
+  placer_t<Ntk, Nx, Ny> placer;
+
+  std::mt19937 gen; // mersenne_twister_engine seeded with rd()
+
+  /* events */
+  std::shared_ptr<typename network_events<Ntk>::add_event_type> add_event;
+  std::shared_ptr<typename network_events<Ntk>::modified_event_type> modified_event;
+  std::shared_ptr<typename network_events<Ntk>::delete_event_type> delete_event;
+};
+
+
+} // namespace mockturtle
+

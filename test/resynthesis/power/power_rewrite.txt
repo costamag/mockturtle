@@ -1,0 +1,180 @@
+#include <catch.hpp>
+
+#include <kitty/kitty.hpp>
+#include <kitty/static_truth_table.hpp>
+
+#include <mockturtle/algorithms/emap.hpp>
+#include <mockturtle/algorithms/klut_to_graph.hpp>
+#include <mockturtle/algorithms/node_resynthesis.hpp>
+#include <mockturtle/algorithms/node_resynthesis/xag_npn.hpp>
+#include <mockturtle/algorithms/simulation.hpp>
+#include <mockturtle/io/genlib_reader.hpp>
+#include <mockturtle/networks/aig.hpp>
+#include <mockturtle/networks/klut.hpp>
+#include <mockturtle/resynthesis/aig_syn.hpp>
+#include <mockturtle/resynthesis/power/node_simulator.hpp>
+#include <mockturtle/resynthesis/power/analyzers/power_analyzer.hpp>
+#include <mockturtle/resynthesis/power/optimization/power_rewrite.hpp>
+#include <mockturtle/resynthesis/database/homo_database.hpp>
+#include <mockturtle/resynthesis/database/mapped_list.hpp>
+#include <mockturtle/resynthesis/list_simulator.hpp>
+#include <mockturtle/resynthesis/networks/bindings.hpp>
+#include <mockturtle/resynthesis/networks/bound.hpp>
+#include <mockturtle/resynthesis/networks/mapped_to_bound.hpp>
+#include <mockturtle/utils/tech_library.hpp>
+
+
+std::string const test_library = "GATE   inv1    1 O=!a;            PIN * INV 1 999 0.9 0.3 0.9 0.3\n"
+                                 "GATE   inv2    2 O=!a;            PIN * INV 2 999 1.0 0.1 1.0 0.1\n"
+                                 "GATE   nand2   2 O=!(a*b);        PIN * INV 1 999 1.0 0.2 1.0 0.2\n"
+                                 "GATE   and2    3 O=a*b;           PIN * INV 1 999 1.7 0.2 1.7 0.2\n"
+                                 "GATE   xor2    4 O=a^b;           PIN * UNKNOWN 2 999 1.9 0.5 1.9 0.5\n"
+                                 "GATE   mig3    3 O=a*b+a*c+b*c;   PIN * INV 1 999 2.0 0.2 2.0 0.2\n"
+                                 "GATE   xor3    5 O=a^b^c;         PIN * UNKNOWN 2 999 3.0 0.5 3.0 0.5\n"
+                                 "GATE   buf     2 O=a;             PIN * NONINV 1 999 1.0 0.0 1.0 0.0\n"
+                                 "GATE   zero    0 O=CONST0;\n"
+                                 "GATE   one     0 O=CONST1;\n"
+                                 "GATE   ha      5 C=a*b;           PIN * INV 1 999 1.7 0.4 1.7 0.4\n"
+                                 "GATE   ha      5 S=!a*b+a*!b;     PIN * INV 1 999 2.1 0.4 2.1 0.4\n"
+                                 "GATE   fa      6 C=a*b+a*c+b*c;   PIN * INV 1 999 2.1 0.4 2.1 0.4\n"
+                                 "GATE   fa      6 S=a^b^c;         PIN * INV 1 999 3.0 0.4 3.0 0.4";
+
+
+auto create_database()
+{
+  std::vector<mockturtle::gate> gates;
+
+  std::istringstream in( test_library );
+  auto result = lorina::read_genlib( in, mockturtle::genlib_reader( gates ) );
+  CHECK( result == lorina::return_code::success );
+
+  mockturtle::bound_network bound( gates );
+  /* network's definition */
+
+  auto const bs = bound.get_bindings();
+  mockturtle::homo_database<4> db( bs );
+  using aig_network = mockturtle::aig_network;
+  mockturtle::xag_npn_resynthesis<aig_network, aig_network, mockturtle::xag_npn_db_kind::aig_complete> resyn;
+  mockturtle::exact_library_params eps;
+  eps.np_classification = false;
+  mockturtle::exact_library<aig_network> exact_lib( resyn, eps );
+
+  using Tt_t = kitty::dynamic_truth_table;
+  using tt_hash = kitty::hash<Tt_t>;
+  std::unordered_set<Tt_t, tt_hash> classes;
+  Tt_t tt( 4u );
+  do
+  {
+    const auto res = kitty::exact_p_canonization( tt );
+    classes.insert( std::get<0>( res ) );
+    kitty::next_inplace( tt );
+  } while ( !kitty::is_const0( tt ) );
+
+  using klut_network = mockturtle::klut_network;
+  using aig_network = mockturtle::aig_network;
+  klut_network klut;
+  std::vector<typename mockturtle::klut_network::signal> pis;
+  for ( int i = 0; i < 4; ++i )
+  {
+    pis.push_back( klut.create_pi() );
+  }
+
+  std::vector<Tt_t> tts;
+  for ( auto const& entry : classes )
+  {
+    auto const f = klut.create_node( pis, entry );
+    klut.create_po( f );
+    tts.push_back( entry );
+  }
+  aig_network aig = mockturtle::convert_klut_to_graph<aig_network, klut_network>( klut );
+
+  mockturtle::tech_library_params tps;
+  tps.ignore_symmetries = false; // set to true to drastically speed-up mapping with minor delay increase
+  tps.verbose = true;
+  mockturtle::tech_library<9> tech_lib( gates, tps );
+  mockturtle::emap_params mps;
+  mps.matching_mode = mockturtle::emap_params::hybrid;
+  mps.area_oriented_mapping = true;
+  mps.map_multioutput = false;
+  mps.relax_required = 0;
+  mockturtle::emap_stats mst;
+  mockturtle::cell_view<mockturtle::block_network> mapped = mockturtle::emap<9>( aig, tech_lib, mps, &mst );
+  std::cout << mapped.compute_area() << " " << mapped.num_pos() << std::endl;
+
+  int i = 0;
+  using node_t = mockturtle::cell_view<mockturtle::block_network>::node;
+  std::array<node_t, 4> vars;
+  vars[0] = mapped.pi_at( 0 );
+  vars[1] = mapped.pi_at( 1 );
+  vars[2] = mapped.pi_at( 2 );
+  vars[3] = mapped.pi_at( 3 );
+  mapped.foreach_po( [&]( auto fo ) {
+    kitty::static_truth_table<3> func;
+    kitty::create_from_binary_string( func, kitty::to_binary( tts[i++] ) );
+    db.add_entry( mapped, vars, fo );
+  } );
+
+  return db;
+}
+
+TEST_CASE( "Optimize glitchy network", "[power_rewrite]" )
+{
+  std::vector<mockturtle::gate> gates;
+
+  std::istringstream in( test_library );
+  auto result = lorina::read_genlib( in, mockturtle::genlib_reader( gates ) );
+  CHECK( result == lorina::return_code::success );
+
+  mockturtle::bound_network bound( gates );
+  /* network's definition */
+  auto const x0 = bound.create_pi();
+  auto const x1 = bound.create_pi();
+  auto const x2 = bound.create_pi();
+  auto const x3 = bound.create_pi();
+
+  using signal = typename mockturtle::bound_network::signal;
+  signal const f0 = bound.create_node( std::vector<signal>( { x0, x1 } ), "xor2" )[0];
+  signal const f1 = bound.create_node( std::vector<signal>( { f0, x2 } ), "xor2" )[0];
+  signal const f2 = bound.create_node( std::vector<signal>( { f1, x3 } ), "xor2" )[0];
+  bound.create_po( f2 );
+
+  uint32_t constexpr I = 4u;
+  using Tt_t = kitty::static_truth_table<I>;
+  std::array<std::array<Tt_t, 2>, 4> workload;
+  kitty::create_nth_var( workload[0][0], 0 );
+  kitty::create_nth_var( workload[1][0], 1 );
+  kitty::create_nth_var( workload[2][0], 2 );
+  kitty::create_nth_var( workload[3][0], 3 );
+  workload[0][1] = workload[1][0];
+  workload[1][1] = workload[2][0];
+  workload[2][1] = workload[3][0];
+  workload[3][1] = workload[0][0];
+
+  uint32_t constexpr N = 16u;
+  uint32_t constexpr num_vars = 4;
+  uint32_t constexpr num_steps = N;
+  uint32_t constexpr cube_size = I;
+  using Ntk = mockturtle::bound_network;
+  using node_sim_t = mockturtle::node_simulator<Ntk, N, I>;
+
+  node_sim_t sim0( bound.get_node( x0 ), workload[0] , -0.05, -0.1, 0.0 );
+  node_sim_t sim1( bound.get_node( x1 ), workload[1] , -0.05, -0.1, 0.0 );
+  node_sim_t sim2( bound.get_node( x2 ), workload[2] , -0.05, -0.1, 0.0 );
+  node_sim_t sim3( bound.get_node( x3 ), workload[3] , -0.05, -0.1, 0.0 );
+
+  mockturtle::aig_list_simulator<Tt_t> list_simulator;
+  std::vector<node_sim_t*> const sims_ptrs { &sim0, &sim1, &sim2, &sim3 };
+
+  mockturtle::power_analyzer<Ntk, N, I> power( bound );
+  std::vector<node_sim_t> pis_sims{ sim0, sim1, sim2, sim3 };
+  power( pis_sims );
+  power.print();
+  std::cout << power.get_dyn_switch() << std::endl;
+  auto db = create_database();
+
+  std::cout << power.get_dyn_switch() << std::endl;
+  mockturtle::power_rewrite<Ntk, num_vars, num_steps, cube_size>( bound, pis_sims, db );
+  std::cout << power.get_dyn_switch() << std::endl;
+
+
+}

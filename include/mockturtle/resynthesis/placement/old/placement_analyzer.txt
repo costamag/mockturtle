@@ -1,0 +1,617 @@
+/* mockturtle: C++ logic network library
+ * Copyright (C) 2018-2022  EPFL
+ *
+ * Permission is hereby granted, free of charge, to any person
+ * obtaining a copy of this software and associated documentation
+ * files (the "Software"), to deal in the Software without
+ * restriction, including without limitation the rights to use,
+ * copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following
+ * conditions:
+ *
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+ * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+ * HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
+ */
+
+/*!
+  \file timing.hpp
+  \brief Compute timing information of a network.
+
+  This engine can be used for power analysis of mapped network.
+  For each node, the following information is stored:
+  - The sensing time : the first time at which a transition can happen
+  - The arrival time : the first time at which the output is stable
+  - A vector of simulation patterns identifying quantized timesteps in this interval
+  The class has the following template parameters:
+  \param N : number of timesteps used for simulating each signal
+  \param I : number of inputs to be used for simulating the static truth table ( 2^I input pairs )
+
+  \author Andrea Costamagna
+*/
+
+#pragma once
+
+#include "../../utils/node_map.hpp"
+#include <set>
+
+namespace mockturtle
+{
+
+namespace placement
+{
+
+template<class Ntk>
+struct vertex_t
+{
+  vertex_t()
+    : pos({ 0, 0 })
+  {}  
+
+  vertex_t( int x, int y )
+    : pos({ x, y })
+  {}
+
+  int const& operator[]( int index ) const
+  {
+    return pos[index];
+  }
+
+  /*! \brief Position of the element in the grid */
+  std::array<int, 2> pos;
+};
+
+template<typename T, int Size1, int Size2>
+class grid_t
+{
+public:
+  grid_t( T null_value )
+    :  null_value_( null_value )
+  {
+    for ( auto c { 0 }; c < Size1; ++c )
+    {
+      for ( auto r { 0 }; r < Size2; ++r )
+      {
+        data[r][c] = null_value_;
+      }
+    }
+  }
+
+  T const& operator()( int x, int y ) const
+  {
+    return data[y][x];
+  }
+
+  void clear( int x, int y )
+  {
+    data[y][x] = null_value_;
+  }
+
+  std::optional<std::tuple<int, int>> add( T element, int x, int y )
+  {
+    if ( data[y][x] == null_value_ )
+    {
+      data[y][x] = element;
+      return std::make_tuple( x, y );
+    }
+
+    int xmax = x;
+    int xmin = x;
+    int ymax = y;
+    int ymin = y;
+
+    while ( ( xmin >= 0 ) && ( xmax < Size1 ) && ( ymin >= 0 ) && ( ymax < Size2 ) )
+    {
+      xmax = std::min( (int)Size1 - 1, xmax + 1 );
+      xmin = std::max( 0, xmin - 1 );
+      ymax = std::min( (int)Size2 - 1, ymax + 1 );
+      ymin = std::max( 0, ymin - 1 );
+
+      for( int c {xmin}; c < xmax; ++c )
+      {
+        if ( data[ymax][c] == null_value_ )
+        {
+          data[ymax][c] = element;
+          return std::make_tuple( c, ymax );
+        }
+      }
+      for( int r {ymin}; r < (ymax - 1); ++r )
+      {
+        if ( data[r][xmin] == null_value_ )
+        {
+          data[r][xmin] = element;
+          return std::make_tuple( xmin, r );
+        }
+      }
+      for( int r {ymin}; r < ymax - 1; ++r )
+      {
+        if ( data[r][xmax] == null_value_ )
+        {
+          data[r][xmax] = element;
+          return std::make_tuple( xmax, r );
+        }
+      }
+      for( int c {xmin+1}; c < (xmax-1); ++c )
+      {
+        if ( data[ymin][c] == null_value_ )
+        {
+          data[ymin][c] = element;
+          return std::make_tuple( c, ymin );
+        }
+      }
+    }
+
+    return std::nullopt;
+  }
+
+  bool is_occupied( int x, int y )
+  {
+    return data[y][x] != null_value_;
+  }
+
+  T get( int x, int y )
+  {
+    return data[y][x];
+  }
+
+  void set( int x, int y, T element )
+  {
+    data[y][x] = element;
+  }
+
+private:
+  std::array<std::array<T, Size1>, Size2> data;
+  T null_value_;
+};
+
+struct placement_stats 
+{
+  std::vector<double> history;
+};
+
+template<class Ntk, int Size1, int Size2>
+class placement_analyzer
+{
+public:
+  using node = typename Ntk::node;
+  using signal = typename Ntk::signal;
+
+  placement_analyzer( Ntk & ntk )
+    : pntk( std::make_shared<Ntk>( ntk ) ),
+      placement( *pntk ),
+      grid( pntk->get_null() )
+  {
+    _init();
+
+    add_event = pntk->events().register_add_event( [&]( const auto& n ) {
+      placement.resize();
+      place_from_fanins( n );
+    } );
+
+    modified_event = pntk->events().register_modified_event( [&]( const auto& n, auto old_children ) {
+      placement.resize();
+      ( void )old_children;
+      place_from_both( n );
+    } );
+
+    deleted_event = pntk->events().register_delete_event( [&]( const auto& n ) {
+      auto const& vertex = placement[n];
+      grid.clear( vertex[0], vertex[1] );
+    } );
+  }
+
+  void _init()
+  {
+    int delta = std::max( Size1 / pntk->num_pis(), 1u );
+    int index = 0;
+    pntk->foreach_pi( [&]( auto n ){
+      place_at( n, index, 0 );
+      index += delta;
+    } );
+
+    index = 0;
+    std::uniform_int_distribution<> Ux( 0, Size1 - 1 );
+    std::uniform_int_distribution<> Uy( 0, Size2 - 1 );
+    std::mt19937 gen(336u); // mersenne_twister_engine seeded with rd()
+
+    pntk->foreach_gate( [&]( auto n ){
+      if ( pntk->is_po( n ) )
+      {
+        auto pl_o = place_at_r( n, index, Size2-1 );
+        pos_placement.push_back( pl_o );
+        index += delta;
+      }
+      else
+      {
+        place_at( n, Ux(gen), Uy(gen) );
+      }
+    } );
+  }
+
+  ~placement_analyzer()
+  {
+    if ( add_event )
+    {
+      pntk->events().release_add_event( add_event );
+    }
+
+    if ( modified_event )
+    {
+      pntk->events().release_modified_event( modified_event );
+    }
+
+    if ( deleted_event )
+    {
+      pntk->events().release_delete_event( deleted_event );
+    }
+  }
+
+  void place_from_fanins( node const& n )
+  {
+    std::array<int, 2> means { 0, 0 };
+    pntk->foreach_fanin( n, [&]( auto fi ){
+      node const& ni = pntk->get_node( fi );
+      auto const& vertex = placement[ni];
+      means[0] += vertex[0];
+      means[1] += vertex[1];
+
+    } );
+
+    means[0] /= pntk->fanin_size( n );
+    means[1] /= pntk->fanin_size( n );
+    place_at( n, means[0], means[1] );
+  }
+
+  vertex_t<Ntk> get( node const& n )
+  {
+    return placement[n];
+  }
+
+  void place_from_both( node const& n )
+  {
+    std::array<int, 2> means { 0, 0 };
+    double cnt = 0;
+    pntk->foreach_fanin( n, [&]( auto fi ){
+      node const& ni = pntk->get_node( fi );
+      auto const& vertex = placement[ni];
+      means[0] += vertex[0];
+      means[1] += vertex[1];
+      cnt+=1;
+    } );
+    pntk->foreach_fanout( n, [&]( auto fo ){
+      node const& no = pntk->get_node( fo );
+      auto const& vertex = placement[no];
+      means[0] += vertex[0];
+      means[1] += vertex[1];
+      cnt+=1;
+    } );
+    means[0] /= cnt;
+    means[1] /= cnt;
+    place_at( n, means[0], means[1] );
+  }
+
+  void place_at( node const& n, int xcand, int ycand )
+  {
+    auto res = grid.add( n, xcand, ycand );
+    if ( res )
+    {
+      int x = std::get<0>( *res );
+      int y = std::get<1>( *res );
+
+      vertex_t<Ntk> new_vertex( x, y );
+      placement[n] = new_vertex;
+    }
+    else
+    {
+      std::cerr << "[e] Grid saturation: node not added" << std::endl;
+    }
+  }
+
+  std::array<int, 2> place_at_r( node const& n, int xcand, int ycand )
+  {
+    auto res = grid.add( n, xcand, ycand );
+    if ( res )
+    {
+      int x = std::get<0>( *res );
+      int y = std::get<1>( *res );
+
+      vertex_t<Ntk> new_vertex( x, y );
+      placement[n] = new_vertex;
+      return std::array<int, 2>( { x, y } );
+    }
+    std::cerr << "[e] Grid saturation: node not added" << std::endl;
+    return std::array<int, 2>( { -1, -1 } );
+
+  }
+
+  void swap( node const& n1, node const& n2 )
+  {
+    vertex_t<Ntk> const v1 = placement[n1];
+    vertex_t<Ntk> const v2 = placement[n2];
+    placement[n1] = v2;
+    placement[n2] = v1;
+    grid.set( v1[0], v1[1], n2 );
+    grid.set( v2[0], v2[1], n1 );
+  }
+
+  void print()
+  {
+    for ( int y = Size2 - 1; y >= 0; --y )
+    {
+      printf("%4d/%4d|", y, Size2-1 );
+      for ( int x = 0; x < Size1; ++x )
+      {
+        if ( grid.is_occupied( x, y ) )
+        {
+          printf( "%4ld ", grid( x, y ) );
+        }
+        else
+        {
+          printf( "     " );
+        }
+      }
+      printf("\n");      
+    }
+  }
+
+  double compute_hpwl( node na, node nb )
+  {
+    if ( pntk->is_dead( na ) || pntk->is_dead( nb ) )
+      return 0;
+
+    auto va = placement[na];
+    auto vb = placement[nb];
+    auto dx = std::abs( va[0] - vb[0] );
+    auto dy = std::abs( va[1] - vb[1] );
+    return dx + dy;
+  }
+
+  double compute_hpwl( int x, int y, node nb )
+  {
+    auto vb = placement[nb];
+    auto dx = std::abs( x - vb[0] );
+    auto dy = std::abs( y - vb[1] );
+    return dx + dy;
+  }
+
+  double compute_hpwl()
+  {
+    double hpwl{ 0 };
+    pntk->foreach_gate( [&]( auto f ){
+      auto n = pntk->get_node( f );
+      pntk->foreach_fanin( n, [&]( auto fi, auto ii ){
+        auto ni = pntk->get_node( fi );
+        auto d_hpwl = compute_hpwl( n, ni );
+        hpwl += d_hpwl;
+      } );
+    } );
+    return hpwl;
+  }
+
+  double simulated_annealing_global()
+  {
+    double hpwl0 = compute_hpwl();
+    double hpwl = compute_hpwl();
+    st.history.push_back( hpwl );
+
+    double beta = 0.01;
+    
+    std::random_device rd;  // a seed source for the random number engine
+    std::mt19937 gen(336u); // mersenne_twister_engine seeded with rd()
+    std::vector<node> nodes;
+    pntk->foreach_gate( [&]( auto f, auto i ){
+      auto n = pntk->get_node( f );
+      if ( !pntk->is_pi( n ) && !pntk->is_constant( n ) && !pntk->is_po( n ) )
+      {
+        nodes.push_back( n );
+      }
+    } );
+    int num_nodes = nodes.size();
+    std::uniform_int_distribution<> Ux( 0, Size1 - 1 );
+    std::uniform_int_distribution<> Uy( 0, Size2 - 1 );
+    std::uniform_real_distribution<> R( 0, 1 );
+
+    while ( beta < 100 )
+    {
+      for ( int s = 0; s < num_nodes; ++s )
+      {
+
+        int x1 = placement[nodes[s]][0];
+        int y1 = placement[nodes[s]][1];
+        int x2 = Ux(gen);
+        int y2 = Uy(gen);
+        bool found{false};
+        while( !found )
+        {
+          found |= ( ( !grid.is_occupied( x2, y2 ) || ( !pntk->is_pi( grid.get( x2, y2 ) ) ) ) );
+          if ( !found )
+          {
+            x2 = Ux(gen);
+            y2 = Uy(gen);
+          }
+        }
+        node n1 = grid.get( x1, y1 );
+        node n2 = grid.get( x2, y2 );
+        double hpwl_curr{ 0 };
+        double hpwl_cand{ 0 };
+        double hpwl_delta{ 0 };
+        if ( !pntk->is_null( n1 ) )
+        {
+          pntk->foreach_fanin( n1, [&]( auto fi, auto ii ){
+            auto ni = pntk->get_node( fi );
+            hpwl_curr += compute_hpwl( x1, y1, ni );
+            hpwl_cand += compute_hpwl( x2, y2, ni );
+          } );
+          pntk->foreach_fanout( n1, [&]( auto fi, auto ii ){
+            auto ni = pntk->get_node( fi );
+            hpwl_curr += compute_hpwl( x1, y1, ni );
+            hpwl_cand += compute_hpwl( x2, y2, ni );
+          } );
+        }
+
+        if ( !pntk->is_null( n2 ) )
+        {
+          pntk->foreach_fanin( n2, [&]( auto fi, auto ii ){
+            auto ni = pntk->get_node( fi );
+            hpwl_curr += compute_hpwl( x2, y2, ni );
+            hpwl_cand += compute_hpwl( x1, y1, ni );
+          } );
+          pntk->foreach_fanout( n2, [&]( auto fi, auto ii ){
+            auto ni = pntk->get_node( fi );
+            hpwl_curr += compute_hpwl( x2, y2, ni );
+            hpwl_cand += compute_hpwl( x1, y1, ni );
+          } );
+        }
+        hpwl_delta = hpwl_cand - hpwl_curr;
+        double alpha = R(gen);
+        double cost = exp( - beta * ( hpwl_cand/hpwl_curr - 1 ) );
+        //if ( ( hpwl_delta < 0 ) || ( alpha < cost ) )
+        if ( ( hpwl_delta < 0 ) )
+        {
+          hpwl += hpwl_delta;
+          grid.set( x1, y1, n2 );
+          grid.set( x2, y2, n1 );
+          if ( !pntk->is_null( n1 ) )
+            placement[n1] = vertex_t<Ntk>( { x2, y2 } );
+          if ( !pntk->is_null( n2 ) )
+            placement[n2] = vertex_t<Ntk>( { x1, y1 } );
+        }
+      }
+      beta += 0.01;
+    }
+
+    return compute_hpwl();
+  }
+
+  double simulated_annealing_detailed()
+  {
+    double hpwl0 = compute_hpwl();
+    double hpwl = compute_hpwl();
+    st.history.push_back( hpwl );
+
+    double beta = 0.01;
+    
+    std::random_device rd;  // a seed source for the random number engine
+    std::mt19937 gen(336u); // mersenne_twister_engine seeded with rd()
+    std::vector<node> nodes;
+    pntk->foreach_gate( [&]( auto f, auto i ){
+      auto n = pntk->get_node( f );
+      if ( !pntk->is_pi( n ) && !pntk->is_constant( n ) && !pntk->is_po( n ) )
+      {
+        nodes.push_back( n );
+      }
+    } );
+
+    int num_nodes = nodes.size();
+    std::uniform_int_distribution<> Ux( 0, 1 );
+    std::uniform_int_distribution<> Uy( 0, 1 );
+    std::uniform_real_distribution<> R( 0, 1 );
+
+    while ( beta < 100 )
+    {
+      for ( int s = 0; s < num_nodes; ++s )
+      {
+        int x1 = placement[nodes[s]][0];
+        int y1 = placement[nodes[s]][1];
+        int x2 = x1 + 2*Ux(gen)-1;
+        int y2 = y1 + 2*Uy(gen)-1;
+        bool found{false};
+        while( !found )
+        {
+          found |= ( ( x2 >= 0 ) && ( y2 >= 0 ) && ( x2 < Size1 ) && ( y2 < Size2 ) && ( !grid.is_occupied(x2,y2) || ( !pntk->is_pi( grid.get( x2, y2 ) ) ) ) );
+          if ( !found )
+          {
+            x2 = x1 + 2*Ux(gen)-1;
+            y2 = y1 + 2*Uy(gen)-1;
+          }
+        }
+        node n1 = grid.get( x1, y1 );
+        node n2 = grid.get( x2, y2 );
+        double hpwl_curr{ 0 };
+        double hpwl_cand{ 0 };
+        double hpwl_delta{ 0 };
+        if ( !pntk->is_null( n1 ) )
+        {
+          pntk->foreach_fanin( n1, [&]( auto fi, auto ii ){
+            auto ni = pntk->get_node( fi );
+            hpwl_curr += compute_hpwl( x1, y1, ni );
+            hpwl_cand += compute_hpwl( x2, y2, ni );
+          } );
+          pntk->foreach_fanout( n1, [&]( auto fi, auto ii ){
+            auto ni = pntk->get_node( fi );
+            hpwl_curr += compute_hpwl( x1, y1, ni );
+            hpwl_cand += compute_hpwl( x2, y2, ni );
+          } );
+        }
+
+        if ( !pntk->is_null( n2 ) )
+        {
+          pntk->foreach_fanin( n2, [&]( auto fi, auto ii ){
+            auto ni = pntk->get_node( fi );
+            hpwl_curr += compute_hpwl( x2, y2, ni );
+            hpwl_cand += compute_hpwl( x1, y1, ni );
+          } );
+          pntk->foreach_fanout( n2, [&]( auto fi, auto ii ){
+            auto ni = pntk->get_node( fi );
+            hpwl_curr += compute_hpwl( x2, y2, ni );
+            hpwl_cand += compute_hpwl( x1, y1, ni );
+          } );
+        }
+        hpwl_delta = hpwl_cand - hpwl_curr;
+        double alpha = R(gen);
+        double cost = exp( - beta * ( hpwl_cand/hpwl_curr - 1 ) );
+        //if ( ( hpwl_delta < 0 ) || ( alpha < cost ) )
+        if ( ( hpwl_delta < 0 ) )
+        {
+          hpwl += hpwl_delta;
+          grid.set( x1, y1, n2 );
+          grid.set( x2, y2, n1 );
+          if ( !pntk->is_null( n1 ) )
+            placement[n1] = vertex_t<Ntk>( { x2, y2 } );
+          if ( !pntk->is_null( n2 ) )
+            placement[n2] = vertex_t<Ntk>( { x1, y1 } );
+        }
+      }
+      beta += 0.01;
+    }
+
+    return compute_hpwl();
+  }
+
+  bool is_occupied( int x, int y )
+  {
+    return grid.is_occupied( x, y );
+  }
+
+private:
+  /*! \brief Pointer to the network to be placed */
+  std::shared_ptr<Ntk> pntk;
+
+  /*! \brief Hash table connecting each node to a placement element */
+  incomplete_node_map<vertex_t<Ntk>, Ntk> placement;
+
+  std::vector<std::array<int, 2>> pos_placement;
+
+  /*! \brief Matrix connecting each grid point to a node */
+  grid_t<node, Size1, Size2> grid;
+
+  placement_stats st;
+
+  /* events */
+  std::shared_ptr<typename network_events<Ntk>::add_event_type> add_event;
+  std::shared_ptr<typename network_events<Ntk>::modified_event_type> modified_event;
+  std::shared_ptr<typename network_events<Ntk>::delete_event_type> deleted_event;
+};
+
+} // namespace placement
+
+} // namespace mockturtle

@@ -1,0 +1,180 @@
+# Benchmark "top" written by ABC on Fri Jan 10 01:33:53 2025
+.model top
+.inputs x0 x1 x2 x3 x4 x5 x6
+.outputs y0 y1 y2 y3 y4 y5 y6 y7 y8 y9 y10 y11 y12 y13 y14 y15 y16 y17 y18 \
+ y19 y20 y21 y22 y23 y24 y25
+.names x3 x4 new_n34
+00 1
+.names x3 x4 new_n35
+11 1
+.names x0 x1 x2 new_n36
+000 0
+.names new_n34 x1 x2 new_n36 new_n35 y0
+---11 1
+111-- 1
+.names x3 new_n38
+0 1
+.names x4 new_n39
+0 1
+.names new_n38 new_n39 x1 x2 new_n40
+1111 1
+.names x1 new_n41
+0 1
+.names x0 new_n41 new_n42
+11 0
+.names x2 new_n43
+0 1
+.names x1 new_n35 new_n43 new_n44
+-11 1
+1-1 1
+.names new_n39 x3 x1 new_n45
+--0 1
+00- 1
+.names new_n44 new_n45 new_n42 new_n40 y1
+---1 1
+111- 1
+.names x0 new_n47
+0 1
+.names new_n38 x4 new_n47 new_n41 new_n48
+---1 1
+111- 1
+.names x3 new_n39 new_n49
+11 0
+.names new_n49 new_n50
+0 1
+.names new_n50 new_n48 new_n44 new_n42 y2
+-111 1
+1-11 1
+.names x0 x4 new_n52
+11 0
+.names new_n52 new_n41 new_n43 x3 new_n53
+1111 1
+.names x4 new_n38 new_n53 y3
+--1 1
+11- 1
+.names x3 x6 x5 new_n55
+111 0
+.names new_n49 new_n55 new_n47 new_n56
+-00 1
+0-0 1
+.names new_n47 x3 x4 x5 new_n57
+1111 1
+.names new_n56 new_n57 x1 new_n58
+--0 1
+00- 1
+.names new_n39 x3 new_n47 x2 new_n59
+---0 0
+000- 0
+.names new_n58 new_n43 new_n59 y4
+-00 1
+0-0 1
+.names x4 new_n38 new_n61
+11 0
+.names x3 x6 new_n62
+11 1
+.names new_n39 x3 new_n62 x2 new_n63
+-000 1
+0-00 1
+.names new_n61 x2 new_n63 new_n41 y5
+-000 1
+0-00 1
+.names x1 x0 new_n38 new_n39 new_n65
+-000 0
+0-00 0
+.names x4 x3 new_n43 new_n66
+-11 1
+1-1 1
+.names x2 new_n35 new_n65 new_n66 y6
+--11 1
+11-- 1
+.names new_n43 new_n47 new_n36 new_n68
+--0 1
+00- 1
+.names new_n35 new_n68 new_n40 y7
+--1 1
+11- 1
+.names new_n39 x0 x2 x3 new_n70
+0000 0
+.names new_n34 new_n35 x2 new_n71
+--0 1
+00- 1
+.names new_n71 new_n70 new_n41 y8
+-00 1
+0-0 1
+.names new_n48 new_n44 new_n40 y9
+--1 1
+11- 1
+.names x1 new_n47 new_n35 new_n34 new_n74
+-000 0
+0-00 0
+.names x3 x1 x2 new_n75
+-00 1
+0-0 1
+.names new_n74 new_n75 x2 new_n61 y10
+--11 0
+11-- 0
+.names new_n34 new_n47 new_n41 new_n43 y11
+1111 1
+.names new_n38 new_n39 x1 new_n78
+111 1
+.names new_n52 new_n38 new_n41 x2 new_n79
+---1 1
+111- 1
+.names new_n38 x1 x4 new_n80
+-00 1
+0-0 1
+.names new_n79 new_n78 new_n43 new_n80 y12
+--00 1
+00-- 1
+.names new_n38 new_n39 x0 x2 y13
+1111 1
+.names new_n47 new_n38 new_n39 x2 y14
+1111 1
+.names new_n47 new_n41 new_n39 x2 x3 y15
+11111 1
+.names x0 new_n41 new_n39 x2 x3 y16
+11111 1
+.names x0 new_n39 x1 x2 x3 y17
+11111 1
+.names new_n47 new_n39 x1 x2 x3 y18
+11111 1
+.names new_n38 new_n39 x2 y19
+111 1
+.names new_n41 new_n39 x0 x3 new_n89
+1111 1
+.names x0 x1 new_n90
+11 1
+.names new_n90 new_n39 new_n38 x2 new_n91
+---0 0
+000- 0
+.names new_n91 new_n92
+0 1
+.names x5 new_n39 new_n90 x3 new_n93
+-111 1
+1-11 1
+.names new_n89 new_n93 x2 new_n92 y20
+---0 0
+000- 0
+.names x6 new_n95
+0 1
+.names new_n35 new_n90 x5 new_n95 new_n96
+1111 1
+.names new_n89 new_n96 new_n43 y21
+-11 1
+1-1 1
+.names new_n49 new_n55 new_n47 new_n41 new_n98
+-000 0
+0-00 0
+.names new_n98 new_n43 new_n91 y22
+-00 1
+0-0 1
+.names x0 x1 new_n101
+00 1
+11 1
+.names new_n101 new_n43 new_n38 x4 y24
+1111 1
+.names x0 new_n41 new_n43 new_n38 x4 y25
+11111 1
+.names y23
+ 1
+.end

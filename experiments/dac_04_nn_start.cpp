@@ -1,0 +1,224 @@
+/* mockturtle: C++ logic network library
+ * Copyright (C) 2018-2024  EPFL
+ *
+ * Permission is hereby granted, free of charge, to any person
+ * obtaining a copy of this software and associated documentation
+ * files (the "Software"), to deal in the Software without
+ * restriction, including without limitation the rights to use,
+ * copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following
+ * conditions:
+ *
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+ * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+ * HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
+ */
+
+#include <iostream>
+#include <string>
+#include <vector>
+#include <chrono>
+
+#include <fmt/format.h>
+#include <lorina/aiger.hpp>
+#include <lorina/genlib.hpp>
+#include <mockturtle/algorithms/aig_balancing.hpp>
+#include <mockturtle/algorithms/emap.hpp>
+#include <mockturtle/io/aiger_reader.hpp>
+#include <mockturtle/io/genlib_reader.hpp>
+#include <mockturtle/io/write_verilog.hpp>
+#include <mockturtle/networks/aig.hpp>
+#include <mockturtle/networks/block.hpp>
+#include <mockturtle/utils/name_utils.hpp>
+#include <mockturtle/utils/tech_library.hpp>
+#include <mockturtle/views/cell_view.hpp>
+#include <mockturtle/views/depth_view.hpp>
+#include <mockturtle/views/names_view.hpp>
+
+#include <mockturtle/resynthesis/networks/bound.hpp>
+#include <mockturtle/resynthesis/networks/mapped_to_bound.hpp>
+#include <mockturtle/resynthesis/power/power_analyzer.hpp>
+#include <mockturtle/resynthesis/power/node_simulator.hpp>
+
+#include <experiments.hpp>
+
+template<class Power_t>
+void switching_vs_arrival( mockturtle::bound_network const&, Power_t const& );
+
+template<class Power_t>
+void density_correlation( mockturtle::bound_network const&, Power_t const&, Power_t const& );
+
+int main()
+{
+  using namespace experiments;
+  using namespace mockturtle;
+
+  experiment<std::string, uint32_t, double, double, double, double, double, double, float, bool> exp(
+      "dac_001", "benchmark", "size", "area", "delay", "tr(zero-delay)", "tr(glitching)", "te(zero-delay)", "te(glitching)", "runtime", "cec" );
+
+  /* library to map to technology */
+  fmt::print( "[i] processing technology library\n" );
+  std::string library = "multioutput";
+  std::vector<gate> gates;
+  std::ifstream in( cell_libraries_path( library ) );
+
+  if ( lorina::read_genlib( in, genlib_reader( gates ) ) != lorina::return_code::success )
+  {
+    return 1;
+  }
+
+  tech_library_params tps;
+  tps.ignore_symmetries = false; // set to true to drastically speed-up mapping with minor delay increase
+  tps.verbose = true;
+  tech_library<9> tech_lib( gates, tps );
+
+  for ( auto const& benchmark : all_benchmarks( iscas ) )
+  {
+    //fmt::print( "[i] processing {}\n", benchmark );
+
+    names_view<aig_network> aig;
+    if ( lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( aig ) ) != lorina::return_code::success )
+    {
+      continue;
+    }
+
+    /* remove structural redundancies */
+    aig_balancing_params bps;
+    bps.minimize_levels = false;
+    bps.fast_mode = true;
+    aig_balance( aig, bps );
+
+    const uint32_t size_before = aig.num_gates();
+//    const uint32_t depth_before = depth_view( aig ).depth();
+
+    emap_params ps;
+    ps.matching_mode = emap_params::hybrid;
+    ps.area_oriented_mapping = false;
+    ps.map_multioutput = false;
+    ps.relax_required = 0;
+    emap_stats st;
+    cell_view<block_network> res = emap<9>( aig, tech_lib, ps, &st );
+
+    auto bound = convert_mapped_to_bound( res, gates );
+
+    uint32_t constexpr N = 20;
+    uint32_t constexpr I = 10;
+    using Ntk = bound_network;
+    using node_simulator_t = mockturtle::node_simulator<Ntk, N, I>;
+    
+    mockturtle::power_analyzer<Ntk, N, I> power_train( bound );
+    mockturtle::power_analyzer<Ntk, N, I> power_test( bound );
+
+    std::vector<node_simulator_t> pis_sims_train;
+    std::vector<node_simulator_t> pis_sims_test;
+    std::default_random_engine::result_type seed = 1;
+    std::array<kitty::static_truth_table<I>, 2> workload_train;
+    std::array<kitty::static_truth_table<I>, 2> workload_test;
+    int i = 0;
+    bound.foreach_pi([&]( auto n ){
+      kitty::create_random( workload_train[0], seed + i );
+      kitty::create_random( workload_train[1], seed + i + 1 );
+      kitty::create_random( workload_test[0], seed + i + 2 );
+      kitty::create_random( workload_test[1], seed + i + 3 );
+      i += 4;
+      node_simulator_t sim_train( n, workload_train , -0.5, -1, 0 );
+      node_simulator_t sim_test( n, workload_test , -0.5, -1, 0 );
+      pis_sims_train.push_back( sim_train );
+      pis_sims_test.push_back( sim_test );
+    });
+
+    auto beg = std::chrono::high_resolution_clock::now();
+    power_train( pis_sims_train );
+    power_test( pis_sims_test );
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - beg);
+
+    double const zero_delay_train = power_train.get_zero_delay();
+    double const dyn_switch_train = power_train.get_dyn_switch();
+    double const glitching_train = dyn_switch_train - zero_delay_train;
+
+    double const zero_delay_test = power_test.get_zero_delay();
+    double const dyn_switch_test = power_test.get_dyn_switch();
+    double const glitching_test = dyn_switch_test - zero_delay_test;
+
+    //std::cout << "ZD: train " << zero_delay_train << " " << zero_delay_test << std::endl;
+    //std::cout << "DS: train " << dyn_switch_train << " " << dyn_switch_test << std::endl;
+
+    //switching_vs_arrival( bound, power_train );
+    //density_correlation( bound, power_train, power_test );
+    bound.foreach_gate( [&]( auto n ){
+      auto g = bound.get_binding( n );
+      if( g.id == 6 )
+      {
+        //std::cout << g.name << std::endl;
+        
+        auto P = power_train.get_probs( n );
+        auto Pt = power_train.get_trans_probs( n );
+        //auto M = power_train.get_trans_matrix( n );
+        /* simulate all the other timesteps */
+        std::cout << "Ps ";
+        for( int step = 0; step < N; ++step )
+        {
+        //  bound.foreach_fanin( n, [&]( auto f, auto i ){
+        //    std::cout << M[i][step] << " ";
+        //  } );
+          printf( "%5.2f ", P[step] );
+        }
+        std::cout << std::endl;
+        std::cout << "Pt ";
+        for( int step = 0; step < N; ++step )
+        {
+          printf( "%5.2f ", Pt[step] );
+        }
+        printf( " --> %5.2f\n", power_train.get_dyn_switch( n ) );
+      }
+    } );
+
+    const auto cec = false;//benchmark == "hyp" ? true : abc_cec_mapped_cell( res_names, benchmark, library );
+
+    /* write verilog netlist */
+    // write_verilog_with_cell( res_names, benchmark + "_mapped.v" );
+
+    exp( benchmark, size_before, bound.area(), res.compute_worst_delay(), zero_delay_train, glitching_train, zero_delay_test, glitching_test, duration.count(), cec );
+  }
+
+  exp.save();
+  exp.table();
+
+  return 0;
+}
+
+template<class Power_t>
+void switching_vs_arrival( mockturtle::bound_network const& ntk, Power_t const& power )
+{
+  ntk.foreach_node( [&]( auto n ){
+    std::cout << power.get_arrival( n ) << " " << power.get_dyn_switch( n ) << std::endl;
+  } );
+}
+
+template<class Power_t>
+void density_correlation( mockturtle::bound_network const& ntk, Power_t const& power1, Power_t const& power2 )
+{
+  uint32_t const num_steps = power1.num_steps();
+  ntk.foreach_node( [&]( auto n ){
+    auto P1 = power1.get_trans_probs( n );
+    auto P2 = power2.get_trans_probs( n );
+    double diff = 0;
+    for( int t = 1; t < num_steps; ++t )
+    {
+      diff += std::abs( P1[t]-P2[t] );
+    }
+    diff /= num_steps;
+
+    std::cout << power1.get_arrival( n ) << " " << diff << std::endl;
+  } );
+}

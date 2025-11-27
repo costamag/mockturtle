@@ -1,0 +1,31 @@
+read_verilog -m c432_bef.v
+ps -gp
+read_verilog -m c499_bef.v
+read_verilog -m c432_aft.v
+read_verilog -m c499_aft.v
+ps -pg
+source -s abc.rc
+read_genlib ../../experiments/cell_libraries/asap7.genlib
+read_verilog c17_bef.v
+read_verilog -m c17_bef.v
+strash; dch; if -p; strash; dch; if -p; mfs -p; mfs -p; read_gen
+strash; dch; if -p; strash; dch; if -p; mfs -p; mfs -p;
+map -ap; ps -p;
+write_verilog c17_abc.v
+read_aiger c432_bef.v
+ps -p
+strash; dch; if -p; strash; dch; if -p; mfs -p; mfs -p; map -ap; ps -p;
+write_verilog c432_abc.v
+write_verilog -h
+if -p
+mfs -p
+help
+glitch -h
+read_verilog -m c432_abc.v
+read_genlib ../../experiments/cell_libraries/asap7.genlib
+read_verilog -m c432_bef.v
+ps -p
+write_verilog c432_v2.v
+write_blif c432_v2.blif
+source -s abc.rc
+read_blif c17_abc.blif 

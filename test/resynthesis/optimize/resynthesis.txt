@@ -1,0 +1,1300 @@
+#include <catch.hpp>
+
+#include <kitty/kitty.hpp>
+#include <kitty/static_truth_table.hpp>
+
+#include <mockturtle/algorithms/emap.hpp>
+#include <mockturtle/algorithms/klut_to_graph.hpp>
+#include <mockturtle/algorithms/node_resynthesis.hpp>
+#include <mockturtle/algorithms/node_resynthesis/xag_npn.hpp>
+#include <mockturtle/algorithms/simulation.hpp>
+#include <mockturtle/io/genlib_reader.hpp>
+#include <mockturtle/networks/aig.hpp>
+#include <mockturtle/networks/klut.hpp>
+#include <mockturtle/resynthesis/aig_syn.hpp>
+#include <mockturtle/resynthesis/algorithms/resynthesize.hpp>
+#include <mockturtle/resynthesis/analyzers/homo_pxx_analyzer.hpp>
+#include <mockturtle/resynthesis/power/node_simulator.hpp>
+#include <mockturtle/resynthesis/power/analyzers/power_analyzer.hpp>
+//#include <mockturtle/resynthesis/power/optimization/power_rewrite.hpp>
+#include <mockturtle/resynthesis/database/homo_database.hpp>
+#include <mockturtle/resynthesis/database/mapped_list.hpp>
+#include <mockturtle/resynthesis/list_simulator.hpp>
+#include <mockturtle/resynthesis/networks/bindings.hpp>
+#include <mockturtle/resynthesis/networks/bound.hpp>
+#include <mockturtle/resynthesis/networks/mapped_to_bound.hpp>
+#include <mockturtle/resynthesis/power/analyzers/convo_analyzer.hpp>
+#include <mockturtle/resynthesis/timing/arrival_analyzer.hpp>
+#include <mockturtle/utils/tech_library.hpp>
+
+
+std::string const test_library = "GATE   and2    1.0 O=a*b;         PIN * INV 1   999 1.0 0.0 1.0 0.0\n"
+                                 "GATE   and3    1.5 O=a*b*c;       PIN * INV 1   999 3.0 0.0 3.0 0.0\n"
+                                 "GATE   lt2     1.0 O=(!a)*b;      PIN * INV 1   999 1.0 0.0 1.0 0.0\n"
+                                 "GATE   lt3     1.5 O=(!a)*(b*c);  PIN * INV 1   999 3.0 0.0 3.0 0.0\n"
+                                 "GATE   xor2    1.0 O=a^b;         PIN * INV 1   999 1.0 0.0 1.0 0.0\n"
+                                 "GATE   xor3    1.5 O=a^b^c;       PIN * INV 1   999 3.0 0.0 3.0 0.0";
+
+TEST_CASE( "Struct optimize for delay - symm gates", "[resynthesis]" )
+{
+  std::vector<mockturtle::gate> gates;
+
+  std::istringstream in( test_library );
+  auto result = lorina::read_genlib( in, mockturtle::genlib_reader( gates ) );
+  CHECK( result == lorina::return_code::success );
+  using Ntk = mockturtle::bound_network;
+  Ntk bound( gates );
+  mockturtle::bindings binds( gates );
+
+  using signal = typename Ntk::signal;
+
+  /* Database construction from network */
+  signal const a = bound.create_pi();
+  signal const b = bound.create_pi();
+  signal const c = bound.create_pi();
+  signal const d = bound.create_pi();
+  signal const f1 = bound.create_node( { b, c },   "and2" )[0];
+  signal const f2 = bound.create_node( { c, d },   "and2" )[0];
+  signal const o1 = bound.create_node( { a, f1 },  "and2" )[0];
+  signal const o2 = bound.create_node( { d, f1 },  "and2" )[0];
+  signal const o3 = bound.create_node( { f1, f2 }, "and2" )[0];
+  signal const e1 = bound.create_node( { b, c },   "xor2" )[0];
+  signal const e2 = bound.create_node( { c, d },   "xor2" )[0];
+  signal const o4 = bound.create_node( { a, e1 },  "xor2" )[0];
+  signal const o5 = bound.create_node( { d, e1 },  "xor2" )[0];
+  signal const o6 = bound.create_node( { e1, e2 }, "xor2" )[0];
+  
+  bound.create_po( o1 );
+  bound.create_po( o2 );
+  bound.create_po( o3 );
+  bound.create_po( o4 );
+  bound.create_po( o5 );
+  bound.create_po( o6 );
+
+  CHECK( ( bound.area() == 10 ) );
+
+
+  uint32_t constexpr num_vars = 4;
+  uint32_t constexpr num_steps = 10;
+  uint32_t constexpr cube_size = 10;
+  uint32_t constexpr max_leaves = 10;
+  uint32_t constexpr capacity = 10;
+  mockturtle::choice_order constexpr order = mockturtle::delay_area_power;
+  using database_t = mockturtle::homo_database<num_vars, capacity, order>;
+  database_t database( binds );
+
+  mockturtle::resynthesis_params rps;
+  database.print();
+  rps.collect_mode = true;
+  mockturtle::delay_resynthesize<Ntk, database_t, num_vars, num_steps, cube_size, max_leaves>( bound, database, rps );
+  database.print();
+
+  /* network to optimize */
+  Ntk ntk2( gates );
+  signal const x0 = ntk2.create_pi();
+  signal const x1 = ntk2.create_pi();
+  signal const x2 = ntk2.create_pi();
+  signal const x3 = ntk2.create_pi();
+
+  signal out1 = ntk2.create_node( { x0, x1, x2 }, "and3" )[0];
+  ntk2.create_po( out1 );
+  CHECK( ( ntk2.area() == 1.5 ) );
+
+  mockturtle::arrival_analyzer<Ntk> arrival( ntk2 );
+  rps.collect_mode = false;
+  rps.try_struct = true;
+
+  double delay_bef = arrival.worst_delay();
+  double area_bef = ntk2.area();
+  mockturtle::delay_resynthesize<Ntk, database_t, num_vars, num_steps, cube_size, max_leaves>( ntk2, database, rps );
+  double area_aft = ntk2.area();
+  double delay_aft = arrival.worst_delay();
+  std::cout << "delay:" << delay_bef << " -> " << delay_aft << std::endl;
+  std::cout << "area :" <<  area_bef << " -> " <<  area_aft << std::endl;
+  CHECK( ( delay_bef == 3.0 ) );
+  CHECK( ( delay_aft == 2.0 ) );
+  CHECK( ( area_bef == 1.5 ) );
+  CHECK( ( area_aft == 2.0 ) );
+
+  signal s1 = ntk2.create_node( { x0, x1 }, "xor2" )[0];
+  signal out2 = ntk2.create_node( { s1, x2, x3 }, "and3" )[0];
+  ntk2.substitute_node( ntk2.get_node( ntk2.po_at( 0 ) ), out2 );
+
+  delay_bef = arrival.worst_delay();
+  area_bef = ntk2.area();
+  mockturtle::delay_resynthesize<Ntk, database_t, num_vars, num_steps, cube_size, max_leaves>( ntk2, database, rps );
+  area_aft = ntk2.area();
+  delay_aft = arrival.worst_delay();
+  std::cout << "delay:" << delay_bef << " -> " << delay_aft << std::endl;
+  std::cout << "area :" <<  area_bef << " -> " <<  area_aft << std::endl;
+  CHECK( ( delay_bef == 4.0 ) );
+  CHECK( ( delay_aft == 2.0 ) );
+  CHECK( ( area_bef == 2.5 ) );
+  CHECK( ( area_aft == 3.0 ) );
+
+  s1 = ntk2.create_node( { x0, x1 }, "xor2" )[0];
+  out2 = ntk2.create_node( { x2, s1, x3 }, "and3" )[0];
+  ntk2.substitute_node( ntk2.get_node( ntk2.po_at( 0 ) ), out2 );
+
+  delay_bef = arrival.worst_delay();
+  area_bef = ntk2.area();
+  mockturtle::delay_resynthesize<Ntk, database_t, num_vars, num_steps, cube_size, max_leaves>( ntk2, database, rps );
+  area_aft = ntk2.area();
+  delay_aft = arrival.worst_delay();
+  std::cout << "delay:" << delay_bef << " -> " << delay_aft << std::endl;
+  std::cout << "area :" <<  area_bef << " -> " <<  area_aft << std::endl;
+  CHECK( ( delay_bef == 4.0 ) );
+  CHECK( ( delay_aft == 2.0 ) );
+  CHECK( ( area_bef == 2.5 ) );
+  CHECK( ( area_aft == 3.0 ) );
+
+  s1 = ntk2.create_node( { x0, x1 }, "xor2" )[0];
+  out2 = ntk2.create_node( { x2, x3, s1 }, "and3" )[0];
+  ntk2.substitute_node( ntk2.get_node( ntk2.po_at( 0 ) ), out2 );
+
+  delay_bef = arrival.worst_delay();
+  area_bef = ntk2.area();
+  mockturtle::delay_resynthesize<Ntk, database_t, num_vars, num_steps, cube_size, max_leaves>( ntk2, database, rps );
+  area_aft = ntk2.area();
+  delay_aft = arrival.worst_delay();
+  std::cout << "delay:" << delay_bef << " -> " << delay_aft << std::endl;
+  std::cout << "area :" <<  area_bef << " -> " <<  area_aft << std::endl;
+  CHECK( ( delay_bef == 4.0 ) );
+  CHECK( ( delay_aft == 2.0 ) );
+  CHECK( ( area_bef == 2.5 ) );
+  CHECK( ( area_aft == 3.0 ) );
+
+  signal out3 = ntk2.create_node( { x0, x2, x3 }, "xor3" )[0];
+  ntk2.substitute_node( ntk2.get_node( ntk2.po_at( 0 ) ), out3 );
+
+  delay_bef = arrival.worst_delay();
+  area_bef = ntk2.area();
+  mockturtle::delay_resynthesize<Ntk, database_t, num_vars, num_steps, cube_size, max_leaves>( ntk2, database, rps );
+  area_aft = ntk2.area();
+  delay_aft = arrival.worst_delay();
+  std::cout << "delay:" << delay_bef << " -> " << delay_aft << std::endl;
+  std::cout << "area :" <<  area_bef << " -> " <<  area_aft << std::endl;
+  CHECK( ( area_bef == 1.5 ) );
+  CHECK( ( area_aft == 2.0 ) );
+  CHECK( ( delay_bef == 3.0 ) );
+  CHECK( ( delay_aft == 2.0 ) );
+
+  s1 = ntk2.create_node( { x0, x1 }, "and2" )[0];
+  out2 = ntk2.create_node( { s1, x2, x3 }, "xor3" )[0];
+  ntk2.substitute_node( ntk2.get_node( ntk2.po_at( 0 ) ), out2 );
+
+  delay_bef = arrival.worst_delay();
+  area_bef = ntk2.area();
+  mockturtle::delay_resynthesize<Ntk, database_t, num_vars, num_steps, cube_size, max_leaves>( ntk2, database, rps );
+  area_aft = ntk2.area();
+  delay_aft = arrival.worst_delay();
+  std::cout << "delay:" << delay_bef << " -> " << delay_aft << std::endl;
+  std::cout << "area :" <<  area_bef << " -> " <<  area_aft << std::endl;
+  CHECK( ( delay_bef == 4.0 ) );
+  CHECK( ( delay_aft == 2.0 ) );
+  CHECK( ( area_bef == 2.5 ) );
+  CHECK( ( area_aft == 3.0 ) );
+
+  s1 = ntk2.create_node( { x0, x1 }, "and2" )[0];
+  out2 = ntk2.create_node( { x2, s1, x3 }, "xor3" )[0];
+  ntk2.substitute_node( ntk2.get_node( ntk2.po_at( 0 ) ), out2 );
+
+  delay_bef = arrival.worst_delay();
+  area_bef = ntk2.area();
+  mockturtle::delay_resynthesize<Ntk, database_t, num_vars, num_steps, cube_size, max_leaves>( ntk2, database, rps );
+  area_aft = ntk2.area();
+  delay_aft = arrival.worst_delay();
+  std::cout << "delay:" << delay_bef << " -> " << delay_aft << std::endl;
+  std::cout << "area :" <<  area_bef << " -> " <<  area_aft << std::endl;
+  CHECK( ( delay_bef == 4.0 ) );
+  CHECK( ( delay_aft == 2.0 ) );
+  CHECK( ( area_bef == 2.5 ) );
+  CHECK( ( area_aft == 3.0 ) );
+
+  s1 = ntk2.create_node( { x0, x1 }, "and2" )[0];
+  out2 = ntk2.create_node( { x2, x3, s1 }, "xor3" )[0];
+  ntk2.substitute_node( ntk2.get_node( ntk2.po_at( 0 ) ), out2 );
+
+  delay_bef = arrival.worst_delay();
+  area_bef = ntk2.area();
+  mockturtle::delay_resynthesize<Ntk, database_t, num_vars, num_steps, cube_size, max_leaves>( ntk2, database, rps );
+  area_aft = ntk2.area();
+  delay_aft = arrival.worst_delay();
+  std::cout << "delay:" << delay_bef << " -> " << delay_aft << std::endl;
+  std::cout << "area :" <<  area_bef << " -> " <<  area_aft << std::endl;
+  CHECK( ( delay_bef == 4.0 ) );
+  CHECK( ( delay_aft == 2.0 ) );
+  CHECK( ( area_bef == 2.5 ) );
+  CHECK( ( area_aft == 3.0 ) );
+}
+
+TEST_CASE( "Struct optimize for delay - non symm gates", "[resynthesis]" )
+{
+  std::vector<mockturtle::gate> gates;
+
+  std::istringstream in( test_library );
+  auto result = lorina::read_genlib( in, mockturtle::genlib_reader( gates ) );
+  CHECK( result == lorina::return_code::success );
+  using Ntk = mockturtle::bound_network;
+  Ntk bound( gates );
+  mockturtle::bindings binds( gates );
+
+  using signal = typename Ntk::signal;
+
+  /* Database construction from network */
+  signal const a = bound.create_pi();
+  signal const b = bound.create_pi();
+  signal const c = bound.create_pi();
+  signal const f1 = bound.create_node( { a, b },   "lt2" )[0];
+  signal const f2 = bound.create_node( { a, b },   "and2" )[0];
+  signal const o1 = bound.create_node( { c, f1 },  "and2" )[0];
+  signal const o2 = bound.create_node( { c, f2 },  "lt2" )[0];
+  
+  bound.create_po( o1 );
+  bound.create_po( o2 );
+
+  CHECK( ( bound.area() == 4 ) );
+
+
+  uint32_t constexpr num_vars = 4;
+  uint32_t constexpr num_steps = 10;
+  uint32_t constexpr cube_size = 10;
+  uint32_t constexpr max_leaves = 10;
+  uint32_t constexpr capacity = 10;
+  mockturtle::choice_order constexpr order = mockturtle::delay_area_power;
+  using database_t = mockturtle::homo_database<num_vars, capacity, order>;
+  database_t database( binds );
+
+  mockturtle::resynthesis_params rps;
+  database.print();
+  rps.collect_mode = true;
+  mockturtle::delay_resynthesize<Ntk, database_t, num_vars, num_steps, cube_size, max_leaves>( bound, database, rps );
+  database.print();
+
+  /* network to optimize */
+  Ntk ntk2( gates );
+  signal const x0 = ntk2.create_pi();
+  signal const x1 = ntk2.create_pi();
+  signal const x2 = ntk2.create_pi();
+  signal const x3 = ntk2.create_pi();
+
+  signal out1 = ntk2.create_node( { x0, x1, x2 }, "lt3" )[0];
+  ntk2.create_po( out1 );
+  CHECK( ( ntk2.area() == 1.5 ) );
+
+  mockturtle::arrival_analyzer<Ntk> arrival( ntk2 );
+  rps.collect_mode = false;
+  rps.try_struct = true;
+
+  double delay_bef = arrival.worst_delay();
+  double area_bef = ntk2.area();
+  mockturtle::delay_resynthesize<Ntk, database_t, num_vars, num_steps, cube_size, max_leaves>( ntk2, database, rps );
+  double area_aft = ntk2.area();
+  double delay_aft = arrival.worst_delay();
+  std::cout << "delay:" << delay_bef << " -> " << delay_aft << std::endl;
+  std::cout << "area :" <<  area_bef << " -> " <<  area_aft << std::endl;
+  CHECK( ( delay_bef == 3.0 ) );
+  CHECK( ( delay_aft == 2.0 ) );
+  CHECK( ( area_bef == 1.5 ) );
+  CHECK( ( area_aft == 2.0 ) );
+
+  signal s1 = ntk2.create_node( { x0, x1 }, "xor2" )[0];
+  signal out2 = ntk2.create_node( { s1, x2, x3 }, "lt3" )[0];
+  ntk2.substitute_node( ntk2.get_node( ntk2.po_at( 0 ) ), out2 );
+
+  delay_bef = arrival.worst_delay();
+  area_bef = ntk2.area();
+  mockturtle::delay_resynthesize<Ntk, database_t, num_vars, num_steps, cube_size, max_leaves>( ntk2, database, rps );
+  area_aft = ntk2.area();
+  delay_aft = arrival.worst_delay();
+  std::cout << "delay:" << delay_bef << " -> " << delay_aft << std::endl;
+  std::cout << "area :" <<  area_bef << " -> " <<  area_aft << std::endl;
+  CHECK( ( delay_bef == 4.0 ) );
+  CHECK( ( delay_aft == 2.0 ) );
+  CHECK( ( area_bef == 2.5 ) );
+  CHECK( ( area_aft == 3.0 ) );
+
+  s1 = ntk2.create_node( { x0, x1 }, "xor2" )[0];
+  out2 = ntk2.create_node( { x2, s1, x3 }, "lt3" )[0];
+  ntk2.substitute_node( ntk2.get_node( ntk2.po_at( 0 ) ), out2 );
+
+  delay_bef = arrival.worst_delay();
+  area_bef = ntk2.area();
+  mockturtle::delay_resynthesize<Ntk, database_t, num_vars, num_steps, cube_size, max_leaves>( ntk2, database, rps );
+  area_aft = ntk2.area();
+  delay_aft = arrival.worst_delay();
+  std::cout << "delay:" << delay_bef << " -> " << delay_aft << std::endl;
+  std::cout << "area :" <<  area_bef << " -> " <<  area_aft << std::endl;
+  CHECK( ( delay_bef == 4.0 ) );
+  CHECK( ( delay_aft == 2.0 ) );
+  CHECK( ( area_bef == 2.5 ) );
+  CHECK( ( area_aft == 3.0 ) );
+
+ntk2.print();
+
+  s1 = ntk2.create_node( { x0, x1 }, "xor2" )[0];
+  out2 = ntk2.create_node( { x2, x3, s1 }, "lt3" )[0];
+  ntk2.substitute_node( ntk2.get_node( ntk2.po_at( 0 ) ), out2 );
+
+  delay_bef = arrival.worst_delay();
+  area_bef = ntk2.area();
+  mockturtle::delay_resynthesize<Ntk, database_t, num_vars, num_steps, cube_size, max_leaves>( ntk2, database, rps );
+  area_aft = ntk2.area();
+  delay_aft = arrival.worst_delay();
+  std::cout << "delay:" << delay_bef << " -> " << delay_aft << std::endl;
+  std::cout << "area :" <<  area_bef << " -> " <<  area_aft << std::endl;
+  CHECK( ( delay_bef == 4.0 ) );
+  CHECK( ( delay_aft == 2.0 ) );
+  CHECK( ( area_bef == 2.5 ) );
+  CHECK( ( area_aft == 3.0 ) );
+
+}
+
+std::string const test_library2 = "GATE   inv1    1.0 O=!a;         PIN * INV 1   999 1.0 0.0 1.0 0.0\n"
+                                  "GATE   buf     1.0 O=a;          PIN * INV 1   999 1.0 0.0 1.0 0.0\n"
+                                  "GATE   xor2    1.0 O=a^b;        PIN * INV 1   999 1.0 0.0 1.0 0.0";
+
+TEST_CASE( "Struct optimize for delay - window", "[resynthesis]" )
+{
+  std::vector<mockturtle::gate> gates;
+
+  std::istringstream in( test_library2 );
+  auto result = lorina::read_genlib( in, mockturtle::genlib_reader( gates ) );
+  CHECK( result == lorina::return_code::success );
+  using Ntk = mockturtle::bound_network;
+  Ntk bound( gates );
+  mockturtle::bindings binds( gates );
+
+  using signal = typename Ntk::signal;
+
+  uint32_t constexpr num_vars = 4;
+  uint32_t constexpr num_steps = 10;
+  uint32_t constexpr cube_size = 3;
+  uint32_t constexpr max_leaves = 4;
+  uint32_t constexpr capacity = 10;
+  mockturtle::choice_order constexpr order = mockturtle::delay_area_power;
+  using database_t = mockturtle::homo_database<num_vars, capacity, order>;
+  database_t database( binds );
+
+
+  /* network to optimize */
+  Ntk ntk2( gates );
+  signal const x0 = ntk2.create_pi();
+  signal const x1 = ntk2.create_pi();
+
+  signal f1 = ntk2.create_node( { x0, x1 }, "xor2" )[0];
+  std::cout << "f1=" << f1 << std::endl;
+  signal f2 = ntk2.create_node( { x0, f1 }, "xor2" )[0];
+  std::cout << "f2=" << f2 << std::endl;
+  ntk2.create_po( f2 );
+  CHECK( ( ntk2.area() == 2 ) );
+
+  mockturtle::resynthesis_params rps;
+  mockturtle::arrival_analyzer<Ntk> arrival( ntk2 );
+  rps.collect_mode = false;
+  rps.try_struct = false;
+  rps.try_window = true;
+
+  double delay_bef = arrival.worst_delay();
+  double area_bef = ntk2.area();
+  mockturtle::delay_resynthesize<Ntk, database_t, num_vars, num_steps, cube_size, max_leaves>( ntk2, database, rps );
+  double area_aft = ntk2.area();
+  double delay_aft = arrival.worst_delay();
+  std::cout << "delay:" << delay_bef << " -> " << delay_aft << std::endl;
+  std::cout << "area :" <<  area_bef << " -> " <<  area_aft << std::endl;
+  CHECK( ( delay_bef == 2.0 ) );
+  CHECK( ( delay_aft == 0.0 ) );
+  CHECK( ( area_bef == 2.0 ) );
+  CHECK( ( area_aft == 0.0 ) );
+
+std::cout << " =     = =     = =     = =     =" << std::endl;
+
+  signal f3 = ntk2.create_node( { x0, x1 }, "xor2" )[0];
+  signal f4 = ntk2.create_node( { x0, f3 }, "xor2" )[0];
+  ntk2.create_po( f4 );
+  CHECK( ( ntk2.area() == 2 ) );
+
+  rps.collect_mode = false;
+  rps.try_struct = false;
+  rps.try_window = false;
+  rps.try_simula = true;
+
+  arrival.compute_arrival_times();
+  delay_bef = arrival.worst_delay();
+  area_bef = ntk2.area();
+  mockturtle::delay_resynthesize<Ntk, database_t, num_vars, num_steps, cube_size, max_leaves>( ntk2, database, rps );
+  area_aft = ntk2.area();
+  delay_aft = arrival.worst_delay();
+  std::cout << "delay:" << delay_bef << " -> " << delay_aft << std::endl;
+  std::cout << "area :" << area_bef << " -> " <<  area_aft << std::endl;
+  CHECK( ( delay_bef == 2.0 ) );
+  CHECK( ( delay_aft == 0.0 ) );
+  CHECK( ( area_bef == 2.0 ) );
+  CHECK( ( area_aft == 0.0 ) );
+
+}
+
+std::string const test_library3 =
+"GATE INVx1_ASAP7_75t_R        0.04  Y=!A;                      \n"                                  
+"    PIN  A  UNKNOWN   1 999    14.77     0.00    14.77     0.00\n"
+"GATE NOR2x1_ASAP7_75t_R       0.09  Y=(!A * !B);               \n"                                  
+"    PIN  A  UNKNOWN   1 999    23.93     0.00    23.93     0.00\n"
+"    PIN  B  UNKNOWN   1 999    23.19     0.00    23.19     0.00\n"
+"GATE AO21x1_ASAP7_75t_R       0.09  Y=(A1 * A2) + (B);         \n"                                  
+"    PIN A1  UNKNOWN   1 999    21.72     0.00    21.72     0.00\n"
+"    PIN A2  UNKNOWN   1 999    22.09     0.00    22.09     0.00\n"
+"    PIN  B  UNKNOWN   1 999    21.12     0.00    21.12     0.00";
+
+TEST_CASE( "Mapped list with symmetries and three gates", "[resynthesis]" )
+{
+  std::vector<mockturtle::gate> gates;
+
+  std::istringstream in( test_library3 );
+  auto result = lorina::read_genlib( in, mockturtle::genlib_reader( gates ) );
+  CHECK( result == lorina::return_code::success );
+  using Ntk = mockturtle::bound_network;
+  Ntk bound( gates );
+  mockturtle::bindings binds( gates );
+
+  using signal = typename Ntk::signal;
+
+  uint32_t constexpr num_vars = 4;
+  uint32_t constexpr num_steps = 10;
+  uint32_t constexpr cube_size = 4;
+  uint32_t constexpr max_leaves = 4;
+  uint32_t constexpr capacity = 10;
+  mockturtle::choice_order constexpr order = mockturtle::delay_area_power;
+  using database_t = mockturtle::homo_database<num_vars, capacity, order>;
+  database_t database( binds );
+
+  auto a = bound.create_pi();
+  auto b = bound.create_pi();
+  auto c = bound.create_pi();
+  auto d = bound.create_pi();
+
+  auto f1_1 = bound.create_node( { b }, "INVx1_ASAP7_75t_R" )[0];
+  auto f1_2 = bound.create_node( { f1_1 }, "INVx1_ASAP7_75t_R" )[0];
+  auto f2_1 = bound.create_node( { f1_2 }, "INVx1_ASAP7_75t_R" )[0];
+  auto f2_2 = bound.create_node( { f2_1 }, "INVx1_ASAP7_75t_R" )[0];
+  auto f0 = bound.create_node( { f2_2 }, "INVx1_ASAP7_75t_R" )[0];
+  auto fb = bound.create_node( { f0 }, "INVx1_ASAP7_75t_R" )[0];
+  auto f1 = bound.create_node( { d }, "INVx1_ASAP7_75t_R" )[0];
+  auto f2 = bound.create_node( { f1, a } , "NOR2x1_ASAP7_75t_R" )[0];
+  auto f3 = bound.create_node( { f2 }, "INVx1_ASAP7_75t_R" )[0];
+  auto f4 = bound.create_node( { c, fb, f3 }, "AO21x1_ASAP7_75t_R" )[0];
+  auto f1_t = bound.create_node( { d }, "INVx1_ASAP7_75t_R" )[0];
+  auto f2_t = bound.create_node( { f1_t, a } , "NOR2x1_ASAP7_75t_R" )[0];
+  auto f3_t = bound.create_node( { f2_t }, "INVx1_ASAP7_75t_R" )[0];
+  auto f4_t = bound.create_node( { b, c, f3_t }, "AO21x1_ASAP7_75t_R" )[0];
+  bound.create_po( f4 );
+  bound.create_po( f4_t );
+
+  mockturtle::resynthesis_params rps;
+  database.print();
+  rps.collect_mode = false;
+  mockturtle::delay_resynthesize<Ntk, database_t, num_vars, num_steps, cube_size, max_leaves>( bound, database, rps );
+  database.print();
+
+  bound.substitute_node( bound.get_node( f4_t ), a );
+  bound.print();
+  rps.collect_mode = false;
+  rps.try_window = true;
+  mockturtle::delay_resynthesize<Ntk, database_t, num_vars, num_steps, cube_size, max_leaves>( bound, database, rps );
+  bound.print();
+
+
+}
+
+
+//L: [59.08 21.72 22.09 74.59 ] 6= {5 }.3 7= {6 2 }.7 8= {7 }.3 9= {3 4 8 }.12  pos: 9 
+
+#if 0
+
+std::string const test_library = "GATE   inv1    1 O=!a;            PIN * INV 1 999 0.9 0.3 0.9 0.3\n"
+                                 "GATE   inv2    2 O=!a;            PIN * INV 2 999 1.0 0.1 1.0 0.1\n"
+                                 "GATE   nand2   2 O=!(a*b);        PIN * INV 1 999 1.0 0.2 1.0 0.2\n"
+                                 "GATE   and2    3 O=a*b;           PIN * INV 1 999 1.7 0.2 1.7 0.2\n"
+                                 "GATE   xor2    4 O=a^b;           PIN * UNKNOWN 2 999 1.9 0.5 1.9 0.5\n"
+                                 "GATE   mig3    3 O=a*b+a*c+b*c;   PIN * INV 1 999 2.0 0.2 2.0 0.2\n"
+                                 "GATE   xor3    5 O=a^b^c;         PIN * UNKNOWN 2 999 3.0 0.5 3.0 0.5\n"
+                                 "GATE   buf     2 O=a;             PIN * NONINV 1 999 1.0 0.0 1.0 0.0\n"
+                                 "GATE   zero    0 O=CONST0;\n"
+                                 "GATE   one     0 O=CONST1;\n"
+                                 "GATE   ha      5 C=a*b;           PIN * INV 1 999 1.7 0.4 1.7 0.4\n"
+                                 "GATE   ha      5 S=!a*b+a*!b;     PIN * INV 1 999 2.1 0.4 2.1 0.4\n"
+                                 "GATE   fa      6 C=a*b+a*c+b*c;   PIN * INV 1 999 2.1 0.4 2.1 0.4\n"
+                                 "GATE   fa      6 S=a^b^c;         PIN * INV 1 999 3.0 0.4 3.0 0.4";
+
+std::string const mig_library = 
+"GATE const0        0.00  z=CONST0;                           \n"                                  
+"GATE const1        0.00  z=CONST1;                           \n"                                  
+"GATE buf1         -10.00  Y=A;                               \n"                                  
+"    PIN  A  UNKNOWN   1 999    1.00     0.00    1.00     0.00\n"
+"GATE buf2         -10.00  Y=A;                               \n"                                  
+"    PIN  A  UNKNOWN   1 999    2.00     0.00    2.00     0.00\n"
+"GATE buf3         -10.00  Y=A;                               \n"                                  
+"    PIN  A  UNKNOWN   1 999    3.00     0.00    3.00     0.00\n"
+"GATE inv           1.00  Y=!A;                               \n"                                  
+"    PIN  A  UNKNOWN   1 999    1.00     0.00    1.00     0.00\n"
+"GATE and           1.00  Y=(A * B);                          \n"                                  
+"    PIN  A  UNKNOWN   1 999    1.00     0.00    1.00     0.00\n"
+"    PIN  B  UNKNOWN   1 999    1.00     0.00    1.00     0.00\n"
+"GATE or3           1.00  Y=(A + B + C);                      \n"                                  
+"    PIN  A  UNKNOWN   1 999    1.00     0.00    1.00     0.00\n"
+"    PIN  B  UNKNOWN   1 999    1.00     0.00    1.00     0.00\n"
+"    PIN  C  UNKNOWN   1 999    1.00     0.00    1.00     0.00\n"
+"GATE xor2          1.00  Y=!(A ^ B);                         \n"                                  
+"    PIN  A  UNKNOWN   1 999    1.00     0.00    1.00     0.00\n"
+"    PIN  B  UNKNOWN   1 999    1.00     0.00    1.00     0.00\n"
+"GATE xnor3         1.00  Y=!(A ^ B ^ C);                     \n"                                  
+"    PIN  A  UNKNOWN   1 999    1.00     0.00    1.00     0.00\n"
+"    PIN  B  UNKNOWN   1 999    1.00     0.00    1.00     0.00\n"
+"    PIN  C  UNKNOWN   1 999    1.00     0.00    1.00     0.00\n"
+"GATE maj1           1.00  Y=(A * B) + (A * C) + (B * C);      \n"                                  
+"    PIN  A  UNKNOWN   1 999    1.00     0.00    1.00     0.00\n"
+"    PIN  B  UNKNOWN   1 999    1.00     0.00    1.00     0.00\n"
+"    PIN  C  UNKNOWN   1 999    1.00     0.00    1.00     0.00\n"
+"GATE maj2           1.00  Y=(A * B) + (A * C) + (B * C);      \n"                                  
+"    PIN  A  UNKNOWN   1 999    2.00     0.00    2.00     0.00\n"
+"    PIN  B  UNKNOWN   1 999    2.00     0.00    2.00     0.00\n"
+"    PIN  C  UNKNOWN   1 999    2.00     0.00    2.00     0.00\n"
+"GATE maj3           1.00  Y=(A * B) + (A * C) + (B * C);      \n"                                  
+"    PIN  A  UNKNOWN   1 999    3.00     0.00    3.00     0.00\n"
+"    PIN  B  UNKNOWN   1 999    3.00     0.00    3.00     0.00\n"
+"    PIN  C  UNKNOWN   1 999    3.00     0.00    3.00     0.00\n"
+"GATE maj           1.00  Y=(A * B) + (A * C) + (B * C);      \n"                                  
+"    PIN  A  UNKNOWN   1 999    3.00     0.00    3.00     0.00\n"
+"    PIN  B  UNKNOWN   1 999    1.00     0.00    1.00     0.00\n"
+"    PIN  C  UNKNOWN   1 999    2.00     0.00    2.00     0.00";
+
+
+
+
+auto create_resyn_database()
+{
+  std::vector<mockturtle::gate> gates;
+
+  std::istringstream in( test_library );
+  auto result = lorina::read_genlib( in, mockturtle::genlib_reader( gates ) );
+  CHECK( result == lorina::return_code::success );
+
+  mockturtle::bound_network bound( gates );
+  /* network's definition */
+
+  auto const bs = bound.get_bindings();
+  mockturtle::homo_database<4> db( bs );
+  using aig_network = mockturtle::aig_network;
+  mockturtle::xag_npn_resynthesis<aig_network, aig_network, mockturtle::xag_npn_db_kind::aig_complete> resyn;
+  mockturtle::exact_library_params eps;
+  eps.np_classification = false;
+  mockturtle::exact_library<aig_network> exact_lib( resyn, eps );
+
+  using Tt_t = kitty::dynamic_truth_table;
+  using tt_hash = kitty::hash<Tt_t>;
+  std::unordered_set<Tt_t, tt_hash> classes;
+  Tt_t tt( 4u );
+  do
+  {
+    const auto res = kitty::exact_p_canonization( tt );
+    classes.insert( std::get<0>( res ) );
+    kitty::next_inplace( tt );
+  } while ( !kitty::is_const0( tt ) );
+
+  using klut_network = mockturtle::klut_network;
+  using aig_network = mockturtle::aig_network;
+  klut_network klut;
+  std::vector<typename mockturtle::klut_network::signal> pis;
+  for ( int i = 0; i < 4; ++i )
+  {
+    pis.push_back( klut.create_pi() );
+  }
+
+  std::vector<Tt_t> tts;
+  for ( auto const& entry : classes )
+  {
+    auto const f = klut.create_node( pis, entry );
+    klut.create_po( f );
+    tts.push_back( entry );
+  }
+  aig_network aig = mockturtle::convert_klut_to_graph<aig_network, klut_network>( klut );
+
+  mockturtle::tech_library_params tps;
+  tps.ignore_symmetries = false; // set to true to drastically speed-up mapping with minor delay increase
+  tps.verbose = true;
+  mockturtle::tech_library<9> tech_lib( gates, tps );
+  mockturtle::emap_params mps;
+  mps.matching_mode = mockturtle::emap_params::hybrid;
+  mps.area_oriented_mapping = true;
+  mps.map_multioutput = false;
+  mps.relax_required = 0;
+  mockturtle::emap_stats mst;
+  mockturtle::cell_view<mockturtle::block_network> mapped = mockturtle::emap<9>( aig, tech_lib, mps, &mst );
+
+  int i = 0;
+  using node_t = mockturtle::cell_view<mockturtle::block_network>::node;
+  std::array<node_t, 4> vars;
+  vars[0] = mapped.pi_at( 0 );
+  vars[1] = mapped.pi_at( 1 );
+  vars[2] = mapped.pi_at( 2 );
+  vars[3] = mapped.pi_at( 3 );
+  mapped.foreach_po( [&]( auto fo ) {
+    kitty::static_truth_table<4> func;
+    kitty::create_from_binary_string( func, kitty::to_binary( tts[i++] ) );
+    db.add_entry( mapped, vars, fo );
+  } );
+
+  return db;
+}
+
+TEST_CASE( "Struct optimize for area", "[resynthesis]" )
+{
+  std::vector<mockturtle::gate> gates;
+
+  std::istringstream in( test_library );
+  auto result = lorina::read_genlib( in, mockturtle::genlib_reader( gates ) );
+  CHECK( result == lorina::return_code::success );
+  using Ntk = mockturtle::bound_network;
+  mockturtle::bound_network bound( gates );
+  /* network's definition */
+  auto const x0 = bound.create_pi(); // 2
+  auto const x1 = bound.create_pi(); // 3
+
+  using signal = typename mockturtle::bound_network::signal;
+  signal const f0 = bound.create_node( std::vector<signal>( { x0, x1 } ), "xor2" )[0]; // 6
+  signal const f1 = bound.create_node( std::vector<signal>( { x1, f0 } ), "xor2" )[0]; // 7
+
+  bound.create_po( f1 );
+
+  bound.print();
+
+  std::cout << bound.area() << std::endl;
+  /* get the database */
+  mockturtle::homo_database<4> database = create_resyn_database();
+  /* run resynthesis */
+  /* build the analyzer */
+  using database_t = mockturtle::homo_database<4>;
+
+  mockturtle::resynthesis_params ps;
+  ps.try_struct = true;
+  ps.try_window = false;
+  ps.try_simula = false;
+
+  mockturtle::area_resynthesize<Ntk, database_t, 4u>( bound, database, ps );
+  std::cout << bound.area() << std::endl;
+
+}
+
+TEST_CASE( "One-Gate Resynthesis 1 2 3", "[resynthesis]" )
+{
+  std::vector<mockturtle::gate> gates;
+
+  std::istringstream in( mig_library );
+  auto result = lorina::read_genlib( in, mockturtle::genlib_reader( gates ) );
+  CHECK( result == lorina::return_code::success );
+
+  mockturtle::bindings lib( gates );
+  mockturtle::homo_database<6> db( lib );
+  db.print();
+
+  using Ntk = mockturtle::bound_network;
+  mockturtle::bound_network bound( gates );
+  using signal = typename mockturtle::bound_network::signal;
+  /* network's definition */
+  auto const x0 = bound.create_pi(); // 2
+  auto const x1 = bound.create_pi(); // 3
+  auto const x2 = bound.create_pi(); // 4
+
+  auto const t0 = bound.create_node( std::vector<signal>( { x0 } ), "buf1" )[0]; // 5 tA = 1
+  auto const t1 = bound.create_node( std::vector<signal>( { x1 } ), "buf2" )[0]; // 6 tA = 2
+  auto const t2 = bound.create_node( std::vector<signal>( { x2 } ), "buf3" )[0]; // 7 tA = 3
+
+  auto const f0 = bound.create_node( std::vector<signal>( { t0, t1 } ), "and" )[0]; // 8
+  auto const f1 = bound.create_node( std::vector<signal>( { t0, t2 } ), "and" )[0]; // 9 
+  auto const f2 = bound.create_node( std::vector<signal>( { t1, t2 } ), "and" )[0]; // 10
+
+  signal const o = bound.create_node( std::vector<signal>( { f0, f1, f2 } ), "or3" )[0]; // 6
+
+  bound.create_po( o );
+
+  bound.print();
+
+  std::cout << bound.area() << std::endl;
+  /* get the database */
+  mockturtle::homo_database<4> database( lib );
+  /* run resynthesis */
+  /* build the analyzer */
+  using database_t = mockturtle::homo_database<4>;
+
+  mockturtle::resynthesis_params ps;
+  ps.try_struct = true;
+  ps.try_window = false;
+  ps.try_simula = false;
+
+  mockturtle::area_resynthesize<Ntk, database_t, 4u>( bound, database, ps );
+  std::cout << bound.area() << std::endl;
+  bound.print();
+
+}
+
+TEST_CASE( "One-Gate Resynthesis 1 3 2", "[resynthesis]" )
+{
+  std::vector<mockturtle::gate> gates;
+
+  std::istringstream in( mig_library );
+  auto result = lorina::read_genlib( in, mockturtle::genlib_reader( gates ) );
+  CHECK( result == lorina::return_code::success );
+
+  mockturtle::bindings lib( gates );
+  mockturtle::homo_database<6> db( lib );
+  db.print();
+
+  using Ntk = mockturtle::bound_network;
+  mockturtle::bound_network bound( gates );
+  using signal = typename mockturtle::bound_network::signal;
+  /* network's definition */
+  auto const x0 = bound.create_pi(); // 2
+  auto const x1 = bound.create_pi(); // 3
+  auto const x2 = bound.create_pi(); // 4
+
+  auto const t0 = bound.create_node( std::vector<signal>( { x0 } ), "buf1" )[0]; // 5 tA = 1
+  auto const t1 = bound.create_node( std::vector<signal>( { x1 } ), "buf3" )[0]; // 6 tA = 2
+  auto const t2 = bound.create_node( std::vector<signal>( { x2 } ), "buf2" )[0]; // 7 tA = 3
+
+  auto const f0 = bound.create_node( std::vector<signal>( { t0, t1 } ), "and" )[0]; // 8
+  auto const f1 = bound.create_node( std::vector<signal>( { t0, t2 } ), "and" )[0]; // 9 
+  auto const f2 = bound.create_node( std::vector<signal>( { t1, t2 } ), "and" )[0]; // 10
+
+  signal const o = bound.create_node( std::vector<signal>( { f0, f1, f2 } ), "or3" )[0]; // 6
+
+  bound.create_po( o );
+
+  bound.print();
+
+  std::cout << bound.area() << std::endl;
+  /* get the database */
+  mockturtle::homo_database<4> database( lib );
+  /* run resynthesis */
+  /* build the analyzer */
+  using database_t = mockturtle::homo_database<4>;
+
+  mockturtle::resynthesis_params ps;
+  ps.try_struct = true;
+  ps.try_window = false;
+  ps.try_simula = false;
+
+  mockturtle::area_resynthesize<Ntk, database_t, 4u>( bound, database, ps );
+  std::cout << bound.area() << std::endl;
+  bound.print();
+}
+
+TEST_CASE( "One-Gate Resynthesis 2 1 3", "[resynthesis]" )
+{
+  std::vector<mockturtle::gate> gates;
+
+  std::istringstream in( mig_library );
+  auto result = lorina::read_genlib( in, mockturtle::genlib_reader( gates ) );
+  CHECK( result == lorina::return_code::success );
+
+  mockturtle::bindings lib( gates );
+  mockturtle::homo_database<6> db( lib );
+  db.print();
+
+  using Ntk = mockturtle::bound_network;
+  mockturtle::bound_network bound( gates );
+  using signal = typename mockturtle::bound_network::signal;
+  /* network's definition */
+  auto const x0 = bound.create_pi(); // 2
+  auto const x1 = bound.create_pi(); // 3
+  auto const x2 = bound.create_pi(); // 4
+
+  auto const t0 = bound.create_node( std::vector<signal>( { x0 } ), "buf2" )[0]; // 5 tA = 1
+  auto const t1 = bound.create_node( std::vector<signal>( { x1 } ), "buf1" )[0]; // 6 tA = 2
+  auto const t2 = bound.create_node( std::vector<signal>( { x2 } ), "buf3" )[0]; // 7 tA = 3
+
+  auto const f0 = bound.create_node( std::vector<signal>( { t0, t1 } ), "and" )[0]; // 8
+  auto const f1 = bound.create_node( std::vector<signal>( { t0, t2 } ), "and" )[0]; // 9 
+  auto const f2 = bound.create_node( std::vector<signal>( { t1, t2 } ), "and" )[0]; // 10
+
+  signal const o = bound.create_node( std::vector<signal>( { f0, f1, f2 } ), "or3" )[0]; // 6
+
+  bound.create_po( o );
+
+  bound.print();
+
+  std::cout << bound.area() << std::endl;
+  /* get the database */
+  mockturtle::homo_database<4> database( lib );
+  /* run resynthesis */
+  /* build the analyzer */
+  using database_t = mockturtle::homo_database<4>;
+
+  mockturtle::resynthesis_params ps;
+  ps.try_struct = true;
+  ps.try_window = false;
+  ps.try_simula = false;
+
+  mockturtle::area_resynthesize<Ntk, database_t, 4u>( bound, database, ps );
+  std::cout << bound.area() << std::endl;
+  bound.print();
+}
+
+TEST_CASE( "One-Gate Resynthesis 2 3 1", "[resynthesis]" )
+{
+  std::vector<mockturtle::gate> gates;
+
+  std::istringstream in( mig_library );
+  auto result = lorina::read_genlib( in, mockturtle::genlib_reader( gates ) );
+  CHECK( result == lorina::return_code::success );
+
+  mockturtle::bindings lib( gates );
+  mockturtle::homo_database<6> db( lib );
+  db.print();
+
+  using Ntk = mockturtle::bound_network;
+  mockturtle::bound_network bound( gates );
+  using signal = typename mockturtle::bound_network::signal;
+  /* network's definition */
+  auto const x0 = bound.create_pi(); // 2
+  auto const x1 = bound.create_pi(); // 3
+  auto const x2 = bound.create_pi(); // 4
+
+  auto const t0 = bound.create_node( std::vector<signal>( { x0 } ), "buf2" )[0]; // 5 tA = 1
+  auto const t1 = bound.create_node( std::vector<signal>( { x1 } ), "buf3" )[0]; // 6 tA = 2
+  auto const t2 = bound.create_node( std::vector<signal>( { x2 } ), "buf1" )[0]; // 7 tA = 3
+
+  auto const f0 = bound.create_node( std::vector<signal>( { t0, t1 } ), "and" )[0]; // 8
+  auto const f1 = bound.create_node( std::vector<signal>( { t0, t2 } ), "and" )[0]; // 9 
+  auto const f2 = bound.create_node( std::vector<signal>( { t1, t2 } ), "and" )[0]; // 10
+
+  signal const o = bound.create_node( std::vector<signal>( { f0, f1, f2 } ), "or3" )[0]; // 6
+
+  bound.create_po( o );
+
+  bound.print();
+
+  std::cout << bound.area() << std::endl;
+  /* get the database */
+  mockturtle::homo_database<4> database( lib );
+  /* run resynthesis */
+  /* build the analyzer */
+  using database_t = mockturtle::homo_database<4>;
+
+  mockturtle::resynthesis_params ps;
+  ps.try_struct = true;
+  ps.try_window = false;
+  ps.try_simula = false;
+
+  mockturtle::area_resynthesize<Ntk, database_t, 4u>( bound, database, ps );
+  std::cout << bound.area() << std::endl;
+  bound.print();
+}
+
+TEST_CASE( "One-Gate Resynthesis 3 1 2", "[resynthesis]" )
+{
+  std::vector<mockturtle::gate> gates;
+
+  std::istringstream in( mig_library );
+  auto result = lorina::read_genlib( in, mockturtle::genlib_reader( gates ) );
+  CHECK( result == lorina::return_code::success );
+
+  mockturtle::bindings lib( gates );
+  mockturtle::homo_database<6> db( lib );
+  db.print();
+
+  using Ntk = mockturtle::bound_network;
+  mockturtle::bound_network bound( gates );
+  using signal = typename mockturtle::bound_network::signal;
+  /* network's definition */
+  auto const x0 = bound.create_pi(); // 2
+  auto const x1 = bound.create_pi(); // 3
+  auto const x2 = bound.create_pi(); // 4
+
+  auto const t0 = bound.create_node( std::vector<signal>( { x0 } ), "buf3" )[0]; // 5 tA = 1
+  auto const t1 = bound.create_node( std::vector<signal>( { x1 } ), "buf1" )[0]; // 6 tA = 2
+  auto const t2 = bound.create_node( std::vector<signal>( { x2 } ), "buf2" )[0]; // 7 tA = 3
+
+  auto const f0 = bound.create_node( std::vector<signal>( { t0, t1 } ), "and" )[0]; // 8
+  auto const f1 = bound.create_node( std::vector<signal>( { t0, t2 } ), "and" )[0]; // 9 
+  auto const f2 = bound.create_node( std::vector<signal>( { t1, t2 } ), "and" )[0]; // 10
+
+  signal const o = bound.create_node( std::vector<signal>( { f0, f1, f2 } ), "or3" )[0]; // 6
+
+  bound.create_po( o );
+
+  bound.print();
+
+  std::cout << bound.area() << std::endl;
+  /* get the database */
+  mockturtle::homo_database<4> database( lib );
+  /* run resynthesis */
+  /* build the analyzer */
+  using database_t = mockturtle::homo_database<4>;
+
+  mockturtle::resynthesis_params ps;
+  ps.try_struct = true;
+  ps.try_window = false;
+  ps.try_simula = false;
+
+  mockturtle::area_resynthesize<Ntk, database_t, 4u>( bound, database, ps );
+  std::cout << bound.area() << std::endl;
+  bound.print();
+}
+
+TEST_CASE( "One-Gate Resynthesis 3 2 1", "[resynthesis]" )
+{
+  std::vector<mockturtle::gate> gates;
+
+  std::istringstream in( mig_library );
+  auto result = lorina::read_genlib( in, mockturtle::genlib_reader( gates ) );
+  CHECK( result == lorina::return_code::success );
+
+  mockturtle::bindings lib( gates );
+  mockturtle::homo_database<6> db( lib );
+  db.print();
+
+  using Ntk = mockturtle::bound_network;
+  mockturtle::bound_network bound( gates );
+  using signal = typename mockturtle::bound_network::signal;
+  /* network's definition */
+  auto const x0 = bound.create_pi(); // 2
+  auto const x1 = bound.create_pi(); // 3
+  auto const x2 = bound.create_pi(); // 4
+
+  auto const t0 = bound.create_node( std::vector<signal>( { x0 } ), "buf3" )[0]; // 5 tA = 1
+  auto const t1 = bound.create_node( std::vector<signal>( { x1 } ), "buf2" )[0]; // 6 tA = 2
+  auto const t2 = bound.create_node( std::vector<signal>( { x2 } ), "buf1" )[0]; // 7 tA = 3
+
+  auto const f0 = bound.create_node( std::vector<signal>( { t0, t1 } ), "and" )[0]; // 8
+  auto const f1 = bound.create_node( std::vector<signal>( { t0, t2 } ), "and" )[0]; // 9 
+  auto const f2 = bound.create_node( std::vector<signal>( { t1, t2 } ), "and" )[0]; // 10
+
+  signal const o = bound.create_node( std::vector<signal>( { f0, f1, f2 } ), "or3" )[0]; // 6
+
+  bound.create_po( o );
+
+  bound.print();
+
+  std::cout << bound.area() << std::endl;
+  /* get the database */
+  mockturtle::homo_database<4> database( lib );
+  /* run resynthesis */
+  /* build the analyzer */
+  using database_t = mockturtle::homo_database<4>;
+
+  mockturtle::resynthesis_params ps;
+  ps.try_struct = true;
+  ps.try_window = false;
+  ps.try_simula = false;
+
+  mockturtle::area_resynthesize<Ntk, database_t, 4u>( bound, database, ps );
+  std::cout << bound.area() << std::endl;
+  bound.print();
+}
+
+TEST_CASE( "One-Gate XNOR Resynthesis 1 2 3", "[resynthesis]" )
+{
+  std::vector<mockturtle::gate> gates;
+
+  std::istringstream in( mig_library );
+  auto result = lorina::read_genlib( in, mockturtle::genlib_reader( gates ) );
+  CHECK( result == lorina::return_code::success );
+
+  mockturtle::bindings lib( gates );
+
+  using Ntk = mockturtle::bound_network;
+  mockturtle::bound_network bound( gates );
+  using signal = typename mockturtle::bound_network::signal;
+  /* network's definition */
+  auto const x0 = bound.create_pi(); // 2
+  auto const x1 = bound.create_pi(); // 3
+  auto const x2 = bound.create_pi(); // 4
+
+  auto const f0 = bound.create_node( std::vector<signal>( { x0, x1 } ), "xor2" )[0]; // 5
+  auto const f1 = bound.create_node( std::vector<signal>( { f0, x2 } ), "xor2" )[0]; // 6 
+
+  signal const o = bound.create_node( std::vector<signal>( { f1 } ), "inv" )[0]; // 7
+
+  bound.create_po( o );
+
+  bound.print();
+
+  std::cout << bound.area() << std::endl;
+  /* get the database */
+  mockturtle::homo_database<4> database( lib );
+  database.print();
+  /* run resynthesis */
+  /* build the analyzer */
+  using database_t = mockturtle::homo_database<4u>;
+
+  mockturtle::resynthesis_params ps;
+  ps.try_struct = true;
+  ps.try_window = false;
+  ps.try_simula = false;
+  std::cout << "resynthesize" << std::endl;
+  mockturtle::area_resynthesize<Ntk, database_t, 4u>( bound, database, ps );
+  std::cout << "resynthesized" << std::endl;
+  std::cout << bound.area() << std::endl;
+  bound.print();
+}
+
+TEST_CASE( "Power resynthesis", "[resynthesis]" )
+{
+  std::vector<mockturtle::gate> gates;
+
+  std::istringstream in( mig_library );
+  auto result = lorina::read_genlib( in, mockturtle::genlib_reader( gates ) );
+  CHECK( result == lorina::return_code::success );
+
+  mockturtle::bindings lib( gates );
+
+  using Ntk = mockturtle::bound_network;
+  mockturtle::bound_network bound( gates );
+  using signal = typename mockturtle::bound_network::signal;
+  /* network's definition */
+  auto const x0 = bound.create_pi(); // 2
+  auto const x1 = bound.create_pi(); // 3
+  auto const x2 = bound.create_pi(); // 4
+  auto const x3 = bound.create_pi(); // 5
+
+  auto const f0 = bound.create_node( std::vector<signal>( { x0, x1 } ), "xor2" )[0]; // 6
+  auto const f1 = bound.create_node( std::vector<signal>( { f0, x2 } ), "xor2" )[0]; // 7 
+  auto const f2 = bound.create_node( std::vector<signal>( { f1, x3 } ), "xor2" )[0]; // 8 
+
+  signal const o = bound.create_node( std::vector<signal>( { f2 } ), "inv" )[0]; // 9
+
+  bound.create_po( o );
+
+  bound.print();
+
+  std::cout << bound.area() << std::endl;
+  /* get the database */
+  mockturtle::homo_database<4> database( lib );
+  database.print();
+  /* run resynthesis */
+  /* build the analyzer */
+  using database_t = mockturtle::homo_database<4u>;
+  using Ntk = mockturtle::bound_network;
+  using dNtk = mockturtle::depth_view<Ntk>;
+  dNtk dbound{bound};
+
+  mockturtle::resynthesis_params ps;
+  ps.try_struct = true;
+  ps.try_window = false;
+  ps.try_simula = false;
+  std::cout << "resynthesize" << std::endl;
+
+  uint32_t const N = 20;
+  uint32_t const I = 10;
+
+  mockturtle::convo_analyzer<dNtk, N, I> power1( dbound );
+  power1(1);
+
+  mockturtle::power_resynthesize<Ntk, database_t, 4u>( bound, database, ps );
+  std::cout << "resynthesized" << std::endl;
+  std::cout << bound.area() << std::endl;
+  bound.print();
+  
+  mockturtle::convo_analyzer<dNtk, N, I> power2( dbound );
+  power2(1);
+
+  std::cout << power1.get_dyn_switch() << " " << power2.get_dyn_switch() << std::endl;
+  std::cout << power1.get_zero_delay() << " " << power2.get_zero_delay() << std::endl;
+
+}
+
+TEST_CASE( "Optimize for delay", "[resynthesis]" )
+{
+  std::vector<mockturtle::gate> gates;
+
+  std::istringstream in( test_library );
+  auto result = lorina::read_genlib( in, mockturtle::genlib_reader( gates ) );
+  CHECK( result == lorina::return_code::success );
+  using Ntk = mockturtle::bound_network;
+  mockturtle::bound_network bound( gates );
+  /* network's definition */
+  auto const x0 = bound.create_pi();
+  auto const x1 = bound.create_pi();
+  auto const x2 = bound.create_pi();
+  auto const x3 = bound.create_pi();
+
+  using signal = typename mockturtle::bound_network::signal;
+  signal const f0 = bound.create_node( std::vector<signal>( { x0, x1 } ), "xor2" )[0];
+  signal const f1 = bound.create_node( std::vector<signal>( { f0, x2 } ), "xor2" )[0];
+  signal const f2 = bound.create_node( std::vector<signal>( { f1, x3 } ), "xor2" )[0];
+  bound.create_po( f2 );
+
+  mockturtle::arrival_analyzer<Ntk> arrival( bound );
+  arrival.compute_arrival_times();
+  double const delay_bef = arrival.worst_delay();
+  std::cout << "DELAY BEFORE " << delay_bef << std::endl;
+  std::cout << bound.area() << std::endl;
+  /* get the database */
+  /* run resynthesis */
+  /* build the analyzer */
+  using database_t = mockturtle::homo_database<4u, 1u>;
+
+  database_t db( bound.get_bindings() );
+  //db.print();
+
+  mockturtle::resynthesis_params rps;
+  rps.dynamic_database = true;
+  mockturtle::delay_resynthesize<Ntk, database_t, 4u, 10, 10, 10>( bound, db, rps );
+
+  //db.print();
+
+  std::cout << bound.area() << std::endl;
+
+  double const delay_aft = arrival.worst_delay();
+
+  std::cout << "DELAY AFTER " << delay_aft << std::endl;
+
+
+}
+
+TEST_CASE( "Optimize for PPA", "[resynthesis]" )
+{
+  std::vector<mockturtle::gate> gates;
+
+  std::istringstream in( test_library );
+  auto result = lorina::read_genlib( in, mockturtle::genlib_reader( gates ) );
+  CHECK( result == lorina::return_code::success );
+  using Ntk = mockturtle::bound_network;
+  mockturtle::bound_network bound( gates );
+  /* network's definition */
+  auto const x0 = bound.create_pi();
+  auto const x1 = bound.create_pi();
+  auto const x2 = bound.create_pi();
+  auto const x3 = bound.create_pi();
+
+  using signal = typename mockturtle::bound_network::signal;
+  signal const f0 = bound.create_node( std::vector<signal>( { x0, x1 } ), "xor2" )[0];
+  signal const f1 = bound.create_node( std::vector<signal>( { f0, x2 } ), "xor2" )[0];
+  signal const f2 = bound.create_node( std::vector<signal>( { f1, x3 } ), "xor2" )[0];
+  bound.create_po( f2 );
+
+  mockturtle::arrival_analyzer<Ntk> arrival( bound );
+  arrival.compute_arrival_times();
+  double const delay_bef = arrival.worst_delay();
+  std::cout << "DELAY BEFORE " << delay_bef << std::endl;
+  std::cout << bound.area() << std::endl;
+  /* get the database */
+  /* run resynthesis */
+  /* build the analyzer */
+  using database_t = mockturtle::homo_database<4u, 1u>;
+
+  database_t db( bound.get_bindings() );
+  //db.print();
+  using dNtk = mockturtle::depth_view<mockturtle::bound_network>;
+
+  dNtk dbound1{bound};
+  uint32_t const N = 10;
+  uint32_t const I = 4;
+  mockturtle::convo_analyzer<dNtk, N, I> power1( dbound1 );
+  power1(1);
+  power1.print_ntk();
+
+  double const zero_delay_bef = power1.get_zero_delay();
+  double const dyn_switch_bef = power1.get_dyn_switch();
+  double const glitching_bef = dyn_switch_bef - zero_delay_bef;
+
+  mockturtle::resynthesis_params rps;
+  rps.dynamic_database = true;
+  mockturtle::ppa_resynthesize<Ntk, database_t, 4u, 10, 10, 10>( bound, db, rps );
+
+  //db.print();
+
+  std::cout << bound.area() << std::endl;
+
+  dNtk dbound2{bound};
+  mockturtle::convo_analyzer<dNtk, N, I> power2( dbound2 );
+  power2(1);
+  power2.print_ntk();
+  double const zero_delay_aft = power2.get_zero_delay();
+  double const dyn_switch_aft = power2.get_dyn_switch();
+  double const glitching_aft = dyn_switch_aft - zero_delay_aft;
+
+  double const delay_aft = arrival.worst_delay();
+bound.print();
+  std::cout << "DELAY  " << delay_bef << " " << delay_aft << std::endl;
+  std::cout << "ZD     " << zero_delay_bef << " " << zero_delay_aft << std::endl;
+  std::cout << "GL     " << glitching_bef << " " << glitching_aft << std::endl;
+}
+
+TEST_CASE( "Area window-based 1", "[resynthesis]" )
+{
+  std::vector<mockturtle::gate> gates;
+
+  std::istringstream in( test_library );
+  auto result = lorina::read_genlib( in, mockturtle::genlib_reader( gates ) );
+  CHECK( result == lorina::return_code::success );
+  using Ntk = mockturtle::bound_network;
+  mockturtle::bound_network bound( gates );
+  /* network's definition */
+  auto const x0 = bound.create_pi();
+  auto const x1 = bound.create_pi();
+  auto const x2 = bound.create_pi();
+  auto const x3 = bound.create_pi();
+
+  using signal = typename mockturtle::bound_network::signal;
+  signal const f0 = bound.create_node( std::vector<signal>( { x0, x1 } ), "xor2" )[0];
+  signal const f1 = bound.create_node( std::vector<signal>( { f0, x0 } ), "xor2" )[0];
+  bound.create_po( f1 );
+
+  std::cout << "area" << bound.area() << std::endl;
+  using database_t = mockturtle::homo_database<4u, 1u>;
+  database_t db( bound.get_bindings() );
+  //db.print();
+  using dNtk = mockturtle::depth_view<mockturtle::bound_network>;
+
+  bound.print();
+  mockturtle::resynthesis_params rps;
+  rps.try_window = true;
+  rps.try_simula = false;
+  rps.try_struct = false;
+  mockturtle::area_resynthesize<Ntk, database_t, 4u>( bound, db, rps );
+
+  std::cout << "area" << bound.area() << std::endl;
+  bound.print();
+
+}
+
+TEST_CASE( "Area window-based perm", "[resynthesis]" )
+{
+  std::vector<mockturtle::gate> gates;
+
+  std::istringstream in( test_library );
+  auto result = lorina::read_genlib( in, mockturtle::genlib_reader( gates ) );
+  CHECK( result == lorina::return_code::success );
+  using Ntk = mockturtle::bound_network;
+  mockturtle::bound_network bound( gates );
+  /* network's definition */
+  auto const x0 = bound.create_pi();
+  auto const x1 = bound.create_pi();
+  auto const x2 = bound.create_pi();
+  auto const x3 = bound.create_pi();
+
+  using signal = typename mockturtle::bound_network::signal;
+  signal const f0 = bound.create_node( std::vector<signal>( { x1 } ), "inv1" )[0];
+  signal const f1 = bound.create_node( std::vector<signal>( { f0, x0 } ), "and2" )[0];
+  signal const f2 = bound.create_node( std::vector<signal>( { f1, x0 } ), "nand2" )[0];
+  bound.create_po( f2 );
+
+  std::cout << "area" << bound.area() << std::endl;
+  using database_t = mockturtle::homo_database<4u, 1u>;
+  database_t db( bound.get_bindings() );
+  //db.print();
+  using dNtk = mockturtle::depth_view<mockturtle::bound_network>;
+
+  bound.print();
+  mockturtle::resynthesis_params rps;
+  rps.try_window = true;
+  rps.try_simula = false;
+  rps.try_struct = false;
+  mockturtle::area_resynthesize<Ntk, database_t, 4u>( bound, db, rps );
+
+  std::cout << "area" << bound.area() << std::endl;
+  bound.print();
+
+}
+
+#endif

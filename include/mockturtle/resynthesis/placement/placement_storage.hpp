@@ -1,0 +1,2474 @@
+/* mockturtle: C++ logic network library
+ * Copyright (C) 2018-2022  EPFL
+ *
+ * Permission is hereby granted, free of charge, to any person
+ * obtaining a copy of this software and associated documentation
+ * files (the "Software"), to deal in the Software without
+ * restriction, including without limitation the rights to use,
+ * copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following
+ * conditions:
+ *
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+ * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+ * HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
+ */
+
+/*!
+  \file timing.hpp
+  \brief Compute timing information of a network.
+
+  This engine can be used for power analysis of mapped network.
+  For each node, the following information is stored:
+  - The sensing time : the first time at which a transition can happen
+  - The arrival time : the first time at which the output is stable
+  - A vector of simulation patterns identifying quantized timesteps in this interval
+  The class has the following template parameters:
+  \param N : number of timesteps used for simulating each signal
+  \param I : number of inputs to be used for simulating the static truth table ( 2^I input pairs )
+
+  \author Andrea Costamagna
+*/
+
+#pragma once
+
+#include "../../utils/node_map.hpp"
+#include "../database/mapped_list.hpp"
+#include "placement_utils.hpp"
+#include "particle.hpp"
+#include "kernels.hpp"
+#include <math.h>
+#include <set>
+#include <cmath>
+#include <queue>
+#include <array>
+
+namespace mockturtle
+{
+
+struct placement_params 
+{
+  /*! \brief Precision */
+  double eps { 0.01 };
+  double area_density { 0.1 };
+  double place_length;
+  double route_length;
+  int Nx;
+  int Ny;
+  double radius;
+  double d_theta;
+  int num_legal { 1 };
+  int route_range;
+  double unit_length;
+  double area_norm;
+  double gates_norm;
+  double slot_length;
+  double amplitude_hard;
+  double rescaling_route;
+  double rescaling_diffn;
+  double rescaling_legal;
+  double k_place{ 1 };
+  double k_delay{ 0.005 };
+  double ratio_wire_legal;
+  double ratio_wire_route;
+  double ratio_wire_diffn;
+  int num_placers{1};
+  bool anchor{true};
+};
+
+struct placement_stats 
+{
+  /*! \brief Precision */
+  double eps { 0.001 };
+  double unit_length;
+  double slot_length;
+  double area_density { 0.55 };
+  double k_place;
+  double k_global;
+};
+
+struct extreme_t
+{
+  vector_t<double> q = { 0, 0 };
+  int type = -1;
+  int index = -1;
+};
+
+/* Whatever you do the placer should always be up-to-date*/
+template<class Ntk, uint32_t Nx, uint32_t Ny>
+class placement_storage_t
+{
+    static constexpr int slots_per_bin = 25;
+public: 
+
+  using node = typename Ntk::node;
+  using signal = typename Ntk::signal;
+  static constexpr uint32_t size_kernel = 5u;
+
+  placement_storage_t( Ntk & ntk, placement_params ips, int seed )
+    : ntk( ntk ),
+      placement( ntk ),
+      cum_wires( ntk ),
+      state_log( ntk ),
+      gen( seed ),
+      seed( seed ),
+      ps( ips )
+  {
+    auto const & lib = ntk.get_library();
+    /* Find Dmax, the diameter needed to store the largest cell */
+    ps.slot_length = 0;
+    for ( auto g : lib )
+    {
+      if ( g.area > 0 )
+      {
+        ps.slot_length = std::max( 2*sqrt( g.area  / M_PI ), ps.slot_length );
+      }
+    }
+
+    double num_pos = 0;
+    ntk.incr_trav_id();
+    auto trav_id = ntk.trav_id();
+    ntk.foreach_po( [&]( auto f ){
+      node n = ntk.get_node( f );
+      if ( (ntk.visited( n ) != trav_id ) && ( !ntk.is_pi( n ) ) )
+      {
+        ntk.set_visited( n, trav_id );
+        num_pos += 1;
+      }
+    } );
+
+    /* extract the side length of one bin */
+    ps.area_density = 0.1;
+    ps.unit_length = ps.slot_length * sqrt( slots_per_bin );
+    /* extract the number of bins needed to store the cells satisfying the density constraint */
+    ps.radius = sqrt( ps.area_norm / ( M_PI * ps.area_density ) );
+    ps.radius = std::max( ps.radius, (double)( ntk.num_pis() + num_pos ) * ps.slot_length / M_PI );
+    ps.radius = std::max( 0.5, ceil( ps.radius / ps.unit_length ) ) * ps.unit_length;
+
+    ps.d_theta = ( 2 * M_PI ) / ( num_pos + ntk.num_pis() );
+
+    ps.Nx = int( 2 * ceil( ps.radius / ps.unit_length) );
+    ps.Ny = int( 2 * ceil( ps.radius / ps.unit_length) );
+    ps.Nx = std::max( 1, ps.Nx );
+    ps.Ny = std::max( 1, ps.Ny );
+
+    assert( ps.Nx < Nx );
+    assert( ps.Ny < Ny );
+    
+    /* Find the rest distance of the lattice */
+    ps.place_length = ps.slot_length;//ps.radius / sqrt( (double)ntk.size() );
+    ps.route_length = ps.slot_length;//ps.radius / sqrt( (double)ntk.size() );
+    /* Number of bins over which the interaction is evaluated */
+    ps.route_range = 1;
+    ps.ratio_wire_route = 0;
+    ps.ratio_wire_legal = 0;
+    ps.ratio_wire_diffn = 0;
+    ps.amplitude_hard = 1000;
+    ps.k_place = 100;
+
+    kernel.set( ps.slot_length, ps.slot_length, ps.Nx * ps.unit_length );
+
+    _init();
+
+
+
+  }
+
+  placement_storage_t( placement_storage_t<Ntk, Nx, Ny> && other )
+    : placement_storage_t( other.get_ntk(), other.get_params(), other.get_seed() )
+  {}
+
+  Ntk & get_ntk()
+  {
+    return ntk;
+  }
+
+  placement_params & get_params()
+  {
+    return ps;
+  }
+
+  int get_seed()
+  {
+    return seed;
+  }
+
+  int get_slots_per_bin()
+  {
+    return slots_per_bin;
+  }
+
+  int get_num_bins_x()
+  {
+    return ps.Nx;
+  }
+
+  int get_num_bins_y()
+  {
+    return ps.Ny;
+  }
+
+  double get_unit_length()
+  {
+    return ps.unit_length;
+  }
+
+  void print_params()
+  {
+    std::cout << "=========================================" << std::endl;
+    std::cout << "=========================================" << std::endl;
+    printf( "eps                %5.3f \n", ps.eps );
+    printf( "area_density       %5.3f\n",  ps.area_density );
+    printf( "place_length        %5.3f\n",  ps.place_length );
+    printf( "k_place            %5d\n",    ps.k_place );
+    printf( "route_range        %5d\n",    ps.route_range );
+    printf( "unit_length        %5.3f\n",  ps.unit_length );
+    printf( "slot_length        %5.3f\n",  ps.slot_length );
+    printf( "amplitude_hard     %5.3f\n",  ps.amplitude_hard );
+    printf( "rescaling_route    %5.3f\n", ps.rescaling_route );
+    printf( "rescaling_diffn    %5.3f\n", ps.rescaling_diffn );
+    printf( "ratio_wire_legal   %5.3f\n", ps.ratio_wire_legal );
+    printf( "ratio_wire_route   %5.3f\n", ps.ratio_wire_route );
+    printf( "ratio_wire_diffn   %5.3f\n", ps.ratio_wire_diffn );
+    printf( "num_placers        %5d\n",    ps.num_placers );
+    std::cout << "=========================================" << std::endl;
+    std::cout << "=========================================" << std::endl;
+
+  }
+
+  void _init()
+  {
+    placement.resize();
+    placement[0].set_position( vector_t<double>{ ps.radius, ps.radius } );
+    placement[1].set_position( vector_t<double>{ ps.radius, ps.radius } );
+    state_log.resize();
+    randomize_positions();
+    
+    compute_cumwire_times();
+    
+    add_event = ntk.events().register_add_event( [&]( const auto& n ) {
+      placement.resize();
+      state_log.resize();
+      cum_wires.resize();
+
+      std::vector<node> nodes;
+      ntk.foreach_fanin( n, [&]( auto fv, auto iv ){
+        node const nv = ntk.get_node( fv );
+        nodes.emplace_back( nv );
+      } );
+      vector_t<double> q = get_baricenter( nodes );
+      particle_t u( q );
+
+      add_particle( n, u );
+    } );
+
+    modified_event = ntk.events().register_modified_event( [&]( const auto& n, auto old_children ) {
+      placement.resize();
+      state_log.resize();
+      cum_wires.resize();
+      ntk.incr_trav_id();
+      compute_cumwire_times();
+    } );
+
+    delete_event = ntk.events().register_delete_event( [&]( const auto& n ) {
+      erase_from_grid( n );
+      placement.resize();
+      state_log.resize();
+      cum_wires.resize();
+    } );
+  }
+
+  ~placement_storage_t()
+  {
+    if ( add_event )
+    {
+      ntk.events().release_add_event( add_event );
+    }
+
+    if ( modified_event )
+    {
+      ntk.events().release_modified_event( modified_event );
+    }
+
+    if ( delete_event )
+    {
+      ntk.events().release_delete_event( delete_event );
+    }
+  }
+
+  vector_t<double> get_baricenter( std::vector<node> & nodes )
+  {
+    vector_t<double> q { 0, 0 };
+    for ( node const & n : nodes )
+    {
+      particle_t & u = placement[n];
+      vector_t<double> & qu = u.get_position();
+      q = q + qu; 
+    }
+    q = q.times( 1.0/( ( double )nodes.size() ) );
+    return q;
+  }
+
+void compute_cumwire_times( std::vector<double> const& input_cum_wires )
+{
+  ntk.incr_trav_id();
+  cum_wires.reset();
+  int index = 0;
+  ntk.foreach_pi( [&]( auto n ){
+    cum_wires[n] = input_cum_wires[index++];
+  } );
+  ntk.foreach_po( [&]( auto f ){
+    compute_cumwire_tfi( f );
+  } );
+}
+
+void compute_cumwire_times()
+{
+  cum_wires.reset();
+  std::vector<double> input_cum_wires( ntk.num_pis(), 0 );
+  compute_cumwire_times( input_cum_wires );
+}
+
+void compute_cumwire_tfi( signal const& f )
+{
+  node n = ntk.get_node( f );
+
+  if( n > ntk.size() )
+  {
+    return;
+  }
+
+  if( ntk.is_pi( n ) )
+  {
+    return;
+  }
+  if( ntk.visited( n ) == ntk.trav_id() )
+  {
+    return;
+  }
+  auto g = ntk.get_binding( n );
+  cum_wires[n] = 0;
+  auto qu = placement[n].get_position();
+
+  ntk.foreach_fanin( n, [&]( auto fi, auto ii ){
+    node ni = ntk.get_node( fi );
+    assert( ( ni != n ) );
+    compute_cumwire_tfi( fi );
+    auto qv = placement[ni].get_position();
+    auto quv = qu - qv;
+    cum_wires[n] = std::max( cum_wires[n], cum_wires[ni] + quv.norm2() );    
+  } );
+  ntk.set_visited( n, ntk.trav_id() );
+}
+
+double compute_cost()
+{
+  double worst = 0;
+  ntk.foreach_po( [&]( auto f ){
+    node n = ntk.get_node( f );
+    worst = std::max( worst, cum_wires[n] );
+  } );
+  return worst;
+}
+
+#pragma region Arrival
+
+double wire_delay( node nu, node nv )
+{
+  particle_t & u = placement[nu];
+  particle_t & v = placement[nv];
+  vector_t<double> qu = u.get_position();
+  vector_t<double> qv = v.get_position();
+  vector_t<double> ruv = qu - qv;
+  return ps.k_delay*ruv.squared_norm2();
+}
+
+void legalize_positions()
+{
+  ntk.foreach_node( [&]( node n ){
+    vector_t<double> & q = placement[n].get_position();
+    legalize_position( q );
+    return true;
+  } );
+}
+
+void legalize_positions( std::vector<particle_t> & parts )
+{
+  for ( particle_t & u : parts )
+  {
+    vector_t<double> & q = u.get_position();
+    legalize_position( q );
+  }
+  legalize_positions();
+}
+
+#pragma endregion
+
+  void reset_grid()
+  {
+    for ( int x = 0; x < ps.Nx; x++ )
+    {
+      for ( int y = 0; y < ps.Ny; y++ )
+      {
+        grid[x][y].clear();
+      }
+    }
+
+    for ( int i = 0; i < extremes.size(); ++i )
+    {
+      node n; 
+      if ( extremes[i].type == 0 )
+      {
+        n = ntk.pi_at( extremes[i].index );
+      }
+      else
+      {
+        n = ntk.get_node( ntk.po_at( extremes[i].index ) );
+      }
+      placement[n] = extremes[i].q;
+    }
+
+    ntk.foreach_node( [&]( auto n ){
+      if ( ntk.is_dead( n ) )
+        return true;
+      addback_to_grid( n );
+      return true;
+    } );
+
+  }
+
+
+  void compute_density_matrix()
+  {
+    reset_density_matrix();
+    /* Remember to manually reset it */
+    ntk.foreach_node( [&]( auto n ){
+      add_density( placement[n] );
+      return true;
+    } );
+  }
+
+  void compute_forces_diffn()
+  {
+    compute_density_matrix();
+    /* Remember to manually reset it */
+    ntk.foreach_node( [&]( auto n ){
+      add_gradient( placement[n] );
+      return true;
+    } );
+  }
+
+
+  double compute_hpwl()
+  {
+    double hpwl=0;
+    ntk.foreach_gate( [&]( auto nu ){
+      if ( ntk.is_dead( nu ) )
+        return true;
+      ntk.foreach_fanin( nu, [&]( auto fv, auto iv ){
+        auto nv = ntk.get_node( fv );
+        if ( !ntk.is_dead( nv ) )
+        { 
+          auto & u = placement[nu];
+          auto & v = placement[nv];
+          auto & qu = u.get_position();
+          auto & qv = v.get_position();
+          hpwl += std::max( qu[0], qv[0] )-std::min( qu[0], qv[0] );
+          hpwl += std::max( qu[1], qv[1] )-std::min( qu[1], qv[1] );
+        }
+      } );
+      return true;
+    } );
+
+    return hpwl;
+  }
+
+  void project_to_top( vector_t<double> & q )
+  {
+    q[1] = ( ps.Ny + 1 ) * ps.unit_length;
+  }
+
+  void project_to_bottom( vector_t<double> & q )
+  {
+    q[1] = 0;
+  }
+
+  void project_to_top( particle_t & u )
+  {
+    vector_t<double> & q = u.get_position();
+    project_to_top( q );
+  }
+
+  void project_to_bottom( particle_t & u )
+  {
+    vector_t<double> & q = u.get_position();
+    project_to_bottom( q );
+  }
+
+  bool on_edge( node n )
+  {
+    auto q = placement[n].get_position();
+    vector_t<double> o = { ps.radius, ps.radius };
+    q = q - o;
+    return ( q.norm2() >= ( ps.radius - ps.eps ) ) && ( q.norm2() <= ( ps.radius + ps.eps ) );
+  }
+
+  bool on_edge( particle_t u )
+  {
+    auto q = u.get_position();
+    vector_t<double> o = { ps.radius, ps.radius };
+    q = q - o;
+    return ( q.norm2() >= ( ps.radius - ps.eps ) ) && ( q.norm2() <= ( ps.radius + ps.eps ) );
+  }
+
+  int count_pos()
+  {
+    int num_pos = 0;
+    ntk.incr_trav_id();
+    auto trav_id = ntk.trav_id();
+    ntk.foreach_po( [&]( auto f ){
+      node n = ntk.get_node( f );
+      if ( (ntk.visited( n ) != trav_id ) && ( !ntk.is_pi( n ) ) )
+      {
+        ntk.set_visited( n, trav_id );
+        num_pos += 1;
+      }
+    } );
+    return num_pos;
+  }
+
+  void randomize_positions()
+  {
+    std::uniform_real_distribution<> R_theta( 0, 2*M_PI );
+    std::uniform_real_distribution<> R_radial( 0, ps.radius );
+    vector_t<double> o { ps.radius, ps.radius };
+    vector_t<double> q { 0, 0 };
+
+    double num_pos = ( double )count_pos();
+    
+    double theta = 0;
+
+    int i = 0;
+    ntk.incr_trav_id();
+    auto trav_id = ntk.trav_id();
+    ntk.foreach_pi( [&]( node n ){
+      theta = ( theta + ps.d_theta );
+      vector_t<double> dq { cos( theta ), sin( theta ) };
+      dq = dq.times( ps.radius );
+      vector_t<double> q = o + dq;
+      extremes.emplace_back( extreme_t{ q, 0, i } );
+      ntk.set_visited( n, trav_id );
+      i+=1;
+    } );
+    i = 0;
+    ntk.foreach_po( [&]( signal f ){
+      node n = ntk.get_node( f );
+      if ( (ntk.visited( n ) != trav_id)&&(!ntk.is_pi( n )) )
+      {
+        theta = ( theta + ps.d_theta );
+        vector_t<double> dq { cos( theta ), sin( theta ) };
+        dq = dq.times( ps.radius );
+        vector_t<double> q = o + dq;
+        extremes.emplace_back( extreme_t{ q, 1, i } );
+        i+=1;
+      }
+      ntk.set_visited( n, trav_id );
+    } );
+
+    std::shuffle( extremes.begin(), extremes.end(), gen );
+
+    i = 0;
+    ntk.incr_trav_id();
+    trav_id = ntk.trav_id();
+    ntk.foreach_pi( [&]( node n ){
+      particle_t u( extremes[i].q );
+      add_particle( n, u );
+      i+=1;
+      ntk.set_visited( n, trav_id );
+
+    } );
+    ntk.foreach_po( [&]( signal f ){
+      node n = ntk.get_node( f );
+      if ( (ntk.visited( n ) != trav_id)&&(!ntk.is_pi( n )) )
+      {
+        particle_t u( extremes[i].q );
+        add_particle( n, u );
+        i+=1;
+      }
+      ntk.set_visited( n, trav_id );
+    } );
+
+    ntk.foreach_gate( [&]( auto n ){
+      if ( ntk.is_po( n ) || ntk.is_pi( n ) )
+        return true;
+      double const radius = R_radial( gen );
+      double const theta = R_theta( gen );
+      q = { radius * cos( theta ), radius * sin( theta ) };
+      q = o + q;
+      particle_t u( q );
+
+      add_particle( n, u );
+      return true;
+    } );
+  }
+
+  double get_angle( vector_t<double> & q )
+  {
+    vector_t<double> r = { q[0]-ps.radius, q[1]-ps.radius };
+
+    double theta = std::atan( r[1]/r[0] );
+    if ( (abs(r[0]) < ps.eps)&&(abs(r[1]) < ps.eps))
+      return 0;
+    if ( (r[0] >= 0)&&(r[1] >= 0) )
+    {
+      theta = theta;
+    }
+    else if ( (r[0] <= 0)&&(r[1] >= 0) )
+    {
+      theta = M_PI + theta;
+    }
+    else if ( (r[0] >= 0)&&(r[1] <= 0) )
+    {
+      theta = 2*M_PI + theta;
+    }
+    else if ( (r[0] <= 0)&&(r[1] <= 0) )
+    {
+      theta = M_PI + theta;
+    }
+    else
+    {
+      std::cerr << "[e] error" << std::endl;
+    }
+    return theta;
+  }
+
+  void replace_extremes()
+  {
+    reset_grid();
+    double U_new = compute_cost_old();
+    double U_old = U_new + 10;
+
+    for ( int i = 0; i < extremes.size(); ++i )
+    {
+      node n; 
+      if ( extremes[i].type == 0 )
+      {
+        n = ntk.pi_at( extremes[i].index );
+      }
+      else
+      {
+        n = ntk.get_node( ntk.po_at( extremes[i].index ) );
+      }
+      placement[n] = extremes[i].q;
+    }
+
+    while ( ( U_old - U_new ) > ps.eps )
+    {
+      for ( int i = 0; i < extremes.size(); ++i )
+      {
+        U_old = U_new;
+        int a = i;
+        int b = ( i + 1 ) % extremes.size();
+        node na, nb;
+        extreme_t ea = extremes[a];
+        extreme_t eb = extremes[b];
+
+        if ( extremes[a].type == 0 )
+          na = ntk.pi_at( extremes[a].index );
+        else
+          na = ntk.get_node( ntk.po_at( extremes[a].index ) );
+
+        if ( extremes[b].type == 0 )
+          nb = ntk.pi_at( extremes[b].index );
+        else
+          nb = ntk.get_node( ntk.po_at( extremes[b].index ) );
+
+        vector_t<double> qa = placement[na].get_position();
+        vector_t<double> qb = placement[nb].get_position();
+        placement[nb].set_position( qa );
+        placement[na].set_position( qb );
+        extremes[a].index = eb.index;
+        extremes[b].index = ea.index;
+        extremes[a].type = eb.type;
+        extremes[b].type = ea.type;
+        U_new = compute_cost_old();
+        if ( U_new > U_old )
+        {
+          placement[nb].set_position( qb );
+          placement[na].set_position( qa );
+          U_new = U_old;
+          extremes[a].index = ea.index;
+          extremes[b].index = eb.index;
+          extremes[a].type = ea.type;
+          extremes[b].type = eb.type;
+        }
+      }
+    
+      ntk.foreach_pi( [&]( auto pi ){
+        assert( on_edge(pi) );
+      } );
+
+      ntk.foreach_po( [&]( auto fo ){
+        node n = ntk.get_node( fo );
+        assert( on_edge(n) );
+      } );
+    }
+  }
+
+  int count( int x, int y )
+  {
+    return grid[x][y].size();
+  }
+
+  bool is_inside( vector_t<double> & q )
+  {
+    //return ( q[0] >= 0.0 ) && ( q[1] >= 0.0 ) && ( q[0] <= ( ( ps.Nx + 1 ) * ps.unit_length ) ) && ( q[1] <= ( ( ps.Ny + 1 ) * ps.unit_length ) );
+    vector_t<double> o = { ps.radius, ps.radius };
+    vector_t<double> d = q - o;
+    if ( d.norm2() > ( ps.radius + ps.eps )  )
+    {
+      std::cout << d.norm2() << " " << ( ps.radius + ps.eps ) << std::endl;
+    }
+    return ( d.norm2() <= ( ps.radius + ps.eps ) );
+  }
+
+  bool is_inside( particle_t & u )
+  {
+    if ( !u.is_valid() )
+      return true;
+    vector_t<double> & q = u.get_position();
+    return is_inside( q );
+  }
+
+  bin_t get_bin( particle_t & u )
+  {
+    vector_t<double> & q = u.get_position();
+    return get_bin( q );
+  }
+
+  bin_t get_bin( vector_t<double> & q )
+  {
+    assert ( is_inside( q ) );
+      
+    int x = floor( q[0] / ps.unit_length );
+    int y = floor( q[1] / ps.unit_length );
+    return bin_t{ x, y };
+  }
+
+  void add_particle( node const& n, particle_t & u )
+  {
+    if( !is_inside( u ) )
+      legalize_position( u );
+    placement.resize();
+    state_log.resize();
+    u.set_range( ntk.get_range( n ) );
+    placement[n] = u;
+    bin_t B = get_bin( u );
+    grid[B.x][B.y].insert( n );
+  }
+
+  void reset_density_matrix()
+  {
+    for ( int x = 0; x < ps.Nx; ++x )
+    {
+      for ( int y = 0; y < ps.Ny; ++y )
+      {
+        density_matrix[x][y] = 0;
+      }   
+    }
+  }
+
+  void substitution( node n, signal fnew )
+  {
+    node nnew = ntk.get_node( fnew );
+    placement[nnew] = placement[n];
+  }
+
+  void reset_moments()
+  {
+    /* Remember to manually reset it */
+    ntk.foreach_node( [&]( auto n ){
+      placement[n].reset_moment();
+      return true;
+    } );
+  }
+
+  void print_cost_place()
+  {
+    double cost = 0;
+    ntk.foreach_node( [&]( node nu ){
+      if ( ntk.is_dead( nu ) )
+        return true;
+      particle_t & u = placement[nu];
+      vector_t<double> & qu = u.get_position();
+      ntk.foreach_fanin( nu, [&]( signal fv, uint32_t iv ){
+        node nv = ntk.get_node( fv );
+        particle_t & v = placement[nv];
+        vector_t<double> & qv = v.get_position();
+        vector_t<double> ruv = qu - qv;
+        double Rd = ps.place_length;//
+        double contr = 0.5 * ps.k_place * pow( ruv.norm2() - Rd, 2 );
+        cost += contr;
+        std::cout << nu << "@[" << qu[0] << "," << qu[1] << "] " << nv << "@[" << qv[0] << "," << qv[1] << "] : " << contr << std::endl;
+        std::cout << " obtined as " << 0.5 <<"*"<< ps.k_place <<"*" << " pow( "<< ruv.norm2() <<"-"<< Rd<<", 2 )"<<std::endl;
+      } );
+      return true;
+    } );
+    std::cout << "Total " << cost << std::endl;
+
+  }
+
+
+  double compute_cost_place()
+  {
+    //std::cout << "compute cost " << std::endl;
+    /* you should have computed the densities before */
+    double cost = 0;
+    ntk.foreach_node( [&]( node nu ){
+      if ( ntk.is_dead( nu ) )
+        return true;
+      particle_t & u = placement[nu];
+      vector_t<double> & qu = u.get_position();
+      ntk.foreach_fanin( nu, [&]( signal fv, uint32_t iv ){
+        node nv = ntk.get_node( fv );
+        particle_t & v = placement[nv];
+        vector_t<double> & qv = v.get_position();
+        vector_t<double> ruv = qu - qv;
+        double Rd = ps.place_length;//
+        double contr = 0.5 * ps.k_place * pow( ruv.norm2() - Rd, 2 );
+        cost += contr;
+        //std::cout << nu << " " << nv << " " << contr << std::endl;
+      } );
+      return true;
+    } );
+    return cost;
+  }
+
+  bin_t get_bin( int x, int y, int diagonal )
+  {
+    x = std::max( 0, std::min( x + diagonal, ps.Nx - 1 ));
+    y = std::max( 0, std::min( y + diagonal, ps.Ny - 1 ));
+    return bin_t{ x, y };
+  }
+
+  bin_t get_bin( bin_t & B, int diagonal )
+  {
+    return get_bin( B.x, B.y, diagonal );
+  }
+
+  double compute_cost_legal( particle_t & u, particle_t & v )
+  {
+    vector_t<double> qu = u.get_position();
+    vector_t<double> qv = v.get_position();
+    double Qu = u.get_charge();
+    double Qv = v.get_charge();
+    vector_t<double> quv = qu - qv;
+    double const ruv = quv.norm2();
+    double const Ruv = sqrt(2)*get_range( u, v );
+    double const Rd = ps.slot_length;
+
+    double const El = exp( -pow( ruv, 2 )/( 2 * pow( Rd, 2 ) ) ) / ( 2 * M_PI * pow( Rd, 2 ) );
+
+    double const res = El;
+    return res;
+  }
+
+  double compute_cost_route( particle_t & u, particle_t & v )
+  {
+    vector_t<double> qu = u.get_position();
+    vector_t<double> qv = v.get_position();
+    double Qu = u.get_charge();
+    double Qv = v.get_charge();
+    vector_t<double> quv = qu - qv;
+    double const ruv = quv.norm2();
+    double const Ruv = sqrt(2)*get_range( u, v );
+    double const Ru = u.get_range() + ( Qu * 0.1 * ps.slot_length );
+    double const Rv = v.get_range() + ( Qv * 0.1 * ps.slot_length );
+    double const Rd = ps.route_length ; // 
+
+    double const Ec = Qu*Qv*exp( -pow( ruv, 2 )/( 2 * pow( Rd, 2 ) ) ) / ( 2 * M_PI * pow( Rd, 2 ) );
+
+    double const res = Ec;
+    return res;
+  }
+
+  double compute_cost_route( node const& n )
+  {
+    particle_t & u = placement[n];
+    double res = 0;
+    bin_t Bi = get_bin( u );
+    bin_t Bl = get_bin( Bi, -ps.route_range );
+    bin_t Br = get_bin( Bi, +ps.route_range );
+    for ( int x = Bl.x; x <= Br.x; x++ )
+    {
+      for ( int y = Bl.y; y <= Br.y; ++y )
+      {
+        auto nodes_v = grid[x][y];
+        for ( auto nv : nodes_v )
+        {
+          particle_t & v = placement[nv];
+          res += 0.5*compute_cost_route( u, v );
+        }
+      }
+    }
+    return res;
+  }
+
+  double compute_cost_route( node const& n, vector_t<double> & qnew )
+  {
+    particle_t u = placement[n];
+    u.set_position( qnew );
+    double res = 0;
+    bin_t Bi = get_bin( u );
+    bin_t Bl = get_bin( Bi, -ps.route_range );
+    bin_t Br = get_bin( Bi, +ps.route_range );
+    for ( int x = Bl.x; x <= Br.x; x++ )
+    {
+      for ( int y = Bl.y; y <= Br.y; ++y )
+      {
+        auto nodes_v = grid[x][y];
+        for ( auto nv : nodes_v )
+        {
+          particle_t & v = placement[nv];
+          res += 0.5*compute_cost_route( u, v );
+        }
+      }
+    }
+    return res;
+  }
+
+  double compute_cost_legal( node const& n )
+  {
+    particle_t & u = placement[n];
+    return compute_cost_legal( u );
+  }
+
+  double compute_cost_legal( particle_t & u )
+  {
+    double res = 0;
+    bin_t Bi = get_bin( u );
+    bin_t Bl = get_bin( Bi, -ps.route_range );
+    bin_t Br = get_bin( Bi, +ps.route_range );
+    for ( int x = Bl.x; x <= Br.x; x++ )
+    {
+      for ( int y = Bl.y; y <= Br.y; ++y )
+      {
+        auto nodes_v = grid[x][y];
+        for ( auto nv : nodes_v )
+        {
+          particle_t & v = placement[nv];
+          if ( &u != &v )
+            res += 0.5*compute_cost_legal( u, v );
+        }
+      }
+    }
+    return res;
+  }
+
+  void check()
+  {
+    ntk.foreach_pi( [&]( auto pi ){
+      assert( on_edge(pi) );
+    } );
+
+    ntk.foreach_po( [&]( auto fo ){
+      node n = ntk.get_node( fo );
+      assert( on_edge(n) );
+    } );
+  }
+
+  double compute_cost_legal( particle_t u, vector_t<double> & qnew )
+  {
+    u.set_position( qnew );
+    double res = 0;
+    bin_t Bi = get_bin( u );
+    bin_t Bl = get_bin( Bi, -ps.route_range );
+    bin_t Br = get_bin( Bi, +ps.route_range );
+    for ( int x = Bl.x; x <= Br.x; x++ )
+    {
+      for ( int y = Bl.y; y <= Br.y; ++y )
+      {
+        auto nodes_v = grid[x][y];
+        for ( auto nv : nodes_v )
+        {
+          particle_t & v = placement[nv];
+          res += 0.5*compute_cost_legal( u, v );
+        }
+      }
+    }
+    return res;
+  }
+
+  double compute_cost_route( bin_t & Bi, bin_t & Bl, bin_t & Br )
+  {
+    double cost = 0;
+    auto nodes_u = grid[Bi.x][Bi.y];
+    uint32_t sizeu = nodes_u.size();
+    if ( sizeu <= ps.eps ) return 0;
+    for ( int x = Bl.x; x <= Br.x; x++ )
+    {
+      for ( int y = Bl.y; y <= Br.y; ++y )
+      {
+        auto nodes_v = grid[x][y];
+        for ( auto nu : nodes_u )
+        {
+          for ( auto nv : nodes_v )
+          {
+            if ( ( nu > nv ) )
+              continue;
+            cost += compute_cost_route( placement[nu], placement[nv] );
+          }
+        }
+      }
+    }
+    return cost;
+  }
+
+  double compute_cost_legal( bin_t & Bi, bin_t & Bl, bin_t & Br )
+  {
+    double cost = 0;
+    auto nodes_u = grid[Bi.x][Bi.y];
+    for ( int x = Bl.x; x <= Br.x; x++ )
+    {
+      for ( int y = Bl.y; y <= Br.y; ++y )
+      {
+        auto nodes_v = grid[x][y];
+        for ( auto nu : nodes_u )
+        {
+          for ( auto nv : nodes_v )
+          {
+            if ( ( nu > nv ) )
+              continue;
+            cost += compute_cost_legal( placement[nu], placement[nv] );
+          }
+        }
+      }
+    }
+    return cost;
+  }
+
+  void update_charges()
+  {
+    ntk.foreach_node( [&]( auto n ){
+      placement[n].set_charge( ntk.get_degree( n ) );
+      return true;
+    } );
+  }
+
+  double compute_cost_route()
+  {
+    /* you should have computed the densities before */
+    double cost = 0;
+    for ( int x = 0; x < ps.Nx; ++x )
+    {
+      for ( int y = 0; y < ps.Ny; ++y )
+      {
+        auto Bi = get_bin( x, y, +0 );
+        auto Bl = get_bin( x, y, -ps.route_range );
+        auto Br = get_bin( x, y, ps.route_range );
+        cost += compute_cost_route( Bi, Bl, Br );
+      }
+    }
+    return cost;
+  }
+
+  double compute_cost_diffn()
+  {
+    compute_density_matrix();
+    double Nt = ntk.area() / ( (double) ps.Nx * ps.Ny );
+    double res = 0;
+    for ( int x = 0; x < ps.Nx; ++x )
+    {
+      for ( int y = 0; y < ps.Ny; ++y )
+      {
+        res += pow( density_matrix[x][y] - Nt, 2 );
+      } 
+    }
+    return res;
+  }
+
+  double compute_cost_legal()
+  {
+    /* you should have computed the densities before */
+    double cost = 0;
+    for ( int x = 0; x < ps.Nx; ++x )
+    {
+      for ( int y = 0; y < ps.Ny; ++y )
+      {
+        auto Bi = get_bin( x, y, +0 );
+        auto Bl = get_bin( x, y, -ps.route_range );
+        auto Br = get_bin( x, y, ps.route_range );
+        cost += compute_cost_legal( Bi, Bl, Br );
+      }
+    }
+    return cost;
+  }
+
+  double compute_cost_place( particle_t & u, particle_t & v )
+  {
+    /* you should have computed the densities before */
+    vector_t<double> & qu = u.get_position();
+    vector_t<double> & qv = v.get_position();
+    vector_t<double> ruv = qu - qv;
+    double Rd = ps.place_length;///sqrt(3);
+    double const res = 0.5 * ps.k_place * pow( ruv.norm2() - Rd, 2 );
+    return res;
+  }
+
+  double compute_cost_place( node n )
+  {
+    /* you should have computed the densities before */
+    double cost = 0;
+    particle_t & u = placement[n];
+    vector_t<double> & qu = u.get_position();
+    ntk.foreach_fanin( n, [&]( signal fv, uint32_t iv ){
+      node nv = ntk.get_node( fv );
+      particle_t & v = placement[nv];
+      cost += 0.5*compute_cost_place( u, v );
+    } );
+    ntk.foreach_fanout( n, [&]( signal fv, uint32_t iv ){
+      node nv = ntk.get_node( fv );
+      particle_t & v = placement[nv];
+      cost += 0.5*compute_cost_place( u, v );
+     } );
+    return cost;
+  }
+
+  double compute_cost_place( node n, vector_t<double> & qnew )
+  {
+    /* you should have computed the densities before */
+    double cost = 0;
+    particle_t u = placement[n];
+    u.set_position( qnew );
+    ntk.foreach_fanin( n, [&]( signal fv, uint32_t iv ){
+      node nv = ntk.get_node( fv );
+      particle_t & v = placement[nv];
+      cost += 0.5*compute_cost_place( u, v );
+    } );
+    ntk.foreach_fanout( n, [&]( signal fv, uint32_t iv ){
+      node nv = ntk.get_node( fv );
+      particle_t & v = placement[nv];
+      cost += 0.5*compute_cost_place( u, v );
+     } );
+    return cost;
+  }
+
+  double compute_cost_old()
+  {
+    reset_grid();
+    update_charges();
+    //double const cost_legal = compute_cost_legal();
+    double const cost_route = compute_cost_route();
+    double const cost_place = compute_cost_place();
+    //double const cost_diffn = compute_cost_diffn();
+    ps.rescaling_route = cost_route > ps.eps ? ps.ratio_wire_route*(cost_place / cost_route) : ps.eps;
+    ps.rescaling_legal = 0;//ps.ratio_wire_legal*(cost_place / cost_legal) ;
+    //ps.rescaling_diffn = ps.ratio_wire_diffn*(cost_place / cost_diffn);
+    //double cost_total = cost_place + ps.rescaling_legal*cost_legal + ps.rescaling_route*cost_route;
+    double cost_total = cost_place + ps.rescaling_route*cost_route;
+    //double cost_total = cost_place ;//+ ps.rescaling_legal*cost_legal + ps.rescaling_route*cost_route;
+//    std::cout << " Legal: " << cost_legal << 
+//                 " Diffn: " << cost_route << 
+//                 " Place: " << cost_place << std::endl;
+    return cost_total;
+  }
+
+  void print_cost()
+  {
+    print_cost_place();
+  }
+
+  void print_cost( std::vector<particle_t> & parts )
+  {
+    print_cost_place( parts );
+  }
+
+  vector_t<double> compute_force_place( particle_t & u, particle_t & v )
+  {
+    vector_t<double> & qu = u.get_position();
+    vector_t<double> & qv = v.get_position();
+    vector_t<double> ruv = qu - qv;
+    double Rd = ps.place_length;
+    vector_t<double> dF = ruv.times( -ps.k_place * ( 1 - Rd/ruv.norm2() ) );
+    return dF;
+  }
+
+  void compute_forces_place()
+  {
+    /* you should have computed the densities before */
+    vector_t<double> dU { 0, 0 };
+    ntk.foreach_node( [&]( node nu ){
+      if ( ntk.is_dead( nu ) )
+        return true;
+      particle_t & u = placement[nu];
+      vector_t<double> & qu = u.get_position();
+      vector_t<double> & Fu = u.get_force();
+      ntk.foreach_fanin( nu, [&]( signal fv, uint32_t iv ){
+        node nv = ntk.get_node( fv );
+        particle_t & v = placement[nv];
+        vector_t<double> & Fv = v.get_force();
+        vector_t<double> dF = compute_force_place( u, v );
+        Fu = Fu + dF;
+        Fv = Fv - dF;
+        if ( ps.anchor && ( ntk.is_pi( nv ) || ntk.is_po( nv ) ) )
+        {
+          v.reset_force();
+        }
+      } );
+      if ( ps.anchor && ( ntk.is_pi( nu ) || ntk.is_po( nu ) ) )
+      {
+        u.reset_force();
+      }
+      return true;
+    } );
+  }
+
+  void reset_forces()
+  {
+    /* Remember to manually reset it */
+    ntk.foreach_node( [&]( auto n ){
+      placement[n].reset_force();
+      return true;
+    } );
+  }
+
+  void reset_forces( std::vector<particle_t> & parts )
+  {
+    /* Remember to manually reset it */
+    for( particle_t u : parts )
+    {
+      u.reset_force();
+    }
+  }
+
+  void reset_forces( std::vector<node> & nodes )
+  {
+    /* Remember to manually reset it */
+    for( node n : nodes )
+    {
+      particle_t & u = placement[n];
+      u.reset_force();
+    }
+  }
+
+
+  double get_range( particle_t & u, particle_t & v )
+  {
+    double Ru = u.get_range();
+    double Rv = v.get_range();
+    double Ruv = sqrt( pow( Ru, 2 ) + pow( Rv, 2 ) );
+    return Ruv;
+  }
+
+  vector_t<double> compute_force_legal( particle_t & u, particle_t & v )
+  {
+    double const Ruv = sqrt(2) * get_range( u, v );
+    vector_t<double> & qu = u.get_position();
+    vector_t<double> & qv = v.get_position();
+    vector_t<double> quv = qu - qv;
+    double ruv = quv.norm2();       
+    double const Rd = ps.slot_length;
+    double const Fl = ps.rescaling_legal * ( 2 * M_PI * pow( Rd, 4 ) ) *exp( -pow( ruv,2 )/( 2 * pow( Rd, 2 ) ) );
+    vector_t<double> dF = quv.times( Fl );
+    return dF;
+  }
+
+  void compute_force_legal( particle_t & u )
+  {
+    double & Qu = u.get_charge();
+    vector_t<double> & qu = u.get_position();
+    vector_t<double> & Fu = u.get_force();
+    double const & Au = u.get_area();
+
+    auto Bi = get_bin( u );
+    auto Bl = get_bin( Bi, -ps.route_range );
+    auto Br = get_bin( Bi, +ps.route_range );
+    for ( double x = Bl.x; x <= Br.x; x++ )
+    {
+      for ( double y = Bl.y; y <= Br.y; y++ )
+      {
+        auto nodesv = grid[x][y];
+        for ( auto nv : nodesv )
+        {
+          particle_t & v = placement[nv];
+          if ( &u == &v )
+            continue;
+          vector_t<double> dF = compute_force_legal( u, v );
+          Fu = Fu + dF;
+        }
+      }
+    }
+  }
+
+  vector_t<double> compute_force_route( particle_t & u, particle_t & v )
+  {
+    double const Ruv = sqrt(2) * get_range( u, v );
+    vector_t<double> & qu = u.get_position();
+    vector_t<double> & qv = v.get_position();
+    double & Qu = u.get_charge();
+    double & Qv = v.get_charge();
+    vector_t<double> quv = qu - qv;
+    double ruv = quv.norm2();       
+    double const Ru = u.get_range() + ( Qu * 0.1 * ps.slot_length );
+    double const Rv = v.get_range() + ( Qv * 0.1 * ps.slot_length );
+    double const Rd = ps.route_length;//
+    double const Fc = Qu*Qv*(ps.rescaling_route / ( 2 * M_PI * pow( Rd, 4 ) )) *exp( -pow( ruv,2 )/( 2 * pow( Rd, 2 ) ) );
+    vector_t<double> dF = quv.times( Fc );
+    return dF;
+  }
+
+  void compute_force_route( particle_t & u )
+  {
+    double & Qu = u.get_charge();
+    vector_t<double> & qu = u.get_position();
+    vector_t<double> & Fu = u.get_force();
+    double const & Au = u.get_area();
+
+    auto Bi = get_bin( u );
+    auto Bl = get_bin( Bi, -ps.route_range );
+    auto Br = get_bin( Bi, +ps.route_range );
+    for ( double x = Bl.x; x <= Br.x; x++ )
+    {
+      for ( double y = Bl.y; y <= Br.y; y++ )
+      {
+        auto nodesv = grid[x][y];
+        for ( auto nv : nodesv )
+        {
+          particle_t & v = placement[nv];
+          if ( &u == &v )
+            continue;
+          vector_t<double> dF = compute_force_route( u, v );
+          Fu = Fu + dF;
+        }
+      }
+    }
+  }
+
+  void remove_normal_force( particle_t & u )
+  {
+    vector_t<double> & F = u.get_force();
+    F[1] = 0;
+  }
+
+  void compute_forces_route()
+  {
+    /* Remember to manually reset it */
+    ntk.foreach_node( [&]( auto n ){
+      if ( ntk.is_dead( n ) )
+        return true;
+      placement[n].set_charge( ntk.get_degree( n ) );
+      compute_force_route( placement[n] );
+      if ( ps.anchor && ( ntk.is_pi( n ) || ntk.is_po( n ) ) )
+      {
+        placement[n].reset_force();
+      }
+      return true;
+    } );
+  }
+
+  void compute_forces_legal()
+  {
+    /* Remember to manually reset it */
+    ntk.foreach_node( [&]( auto n ){
+      if ( ntk.is_dead( n ) )
+        return true;
+      placement[n].set_charge( ntk.get_degree( n ) );
+      compute_force_legal( placement[n] );
+      if ( ps.anchor && ( ntk.is_pi( n ) || ntk.is_po( n ) ) )
+      {
+        remove_normal_force( placement[n] );
+      }
+      return true;
+    } );
+  }
+
+  void compute_forces_legal( std::vector<particle_t> & parts )
+  {
+    /* Remember to manually reset it */
+    for( particle_t & u : parts )
+    {
+      compute_force_legal( u );
+      if ( ps.anchor && ( u.is_anchored() ) )
+      {
+        remove_normal_force( u );
+      }
+    }
+  }
+
+  void compute_forces_legal( std::vector<node> & nodes )
+  {
+    /* Remember to manually reset it */
+    for( node n : nodes )
+    {
+      particle_t & u = placement[n];
+      erase_from_grid( n );
+      compute_force_legal( u );
+      if ( ps.anchor && ( u.is_anchored() ) )
+      {
+        remove_normal_force( u );
+      }
+      addback_to_grid( n );
+    }
+  }
+
+  void compute_forces()
+  {
+    reset_forces();
+    update_charges();
+    compute_forces_place();
+    //compute_forces_legal();
+    compute_forces_route();
+//   compute_forces_diffn();
+  }
+
+  void add_density( particle_t & u )
+  {
+    vector_t<double> q = u.get_position();
+    vector_t<double> dmin = kernel.get_delta_min( q );
+    vector_t<double> dmax = kernel.get_delta_max( q );
+    
+    double dx = dmin[0];
+    while ( dx <= dmax[0] )
+    {
+      double dy = dmin[1];
+      while ( dy <= dmax[1] )
+      {
+        vector_t<double> dq { dx, dy };
+        vector_t<double> qnew = q + dq;
+        if ( is_inside( qnew ) )
+        {
+          auto B = get_bin( qnew );
+          double const & Au = u.get_area();
+          double const K = kernel.kernel_field( qnew, q );
+          density_matrix[B.x][B.y] += K * Au;
+        }
+        dy += ps.slot_length;
+      }
+      dx += ps.slot_length;
+    }
+  }
+
+  void add_gradient( particle_t & u )
+  {
+    double Nt = ntk.area() / ( (double) ps.Nx * ps.Ny );
+
+    vector_t<double> q = u.get_position();
+    vector_t<double> dmin = kernel.get_delta_min( q );
+    vector_t<double> dmax = kernel.get_delta_max( q );
+    for ( double dx = dmin[0]; dx <= dmax[0]; dx += ps.slot_length )
+    {
+      for ( double dy = dmin[1]; dy <= dmax[1]; dy += ps.slot_length )
+      {
+        vector_t<double> dq { dx, dy };
+        vector_t<double> qnew = q + dq;
+        if ( is_inside( qnew ) )
+        {
+          auto B = get_bin( qnew );
+          double const & Au = u.get_area();
+          vector_t<double> dU = kernel.kernel_grads( qnew, q );
+          vector_t<double> dF = dU.times( -2*Au*ps.rescaling_diffn*( density_matrix[B.x][B.y] - Nt ) );
+          auto & Fu = u.get_force();
+          Fu = Fu + dF;
+        }
+      }
+    }
+  }
+
+
+  void integrate_moments( double dt )
+  {
+    /* Remember to manually reset it */
+    ntk.foreach_node( [&]( auto n ){
+      vector_t<double> & p = placement[n].get_moment();
+      vector_t<double> & F = placement[n].get_force();
+      vector_t<double> dp = F.times( dt );
+      p = p + dp;
+      return true;
+    } );
+  }
+
+  bool is_descending()
+  {
+    double prod = 0;
+    ntk.foreach_gate( [&]( auto n ){
+      if ( ntk.is_po( n ) )
+        return true;
+      vector_t<double> & p = placement[n].get_moment();
+      vector_t<double> & F = placement[n].get_force();
+      prod += p.dot( F );
+      return true;
+    } );
+    return prod > 0;
+  }
+
+  double compute_norm_moments()
+  {
+    double res2 = 0;
+    ntk.foreach_node( [&]( auto n ){
+      particle_t & u = placement[n];
+      vector_t<double> p = u.get_moment();
+      res2 += p.squared_norm2();
+      return true;
+    } );
+    return sqrt( res2 );
+  }
+
+  double compute_norm_forces()
+  {
+    double res2 = 0;
+    ntk.foreach_node( [&]( auto n ){
+      particle_t & u = placement[n];
+      vector_t<double> p = u.get_force();
+      res2 += p.squared_norm2();
+      return true;
+    } );
+    return sqrt( res2 );
+  }
+
+  void rescale_moments( double gamma )
+  {
+    double p_norm = compute_norm_moments();
+    double F_norm = compute_norm_forces();
+    if ( abs( p_norm ) < ps.eps )
+      return;
+    ntk.foreach_node( [&]( auto n ){
+      vector_t<double> & p = placement[n].get_moment();
+      vector_t<double> & F = placement[n].get_force();
+      vector_t<double> const dp1 = F.times( gamma*p_norm/F_norm );
+      vector_t<double> const dp2 = p.times( 1 - gamma );
+      p = dp1 + dp2;
+      return true;
+    } );
+  }
+
+  void legalize_position( particle_t & u )
+  {
+    vector_t<double> & q = u.get_position();
+    legalize_position( q );
+  }
+
+
+  void legalize_position( vector_t<double> & q )
+  {
+    //q[0] = std::max( 0.0, std::min( q[0], ( ps.Nx + 1 ) * ps.unit_length ) );
+    //q[1] = std::max( 0.0, std::min( q[1], ( ps.Ny + 1 ) * ps.unit_length ) );
+    vector_t<double> o { ps.radius, ps.radius };
+    vector_t<double> d = q - o;
+    if ( d.norm2() > ps.radius )
+    {
+      q = d.times( ( ps.radius ) / d.norm2() );
+      q = q + o;
+    }
+  }
+
+  void integrate_positions( double dt )
+  {
+    /* Remember to manually reset it */
+    ntk.foreach_gate( [&]( auto n ){
+      if ( ntk.is_dead( n ) || ntk.is_po( n ) || ntk.is_pi( n ) || !placement[n].is_valid() )
+        return true;
+      erase_from_grid( n );
+      vector_t<double> & p = placement[n].get_moment();
+      vector_t<double> & q = placement[n].get_position();
+      q = q + ( p .times( dt ) );
+      legalize_position( q );
+      addback_to_grid( n );
+
+      return true;
+    } );
+  }
+
+  bool has_overlap( particle_t & u, vector_t<double> & qnew )
+  {
+    vector_t<double> qu = u.get_position();
+    bin_t B = get_bin( qnew );
+    for ( auto n : grid[B.x][B.y] )
+    {
+      particle_t & v = placement[n];
+      vector_t<double> qv = v.get_position();
+      vector_t<double> d = qu - qv;
+      if ( d.norm2() < ( u.get_range() + v.get_range() ) )
+        return true;
+    }
+    return false;
+  }
+
+  vector_t<double> get_position( node n )
+  {
+    return placement[n].get_position();
+  }
+  
+  
+  double get_cum_wires( node n )
+  {
+    return cum_wires[n];
+  }
+  
+
+  void save_density_matrix( std::string file_path )
+  {
+    compute_density_matrix();
+    std::ofstream p( file_path );
+
+    for ( int x = 0; x < ps.Nx; ++x )
+    {
+      for ( int y = 0; y < ps.Ny; ++y )
+      {
+        p << density_matrix[x][y] << " ";
+      }
+      p << std::endl;
+    }
+    p.close();
+  }
+
+  #pragma region list
+
+  vector_t<double> get_baricenter( std::vector<particle_t> & parts, std::vector<uint32_t> & lits )
+  {
+    vector_t<double> q { 0, 0 };
+    for ( int lit : lits )
+    {
+      vector_t<double> & qu = parts[lit].get_position();
+      q = q + qu; 
+    }
+    q = q.times( 1.0/( ( double )lits.size() ) );
+    assert( (q[0] != 0) || (q[1] != 0) );
+    return q;
+  }
+
+  template<class Leaves_t>
+  void save_state( Leaves_t & leaves, std::set<node> const & erased )
+  {
+    ntk.foreach_node( [&]( auto n ){
+      if ( ntk.is_dead( n ) )
+        return true;
+      particle_t & u = placement[n];
+      state_log[n] = placement[n];
+      particle_t & v = state_log[n];
+      {
+        placement[n].set_charge( ntk.fanin_size( n ) + ntk.fanout_size( n ) );
+        if ( ntk.is_pi( n ) )
+          placement[n].make_pi();
+        else if ( ntk.is_po( n ) )
+          placement[n].make_po();
+      }
+      return true;
+    } );
+    for ( node n : erased )
+      placement[n].make_invalid(); // make invalid
+    for ( node n : leaves )
+    {
+      if ( n < ntk.size() )
+        placement[n].make_invalid();
+    }
+  }
+
+  void save_state()
+  {
+    ntk.foreach_node( [&]( auto n ){
+      if ( ntk.is_dead( n ) )
+        return true;
+      state_log[n] = placement[n];
+      return true;
+    } );
+  }
+
+  void restore_state()
+  {
+    ntk.foreach_node( [&]( auto n ){
+      if ( ntk.is_dead( n ) )
+        return true;
+      placement[n] = state_log[n];
+      return true;
+    } );
+  }
+
+  template<class Leaves_t, class LeavesNew_t>
+  void init_place_list_l( std::vector<particle_t>& parts, mapped_list const& list, Leaves_t const& leaves, node const& n, std::set<node> const& erased, LeavesNew_t & new_leaves )
+  {
+    std::uniform_real_distribution<> R_theta( 0, 2*M_PI );
+    std::uniform_real_distribution<> R_radial( 0, ps.radius );
+
+    update_charges();
+    /* adjust the charge of the nodes */
+    for ( auto ne : erased )
+    {
+      ntk.foreach_fanin( ne, [&]( auto fi, auto ii ){
+        node ni = ntk.get_node( fi );
+        placement[ni].add_charge( -1 );
+      } );
+    }
+
+    parts.clear();
+    parts.reserve( list.size() );
+    // add constants
+    parts.emplace_back();
+        parts.back().set_position( { ps.radius, ps.radius } );
+
+    parts.emplace_back();
+        parts.back().set_position( { ps.radius, ps.radius } );
+
+    // add the leaves with the correct charge
+    for( int i = 0; i < list.num_pis(); ++i )
+    {
+      node l = leaves[i];
+      if( l < ntk.size() )
+      {
+        assert( ( erased.find( l ) == erased.end() ) );
+        particle_t u( placement[l] );
+        if ( ntk.is_pi( l ) )
+          u.make_pi();
+        else if ( ntk.is_po( l ) )
+          u.make_po();
+        u.set_position( placement[l].get_position() );
+        parts.emplace_back( u );
+
+        auto r =  R_radial(gen);
+        auto t =  R_theta(gen);
+        parts.back().set_position( { r*cos(t)+ps.radius, r*sin(t)+ps.radius } );
+
+      }
+      else
+      {
+        parts.emplace_back();
+        auto r =  R_radial(gen);
+        auto t =  R_theta(gen);
+        parts.back().set_position( { r*cos(t)+ps.radius, r*sin(t)+ps.radius } );
+        parts.back().make_invalid();
+      }
+    }
+
+    while( parts.size() < ( list.num_pis() + 2 ) )
+    {
+      parts.emplace_back();
+        auto r =  R_radial(gen);
+        auto t =  R_theta(gen);
+        parts.back().set_position( { r*cos(t)+ps.radius, r*sin(t)+ps.radius } );
+      parts.back().make_invalid();
+    }
+
+
+    auto const& lib = ntk.get_bindings();
+    uint32_t lit = list.num_pis() + 2;
+    list.foreach_gate( [&]( auto children, auto id ) {
+      double R = ntk.get_range_from_id( id );
+      double Q = children.size();
+        auto r =  R_radial(gen);
+        auto t =  R_theta(gen);
+        vector_t<double> q = { r*cos(t)+ps.radius, r*sin(t)+ps.radius };
+      vector_t<double> p { 0, 0 };
+      vector_t<double> F { 0, 0 };
+      parts.emplace_back( q, p, F, Q, R, 0 );
+      for ( auto c : children )
+      {
+        parts[c].add_charge( +1 );
+      }
+      lit++;
+    } );
+    parts[list.po_at(0)].add_charge( ntk.fanout_size( n ) );
+    {
+      if ( ntk.is_pi( n ) )
+        parts[list.po_at(0)].make_pi();
+      else if ( ntk.is_po( n ) )
+        parts[list.po_at(0)].make_po();
+      parts[list.po_at(0)].set_position( placement[n].get_position() );
+    }
+    for ( auto ne : erased )
+    {
+      auto lit = ntk.value( ne );
+      assert( is_inside( placement[ne].get_position() ) );
+      parts[lit].set_position( placement[ne].get_position() );
+      placement[ne].make_invalid();
+    }
+    for ( auto ne : leaves )
+    {
+      if ( ne < ntk.size() )
+        placement[ne].make_invalid();
+    }
+  }
+
+  template<class Leaves_t, class LeavesNew_t>
+  void init_place_list( std::vector<particle_t>& parts, mapped_list const& list, Leaves_t const& leaves, node const& n, std::set<node> const& erased, LeavesNew_t & new_leaves )
+  {
+    std::uniform_real_distribution<> R_theta( 0, 2*M_PI );
+    std::uniform_real_distribution<> R_radial( 0, ps.radius );
+    update_charges();
+    /* adjust the charge of the nodes */
+    for ( auto ne : erased )
+    {
+      ntk.foreach_fanin( ne, [&]( auto fi, auto ii ){
+        node ni = ntk.get_node( fi );
+        placement[ni].add_charge( -1 );
+      } );
+    }
+
+    parts.clear();
+    parts.reserve( list.size() );
+    // add constants
+    parts.emplace_back();
+    parts.emplace_back();
+
+    // add the leaves with the correct charge
+    for( int i = 0; i < list.num_pis(); ++i )
+    {
+      node l = leaves[i];
+      if( l < ntk.size() )
+      {
+        assert( ( erased.find( l ) == erased.end() ) );
+        particle_t u( placement[l] );
+        if ( ntk.is_pi( l ) )
+          u.make_pi();
+        else if ( ntk.is_po( l ) )
+          u.make_po();
+        parts.emplace_back( u );
+      }
+      else
+      {
+        parts.emplace_back();
+        parts.back().make_invalid();
+      }
+    }
+
+    while( parts.size() < ( list.num_pis() + 2 ) )
+    {
+      parts.emplace_back();
+      parts.back().make_invalid();
+    }
+    auto const& lib = ntk.get_bindings();
+    uint32_t lit = list.num_pis() + 2;
+    list.foreach_gate( [&]( auto children, auto id ) {
+      double R = ntk.get_range_from_id( id );
+      double Q = children.size();
+        auto r =  R_radial(gen);
+        auto t =  R_theta(gen);
+        vector_t<double> q = { r*cos(t)+ps.radius, r*sin(t)+ps.radius };
+      vector_t<double> p { 0, 0 };
+      vector_t<double> F { 0, 0 };
+      parts.emplace_back( q, p, F, Q, R, 0 );
+      for ( auto c : children )
+      {
+        parts[c].add_charge( +1 );
+      }
+      lit++;
+    } );
+    parts[list.po_at(0)].add_charge( ntk.fanout_size( n ) );
+    {
+      if ( ntk.is_pi( n ) )
+        parts[list.po_at(0)].make_pi();
+      else if ( ntk.is_po( n ) )
+        parts[list.po_at(0)].make_po();
+      parts[list.po_at(0)].set_position( placement[n].get_position() );
+    }
+    for ( auto ne : erased )
+      placement[ne].make_invalid();
+    for ( auto ne : leaves )
+    {
+      if ( ne < ntk.size() )
+        placement[ne].make_invalid();
+    }
+  }
+
+  template<class Leaves_t, class LeavesNew_t>
+  void reset_place_list( std::vector<particle_t>& parts, mapped_list const& list, Leaves_t const& leaves, node const& n, std::set<node> const& erased, LeavesNew_t & new_leaves )
+  {
+    update_charges();
+    /* adjust the charge of the nodes */
+  }
+
+  void erase_from_grid( node n )
+  {
+    particle_t & u = placement[n];
+    bin_t B = get_bin( u );
+    grid[B.x][B.y].erase( n );
+  }
+
+  void addback_to_grid( node n )
+  {
+    particle_t & u = placement[n];
+    bin_t B = get_bin( u );
+    grid[B.x][B.y].insert( n );
+    if ( ntk.is_pi( n ) || ntk.is_po( n ) )
+    {
+      vector_t<double> & q = u.get_position();
+      vector_t<double> o = { ps.radius, ps.radius };
+      vector_t<double> d = q - o;
+      double dnorm = d.norm2();
+      assert( dnorm >= ( ps.radius - ps.eps ) );
+    }
+  }  
+
+  void reset_moments( std::vector<particle_t> & parts )
+  {
+    for ( particle_t & u : parts )
+      u.reset_moment();
+    reset_moments();
+  }
+
+  template<class Leaves_t>
+  double compute_costs_new( std::vector<particle_t> & parts, mapped_list const & list, Leaves_t const & leaves, node n )
+  {
+    double cost = 0;
+    /* 1.2. Place */
+    std::vector<double> parts_cum_wires( parts.size() );
+    parts_cum_wires[0] = 0;
+    parts_cum_wires[1] = 0;
+    uint32_t lit = 2;
+
+    for ( auto l : leaves )
+    {
+      if ( l < ntk.size() )
+      {
+        parts_cum_wires[lit] = cum_wires[l];
+      }
+      lit++;
+    }
+    lit = list.num_pis() + 2;
+    list.foreach_gate( [&]( auto children, auto id ){
+      parts_cum_wires[lit] = 0;
+      auto & u = parts[lit];
+      auto qu = parts[lit].get_position();
+      for ( auto lit_v : children )
+      {
+        auto & v = parts[lit_v];
+        auto qv = parts[lit_v].get_position();
+        auto quv = qu - qv;
+        if ( v.is_valid() && u.is_valid() )
+          parts_cum_wires[lit] = std::max( parts_cum_wires[lit], parts_cum_wires[lit] + quv.norm2() );
+      }
+      lit += 1;
+    } );
+    return parts_cum_wires.back();
+  }
+
+  template<class Leaves_t>
+  double compute_costs( std::vector<particle_t> & parts, mapped_list const & list, Leaves_t const & leaves, node n )
+  {
+    double cost = 0;
+    /* 1.   Interactions of the particles with the other particles in the list */
+    /* 1.1. Route */
+    #if 1
+    for ( int lit_u = 2; lit_u < parts.size(); ++lit_u )
+    {
+      particle_t & u = parts[lit_u];
+      if ( !u.is_valid() )
+        continue;
+      for ( int lit_v = lit_u + 1; lit_v < parts.size(); ++lit_v )
+      {
+        particle_t & v = parts[lit_v];
+        if ( v.is_valid() )
+        {
+          cost += ps.rescaling_route*compute_cost_route( u, v );
+        }
+      }
+    }
+    #endif
+    /* 1.2. Place */
+    uint32_t lit = list.num_pis() + 2;
+    list.foreach_gate( [&]( auto children, auto id ){
+      particle_t & u = parts[lit];
+      for ( auto lit_v : children )
+      {
+        particle_t & v = parts[lit_v];
+        if ( v.is_valid() && u.is_valid() )
+          cost += compute_cost_place( u, v );
+      }
+      lit += 1;
+    } );
+
+    /* 2.   Interactions of the particles in the list with the external particles */
+    /* 2.1. Placement with leaves' fanins */
+    for ( int i = 0; i < leaves.size(); ++i )
+    {
+      node l = leaves[i];
+      if ( l > ntk.size() )
+        continue;
+      particle_t & u = parts[i+2];
+
+      ntk.foreach_fanin( l, [&]( auto fi, auto ii ){
+        node ni = ntk.get_node( fi );
+        if ( ni < ntk.size() )
+        {
+          particle_t & v = placement[ni];
+          if ( u.is_valid() && v.is_valid() )
+          {
+            cost += compute_cost_place( u, v );
+          }
+        }
+      } );
+
+      ntk.foreach_fanout( l, [&]( auto fo, auto io ){
+        node no = ntk.get_node( fo );
+        if ( no < ntk.size() )
+        {
+          particle_t & v = placement[no];
+          if ( v.is_valid() )
+          {
+            cost += compute_cost_place( u, v );
+          }
+        }
+      } );
+
+    }
+    /* 2.1. Placement with root fanouts */
+    particle_t & u = parts[list.po_at( 0 )];
+    ntk.foreach_fanout( n, [&]( auto fo, auto io ){
+      node no = ntk.get_node( fo );
+      particle_t & v = placement[no];
+      cost += compute_cost_place( u, v );
+    } );
+    #if 1
+    /* 2.1. Routing with existing nodes */
+    for ( int lit_u = 2; lit_u < parts.size(); ++lit_u )
+    {
+      particle_t & u = parts[lit_u];
+      if ( !u.is_valid() )
+        continue;
+      bin_t Bi = get_bin( u );
+      bin_t Bl = get_bin( Bi, -ps.route_range );
+      bin_t Br = get_bin( Bi, +ps.route_range );
+      for ( int x = Bl.x; x <= Br.x; ++x )
+      {
+        for ( int y = Bl.y; y <= Br.y; ++y )
+        {
+          std::set<node> nodes_v = grid[x][y];
+          for ( node nv : nodes_v )
+          {
+            particle_t & v = placement[nv];
+            if ( v.is_valid() )
+            {
+              cost += ps.rescaling_route*compute_cost_route( u, v );
+            }
+          }
+        }
+      }
+    }
+    if ( list.po_at( 0 ) <= 1 )
+    {
+      particle_t & u = parts[list.po_at( 0 )];
+      if ( u.is_valid() )
+      {
+      bin_t Bi = get_bin( u );
+      bin_t Bl = get_bin( Bi, -ps.route_range );
+      bin_t Br = get_bin( Bi, +ps.route_range );
+      for ( int x = Bl.x; x <= Br.x; ++x )
+      {
+        for ( int y = Bl.y; y <= Br.y; ++y )
+        {
+          std::set<node> nodes_v = grid[x][y];
+          for ( node nv : nodes_v )
+          {
+            particle_t & v = placement[nv];
+            if ( v.is_valid() )
+            {
+              cost += ps.rescaling_route*compute_cost_route( u, v );
+            }
+          }
+        }
+      }
+      }
+    }
+    #endif
+
+    #if 0
+    ntk.foreach_gate( [&]( node nu ){
+      if ( ntk.is_dead( nu ) )
+        return true;
+      particle_t & u = placement[nu];
+      if ( !u.is_valid() )
+        return true;
+      vector_t<double> & qu = u.get_position();
+      ntk.foreach_fanin( nu, [&]( signal fv, uint32_t iv ){
+        node nv = ntk.get_node( fv );
+        particle_t & v = placement[nv];
+        if ( v.is_valid() )
+        {
+          vector_t<double> & qv = v.get_position();
+          vector_t<double> ruv = qu - qv;
+          double Rd = ps.place_length;//get_range( u, v );
+          double contr = compute_cost_place( u, v );
+          cost += contr;
+        }
+        else
+        {
+
+        }
+        //std::cout << nu << " " << nv << " " << contr << std::endl;
+      } );
+
+      bin_t Bi = get_bin( u );
+      bin_t Bl = get_bin( Bi, -ps.route_range );
+      bin_t Br = get_bin( Bi, +ps.route_range );
+      for ( int x = Bl.x; x <= Br.x; ++x )
+      {
+        for ( int y = Bl.y; y <= Br.y; ++y )
+        {
+          std::set<node> nodes_v = grid[x][y];
+          for ( node nv : nodes_v )
+          {
+            particle_t & v = placement[nv];
+            if ( v.is_valid() )
+            {
+              cost += ps.rescaling_route*0.5*compute_cost_route( u, v );
+            }
+          }
+        }
+      }
+
+      return true;
+    } );
+#endif
+    return cost;
+  }
+
+  template<class Leaves_t>
+  void compute_forces( std::vector<particle_t> & parts, mapped_list const & list, Leaves_t const & leaves, node n )
+  {
+    double cost = 0;
+    /* 1.   Interactions of the particles with the other particles in the list */
+    /* 1.1. Route */
+    #if 1
+    for ( int lit_u = 2; lit_u < parts.size(); ++lit_u )
+    {
+      particle_t & u = parts[lit_u];
+      vector_t<double> & Fu = u.get_force(); 
+      if ( !u.is_valid() )
+        continue;
+      for ( int lit_v = lit_u + 1; lit_v < parts.size(); ++lit_v )
+      {
+        particle_t & v = parts[lit_v];
+        if ( v.is_valid() )
+        {
+          vector_t<double> & Fv = v.get_force();
+          vector_t<double> dF = compute_force_route( u, v );
+          Fu = Fu + dF;
+          Fv = Fv - dF;
+        }
+      }
+    }
+    #endif
+    /* 1.2. Place */
+    uint32_t lit = list.num_pis() + 2;
+    list.foreach_gate( [&]( auto children, auto id ){
+      particle_t & u = parts[lit];
+      if ( u.is_valid() )
+      {
+        vector_t<double> & Fu = u.get_force();
+        for ( auto lit_v : children )
+        {
+          particle_t & v = parts[lit_v];
+          if ( v.is_valid() )
+          {
+            vector_t<double> & Fv = v.get_force();
+            vector_t<double> dF = compute_force_place( u, v );
+            Fu = Fu + dF;
+            Fv = Fv - dF;
+          }
+        }
+      }
+      lit += 1;
+    } );
+
+    /* 2.   Interactions of the particles with the external particles */
+    /* 2.1. Placement with leaves' fanins */
+    for ( int lit = 0; lit < ( std::min( (uint32_t)list.num_pis(), (uint32_t)leaves.size() ) ); ++lit )
+    {
+      node l = leaves[lit];
+      if ( l > ntk.size() )
+        continue;
+      particle_t & u = parts[lit+2];
+      vector_t<double> & Fu = u.get_force();
+      ntk.foreach_fanin( l, [&]( auto fi, auto ii ){
+        node ni = ntk.get_node( fi );
+        particle_t & v = placement[ni];
+        if ( v.is_valid() )
+        {
+          vector_t<double> & Fv = v.get_force();
+          vector_t<double> dF = compute_force_place( u, v );
+          Fu = Fu + dF;
+          Fv = Fv - dF;
+        }
+      } );
+
+      ntk.foreach_fanout( l, [&]( auto fi, auto ii ){
+        node ni = ntk.get_node( fi );
+        particle_t & v = placement[ni];
+        if ( v.is_valid() )
+        {
+          vector_t<double> & Fv = v.get_force();
+          vector_t<double> dF = compute_force_place( u, v );
+          Fu = Fu + dF;
+          Fv = Fv - dF;
+        }
+      } );
+
+    }
+    /* 2.1. Placement with root fanouts */
+    particle_t & u = parts[list.po_at( 0 )];
+    vector_t<double> & Fu = u.get_force();
+
+    ntk.foreach_fanout( n, [&]( auto fo, auto io ){
+      node no = ntk.get_node( fo );
+      particle_t & v = placement[no];
+      vector_t<double> & Fv = v.get_force();
+      if ( u.is_valid() && v.is_valid() )
+      {
+        vector_t<double> dF = compute_force_place( u, v );
+        Fu = Fu + dF;
+        Fv = Fv - dF;
+      }
+    } );
+    #if 1
+    /* 2.1. Routing with existing nodes */
+    for ( int lit_u = 2; lit_u < parts.size(); ++lit_u )
+    {
+      particle_t & u = parts[lit_u];
+      if ( !u.is_valid() )
+        continue;
+      bin_t Bi = get_bin( u );
+      bin_t Bl = get_bin( Bi, -ps.route_range );
+      bin_t Br = get_bin( Bi, +ps.route_range );
+      for ( int x = Bl.x; x <= Br.x; ++x )
+      {
+        for ( int y = Bl.y; y <= Br.y; ++y )
+        {
+          std::set<node> nodes_v = grid[x][y];
+          for ( node nv : nodes_v )
+          {
+            particle_t & v = placement[nv];
+            vector_t<double> & Fv = v.get_force();
+
+            if ( v.is_valid() )
+            {
+              vector_t<double> dF = compute_force_route( u, v );
+              Fu = Fu + dF;
+              Fv = Fv - dF;
+            }
+          }
+        }
+      }
+    }
+    #endif
+  }
+
+  void integrate_moments( std::vector<particle_t> & parts, double dt )
+  {
+    for ( particle_t & u : parts )
+    {
+      if ( !u.is_valid() || u.is_anchored() || on_edge( u ) )
+        continue;
+      vector_t<double> & p = u.get_moment();
+      vector_t<double> & F = u.get_force();
+      vector_t<double> dp = F.times( dt );
+      p = p + dp;
+    }
+  }
+
+  bool is_descending( std::vector<particle_t> & parts )
+  {
+    double prod = 0;
+    for ( particle_t & u : parts )
+    {
+      if ( !u.is_valid() )
+        continue;
+      if ( u.is_anchored() || on_edge(u) )
+        continue;
+
+      vector_t<double> & p = u.get_moment();
+      vector_t<double> & F = u.get_force();
+      prod += p.dot( F );
+    }
+    return ( prod > 0 );
+  }
+
+  double compute_norm_moments( std::vector<particle_t> & parts )
+  {
+    double res2 = 0;
+    for ( particle_t & u : parts )
+    {
+      if ( !u.is_valid() || u.is_anchored() || on_edge( u ) )
+        continue;
+      vector_t<double> p = u.get_moment();
+      res2 += p.squared_norm2();
+    }
+
+    return sqrt( res2 );
+  }
+
+  double compute_norm_forces( std::vector<particle_t> & parts )
+  {
+    double res2 = 0;
+    for ( particle_t & u : parts )
+    {
+      if ( !u.is_valid() || u.is_anchored() || on_edge( u ) )
+        continue;
+      vector_t<double> F = u.get_force();
+      res2 += F.squared_norm2();
+    }
+    return sqrt( res2 );
+  }
+
+  void rescale_moments( std::vector<particle_t> & parts, double gamma )
+  {
+    double p_norm = compute_norm_moments( parts );
+    if ( abs( p_norm ) < ps.eps )
+      return;
+    double F_norm = compute_norm_forces( parts );
+    for ( particle_t & u : parts )
+    {
+      if ( u.is_anchored() || !u.is_valid() || on_edge( u ) )
+        continue;
+      else
+      {
+        vector_t<double> & p = u.get_moment();
+        vector_t<double> & F = u.get_force();
+        vector_t<double> const dp1 = F.times( gamma*p_norm/F_norm );
+        vector_t<double> const dp2 = p.times( 1 - gamma );
+        p = dp1 + dp2;
+      }
+    }
+  }
+
+  void integrate_positions( std::vector<particle_t> & parts, double dt )
+  {
+    for ( particle_t & u : parts )
+    {
+      if ( u.is_anchored() || !u.is_valid() || on_edge( u ) )
+        continue;
+      else
+      {
+        vector_t<double> & p = u.get_moment();
+        vector_t<double> & q = u.get_position();
+        q = q + ( p .times( dt ) );
+        legalize_position( q );
+      }
+    }
+  }
+
+  void integrate_positions( std::vector<node> & nodes, double dt )
+  {
+    for ( node & n : nodes )
+    {
+      particle_t & u = placement[n];
+      if ( ntk.is_pi( n ) || ntk.is_po( n ) || u.is_anchored() || !u.is_valid() )
+        continue;
+      else
+      {
+        vector_t<double> & p = u.get_moment();
+        vector_t<double> & q = u.get_position();
+        q = q + ( p .times( dt ) );
+      }
+    }
+  }
+
+  #pragma endregion list
+
+  double compute_cost( node n )
+  {
+    if ( ntk.is_dead( n ) || !placement[n].is_valid() )
+      return 0;
+    double cost_route = compute_cost_route( n );
+    double cost_place = compute_cost_place( n );
+    return cost_place + ps.rescaling_route*cost_route;
+  }
+
+  double compute_cost( node n, vector_t<double> & qnew )
+  {
+    if ( ntk.is_dead( n ) )
+      return 0;
+    double cost_place = compute_cost_place( n, qnew );
+    double cost_route = compute_cost_route( n, qnew );
+    return cost_place + ps.rescaling_route*cost_route;
+  }
+
+  void mark_anchored()
+  {
+    ntk.foreach_pi( [&]( auto n ){
+      placement[n].make_pi();
+      placement[n].set_charge( ntk.get_degree( n ) );
+    } );
+    ntk.foreach_po( [&]( auto f ){
+      node n = ntk.get_node( f );
+      placement[n].make_po();
+      placement[n].set_charge( ntk.get_degree( n ) );
+    } );
+  }
+
+  double compute_cost_legal( std::vector<particle_t> & parts )
+  {
+    double res = 0;
+    for ( particle_t u : parts )
+      res += compute_cost_legal( u );
+    return res;
+  }
+
+  double compute_cost_legal( std::vector<node> & nodes )
+  {
+    double res = 0;
+    for ( node n : nodes )
+    {
+      res += compute_cost_legal( placement[n] );
+    }
+    return res;
+  }
+
+  void reset_moments( std::vector<node> & nodes )
+  {
+    for ( node n : nodes )
+      placement[n].reset_moment();
+  }
+
+  void integrate_moments( std::vector<node> & nodes, double dt )
+  {
+    for ( node n : nodes )
+    {
+      vector_t<double> & F = placement[n].get_force();
+      vector_t<double> & p = placement[n].get_moment();
+      vector_t<double> dp = F.times( dt );
+      p = p + dp;
+    }
+  }
+
+  double get_distance( node nu, node nv )
+  {
+    vector_t<double> qu = placement[nu].get_position();
+    vector_t<double> qv = placement[nv].get_position();
+    vector_t<double> d = qu - qv;
+    return d.norm2();
+  }
+
+private:
+  Ntk & ntk;
+  std::array<std::array<double, Ny>, Nx> density_matrix;
+  std::array<std::array<std::set<node>, Ny>, Nx> grid;
+    /*! \brief Hash table connecting each node to a placement element */
+  incomplete_node_map<particle_t, Ntk> placement;
+  incomplete_node_map<double, Ntk> cum_wires;
+  incomplete_node_map<particle_t, Ntk> state_log;
+  std::vector<int> po_to_delta;
+  std::vector<int> pi_to_delta;
+  gaussian_kernel_t<size_kernel> kernel;
+  
+  std::vector<node> rev_topo_order;
+  std::vector<extreme_t> extremes;
+
+  placement_params ps;
+  std::mt19937 gen; // mersenne_twister_engine seeded with rd()
+  int seed;
+
+  /* events */
+  std::shared_ptr<typename network_events<Ntk>::add_event_type> add_event;
+  std::shared_ptr<typename network_events<Ntk>::modified_event_type> modified_event;
+  std::shared_ptr<typename network_events<Ntk>::delete_event_type> delete_event;
+
+};
+
+} // namespace mockturtle

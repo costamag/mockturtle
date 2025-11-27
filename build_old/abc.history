@@ -1,0 +1,14 @@
+read_verilog c432_mapped.v
+read_verilog -m c432_mapped.v
+ps -g
+ps -pg
+  _const1_             g1( .z (1'b1) );
+ read_verilog -m c17_mapped.v
+read_genlib ../experiments/cell_libraries/asap7.genlib
+read_verilog -m c17_mapped.v
+ps -gp
+write_verilog -h
+help
+map -h
+source -s abc.rc
+if -h

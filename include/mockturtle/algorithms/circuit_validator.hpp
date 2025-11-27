@@ -141,7 +141,8 @@ public:
 
   ~circuit_validator()
   {
-    ntk.events().release_add_event( add_event );
+    if ( add_event )
+      ntk.events().release_add_event( add_event );    
   }
 
   /*! \brief Set ODC levels */
@@ -519,6 +520,10 @@ private:
     else if ( ntk.is_ite( n ) )
     {
       detail::on_ite<add_clause_fn_t>( node_lit, child_lits[0], child_lits[1], child_lits[2], add_clause_fn );
+    }
+    else// if( ntk.is_function( n ) )
+    {
+      detail::on_function<add_clause_fn_t>( node_lit, child_lits, ntk.node_function( n ), add_clause_fn );
     }
     return node_lit;
   }

@@ -1,0 +1,849 @@
+
+#if 0
+
+template<class Leaves_t>
+void place_list( std::vector<particle_t>& parts, mapped_list const& list, Leaves_t const& leaves, node const& n )
+{
+  parts.reserve( list.size() );
+  parts.emplace_back();
+  parts.emplace_back();
+  uint32_t lit = 1;
+  for( int i = 0; i < list.num_pis(); ++i )
+  {
+    lit++;
+    node l = leaves[i];
+    if( !ntk.is_null( l ) )
+    {
+      parts.emplace_back( placement[l] );
+    }
+  }
+
+  while( parts.size() < ( list.num_pis() + 2 ) )
+  {
+    parts.emplace_back();
+  }
+  auto const& lib = ntk.get_bindings();
+  list.foreach_gate( [&]( auto children, auto id ) {
+    lit++;
+    particle_t vnew { std::array<double, 2>{ 0, 0 }, std::array<double, 2>{ 0, 0 }, lib[id].area };
+    parts.push_back( vnew );
+    place_from_children( parts, children, lit, n );
+  } );
+}
+
+double compute_potential_energy( mapped_list const& list, std::vector<particle_t> const& parts, std::set<node> const& removed, node const& n )
+{
+  double U = 0;
+  uint32_t lit = list.num_pis() + 2;
+  list.foreach_gate( [&]( auto children, auto id ) {
+    for ( auto c : children )
+    {
+      U += compute_elastic_energy( parts[lit].get_positions(), parts[c].get_positions() );
+    }
+    lit++;
+  } );
+
+  auto const& qi = parts[list.po_at(0)].get_positions();
+  ntk.foreach_fanout( n, [&]( auto fo, auto io ){
+    auto no = ntk.get_node( fo );
+    auto const& qj = placement[no].get_positions();
+    U += compute_elastic_energy( qi, qj );
+  } );
+
+  ntk.foreach_node( [&]( auto nj ){
+    if ( ntk.is_dead( nj ) || ( ( removed.find( nj ) == removed.end() ) ) )
+    {
+      return true;
+    }
+
+    uint32_t lit = list.num_pis() + 2;
+    list.foreach_gate( [&]( auto children, auto id ) {
+      U += compute_electro_energy( parts[lit], placement[nj] );
+      lit++;
+    } );
+
+    return true;
+  } );
+
+  for ( int i = list.num_pis() + 2; i < parts.size(); ++i )
+  {
+    for ( int j = i+1; j < parts.size(); ++j )
+    {
+        U += compute_electro_energy( parts[i], parts[j] );
+    } 
+  }
+  return U;
+}
+
+template<class Leaves_t>
+double monte_carlo_sweep_placer( mapped_list const& list, Leaves_t const& leaves, node const& n, std::set<node> const& removed, double beta = -1 )
+{
+  std::vector<particle_t> parts;
+  place_list<Leaves_t>( parts, list, leaves, n );
+
+  if ( beta == -1 )
+    beta = ps.beta;
+  if ( ps.verbose )
+  {
+    fmt::print( "Performing Monte-Carlo Sweep with parameters : \n" );
+    fmt::print( "  Number of steps     : {:5d}\n", ps.num_steps_mc );
+    fmt::print( "  Inverse temperature : {:>5.2f}\n", beta );
+    fmt::print( "  Step size           : {:>5.2f}\n", ps.sigma_position );
+  }
+
+  std::uniform_real_distribution<> R( 0, 1 );
+  std::uniform_int_distribution<> U( 0, 1 );
+
+  auto Ui = compute_potential_energy( list, parts, removed, n );
+
+  for ( int istep = 0; istep < ps.num_steps_mc; ++istep )
+  {
+    uint32_t lit = list.num_pis() + 2;
+    list.foreach_gate( [&]( auto children, auto id ){
+      auto q = parts[lit].get_positions_c();
+      auto qtry = q;
+      while( qtry == q )
+      {
+        qtry[0] = std::max( std::min( (double)(Nx - 1), qtry[0] + ps.sigma_position*( 2*U( gen ) - 1 )), (double)0 );
+        qtry[1] = std::max( std::min( (double)(Ny - 1), qtry[1] + ps.sigma_position*( 2*U( gen ) - 1 )), (double)0 );
+        if (  ps.constraint_terminal && ( ntk.is_po( n ) && ( list.po_at( 0 ) == lit ) ) )
+        {
+          project_position( qtry );
+        }
+      }
+      auto Uf = compute_potential_energy( list, parts, removed, lit, qtry, n );
+
+      double alpha = std::min( 1.0, exp( -beta*( Uf - Ui ) ) );
+      if ( alpha > R( gen ) )
+      {
+        parts[lit].update_positions( qtry ); 
+        Ui = Uf;
+      }
+      lit++;
+    } );
+  }
+  return compute_potential_energy( list, parts, removed, n );
+
+}
+
+  void simulated_annealing_placer( double betai = 0.1, double betaf = 1000, int num_steps = 1000 )
+  {
+    for ( int i = 0; i < num_steps; ++i )
+    {
+      double beta = betai + ( betaf - betai )*i/( num_steps - 1 );
+      monte_carlo_sweep_placer( beta );
+      if ( ps.verbose )
+        std::cout << i << " " << beta << " " << compute_potential_energy() << std::endl;
+    }
+  }
+
+  /*! \brief NOT WORKING */
+  void hybrid_monte_carlo_placer( )
+  {
+    if ( ps.verbose )
+    {
+      fmt::print( "Performing Hybrid Monte-Carlo with parameters : \n" );
+      fmt::print( "  Number of steps MC  : {:5d}\n", ps.num_steps_mc );
+      fmt::print( "  Number of steps MD  : {:5d}\n", ps.num_steps_md );
+      fmt::print( "  Inverse temperature : {:>5.2f}\n", ps.beta );
+      fmt::print( "  Step size           : {:>5.2f}\n", ps.sigma_position );
+    }
+
+    incomplete_node_map<particle_t, Ntk> old_placement( ntk );
+
+    std::uniform_real_distribution<> R( 0, 1 );
+    std::uniform_int_distribution<> U( 0, 1 );
+    
+    for ( int istep = 0; istep < ps.num_steps_mc; ++istep )
+    {
+      /* randomize the velocities */
+      randomize_velocities();
+      auto Hi = compute_potential_energy();
+      /* save the previous state */
+      ntk.foreach_node( [&]( auto n ){
+        if ( ntk.is_dead( n ) )
+          return true;
+        old_placement[n] = placement[n];
+        return true;
+      } );
+
+      for ( int jstep = 0; jstep < ps.num_steps_md; ++jstep )
+      {
+        compute_forces();
+        ntk.foreach_node( [&]( auto n ){
+          if ( ntk.is_dead( n ) )
+            return true;
+          auto & q = placement[n].get_positions_m();
+          auto qold = q;
+          auto & p = placement[n].get_moments_m();
+          auto pold = p;
+          auto const & F = placement[n].get_forces();
+
+          for ( int i = 0; i < 2; ++i )
+          {
+            p[i] += 0.5*F[i]*ps.time_step;
+            q[i] += p[i]*ps.time_step;
+            p[i] += 0.5*F[i]*ps.time_step;
+          }
+
+          if ( ps.constraint_terminal && ( ntk.is_pi( n ) || ntk.is_po( n ) ) )
+          {
+            project_position( q );
+          }
+          project_moments( q, p );
+          auto Hf = compute_potential_energy();
+          std::cout << Hi << "->" << Hf << std::endl;
+          double alpha = std::min( 1.0, exp( -ps.beta*( Hf - Hi ) ) );
+          if ( alpha < R( gen ) )
+          {
+            p = pold;
+            q = qold;
+          }
+          else
+          {
+            Hi = Hf;
+            compute_forces();
+          }
+          return true;
+        } );
+      }
+    }
+  }
+
+  void randomize_velocities()
+  {
+    std::uniform_real_distribution<> R( 0, 1 );
+
+    ntk.foreach_node( [&]( auto n ){
+      if ( ntk.is_dead( n ) )
+        return true;
+
+      auto & p = placement[n].get_moments_m();
+
+      p[0] += ps.sigma_velocity*R( gen );
+      p[1] += ps.sigma_velocity*R( gen );
+
+      if ( ps.constraint_terminal && ( ntk.is_pi( n ) || ntk.is_po( n ) ) )
+      {
+        auto const & q = placement[n].get_positions();
+        if ( ( q[0] == 0 ) || ( q[0] == ( Nx - 1 ) ) )
+        {
+          p[0] = 0;
+        }
+        else if ( ( q[1] == 0 ) || ( q[1] == ( Ny - 1 ) ) )
+        {
+          p[1] = 0;
+        }
+      }
+      else
+      {
+        auto const & q = placement[n].get_positions();
+        if ( ( q[0] == 0 )  )
+          p[0] = std::abs( p[0] );
+        if ( ( q[0] == ( Nx - 1 ) )  )
+          p[0] = -std::abs( p[0] );
+        if ( ( q[1] == 0 )  )
+          p[1] = std::abs( p[1] );
+        if ( ( q[1] == ( Ny - 1 ) )  )
+          p[1] = -std::abs( p[1] );
+      }
+
+      return true;
+    } );
+  }
+
+  double evaluate_removal( node const& n )
+  {
+    double const elastic = evaluate_removal_elastic( n );
+    double const electro = evaluate_removal_electro( n );
+    return elastic + electro;
+  }
+
+  double evaluate_replacement( node const& n, node const& ncurr )
+  {
+    double const elastic = evaluate_replacement_elastic( n, ncurr );
+    double const electro = evaluate_replacement_electro( n, ncurr );
+    return elastic + electro;
+  }
+
+  double compute_potential_energy()
+  {
+    double const elastic = compute_elastic_energy();
+    double const electro = compute_electro_energy();
+    return elastic + electro;
+  }
+
+  double compute_total_energy()
+  {
+    double const K = compute_kinetic_energy();
+    double const U = compute_potential_energy();
+    return K + U;
+  }
+
+  double compute_potential_energy( double Ui, node n, std::array<double, 2> const& qtry )
+  {
+    update_elastic_energy( Ui, n, qtry );
+    update_electro_energy( Ui, n, qtry );
+    return Ui;
+  }
+
+
+  double compute_potential_energy( mapped_list const& list, std::vector<particle_t> const& parts, std::set<node> const& removed, uint32_t const& lit_mod, std::array<double, 2> const& qtry, node const& n )
+  {
+    double U = 0;
+    uint32_t lit = list.num_pis() + 2;
+    list.foreach_gate( [&]( auto children, auto id ) {
+      for ( auto c : children )
+      {
+        if ( c == lit_mod )
+          U += compute_elastic_energy( parts[lit].get_positions(), qtry );
+        else if ( lit == lit_mod )
+          U += compute_elastic_energy( qtry, parts[c].get_positions() );
+        else
+          U += compute_elastic_energy( parts[lit].get_positions(), parts[c].get_positions() );
+      }
+      lit++;
+    } );
+  
+    ntk.foreach_fanout( n, [&]( auto fo, auto io ){
+      auto no = ntk.get_node( fo );
+      if ( list.po_at(0) == lit_mod )
+        U += compute_elastic_energy( qtry, placement[no].get_positions() );
+      else
+        U += compute_elastic_energy( parts[list.po_at(0)].get_positions(), placement[no].get_positions() );
+    } );
+  
+    ntk.foreach_node( [&]( auto nj ){
+      if ( ntk.is_dead( nj ) || ( removed.find( nj ) == removed.end() ) )
+      {
+        return true;
+      }
+  
+      uint32_t lit = list.num_pis() + 2;
+      list.foreach_gate( [&]( auto children, auto id ) {
+        if ( lit == lit_mod )
+          U += compute_electro_energy( parts[lit], placement[nj], qtry );
+        else
+          U += compute_electro_energy( parts[lit], placement[nj] );
+        lit++;
+      } );
+
+      
+      return true;
+    } );
+
+    for ( int i = list.num_pis() + 2; i < parts.size(); ++i )
+    {
+      for ( int j = i+1; j < parts.size(); ++j )
+      {
+        if ( i == lit_mod )
+          U += compute_electro_energy( parts[i], parts[j], qtry );
+        else if( j == lit_mod )
+          U += compute_electro_energy( parts[j], parts[i], qtry );
+        else
+          U += compute_electro_energy( parts[i], parts[j] );
+      }
+    }
+  }
+
+  double squared_distance( particle_t const& i, particle_t const& j )
+  {
+    auto const& qi = i.get_positions();
+    auto const& qj = j.get_positions();
+    return squared_distance( qi, qj );
+  }
+
+  double squared_distance( std::array<double, 2> const& qi, std::array<double, 2> const& qj )
+  {
+    return pow( qi[0] - qj[0], 2 ) + pow( qi[1] - qj[1], 2 );
+  }
+
+  double distance( particle_t const& i, particle_t const& j )
+  {
+    return sqrt( squared_distance( i, j ) );
+  }
+
+  /*! \brief Computes the energy using Hooke's law on the connected nodes */
+  double compute_kinetic_energy()
+  {
+    double energy = 0;
+    ntk.foreach_gate( [&]( auto ni ){
+      if ( ntk.is_dead( ni ) )
+        return true;
+      auto const & pi = placement[ni].get_moments();
+      energy += ( pow( pi[0], 2 ) + pow( pi[1], 2 ) );
+      return true;
+    } );
+    return energy * 0.5;
+  }
+
+  /*! \brief Computes the energy using Hooke's law on the connected nodes */
+  double compute_elastic_energy()
+  {
+    double energy = 0;
+    ntk.foreach_gate( [&]( auto ni ){
+      if ( ntk.is_dead( ni ) )
+        return true;
+      auto const & vi = placement[ni];
+      ntk.foreach_fanin( ni, [&]( auto fj ){
+        node nj = ntk.get_node( fj );
+        if ( !ntk.is_dead( nj ) )
+        {
+          auto const & vj = placement[nj];
+          double const dist2 = squared_distance( vi, vj );
+          energy += dist2;
+        }
+      } );
+      return true;
+    } );
+    return energy * ps.stiffness * 0.5;
+  }
+
+  double compute_elastic_energy( std::array<double, 2> const& qi, std::array<double, 2> const& qj )
+  {
+    double const dist2 = squared_distance( qi, qj );
+    return dist2 * ps.stiffness * 0.5 ;
+  }
+
+  double compute_electro_energy( particle_t const& vi, particle_t const& vj )
+  {
+    auto const & Qi = vi.get_charge();
+    auto const & Qj = vj.get_charge();
+    double const dist2 = squared_distance( vi, vj );
+    return ps.dielectric * Qi*Qj/dist2;
+  }
+
+  double compute_electro_energy( particle_t const& vi, particle_t const& vj, std::array<double, 2> const& qitry )
+  {
+    auto const & Qi = vi.get_charge();
+    auto const & Qj = vj.get_charge();
+    double const dist2 = squared_distance( qitry, vj.get_positions() );
+    return ps.dielectric * Qi*Qj/dist2;
+  }
+
+  /*! \brief Computes the repulsive energy coming from the electrostatic repulsion */
+  double compute_electro_energy()
+  {
+    double energy = 0;
+    ntk.foreach_node( [&]( auto ni ){
+      if ( ntk.is_dead( ni ) )
+        return true;
+      auto const & vi = placement[ni];
+      auto const & Qi = vi.get_charge();
+
+      ntk.foreach_node( ni, [&]( auto nj ){
+        if ( ntk.is_dead( nj ) || ( ni == nj ) )
+          return true;
+
+        auto const & vj = placement[nj];
+        auto const & Qj = vj.get_charge();
+        double const dist2 = squared_distance( vi, vj );
+
+        energy += Qi*Qj/dist2;
+        return true;
+      } );
+      return true;
+    } );
+    return ps.dielectric * energy;
+  }
+
+
+  /*! \brief Computes the energy using Hooke's law on the connected nodes */
+  double evaluate_removal_elastic( node n )
+  {
+    double energy = 0;
+
+    auto const & vi = placement[n];
+
+    if ( !ntk.is_pi( n ) )
+    {
+      ntk.foreach_fanin( n, [&]( auto fj ){
+        node nj = ntk.get_node( fj );
+        if ( !ntk.is_dead( nj ) )
+        {
+          auto const & vj = placement[nj];
+          double dist2 = squared_distance( vi, vj );
+          energy += dist2;
+        }
+      } );
+    }
+
+    ntk.foreach_fanout( n, [&]( auto fj ){
+      node nj = ntk.get_node( fj );
+      if ( !ntk.is_dead( nj ) )
+      {
+        auto const & vj = placement[nj];
+        double dist2 = squared_distance( vi, vj );
+        energy += dist2;
+      }
+    } );
+
+    return energy * ps.stiffness * 0.5;
+  }
+
+  /*! \brief Computes the repulsive energy coming from the electrostatic repulsion */
+  double evaluate_removal_electro( node n )
+  {
+    double energy = 0;
+
+    auto const & vi = placement[n];
+    auto const & Qi = vi.get_charge();
+
+    ntk.foreach_node( [&]( auto nj ){
+      if ( ntk.is_dead( nj ) || ( nj == n ) )
+        return true;
+
+      auto const & vj = placement[nj];
+      auto const & Qj = vj.get_charge();
+      double dist2 = squared_distance( vi, vj );
+      energy += Qi*Qj/dist2;
+      return true;
+    } );
+
+    return ps.dielectric * energy;
+
+  }
+
+  /*! \brief Computes the energy using Hooke's law on the connected nodes */
+  double evaluate_replacement_elastic( node n, node ncurr )
+  {
+    double energy = 0;
+
+    auto const & vi = placement[n];
+
+    if ( !ntk.is_pi( ncurr ) )
+    {
+      ntk.foreach_fanin( ncurr, [&]( auto fj ){
+        node nj = ntk.get_node( fj );
+        if ( !ntk.is_dead( nj ) )
+        {
+          auto const & vj = placement[nj];
+          double dist2 = squared_distance( vi, vj );
+          energy += dist2;
+        }
+      } );
+    }
+
+    ntk.foreach_fanout( ncurr, [&]( auto fj ){
+      node nj = ntk.get_node( fj );
+      if ( !ntk.is_dead( nj ) )
+      {
+        auto const & vj = placement[nj];
+        double dist2 = squared_distance( vi, vj );
+        energy += dist2;
+      }
+    } );
+
+    return energy * ps.stiffness * 0.5;
+  }
+
+  /*! \brief Computes the repulsive energy coming from the electrostatic repulsion */
+  double evaluate_replacement_electro( node n, node ncurr )
+  {
+    double energy = 0;
+
+    auto const & vi = placement[n];
+    auto const & Qi = vi.get_charge();
+
+    ntk.foreach_node( [&]( auto nj ){
+      if ( ntk.is_dead( nj ) || ( nj == ncurr ) )
+        return true;
+
+      auto const & vj = placement[nj];
+      auto const & Qj = vj.get_charge();
+      double dist2 = squared_distance( vi, vj );
+      energy += Qi*Qj/dist2;
+      return true;
+    } );
+
+    return ps.dielectric * energy;
+
+  }
+
+
+  /*! \brief Computes the energy using Hooke's law on the connected nodes */
+  void update_elastic_energy( double & Ui, node n, std::array<double, 2> const& qtry )
+  {
+    double energy = 0;
+
+    auto const & vi = placement[n];
+    auto vitry = vi;
+    vitry.update_positions( qtry );
+
+    if ( !ntk.is_pi( n ) )
+    {
+      ntk.foreach_fanin( n, [&]( auto fj ){
+        node nj = ntk.get_node( fj );
+        if ( !ntk.is_dead( nj ) )
+        {
+          auto const & vj = placement[nj];
+          double dist2 = squared_distance( vi, vj );
+          energy -= dist2;
+          dist2 = squared_distance( vitry, vj );
+          energy += dist2;
+        }
+      } );
+    }
+
+    ntk.foreach_fanout( n, [&]( auto fj ){
+      node nj = ntk.get_node( fj );
+      if ( !ntk.is_dead( nj ) )
+      {
+        auto const & vj = placement[nj];
+        double dist2 = squared_distance( vi, vj );
+        energy -= dist2;
+        dist2 = squared_distance( vitry, vj );
+        energy += dist2;
+      }
+    } );
+
+    Ui += energy * ps.stiffness * 0.5;
+  }
+
+  /*! \brief Computes the repulsive energy coming from the electrostatic repulsion */
+  void update_electro_energy( double & Ui, node n, std::array<double, 2> const& qtry )
+  {
+    double energy = 0;
+
+    auto const & vi = placement[n];
+    auto vitry = vi;
+    vitry.update_positions( qtry );
+    auto const & Qi = vi.get_charge();
+
+    ntk.foreach_node( [&]( auto nj ){
+      if ( ntk.is_dead( nj ) || ( nj == n ) )
+        return true;
+
+      auto const & vj = placement[nj];
+      auto const & Qj = vj.get_charge();
+      double dist2 = squared_distance( vi, vj );
+      energy -= Qi*Qj/dist2;
+      dist2 = squared_distance( vitry, vj );
+      energy += Qi*Qj/dist2;
+      return true;
+    } );
+
+    Ui += ps.dielectric * energy;
+
+  }
+
+  /* force acting on particle i due to its interaction with j */
+  std::array<double, 2> compute_electro_force( particle_t const& vi, particle_t const& vj )
+  {
+    auto const& qi = vi.get_positions();
+    auto const& qj = vj.get_positions();
+    double const dx = qi[0] - qj[0];
+    double const dy = qi[1] - qj[1];
+
+    double const Qi = vi.get_charge();
+    double const Qj = vj.get_charge();
+    double const dr = distance( vi, vj );
+    double const electro_x = 2*ps.dielectric*dx*Qi*Qj/( pow( dr, 3 ) );
+    double const electro_y = 2*ps.dielectric*dy*Qi*Qj/( pow( dr, 3 ) );
+    return std::array<double, 2> { electro_x, electro_y };
+  }
+
+  /* force acting on particle i due to its interaction with j */
+  std::array<double, 2> compute_elastic_force( particle_t const& vi, particle_t const& vj )
+  {
+    auto const & qi = vi.get_positions(); 
+    auto const & qj = vj.get_positions(); 
+    double const dx = qi[0] - qj[0];
+    double const dy = qi[1] - qj[1];
+    double const elastic_x = -ps.stiffness * dx;
+    double const elastic_y = -ps.stiffness * dy;
+
+    return std::array<double, 2> { elastic_x, elastic_y };
+  }
+
+  void compute_forces()
+  {
+    ntk.foreach_node( [&]( auto n ){
+      placement[n].reset_force();
+    } );
+
+    ntk.foreach_node( [&]( auto ni ){
+      if ( ntk.is_dead( ni ) )
+        return true;
+
+      auto & vi = placement[ni];
+      auto const & qi = vi.get_positions();
+      auto const & Qi = vi.get_charge();
+      
+      if ( !ntk.is_pi( ni ) )
+      {
+        ntk.foreach_fanin( ni, [&]( auto fj, auto ij ){
+          node nj = ntk.get_node( fj );
+          if ( !ntk.is_dead( nj ) )
+          {
+            auto & vj = placement[nj];
+            /* force acting on particle i due to its interaction with j */
+            auto Fij = compute_elastic_force( vi, vj );
+            vi.update_forces( Fij, +1 );
+            vj.update_forces( Fij, -1 );
+          }
+        } );
+      }
+
+      ntk.foreach_node( ni + 1, [&]( auto nj ){
+        if ( ntk.is_dead( nj ) )
+          return true;
+        auto & vj = placement[nj];
+
+        auto Fij = compute_electro_force( vi, vj );
+
+        vi.update_forces( Fij, +1 );
+        vj.update_forces( Fij, -1 );
+        return true;
+      } );
+      return true;
+    } );
+  }
+
+  void to_dot( std::string file_name )
+  {
+    std::ofstream p( file_name );
+    p << "digraph {" << std::endl;
+    p << "  graph [pad=\"0.0555\" bgcolor=lightgray]" << std::endl;
+    p << "  node [style=filled]" << std::endl;
+    int i = 0;
+    ntk.foreach_pi( [&]( auto n ){
+      auto field = placement[n];
+      p << "  " << n << " [fillcolor=\"#d62728\" pos=\""<< field.get_position(0) << "," << field.get_position(1) << "!\"]" << std::endl;
+    } );
+
+    ntk.foreach_gate( [&]( auto n ){
+      auto field = placement[n];
+      if ( ntk.is_po( n ) )
+      {
+        p << "  " << n << " [fillcolor=\"#1f77b4\" pos=\""<< field.get_position(0) << "," << field.get_position(1) << "!\"]" << std::endl;
+      }
+      else
+      {
+        p << "  " << n << " [fillcolor=\"#ff7f0e\" pos=\""<< field.get_position(0) << "," << field.get_position(1) << "!\"]" << std::endl;
+      }
+    } );
+
+    ntk.foreach_gate( [&]( auto n ){
+      ntk.foreach_fanin( n, [&]( auto fi, auto ii ){
+        auto ni = ntk.get_node( fi );
+        p << "  " << ni << " -> " << n << std::endl;
+      } );
+    } );
+
+    p << "}" << std::endl;
+    p.close();
+  }
+
+  void print()
+  {
+    std::array<std::array<node, Ny>, Nx> matrix;
+    for ( int x = 0; x < Nx; ++x )
+    {
+      for ( int y = 0; y < Ny; ++y )
+      {
+        matrix[x][y] = ntk.get_null();
+      }
+    }
+
+    ntk.foreach_node( [&]( auto n ){
+      auto const& q = placement[n].get_positions();
+      int x = floor( q[0] );
+      int y = floor( q[1] );
+      std::cout << x << " " << y << std::endl;
+      int t = 1;
+      if ( ntk.is_null( matrix[x][y] ) )
+      {
+        matrix[x][y] = n;
+      }
+      else
+      {
+        bool found = false;
+        while( !found )
+        {
+          if( !ntk.is_null( matrix[x][y] ) )
+          {
+            for ( int i = x - t; i <= x + t; ++i )
+            {
+              if ( (i < 0) || (i > (Nx - 1) ) || ( y > (Ny - 1) ) )
+                continue;
+              if ( ntk.is_null( matrix[i][y+t] ) )
+              {
+                x = i;
+                y = y+t;
+                matrix[x][y] = n;
+                found = true;
+                break;
+              }
+            }
+          }
+          if( !found )
+          {
+            for ( int i = x - t; i <= x + t; ++i )
+            {
+              if ( (i < 0) || (i > (Nx - 1)) || ( y < 0 ) )
+                continue;
+              if ( ntk.is_null( matrix[i][y-t] ) )
+              {
+                x = i;
+                y = y-t;
+                matrix[x][y] = n;
+                found = true;
+                break;
+              }
+            }
+          }
+          if( !found )
+          {
+            for ( int i = y - t; i <= y + t; ++i )
+            {
+              if ( (i < 0) || (i > Ny - 1) || ( x > (Nx - 1) ) )
+                continue;
+              if ( ntk.is_null( matrix[x+t][i] ) )
+              {
+                y = i;
+                x = x+t;
+                matrix[x][y] = n;
+                found = true;
+                break;
+              }
+            }
+          }
+          if( !found )
+          {
+            for ( int i = y - t; i <= y + t; ++i )
+            {
+              if ( (i < 0) || (i > Ny - 1) || ( x < 0 ) )
+                continue;
+              if ( ntk.is_null( matrix[x-t][i] ) )
+              {
+                y = i;
+                x = x-t;
+                matrix[x][y] = n;
+                found = true;
+                break;
+              }
+            }
+          }
+          t++;
+        }
+      }
+    } );
+
+
+    for ( int y = 0; y < Ny; ++y )
+    {
+      printf( "%d : ", y );
+      for ( int x = 0; x < Nx; ++x )
+      {
+        node n = matrix[x][y];
+        if ( ntk.is_null( n ) )
+          printf( "      " );
+        else
+          printf( "%5d ", n );
+      }
+      printf("\n");
+    }
+  }
+
+#endif

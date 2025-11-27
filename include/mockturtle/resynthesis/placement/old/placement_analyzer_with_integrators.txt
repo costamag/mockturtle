@@ -1,0 +1,2327 @@
+/* mockturtle: C++ logic network library
+ * Copyright (C) 2018-2022  EPFL
+ *
+ * Permission is hereby granted, free of charge, to any person
+ * obtaining a copy of this software and associated documentation
+ * files (the "Software"), to deal in the Software without
+ * restriction, including without limitation the rights to use,
+ * copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following
+ * conditions:
+ *
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+ * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+ * HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
+ */
+
+/*!
+  \file timing.hpp
+  \brief Compute timing information of a network.
+
+  This engine can be used for power analysis of mapped network.
+  For each node, the following information is stored:
+  - The sensing time : the first time at which a transition can happen
+  - The arrival time : the first time at which the output is stable
+  - A vector of simulation patterns identifying quantized timesteps in this interval
+  The class has the following template parameters:
+  \param N : number of timesteps used for simulating each signal
+  \param I : number of inputs to be used for simulating the static truth table ( 2^I input pairs )
+
+  \author Andrea Costamagna
+*/
+
+#pragma once
+
+#include "../../utils/node_map.hpp"
+#include "../database/mapped_list.hpp"
+#include <math.h>
+#include <set>
+#include <queue>
+#include <array>
+
+namespace mockturtle
+{
+double KP = 100;
+double CHEM_POT = 10;
+bool CONSTR = false;
+double DENSITY = 0.1;
+int RANGE_YUKAWA = 1;
+int SLOTS_PER_BIN = 16;
+
+struct placement_stats 
+{
+};
+
+class placement_params 
+{
+public:
+  placement_params()
+  {
+  eps = 0.01;
+  constraint_terminal = CONSTR;
+  k_place = KP;
+  beta = 1000;
+  learning_rate = 0.001;
+  num_steps = 100;
+  beta_m = 0.9;
+  beta_v = 0.999;
+  eps_m = 1e-8;
+  }
+
+  placement_params( mockturtle::placement_params & other )
+  {
+    eps = other.eps;
+    constraint_terminal = other.constraint_terminal;
+    k_place = other.k_place;
+    beta = other.beta;
+    learning_rate = other.learning_rate;
+    num_steps = other.num_steps;
+    beta_m = other.beta_m;
+    beta_v = other.beta_v;
+    eps_m = other.eps_m ;
+  }
+
+public:
+  /*! \brief Precision */
+  double eps { 0.001 };
+
+  /*! \brief Constraint the PIs and POs to the boundaries */
+  bool constraint_terminal{ CONSTR };
+
+  /*! \brief Stiffness/Repulsion ration */
+  double k_place { KP };
+
+  /*! \brief Inverse temperature */
+  double beta{ 1000 };
+
+  /*! \brief Integration time step */
+  double learning_rate{ 0.001 };
+
+  /*! \brief Area occupied by the system */
+
+  /*! \brief Number of steps */
+  uint32_t num_steps{ 100 };
+
+  double beta_m { 0.9 };
+  double beta_v { 0.999 };
+  double eps_m { 1e-8 };
+
+  /*! \brief Stiffness/Repulsion ration */
+
+};
+
+class particle_t
+{
+  static constexpr double DOUBLE_MAX = std::numeric_limits<double>::max();
+public:
+  particle_t( std::array<double, 2> const& positions, std::array<double, 2> const& grads, double degree, double range, double cost_place, double cost_route, double cost_diffn )
+    : q( positions ), dU( grads ), Q( degree ), R( range ), Cp( cost_place ), Cr( cost_route ), Cd( cost_diffn )
+  {
+  }
+
+  particle_t( particle_t const& other )
+    : particle_t( other.copy_positions(), other.copy_grads(), other.copy_charge(), other.copy_range(), other.copy_cost_place(), other.copy_cost_route(), other.copy_cost_diffn() )
+  {
+  }
+
+  particle_t()
+    : particle_t ( { 0, 0 }, { 0, 0 }, 0, 0, 0, 0, 0 )
+  {}
+
+  void reset_grads()
+  {
+    dU = std::array<double, 2>{ 0, 0 };
+  }
+
+  void reset_costs()
+  {
+    Cp = 0;
+    Cr = 0;
+    Cd = 0;
+  }
+
+  void reset_velocities()
+  {
+    p = { 0, 0 };
+  }
+
+  void reset_moments()
+  {
+    m_t = { 0, 0 };
+    v_t = { 0, 0 };
+  }
+
+  void add_cost_place( double const& delta )
+  {
+    Cp += delta;
+  } 
+
+  void add_cost_route( double const& delta )
+  {
+    Cr += delta;
+  } 
+
+  void add_cost_diffn( double const& delta )
+  {
+    Cd += delta;
+  } 
+
+  void add_grad( std::array<double, 2> const& ddU )
+  {
+    dU[0] += ddU[0];
+    dU[1] += ddU[1];
+  } 
+
+  void update_grads( std::array<double, 2> const& dUnew )
+  {
+    dU = dUnew;
+  }
+
+  void mult_velocity( double const& alpha )
+  {
+    p[0] *= alpha;
+    p[1] *= alpha;
+  }
+
+  void update_positions( std::array<double, 2> const& qnew )
+  {
+    q = qnew;
+  }
+
+  void update_moments_m( std::array<double, 2> const& mnew )
+  {
+    m_t = mnew;
+  }
+
+  void update_moments_v( std::array<double, 2> const& vnew )
+  {
+    v_t = vnew;
+  }
+
+
+  void update_charge( double Qnew )
+  {
+    Q = Qnew;
+  }
+
+  void add_charge( double dQ )
+  {
+    Q += dQ;
+  }
+
+  void update_range( double Rnew )
+  {
+    R = Rnew;
+  }
+
+  /*! \brief Returns the position vector */
+  std::array<double, 2> const& copy_positions() const
+  {
+    return q;
+  }
+
+  /*! \brief Returns the position vector */
+  std::array<double, 2> & get_positions()
+  {
+    return q;
+  }
+
+  /*! \brief Returns the position vector */
+  std::array<double, 2> const& copy_velocities() const
+  {
+    return p;
+  }
+
+  /*! \brief Returns the position vector */
+  std::array<double, 2> & get_velocities()
+  {
+    return p;
+  }
+
+  /*! \brief Returns the position vector */
+  std::array<double, 2> const& copy_moments_m() const
+  {
+    return m_t;
+  }
+
+  /*! \brief Returns the position vector */
+  std::array<double, 2> const& copy_moments_v() const
+  {
+    return v_t;
+  }
+
+  /*! \brief Returns the grads vector */
+  std::array<double, 2> const& copy_grads() const
+  {
+    return dU;
+  }
+
+  /*! \brief Returns the charge */
+  double const& copy_charge() const
+  {
+    return Q;
+  }
+
+  /*! \brief Returns the radius of the cell */
+  double const& copy_range() const
+  {
+    return R;
+  }
+
+  double const& copy_cost_place() const
+  {
+    return Cp;
+  }
+
+  void reset_cost_place()
+  {
+    Cp = 0;
+  }
+
+  double const& copy_cost_route() const
+  {
+    return Cr;
+  }
+
+  void reset_cost_route()
+  {
+    Cr=0;
+  }
+
+  double const& copy_cost_diffn() const
+  {
+    return Cd;
+  }
+
+  void reset_cost_diffn()
+  {
+    Cd = 0;
+  }
+
+  double copy_cost() const
+  {
+    return Cp + Cr + Cd;
+  }
+
+  void print()
+  {
+    std::cout << " r=[" << q[0] << ", " << q[1] << "] --";
+    std::cout << " p=[" << p[0] << ", " << p[1] << "] --";
+    std::cout << " F=[" << dU[0] << ", " << dU[1] << "] --";
+    std::cout << " Q=[" << Q << "] --";
+    std::cout << " R=[" << R << "] --";
+    std::cout << " Cp=[" << Cp << "] --";
+    std::cout << " Cr=[" << Cr << "] --";
+    std::cout << " Cd=[" << Cd << "] --";
+    std::cout << std::endl;
+  }
+
+private:
+  /*! \brief position vector */
+  std::array<double, 2> q;
+  /*! \brief position vector */
+  std::array<double, 2> p;
+  /*! \brief grads : -grads of the cost */
+  std::array<double, 2> dU;
+  /*! \brief charge */
+  double Q;
+  /*! \brief range */
+  double R;
+  /*! \brief contribution to the placement cost */
+  double Cp;
+  /*! \brief contribution to the placement cost */
+  double Cr;
+  /*! \brief contribution to the placement cost */
+  double Cd;
+
+  std::array<double, 2> m_t;
+  std::array<double, 2> v_t;
+
+};
+
+/* Whatever you do the placer should always be up-to-date*/
+template<class Ntk, uint32_t Nx, uint32_t Ny>
+class placer_t
+{
+public:
+  using node = typename Ntk::node;
+
+  placer_t( Ntk & ntk, placement_params & ops )
+    : ntk( ntk ),
+      gen( 336 ),
+      placement( ntk ),
+      cost( 0 )
+  {
+    auto const & lib = ntk.get_library();
+    double R_avg = 0;
+    double nums = 0;
+    for ( auto g : lib )
+    {
+      if ( g.area > 0 )
+      {
+        R_avg += sqrt( g.area / M_PI );
+        nums+= 1;
+      }
+      max_range = std::max( max_range, sqrt( g.area / M_PI ) );
+    }
+    R_avg /= nums;
+    R_avg *= 2;
+
+    range_Yukawa = RANGE_YUKAWA;
+    slots_per_bin = SLOTS_PER_BIN;
+    unit_length = R_avg * sqrt( slots_per_bin );
+    density = DENSITY;
+    num_bins = int( std::max( 1.0, ceil( sqrt( ntk.size() / ( density * slots_per_bin ) ) ) ));
+
+    lambda_route = -log( ps.eps )/( range_Yukawa * unit_length );
+    assert( lambda_route > 0 );
+
+    double Q_avg = 0;
+    nums = 0;
+    ntk.foreach_node( [&]( auto n ){
+      if ( !ntk.is_dead( n ) )
+      {
+        nums+=1;
+        Q_avg = Q_avg*( nums-1 )/nums + (ntk.fanin_size(n)+ntk.fanout_size(n))/nums;
+      }
+    } );
+
+    assert( ( density < 0.25 ) );
+
+    double r_avg = ( 1 - sqrt( density ) )/sqrt( density )*R_avg;
+
+    double ratio = ( ( r_avg/R_avg ) - 1 )*pow( pow( r_avg, 2 ) + pow( R_avg, 2 ), 1.5 );
+    ratio /= ( pow( Q_avg, 2 ) * exp( -lambda_route * r_avg ) * ( r_avg + lambda_route * sqrt( pow( r_avg, 2 ) + pow( R_avg, 2 ) ) ) );
+    
+    k_route = ps.k_place * ratio;
+    chem_pot = CHEM_POT;
+    std::cout << "===============================================" << std::endl;
+    std::cout << "===============================================" << std::endl;
+    std::cout << "        range_Yukawa              " << range_Yukawa << std::endl;
+    std::cout << "        slots_per_bin             " << slots_per_bin << std::endl;
+    std::cout << "        unit_length               " << unit_length << std::endl;
+    std::cout << "        density                   " << density << std::endl;
+    std::cout << "        num_bins                  " << num_bins << std::endl;
+    std::cout << "        lambda_route              " << lambda_route << std::endl;
+    std::cout << "        <r>                       " << r_avg << std::endl;
+    std::cout << "        <R>                       " << R_avg << std::endl;
+    std::cout << "        k_route ( electrostatic ) " << k_route << std::endl;
+    std::cout << "        k_place ( stiffness )     " << ps.k_place << std::endl;
+    std::cout << "        chemical  potential" << ps.k_place << std::endl;
+    std::cout << "===============================================" << std::endl;
+    std::cout << "===============================================" << std::endl;
+    assert( num_bins < Nx );
+
+    _init();
+  }
+
+  void _init()
+  {
+    add_event = ntk.events().register_add_event( [&]( const auto& n ) {
+      resize();
+      add_node( n );
+      update_info( n );
+    } );
+
+    modified_event = ntk.events().register_modified_event( [&]( const auto& n, auto old_children ) {
+      resize();
+      modify_node( n );
+    } );
+
+    delete_event = ntk.events().register_delete_event( [&]( const auto& n ) {
+      resize();
+      delete_node( n );
+    } );
+
+    reset();
+    std::uniform_real_distribution<> Ux( 0, copy_length( 0 ) );
+    std::uniform_real_distribution<> Uy( 0, copy_length( 1 ) );
+
+    std::array<double, 2> const dU = { 0, 0 };
+    double const cost_place = 0;
+    double const cost_route = 0;
+    double const cost_diffn = 0;
+    std::array<double, 2> q;
+    ntk.foreach_node( [&]( auto n ){
+      if ( !ntk.is_dead( n ) )
+      {
+        auto Q = ntk.get_degree( n );
+        auto R = ntk.get_range( n );
+        q = ntk.is_constant( n ) ? std::array<double, 2>{ 0, 0 } : std::array<double, 2>{ Ux( gen ), Uy( gen ) };
+
+        if ( ps.constraint_terminal && ( ntk.is_pi( n ) || ntk.is_po( n ) ) )
+        {
+          project_to_side( n );
+        }
+        placement[n] = particle_t( q, dU, Q, R, cost_place, cost_route, cost_diffn );
+        auto [x, y] = copy_bin( q );
+        grid[x][y].insert( n );
+      }
+    } );
+
+    compute_cost();
+  }
+
+  ~placer_t()
+  {
+    if ( add_event )
+    {
+      ntk.events().release_add_event( add_event );
+    }
+
+    if ( modified_event )
+    {
+      ntk.events().release_modified_event( modified_event );
+    }
+
+    if ( delete_event )
+    {
+      ntk.events().release_delete_event( delete_event );
+    }
+  }
+
+  double compute_cost_route( node const& nu )
+  {
+    double res = 0;
+    if ( ntk.is_dead( nu ) )
+      return 0;
+      placement[nu].reset_cost_route();
+
+      auto [x, y] = copy_bin( nu );
+      auto [xr, yr] = right_top_bin( x, y );
+      auto [xl, yl] = left_down_bin( x, y );
+      for ( int ix = xl; ix <= xr; ix++ )
+      {
+        for ( int iy = yl; iy <= yr; ++iy )
+        {
+          auto nodes = copy_nodes( ix, iy );
+          for ( auto nv : nodes )
+          {
+            if ( !ntk.is_dead( nv ) && (nu != nv) )
+            {
+              double cost_route = compute_cost_route( nu, nv );
+              placement[nu].add_cost_place( 0.5*cost_route );
+              res += cost_route;
+            }
+          }
+        }
+      }
+    return res;
+  }
+
+  double compute_cost_diffn( node const& nu )
+  {
+    double res = 0;
+    if ( ntk.is_dead( nu ) )
+      return 0;
+    particle_t & u = placement[nu];
+
+    return compute_cost_diffn( u );
+  }
+
+  double cost_diffn( int x, int y )
+  {
+    return chem_pot * abs( overflow( x, y ) );
+  }
+
+  double count( int x, int y )
+  {
+    return (double)grid[x][y].size();
+  }
+
+  double compute_cost_diffn( particle_t & u )
+  {
+    u.reset_cost_diffn();
+    auto [x, y] = copy_bin( u );
+    double res = cost_diffn( x, y )/( count( x, y ) );
+    u.add_cost_diffn( cost_diffn );
+    return res;
+  }
+
+  double compute_cost_place( node const& nu )
+  {
+    double res = 0;
+    if ( ntk.is_dead( nu ) )
+      return 0;
+    placement[nu].reset_cost_place();
+
+    ntk.foreach_fanin( nu, [&]( auto fv, auto iv ){
+      auto nv = ntk.get_node( fv );
+      if ( !ntk.is_dead( nv ) )
+      { 
+        auto cost_place = compute_cost_place( nu, nv );
+        placement[nu].add_cost_place( 0.5*cost_place );
+        res += cost_place;
+      }
+    } );
+    ntk.foreach_fanout( nu, [&]( auto fv, auto iv ){
+      auto nv = ntk.get_node( fv );
+      if ( !ntk.is_dead( nv ) )
+      { 
+        auto cost_place = compute_cost_place( nu, nv );
+        placement[nu].add_cost_place( 0.5*cost_place );
+        res += cost_place;
+      }
+    } );
+    return res;
+  }
+
+  double compute_hpwl()
+  {
+    double hpwl=0;
+    ntk.foreach_gate( [&]( auto nu ){
+      if ( ntk.is_dead( nu ) )
+        return true;
+      ntk.foreach_fanin( nu, [&]( auto fv, auto iv ){
+        auto nv = ntk.get_node( fv );
+        if ( !ntk.is_dead( nv ) )
+        { 
+          auto const& u = placement[nu];
+          auto const& v = placement[nv];
+          auto const& qu = u.copy_positions();
+          auto const& qv = v.copy_positions();
+          hpwl += std::max( qu[0], qv[0] )-std::min( qu[0], qv[0] );
+          hpwl += std::max( qu[1], qv[1] )-std::min( qu[1], qv[1] );
+        }
+      } );
+      return true;
+    } );
+
+    return hpwl;
+  }
+
+  double compute_cost()
+  {
+    reset_costs();
+    cost = 0;
+    ntk.foreach_gate( [&]( auto nu ){
+      if ( ntk.is_dead( nu ) )
+        return true;
+      ntk.foreach_fanin( nu, [&]( auto fv, auto iv ){
+        auto nv = ntk.get_node( fv );
+        if ( !ntk.is_dead( nv ) )
+        { 
+          auto cost_place = compute_cost_place( nu, nv );
+          placement[nu].add_cost_place( 0.5*cost_place );
+          placement[nv].add_cost_place( 0.5*cost_place );
+          cost += cost_place;
+        }
+      } );
+      return true;
+    } );
+
+    ntk.foreach_node( [&]( auto nu ){
+      if ( ntk.is_constant( nu ) || ntk.is_dead( nu ) )
+        return true;
+      if ( ntk.is_dead( nu ) )
+        return true;
+      auto [x, y] = copy_bin( nu );
+      auto [xr, yr] = right_top_bin( x, y );
+      for ( int ix = x; ix <= xr; ix++ )
+      {
+        for ( int iy = y; iy <= yr; ++iy )
+        {
+          auto nodes = copy_nodes( ix, iy );
+          for ( auto nv : nodes )
+          {
+            if ( !ntk.is_dead( nv ) && (nu != nv) )
+            {
+              auto cost_route = compute_cost_route( nu, nv );
+              placement[nu].add_cost_route( 0.5*cost_route );
+              placement[nv].add_cost_route( 0.5*cost_route );
+              cost += cost_route;
+            }
+          }
+        }
+      }
+      return true;
+    } );
+
+    for ( int x = 0; x < num_bins; ++x )
+    {
+      for ( int y = 0; y < num_bins; ++y )
+      {
+        cost += cost_diffn( x, y );
+      }
+    }
+    return cost;
+  }
+
+  double compute_cost( std::vector<particle_t> & parts, mapped_list const& list, node const& n )
+  {
+    assert( ( list.size() == parts.size() ) );
+    reset_costs( parts, list );
+    double res = 0;
+
+    uint32_t lit = list.get_lit( list.num_pis() );
+    list.foreach_gate( [&]( auto children, auto id ){
+      particle_t & u = parts[lit];
+      for( auto const& c : children )
+      {
+        particle_t & v = parts[c];
+        auto cost_place = compute_cost_place( u, v );
+        auto cost_route = compute_cost_route( u, v );
+        u.add_cost_place( 0.5*cost_place );
+        v.add_cost_place( 0.5*cost_place );
+        u.add_cost_route( 0.5*cost_route );
+        v.add_cost_route( 0.5*cost_route );
+        res += cost_place;
+        res += cost_route;
+      }
+      lit += 1;
+    } );
+    particle_t & u = parts[list.po_at(0)];
+    ntk.foreach_fanout( n, [&]( auto fv, auto iv ){
+      node nv = ntk.get_node( fv );
+      if ( !ntk.is_dead( nv ) && !ntk.is_dead( n ) )
+      {
+        particle_t & v = placement[nv];
+        double cost_place = compute_cost_place( u, v );
+        u.add_cost_place( 0.5*cost_place );
+        res += cost_place;
+      }
+    } );
+
+    std::set<std::array<int, 2>> todos;
+    lit = list.get_lit( list.num_pis() );
+    list.foreach_gate( [&]( auto children, auto id ){
+      particle_t & u = parts[lit];
+      auto [x, y] = copy_bin( u );
+      todos.insert( { x, y } );
+    } );
+    return res;
+  }
+
+
+  void compute_grads()
+  {
+    reset_grads();
+    ntk.foreach_gate( [&]( auto nu ){
+      if ( ntk.is_dead( nu ) )
+        return true;
+      ntk.foreach_fanin( nu, [&]( auto fv, auto iv ){
+        auto nv = ntk.get_node( fv );
+        if ( !ntk.is_dead( nv ) )
+        {
+          auto dU = compute_grad_place( nu, nv );
+          placement[nu].add_grad( dU );
+          placement[nv].add_grad( { -dU[0], -dU[1] } );
+        }
+      } );
+      return true;
+    } );
+
+    ntk.foreach_node( [&]( auto nu ){
+      if ( ntk.is_constant( nu ) || ntk.is_dead( nu ) )
+        return true;
+      if ( ntk.is_dead( nu ) )
+        return true;
+      auto [x, y] = copy_bin( nu );
+      auto [xr, yr] = right_top_bin( x, y );
+      for ( int ix = x; ix <= xr; ix++ )
+      {
+        for ( int iy = y; iy <= yr; ++iy )
+        {
+          auto nodes = copy_nodes( ix, iy );
+          for ( auto nv : nodes )
+          {
+            if ( (!ntk.is_dead(nv))&&(nu != nv) )
+            {
+              auto dU = compute_grad_route( nu, nv );
+              placement[nu].add_grad( dU );
+              placement[nv].add_grad( { -dU[0], -dU[1] } );
+            }
+          }
+        }
+      }
+      return true;
+    } );
+  }
+
+  void compute_grads( std::vector<particle_t> & parts, mapped_list const& list, node const& n )
+  {
+    assert( ( list.size() == parts.size() ) );
+    reset_grads( parts, list );
+
+    uint32_t lit = list.get_lit( list.num_pis() );
+    list.foreach_gate( [&]( auto children, auto id ){
+      particle_t & u = parts[lit];
+      for( auto const& c : children )
+      {
+        particle_t & v = parts[c];
+        auto dU_place = compute_grad_place( u, v );
+        auto dU_route = compute_grad_route( u, v );
+        u.add_grad( dU_place );
+        u.add_grad( dU_route );
+        v.add_grad( { -dU_place[0], -dU_place[1] } );
+        v.add_grad( { -dU_route[0], -dU_route[1] } );
+      }
+      lit += 1;
+    } );
+    particle_t & u = parts[list.po_at(0)];
+    ntk.foreach_fanout( n, [&]( auto fv, auto iv ){
+        return true;
+      node nv = ntk.get_node( fv );
+      if ( !ntk.is_dead( n ) && !ntk.is_dead( nv ) )
+      {
+        particle_t & v = placement[nv];
+        auto dU_place = compute_grad_place( u, v );
+        u.add_grad( dU_place );
+      }
+    } );
+
+    lit = list.get_lit( list.num_pis() );
+    list.foreach_gate( [&]( auto children, auto id ){
+      particle_t & u = parts[lit];
+      auto [x, y] = copy_bin( u );
+      auto [xr, yr] = right_top_bin( x, y );
+      auto [xl, yl] = left_down_bin( x, y );
+      for ( int ix = xl; ix <= xr; ix++ )
+      {
+        for ( int iy = yl; iy <= yr; ++iy )
+        {
+          auto nodes = copy_nodes( ix, iy );
+          for ( auto nv : nodes )
+          {
+            particle_t & v = placement[nv];
+            std::array<double, 2> dU_route = compute_grad_route( u, v );
+            u.add_grad( dU_route );
+          }
+        }
+      }
+      lit += 1;
+    } );
+  }
+
+  void randomize_position( std::array<double, 2> & q, double delta, int idx )
+  {
+    std::uniform_real_distribution<> R( -1, 1 );
+
+    for ( int i = 0; i < 2; ++i )
+    {
+      q[i] += R( gen ) * delta;
+      q[i] = std::min( std::max( 0.0, q[i] ), copy_length( i ) );
+    }
+  }
+
+  void randomize_position( std::array<double, 2> & q, double delta )
+  {
+    std::uniform_real_distribution<> R( -1, 1 );
+
+    for ( int i = 0; i < 2; ++i )
+    {
+      q[i] += R( gen ) * delta;
+      q[i] = std::min( std::max( 0.0, q[i] ), copy_length( i ) );
+    }
+  }
+
+  void newton_integrate_velocities( double const& dt )
+  {
+    ntk.foreach_node( [&]( auto n, auto i ){
+      if ( ntk.is_dead( n ) )
+      {
+        return true;
+      }
+      particle_t & v = placement[n];
+      auto const& dU = v.copy_grads();
+      std::array<double, 2> & p = v.get_velocities();
+      p[0] -= dU[0] * dt;
+      p[1] -= dU[1] * dt;
+      return true;
+    } );
+  }
+
+  void newton_integrate_velocities( std::vector<particle_t> & parts, mapped_list const& list, double const& dt )
+  {
+    uint32_t lit = list.get_lit( list.num_pis() );
+    list.foreach_gate( [&]( auto children, auto id ) {
+      particle_t & u = parts[lit];
+      auto const& dU = u.copy_grads();
+      std::array<double, 2> & p = u.get_velocities();
+      p[0] -= dU[0] * dt;
+      p[1] -= dU[1] * dt;
+      lit += 1;
+    } );
+  }
+
+  void diffusion( double const& delta_flux )
+  {
+    ntk.foreach_node( [&]( auto n, auto i ){
+      if ( ntk.is_dead( n ) )
+      {
+        return true;
+      }
+      particle_t & v = placement[n];
+      auto const& j = flux( v.copy_positions() );
+      std::array<double, 2> & p = v.get_velocities();
+      p[0] += j[0] * delta_flux;
+      p[1] += j[1] * delta_flux;
+      return true;
+    } );
+  }
+
+  void diffusion( std::vector<particle_t> & parts, mapped_list const& list, double const& delta_flux )
+  {
+    uint32_t lit = list.get_lit( list.num_pis() );
+    list.foreach_gate( [&]( auto children, auto id ) {
+      particle_t & u = parts[lit];
+      auto const& dU = u.copy_grads();
+      auto const& j = flux( v.copy_positions() );
+      std::array<double, 2> & p = v.get_velocities();
+      p[0] += j[0] * delta_flux;
+      p[1] += j[1] * delta_flux;
+      lit += 1;
+    } );
+  }
+
+  void print()
+  {
+    ntk.foreach_node( [&]( auto n, auto i ){
+      if ( ntk.is_dead( n ) )
+      {
+        return true;
+      }
+      particle_t & v = placement[n];
+      std::cout << "n=" << n << " ";
+      ntk.foreach_fanin( n, [&]( auto f, auto i ){
+        auto ni = ntk.get_node( f );
+        std::cout << ni << " ";
+      } );
+      std::cout << std::endl;
+      std::cout << "  -> ";
+      v.print();
+      return true;
+    } );
+  }
+
+  void randomize_positions( int idx )
+  {
+    ntk.foreach_node( [&]( auto n, auto i ){
+      if ( ntk.is_dead( n ) )
+      {
+        return true;
+      }
+      std::array<double, 2> qnew = copy_positions( n );
+      randomize_position( qnew, 0.1*copy_range( n ), idx );
+      legalize_position( qnew, n );
+      update_positions( n, qnew );
+      return true;
+    } );
+  }
+
+  void randomize_positions()
+  {
+    ntk.foreach_node( [&]( auto n, auto i ){
+      if ( ntk.is_dead( n ) )
+      {
+        return true;
+      }
+      std::array<double, 2> qnew = {num_bins*0.5*copy_unit_length(), num_bins*0.5*copy_unit_length()};//copy_positions( n );
+      randomize_position( qnew, 0.1*num_bins*0.5*copy_unit_length() );
+      legalize_position( qnew, n );
+      update_positions( n, qnew );
+      return true;
+    } );
+  }
+
+  void randomize_positions( std::vector<particle_t> & parts, mapped_list const& list )
+  {
+    uint32_t lit = list.get_lit( list.num_pis() );
+    list.foreach_gate( [&]( auto children, auto id ) {
+      particle_t & u = parts[lit];
+      std::array<double, 2> qnew = u.copy_positions();
+      randomize_position( qnew, copy_unit_length() );
+      legalize_position( qnew );
+      lit += 1;
+    } );
+  }
+
+  void reset_grads()
+  {
+    ntk.foreach_node( [&]( auto n ){
+      placement[n].reset_grads();
+    } );
+  }
+
+  void reset_costs()
+  {
+    ntk.foreach_node( [&]( auto n ){
+      placement[n].reset_costs();
+    } );
+    cost = 0;
+  }
+
+  void reset_costs( std::vector<particle_t> & parts, mapped_list const& list )
+  {
+    uint32_t lit = list.get_lit( list.num_pis() );
+    list.foreach_gate( [&]( auto children, auto id ) {
+      particle_t & u = parts[lit];
+      u.reset_costs();
+      lit+=1;
+    });
+  }
+
+  void reset_grads( std::vector<particle_t> & parts, mapped_list const& list )
+  {
+    uint32_t lit = list.get_lit( list.num_pis() );
+    list.foreach_gate( [&]( auto children, auto id ) {
+      particle_t & u = parts[lit];
+      u.reset_grads();
+      lit+=1;
+    });
+  }
+
+  void reset_velocities()
+  {
+    ntk.foreach_node( [&]( auto n ){
+      placement[n].reset_velocities();
+    } );
+  }
+
+  void reset_velocities( std::vector<particle_t> & parts, mapped_list const& list )
+  {
+    uint32_t lit = list.get_lit( list.num_pis() );
+    list.foreach_gate( [&]( auto children, auto id ) {
+      particle_t & u = parts[lit];
+      u.reset_velocities();
+      lit+=1;
+    });
+  }
+
+  void reset_moments()
+  {
+    ntk.foreach_node( [&]( auto n ){
+      placement[n].reset_moments();
+    } );
+  }
+
+  double compute_norm_velocities()
+  {
+    double res = 0;
+    ntk.foreach_node( [&]( auto n ){
+      if( ntk.is_dead( n ))
+        return true;
+      auto const& v = placement[n].copy_velocities();
+      res += pow( v[0], 2 );
+      res += pow( v[1], 2 );
+      assert( res < std::numeric_limits<double>::max() - 10000 );
+      return true;
+    } );
+    res = sqrt( res );
+    return res;
+  }
+
+  double compute_norm_velocities( std::vector<particle_t> & parts, mapped_list const& list )
+  {
+    double res = 0;
+    uint32_t lit = list.get_lit( list.num_pis() );
+    list.foreach_gate( [&]( auto children, auto id ) {
+      particle_t & u = parts[lit];
+      auto const& p = u.copy_velocities();
+      res += pow( p[0], 2 );
+      res += pow( p[1], 2 );
+      assert( res < std::numeric_limits<double>::max() - 10000 );
+      lit+=1;
+    });
+    res = sqrt( res );
+    return res;
+  }
+
+  double compute_norm_forces()
+  {
+    double res = 0;
+    ntk.foreach_node( [&]( auto n ){
+      if( ntk.is_dead(n) )
+        return true;
+      auto const& dU = placement[n].copy_grads();
+      res += pow( dU[0], 2 );
+      res += pow( dU[1], 2 );
+      assert( res < std::numeric_limits<double>::max() - 10000 );
+      return true;
+    } );
+    res = sqrt( res );
+    return res;
+  }
+
+  double compute_norm_forces( std::vector<particle_t> & parts, mapped_list const& list )
+  {
+    double res = 0;
+    uint32_t lit = list.get_lit( list.num_pis() );
+    list.foreach_gate( [&]( auto children, auto id ) {
+      particle_t & u = parts[lit];
+      auto const& dU = u.copy_grads();
+      res += pow( dU[0], 2 );
+      res += pow( dU[1], 2 );
+      assert( res < std::numeric_limits<double>::max() - 10000 );
+      lit+=1;
+    });
+    res = sqrt( res );
+    return res;
+  }
+
+  void resize()
+  {
+    placement.resize();
+  }
+
+  void reset()
+  {
+    reset_grads();
+    reset_costs();
+  }
+
+  double range( particle_t const& u, particle_t const& v )
+  {
+    double const Ru = u.copy_range();
+    double const Rv = v.copy_range();
+    return sqrt( pow( Ru, 2 ) + pow( Rv, 2 ) );
+  }
+
+  double range( node const& nu, node const& nv )
+  {
+    auto const & u = placement[nu];
+    auto const & v = placement[nv];
+    return range( u, v );
+  }
+
+  double distance( particle_t const& u, particle_t const& v )
+  {
+    auto const& qu = u.copy_positions();
+    auto const& qv = v.copy_positions();
+    double const dx = qu[0] - qv[0];
+    double const dy = qu[1] - qv[1];
+    return sqrt( pow( dx, 2 ) + pow( dy, 2 ) );
+  }
+
+  double distance( node const& nu, node const& nv )
+  {
+    auto const& u = placement[nu];
+    auto const& v = placement[nv];
+    return distance( u, v );
+  }
+
+  /*! \brief TRUE if the velocities are miasaligned with the grads */
+  bool has_good_direction()
+  {
+    double prod = 0;
+    ntk.foreach_node( [&]( auto n ){
+      if ( ntk.is_dead( n ) )
+        return true;
+      auto const& p = placement[n].copy_velocities();
+      auto const& dU = placement[n].copy_grads();
+      prod += dU[0]*p[0]+dU[1]*p[1];
+      assert( prod < std::numeric_limits<double>::max() );
+      return true;
+    } );
+    return prod < 0;
+  }
+
+  bool has_good_direction( std::vector<particle_t> & parts, mapped_list const& list )
+  {
+    double prod = 0;
+    uint32_t lit = list.get_lit( list.num_pis() );
+    list.foreach_gate( [&]( auto children, auto id ) {
+      particle_t & u = parts[lit];
+      auto const& p = u.copy_velocities();
+      auto const& dU = u.copy_grads();
+      prod += dU[0]*p[0]+dU[1]*p[1];
+      assert( prod < std::numeric_limits<double>::max() );
+      lit+=1;
+    });
+    return prod < 0;
+  }
+
+  double copy_unit_length()
+  {
+    return unit_length;
+  }
+
+  void update_positions( node const& n, std::array<double, 2> const& qnew )
+  {
+    particle_t & v = placement[n];
+    erase_from_grid( n );
+
+    auto [x, y] = copy_bin( qnew );
+    grid[x][y].insert( n );
+    v.update_positions( qnew );
+  }
+
+  particle_t get( node n )
+  {
+    return placement[n];
+  }
+
+  void add_node( node n )
+  {
+    std::uniform_real_distribution<> Ux( 0, copy_length( 0 ) );
+    std::uniform_real_distribution<> Uy( 0, copy_length( 1 ) );
+    auto Q = ntk.get_degree( n );
+    auto R = ntk.get_range( n );
+    std::array<double, 2> const dU = { 0, 0 };
+    double const cost_place = 0;
+    double const cost_route = 0;
+    std::array<double, 2> q = { Ux( gen ), Uy( gen ) };
+    if ( ntk.is_constant( n ) )
+    {
+      q = { 0, 0 };
+    }
+    if ( ps.constraint_terminal && ( ntk.is_pi( n ) || ntk.is_po( n ) ) )
+    {
+      project_to_side( n );
+    }
+    //std::cout << ntk.node_to_index(n) << " " << placement.size() << std::endl;
+    placement.resize();
+    //std::cout << ntk.node_to_index(n) << " " << placement.size() << std::endl;
+    placement[n] = particle_t( q, dU, Q, R, cost_place, cost_route );
+    assert( ntk.node_to_index(n) < placement.size() );
+    auto [x, y] = copy_bin( q );
+    grid[x][y].insert( n );
+    update_info( n );
+  }
+
+  void modify_node( node n )
+  {
+    delete_info( n );
+    update_info( n );
+  }
+
+  void delete_node( node n )
+  {
+    erase_from_grid( n );
+    delete_info( n );
+  }
+
+  void erase_from_grid( node n )
+  {
+    auto [x, y] = copy_bin( n );
+    grid[x][y].erase( n );
+  }
+
+  void addback_to_grid( node n )
+  {
+    auto [x, y] = copy_bin( n );
+    grid[x][y].insert( n );
+  }
+
+  void delete_info( node n )
+  {
+    delete_info_place( n );
+    delete_info_route( n );
+  }
+
+  void update_info( node n )
+  {
+    update_info_place( n );
+    update_info_route( n );
+  }
+
+  void update_info_place( node n )
+  {
+    update_info_place( placement[n], n );
+  }
+
+  void update_info_route( node n )
+  {
+    update_info_route( placement[n], n );
+  }
+
+  void delete_info_place( node n )
+  {
+    delete_info_place( placement[n], n );
+  }
+
+  void delete_info_route( node n )
+  {
+    delete_info_route( placement[n], n );
+  }
+
+  double compute_cost_place( particle_t & u, particle_t & v )
+  {
+    auto const& qu = u.copy_positions();
+    auto const& qv = v.copy_positions();
+
+    auto const& r_uv = distance( u, v );
+    auto const& R_uv = range( u, v );
+
+    return 0.5*ps.k_place*pow( r_uv - R_uv, 2 );
+  }
+
+  std::array<double, 2> compute_grad_place( particle_t & u, particle_t & v )
+  {
+    auto const& qu = u.copy_positions();
+    auto const& qv = v.copy_positions();
+
+    auto const& r_uv = distance( u, v );
+    auto const& R_uv = range( u, v );
+
+    std::array<double, 2> dU = { 0, 0 };
+    double factor = ps.k_place * ( 1 - R_uv / (r_uv+ps.eps) );
+    
+    
+    dU[0] = ( qu[0] - qv[0] )*factor;//factor
+    dU[1] = ( qu[1] - qv[1] )*factor;//factor
+
+    return dU;
+  }
+
+  std::array<double, 2> compute_grad_route( particle_t & u, particle_t & v )
+  {
+    auto const& qu = u.copy_positions();
+    auto const& qv = v.copy_positions();
+
+    auto const& r_uv = distance( u, v );
+    auto const& R_uv = range( u, v );
+
+    std::array<double, 2> dU { 0, 0 };
+    auto const& Qu = u.copy_charge();
+    auto const& Qv = v.copy_charge();
+    double S = pow( r_uv, 2 ) + pow( R_uv, 2 );
+    double num = k_route * Qu * Qv * exp( -lambda_route * r_uv ) * ( r_uv + lambda_route*S );
+    double den = pow( S, 1.5 ) * ( r_uv + ps.eps );
+    double const fact = num/den;
+
+
+    double const fact_cou = k_route*Qu*Qv/pow( r_uv-R_uv, 2 );
+
+
+    dU[0] = - fact * ( qu[0] - qv[0] );
+    dU[1] = - fact * ( qu[1] - qv[1] );
+    return dU;
+  }
+
+  double compute_cost_place( node const& nu, node const & nv )
+  {
+    particle_t & u = placement[nu];
+    particle_t & v = placement[nv];
+    return compute_cost_place( u, v );
+  }
+
+  std::array<double, 2> compute_grad_place( node const& nu, node const & nv )
+  {
+    particle_t & u = placement[nu];
+    particle_t & v = placement[nv];
+    return compute_grad_place( u, v );
+  }
+
+  std::array<double, 2> compute_grad_route( node const& nu, node const & nv )
+  {
+    particle_t & u = placement[nu];
+    particle_t & v = placement[nv];
+    return compute_grad_route( u, v );
+  }
+
+  void update_info_place( particle_t & u, particle_t & v )
+  {
+    auto const Cp = 0.5 * compute_cost_place( u, v );
+    auto const dU = compute_grad_place( u, v );
+    u.add_cost_place( Cp );
+    v.add_cost_place( Cp );
+    cost += 2 * Cp;
+    /* compute grad contribution */
+    u.add_grad( dU );
+    v.add_grad( { -dU[0], -dU[1] } );
+  }
+
+  void delete_info_place( particle_t & u, particle_t & v )
+  {
+    /* compute grad contribution */
+    auto const Cp = -0.5*compute_cost_place( u, v );
+    auto const dU = compute_grad_place( u, v );
+    u.add_cost_place( Cp );
+    v.add_cost_place( Cp );
+    cost += 2*Cp;
+    u.add_grad( { -dU[0], -dU[1] } );
+    v.add_grad( dU );
+  }
+
+  double compute_cost_route( node const & nu, node const & nv )
+  {
+    particle_t & u = placement[nu];
+    particle_t & v = placement[nv];
+    return compute_cost_route( u, v );
+  }
+
+  double compute_cost_route( particle_t & u, particle_t & v )
+  {
+    auto const& r_uv = distance( u, v );
+    auto const& R_uv = range( u, v );
+    double const Qu = u.copy_charge();
+    double const Qv = v.copy_charge();
+
+    double num = Qu*Qv*k_route*exp( -lambda_route*r_uv );
+    double den = sqrt( pow( r_uv, 2 ) + pow( R_uv, 2 ) );    
+    //
+    return num/den;//Qu*Qv*k_route/( r_uv - R_uv );
+  }
+
+  void update_info_route( particle_t & u, particle_t & v )
+  {
+    auto const Cr = 0.5*compute_cost_route( u, v );
+    auto const dU = compute_grad_route( u, v );
+    u.add_cost_route( Cr );
+    v.add_cost_route( Cr );
+    cost += 2*Cr;
+    /* compute grad contribution */
+    u.add_grad( dU );
+    v.add_grad( { -dU[0], -dU[1] } );
+  }
+
+  void delete_info_route( particle_t & u, particle_t & v )
+  {
+    auto const Cr = -0.5 * compute_cost_route( u, v );
+    auto const dU = compute_grad_route( u, v );
+    u.add_cost_route( Cr );
+    v.add_cost_route( Cr );
+    cost += 2 * Cr;
+    /* compute grad contribution */
+    u.add_grad( { -dU[0], -dU[1] } );
+    v.add_grad( dU );
+  }
+
+  void update_info_place( particle_t & u, node const& nu )
+  {
+    ntk.foreach_fanin( nu, [&]( auto fv, auto iv ){
+      auto nv = ntk.get_node( fv );
+      if ( !ntk.is_dead( nv ) )
+      {
+        particle_t & v = placement[nv];
+        update_info_place( u, v );
+      }
+    } );
+    ntk.foreach_fanout( nu, [&]( auto fv, auto iv ){
+      auto nv = ntk.get_node( fv );
+      if ( !ntk.is_dead( nv ) )
+      {
+        particle_t & v = placement[nv];
+        update_info_place( u, v );
+      }
+    } );
+  }
+
+  void update_info_route( particle_t & u, node const& nu )
+  {
+    auto [x, y] = copy_bin( nu );
+    auto [xl, yl] = left_down_bin( x, y );
+    auto [xr, yr] = right_top_bin( x, y );
+    for ( int ix = xl; ix <= xr; ++ix )
+    {
+      for ( int iy = yl; iy <= yr; ++iy )
+      {
+        auto const& nodes = copy_nodes( ix, iy );
+        for ( auto const& nv : nodes )
+        {
+          if ( nv != nu )
+          {
+            particle_t & v = placement[nv];
+            update_info_route( u, v );
+          }
+        }
+      }
+    }
+  }
+
+  void delete_info_place( particle_t & u, node const& nu )
+  {
+    ntk.foreach_fanin( nu, [&]( auto fv, auto iv ){
+      auto nv = ntk.get_node( fv );
+      if ( !ntk.is_dead( nv ) )
+      {
+        particle_t & v = placement[nv];
+        delete_info_place( u, v );
+      }
+    } );
+    ntk.foreach_fanout( nu, [&]( auto fv, auto iv ){
+      auto nv = ntk.get_node( fv );
+      if ( !ntk.is_dead( nv ) )
+      {
+        particle_t & v = placement[nv];
+        delete_info_place( u, v );
+      }
+    } );
+  }
+
+  void delete_info_route( particle_t & u, node const& nu )
+  {
+    auto [x, y] = copy_bin( nu );
+    auto [xl, yl] = left_down_bin( x, y );
+    auto [xr, yr] = right_top_bin( x, y );
+    for ( int ix = xl; ix <= xr; ++ix )
+    {
+      for ( int iy = yl; iy <= yr; ++iy )
+      {
+        auto const& nodes = copy_nodes( ix, iy );
+        for ( auto const& nv : nodes )
+        {
+          if ( nv != nu )
+          {
+            particle_t & v = placement[nv];
+            delete_info_route( u, v );
+          }
+        }
+      }
+    }
+  }
+
+  std::tuple<int, int> copy_bin( std::array<double, 2> const& q )
+  {
+    int const x = std::max( 0, std::min( int( num_bins - 1 ), int( q[0] / unit_length ) ) );
+    int const y = std::max( 0, std::min( int( num_bins - 1 ), int( q[1] / unit_length ) ) );
+    return std::make_tuple( x, y );
+  }
+
+  std::tuple<int, int> copy_bin( node const& n )
+  {
+    auto const& q = placement[n].copy_positions();
+    return copy_bin( q );
+  }
+
+  std::tuple<int, int> copy_bin( particle_t const& u )
+  {
+    auto const& q = u.copy_positions();
+    return copy_bin( q );
+  }
+
+  void legalize_position( std::array<double, 2> & q )
+  {
+    q[0] = std::max( 0.0, std::min( q[0], copy_length( 0 ) ) );
+    q[1] = std::max( 0.0, std::min( q[1], copy_length( 1 ) ) );
+  }
+
+  void legalize_position( std::array<double, 2> & q, node const& n )
+  {
+    legalize_position( q );
+    if ( ps.constraint_terminal && ( ntk.is_pi( n ) || ntk.is_po( n ) ) )
+    {
+      project_to_side( q );
+    }
+  }
+
+  double copy_cost( node const& n )
+  {
+    particle_t & u = placement[n];
+    return u.copy_cost();
+  }
+
+  double evaluate_change_positions( node const& nu, std::array<double, 2> const& qnew )
+  {
+    particle_t uold = placement[nu];
+    particle_t unew = uold;
+    unew.update_positions( qnew );
+    double res = cost - 2*uold.copy_cost();
+
+    ntk.foreach_fanin( nu, [&]( auto fv, auto iv ){
+      auto nv = ntk.get_node( fv );
+      if ( !ntk.is_dead( nv ) )
+      {
+        auto v = placement[nv];
+        res = res + compute_cost_place( unew, v );
+      }
+    } );
+    ntk.foreach_fanout( nu, [&]( auto fv, auto iv ){
+      auto nv = ntk.get_node( fv );
+      if ( !ntk.is_dead( nv ) )
+      {
+        auto v = placement[nv];
+        res = res + compute_cost_place( unew, v );
+      }
+    } );
+
+    auto [x, y] = copy_bin( qnew );
+    auto [xl, yl] = left_down_bin( x, y );
+    auto [xr, yr] = right_top_bin( x, y );
+    for ( int ix = xl; ix <= xr; ++ix )
+    {
+      for ( int iy = yl; iy <= yr; ++iy )
+      {
+        auto const& nodes = copy_nodes( ix, iy );
+        for ( auto const& nv : nodes )
+        {
+          if ( nv != nu )
+          {
+            particle_t & v = placement[nv];
+            res += compute_cost_route( unew, v );
+          }
+        }
+      }
+    }
+
+    return res;
+  }
+
+  void integrate_adam( node n, int t )
+  {
+    //std::normal_distribution N{0, 1};
+    particle_t & v = placement[n];
+
+    auto g_t = v.copy_grads();
+    auto m_t = v.copy_moments_m();
+    auto v_t = v.copy_moments_v();
+    auto q = v.copy_positions();
+    double const& B1 = ps.beta_m;
+    double const& B2 = ps.beta_v;
+
+    std::array<double, 2> m_h;
+    std::array<double, 2> v_h;
+
+
+    for( int i = 0; i < 2; ++i )
+    {
+      m_t[i] = m_t[i] * B1 + ( 1 - B1 ) * g_t[i];
+      m_h[i] = m_t[i]/( 1 - pow( B1, t + 1 ) );
+
+      v_t[i] = v_t[i] * B2 + ( 1 - B2 ) * pow( g_t[i], 2 );
+      v_h[i] = v_t[i]/( 1 - pow( B2, t + 1 ) );     
+    }
+
+    v.update_moments_m( m_t );
+    v.update_moments_v( v_t );
+
+    q[0] -= ps.learning_rate * m_h[0] / ( sqrt( v_h[0]) + ps.eps_m ) ;//+ sqrt(  ) * N( gen );//g_t[0];//]
+    q[1] -= ps.learning_rate * m_h[1] / ( sqrt( v_h[1]) + ps.eps_m ) ;//+ sqrt(  ) * N( gen );//g_t[1];//]
+
+    legalize_position( q, n );
+    update_positions( n, q );
+  }
+
+  void integrate_adam( int t )
+  {
+    ntk.foreach_node( [&]( auto n, auto i ){
+      if ( ntk.is_dead( n ) )
+      {
+        return true;
+      }
+      integrate_adam( n, t );
+      return true;
+    } );
+  }
+
+  void fire_integrate_velocities( double const& gamma )
+  {
+    double p_norm = compute_norm_velocities();
+    double F_norm = compute_norm_forces();
+    ntk.foreach_node( [&]( auto n, auto i ){
+      if ( ntk.is_dead( n ) )
+      {
+        return true;
+      }
+      particle_t & v = placement[n];
+      std::array<double, 2> & p = v.get_velocities();
+      std::array<double, 2> const & dU = v.copy_grads();
+      p[0] = p[0]*( 1 - gamma ) - gamma*p_norm/F_norm*dU[0];
+      p[1] = p[1]*( 1 - gamma ) - gamma*p_norm/F_norm*dU[1];
+      return true;
+    } );
+  }
+
+  void fire_integrate_velocities( std::vector<particle_t> & parts, mapped_list const& list, double const& gamma )
+  {
+    double p_norm = compute_norm_velocities( parts, list );
+    double F_norm = compute_norm_forces( parts, list );
+    uint32_t lit = list.get_lit( list.num_pis() );
+    list.foreach_gate( [&]( auto children, auto id ) {
+      particle_t & u = parts[lit];
+      std::array<double, 2> & p = u.get_velocities();
+      std::array<double, 2> const & dU = u.copy_grads();
+      p[0] = p[0]*( 1 - gamma ) - gamma*p_norm/F_norm*dU[0];
+      p[1] = p[1]*( 1 - gamma ) - gamma*p_norm/F_norm*dU[1];
+      lit+=1;
+    });
+  }
+
+  void integrate_positions( double const& dt )
+  {
+    ntk.foreach_node( [&]( auto n, auto i ){
+      if ( ntk.is_dead( n ) )
+      {
+        return true;
+      }
+      particle_t & v = placement[n];
+      std::array<double, 2> const & p = v.copy_velocities();
+      std::array<double, 2> q = v.copy_positions();
+      /* important to do it this way to ensure the placer has the infomration up to date */
+      q[0] += dt*p[0];
+      q[1] += dt*p[1];
+      legalize_position( q, n );
+      update_positions( n, q );
+      return true;
+    } );
+  }
+
+  void integrate_positions( std::vector<particle_t> & parts, mapped_list const& list, double const& dt )
+  {
+    uint32_t lit = list.get_lit( list.num_pis() );
+    list.foreach_gate( [&]( auto children, auto id ) {
+      particle_t & u = parts[lit];
+      std::array<double, 2> const & p = u.copy_velocities();
+      std::array<double, 2> & q = u.get_positions();
+      q[0] += dt*p[0];
+      q[1] += dt*p[1];
+      legalize_position( q );
+      lit += 1;
+    });
+  }
+
+  void update_grads( node const& n, std::array<double, 2> const& dU )
+  {
+    placement[n].update_grads( dU );
+  }
+
+  std::tuple<int, int> left_down_bin( int x, int y )
+  {
+    x = std::max( 0, std::min( int( num_bins - 1 ), x - range_Yukawa ) );
+    y = std::max( 0, std::min( int( num_bins - 1 ), y - range_Yukawa ) );
+    return std::make_tuple( x, y );
+  }
+
+  std::tuple<int, int> right_bin( int x, int y )
+  {
+    x = std::max( 0, std::min( int( num_bins - 1 ), x + 1 ) );
+    return std::make_tuple( x, y );
+  }
+  std::tuple<int, int> left_bin( int x, int y )
+  {
+    x = std::max( 0, std::min( int( num_bins - 1 ), x - 1 ) );
+    return std::make_tuple( x, y );
+  }
+  std::tuple<int, int> top_bin( int x, int y )
+  {
+    y = std::max( 0, std::min( int( num_bins - 1 ), y + 1 ) );
+    return std::make_tuple( x, y );
+  }
+  std::tuple<int, int> down_bin( int x, int y )
+  {
+    y = std::max( 0, std::min( int( num_bins - 1 ), y - 1 ) );
+    return std::make_tuple( x, y );
+  }
+
+  std::tuple<int, int> right_top_bin( int x, int y )
+  {
+    x = std::max( 0, std::min( int( num_bins - 1 ), x + range_Yukawa ) );
+    y = std::max( 0, std::min( int( num_bins - 1 ), y + range_Yukawa ) );
+    return std::make_tuple( x, y );
+  }
+
+
+  std::set<node> const& copy_nodes( int x, int y )
+  {
+    return grid[x][y];
+  } 
+
+  double copy_length( int i )
+  {
+    assert( ( ( i == 0 ) || ( i == 1 ) ) );
+    return i == 0 ? unit_length * ( num_bins - 1 ) : unit_length * ( num_bins - 1 );
+  }
+
+  void project_to_side( node const& n )
+  {
+    auto qnew = placement[n].copy_positions();
+    project_to_side( qnew );
+    placement[n].update_positions( qnew );
+  }
+
+  void project_to_side( std::array<double, 2> & q )
+  {
+    auto [x, y] = copy_bin( q );
+    std::array<std::pair<int, double>, 4> distances;
+    distances[0] = std::make_pair( 0, x );
+    distances[1] = std::make_pair( 1, num_bins - 1 - x );
+    distances[2] = std::make_pair( 2, y );
+    distances[3] = std::make_pair( 3, num_bins - 1 - y );
+
+    std::stable_sort( distances.begin(), distances.end(), [&]( auto a, auto b ){
+      return a.second < b.second;
+    } );
+    
+    switch ( distances[0].first ) {
+    case 0:
+        q[0] = 0;
+        break;
+    case 1:
+        q[0] = copy_length( 0 );
+        break;
+    case 2:
+        q[1] = 0;
+        break;
+    case 3:
+        q[1] = copy_length( 1 );
+        break;
+    default:
+        std::cerr << "[e] Unknown branching" << std::endl;
+        break;
+    }
+  }
+
+  /*! \brief Returns the position vector */
+  std::array<double, 2> const& copy_positions( node const& n ) const
+  {
+    return placement[n].copy_positions();
+  }
+
+  /*! \brief Returns the grads vector */
+  std::array<double, 2> const& copy_grads( node const& n ) const
+  {
+    return placement[n].copy_grads();
+  }
+
+  /*! \brief Returns the charge */
+  double const& copy_charge( node const& n ) const
+  {
+    return placement[n].copy_charge();
+  }
+
+  /*! \brief Returns the radius of the cell */
+  double const& copy_range( node const& n ) const
+  {
+    return placement[n].copy_range();
+  }
+
+  double copy_max_range()
+  {
+    return max_range;
+  }
+
+  bool on_side( node n )
+  {
+    auto const& q = placement[n].copy_positions();
+    auto [x, y] = copy_bin( q );
+    return ( ( x % ( num_bins - 1 ) ) == 0 ) || ( ( y % ( num_bins - 1 ) ) == 0 );
+  }
+
+  double copy_cost() const
+  {
+    return cost;
+  }
+
+  double overflow( int x, int y )
+  {
+    return grid[x][y].size() - density*pow( slots_per_bin, 2 );
+  }
+
+  std::array<double, 2> flux( std::array<double, 2> const& q )
+  {
+    std::array<double, 2> j = { 0, 0 };
+    auto [x, y] = copy_bin( q );
+    auto b_r = right_bin( x, y );
+    auto b_l = left_bin( x, y );
+    double num_x = 0;
+    if ( b_r[0] < num_bins )
+    {
+      num_x += 1;
+      j[0] -= ( overflow( b_r[0], b_r[1] ) - overflow( x, y ) )/( pow( num_bins, 2 ) );
+    }
+    if ( b_l[0] >= 0 )
+    {
+      num_x += 1;
+      j[0] -= ( overflow( x, y ) - overflow( b_l[0], b_l[1] ) )/( pow( num_bins, 2 ) );
+    }
+    auto b_u = top_bin( x, y );
+    auto b_d = down_bin( x, y );
+    double num_y = 0;
+    if ( b_u[1] < num_bins )
+    {
+      num_y += 1;
+      j[1] -= ( overflow( b_u[0], b_u[1] ) - overflow( x, y ) )/( pow( num_bins, 2 ) );
+    }
+    if ( b_d[1] >= 0 )
+    {
+      num_y += 1;
+      j[1] -= ( overflow( x, y ) - overflow( b_d[0], b_d[1] ) )/( pow( num_bins, 2 ) );
+    }
+    j[0] /= num_x;
+    j[1] /= num_y;
+    return j;
+  }
+
+private:
+  Ntk & ntk;
+  std::mt19937 gen; // mersenne_twister_engine seeded with rd()
+
+  std::array<std::array<std::set<node>, Ny>, Nx> grid;
+
+    /*! \brief Hash table connecting each node to a placement element */
+  incomplete_node_map<particle_t, Ntk> placement;
+
+  /*! \brief Distance between two grid points */
+  double unit_length;
+  int range_Yukawa {2};
+  int slots_per_bin {4};
+  int num_bins {0};
+  double density{ 0.11 };
+  double lambda_route{ 100 };
+  double k_route{1};
+  double delta_flux{1};
+  double chem_pot{1};
+
+
+  double max_range{ 0 };
+  double cost;
+
+  placement_params ps;
+
+  /* events */
+  std::shared_ptr<typename network_events<Ntk>::add_event_type> add_event;
+  std::shared_ptr<typename network_events<Ntk>::modified_event_type> modified_event;
+  std::shared_ptr<typename network_events<Ntk>::delete_event_type> delete_event;
+
+};
+
+template<class Ntk, int Nx, int Ny>
+class placement_analyzer
+{
+public:
+  using node = typename Ntk::node;
+  using signal = typename Ntk::signal;
+
+  placement_analyzer( Ntk & ntk, placement_params & ops )
+    : ntk( ntk ),
+      placer( ntk, ps ),
+      gen( 336u )
+  {
+    _init();
+
+    add_event = ntk.events().register_add_event( [&]( const auto& n ) {
+      compute_cost();
+    } );
+
+    modified_event = ntk.events().register_modified_event( [&]( const auto& n, auto old_children ) {
+      fire();
+      compute_cost();
+    } );
+
+    delete_event = ntk.events().register_delete_event( [&]( const auto& n ) {
+      compute_cost();
+    } );
+  }
+
+  ~placement_analyzer()
+  {
+    if ( add_event )
+    {
+      ntk.events().release_add_event( add_event );
+    }
+
+    if ( modified_event )
+    {
+      ntk.events().release_modified_event( modified_event );
+    }
+
+    if ( delete_event )
+    {
+      ntk.events().release_delete_event( delete_event );
+    }
+  }
+
+  /*! \brief Random initializer setting the positions at random places */
+  void _init()
+  {
+    fire();
+  }
+
+  std::array<double, 2> copy_positions( node n )
+  {
+    return placer.copy_positions( n );
+  }
+
+  bool on_side( node n )
+  {
+    auto const& q = placer.copy_positions( n );
+    return placer.on_side( n );
+  }
+
+  void monte_carlo_sweep( double beta = -1 )
+  {
+    std::uniform_real_distribution<> U( 0, 1 );
+    beta = beta == -1 ? ps.beta : beta;
+    for ( uint32_t i = 0; i < ps.num_steps; ++i )
+    {
+      ntk.foreach_node( [&]( auto n, auto i ){
+        if ( ntk.is_dead( n ) )
+        {
+          return true;
+        }
+        double U0 = placer.copy_cost();
+        std::array<double, 2> qnew = placer.copy_positions( n );
+        placer.randomize_position( qnew, placer.copy_unit_length() );
+        placer.legalize_position( qnew, n );
+        double U1 = placer.evaluate_change_positions( n, qnew );
+        double const alpha = std::min( 1.0, exp( -ps.beta*( U1 - U0 ) ) );
+        if ( U( gen ) <= alpha )
+        {
+          placer.update_positions( n, qnew );
+        }
+        return true;
+      } );
+    }
+  }
+
+  void simulated_annealing( double beta_start, double beta_end, int num_steps )
+  {
+    std::uniform_real_distribution<> U( 0, 1 );
+    for ( uint32_t i = 0; i < num_steps; ++i )
+    {
+      double beta = beta_start + i * ( beta_end - beta_start )/ ( ( double )num_steps - 1 );
+      monte_carlo_sweep( beta );
+    }
+  }
+
+  void analytic()
+  {
+    placer.reset_moments();
+    placer.randomize_positions();
+    placer.compute_grads();
+    double U_new = placer.compute_cost();
+    double U_old = U_new + 100;
+    int istep = 0;
+    while ( ( U_old - U_new ) > ps.eps )
+    {
+      U_old = U_new;
+      placer.integrate_adam( istep );
+      U_new = placer.compute_cost();
+      placer.reset_moments();
+      placer.compute_grads();
+      istep++ ;
+    }
+  }
+
+  void fire()
+  {
+    double gamma0 = 0.01;
+    double gamma = gamma0;
+    double gamma_dec = 0.99;
+    double dt_dec = 0.5;
+    double dt_inc = 1.1;
+    double dt = 0.0001;
+    double dt_max = 0.1;
+    int Nh = 7;
+
+    placer.reset_velocities();
+    placer.randomize_positions();
+    placer.compute_grads();
+    double U_new = placer.compute_cost();
+    // grads are up to date
+    double U_old = U_new + 100;
+    int count = 0;
+    while ( ( U_old - U_new ) > ps.eps )
+    {
+      U_old = U_new;
+      placer.newton_integrate_velocities( dt );
+      placer.diffusion( dt );
+
+      if ( placer.has_good_direction() )
+      {
+        if ( count++ > Nh )
+        {
+          dt = std::min( dt_max, dt_inc * dt );
+          gamma = gamma * gamma_dec;
+        }
+      }
+      else
+      {
+        placer.reset_velocities();
+        gamma = gamma0;
+        count = 0;
+        dt = dt * dt_dec;
+      }
+      placer.fire_integrate_velocities( gamma );
+      placer.integrate_positions( dt );
+      placer.compute_grads();
+      U_new = placer.compute_cost();
+      //std::cout << "U:: " << U_old << "->" << U_new << std::endl;
+    }
+  }
+
+#pragma region evaluate
+
+  void place_from_children( std::vector<particle_t>& parts, std::vector<uint32_t>& children, uint32_t lit )
+  {
+    std::array<double, 2> qnew { 0.5*placer.copy_length(0), 0.5*placer.copy_length(1) };
+    for ( auto c : children )
+    {
+      auto qc = parts[c].copy_positions();
+      qnew[0] += qc[0];
+      qnew[1] += qc[1];
+    }
+    qnew[0] /= ( ( double )children.size());
+    qnew[1] /= ( ( double )children.size());
+    placer.randomize_position( qnew, placer.copy_max_range() );
+    placer.legalize_position( qnew );
+    parts[lit].update_positions( qnew );
+  }
+
+  template<class Leaves_t>
+  void init_place_list( std::vector<particle_t>& parts, mapped_list const& list, Leaves_t const& leaves, std::set<node> const& erased, node const& n )
+  {
+    parts.reserve( list.size() );
+    // constant 0
+    parts.emplace_back();
+    // constant 1
+    parts.emplace_back();
+
+    uint32_t lit = 1;
+    for( int i = 0; i < list.num_pis(); ++i )
+    {
+      lit++;
+      node l = leaves[i];
+      if( !ntk.is_null( l ) )
+      {
+        assert( ( erased.find( l ) == erased.end() ) );
+        parts.emplace_back( placer.get( l ) );
+        ntk.foreach_fanout( l, [&]( auto fo, auto io ){
+          auto no = ntk.get_node( fo );
+          if ( !ntk.is_dead( no ) && !ntk.is_dead( l ) )
+          {
+          // reduce charge if connected to erased node
+            if ( erased.find( no ) != erased.end() )
+              parts.back().add_charge( -1 );
+          }
+        } );
+      }
+    }
+
+    while( parts.size() < ( list.num_pis() + 2 ) )
+    {
+      parts.emplace_back();
+    }
+    auto const& lib = ntk.get_bindings();
+    list.foreach_gate( [&]( auto children, auto id ) {
+      lit++;
+      double R = ntk.get_range_from_id( id );
+      double Q = children.size();
+      particle_t vnew { std::array<double, 2>{ 0, 0 }, std::array<double, 2>{ 0, 0 }, Q, R, 0, 0 };
+      parts.push_back( vnew );
+      for ( auto c : children )
+      {
+        auto Qc = parts[c];
+        parts[c].add_charge( +1 );
+      }
+      place_from_children( parts, children, lit );
+    } );
+    parts[list.po_at(0)].add_charge( ntk.fanout_size( n ) );
+  }
+
+  template<class Leaves_t>
+  double evaluate( node const& x, Leaves_t const& leaves, std::set<node> const& erased )
+  {
+//    double res = 0;
+//    for ( node const& l : leaves )
+//    {
+//      if ( !ntk.is_null( l ) )
+//      {
+//        particle_t const& u = placer.get( l );
+//        double const Qu_old = u.copy_charge();
+//        double Qu_rem = 0;
+//        ntk.foreach_fanout( l, [&]( auto fo, auto io ){
+//          auto no = ntk.get_node( fo );
+//          if ( erased.find( no ) != erased.end() )
+//            Qu_rem += 1;
+//        } );
+//        res += 0;//placer.compute_cost_route(l) * Qu_rem/Qu_old;
+//      }
+//    }
+//
+//    for ( node const& n : erased )
+//    {
+//      particle_t const& u = placer.get( n );
+//      res += placer.compute_cost_place( n );
+//      res += placer.compute_cost_route( n );
+//    }
+//    return res;
+    auto lib = ntk.get_bindings();
+    mapped_list list( ntk, lib, leaves, ntk.make_signal(x) );
+    return evaluate( list, leaves, x, erased );
+  }
+
+  template<class Leaves_t>
+  double evaluate( mapped_list const& list, Leaves_t const& leaves, node const& n, std::set<node> const& erased )
+  {
+    std::vector<double> old_charges;
+    {
+      uint32_t lit = 1;
+      for ( int i = 0; i < list.num_pis(); ++i )
+      {
+        lit++;
+        node l = leaves[i];
+        if ( !ntk.is_null( l ) )
+        {
+          old_charges.push_back( placer.get(l).copy_charge() );
+        }
+      }
+    }
+
+    std::vector<particle_t> parts;
+    // cost from updated leaves with other 
+    init_place_list<Leaves_t>( parts, list, leaves, erased, n );
+  
+    for ( auto ne : erased )
+      placer.erase_from_grid( ne );
+    uint32_t num_leaves = 0;
+    for ( auto ne : leaves )
+    {
+      if ( !ntk.is_null( ne ) )
+      {
+        placer.erase_from_grid( ne );
+        num_leaves += 1;
+      }
+    }
+
+    double res0 = 0;
+    {
+      uint32_t lit = 1;
+      for ( int i = 0; i < list.num_pis(); ++i )
+      {
+        lit++;
+        auto l = leaves[i];
+        if ( !ntk.is_null( l ) )
+        {
+          double Q_new = parts[lit].copy_charge();
+          //res0 += placer.compute_cost_route( l )*( Q_new - old_charges[i])/old_charges[i];
+        }
+      }
+    }
+    double res_avg = 0;
+    double num_times = 10;
+    for ( int t = 0; t < num_times; ++t )
+    {
+      double contr = res0;
+
+    double gamma0 = 1;
+    double gamma = gamma0;
+    double gamma_dec = 0.99;
+    double dt_dec = 0.5;
+    double dt_inc = 1.1;
+    double dt = 0.01;
+    double dt_max = 1;
+    int Nh = 5;
+      
+      placer.reset_velocities( parts, list );
+      placer.randomize_positions( parts, list );
+      placer.compute_grads( parts, list, n );
+      double U_new = placer.compute_cost( parts, list, n );
+
+      // grads are up to date
+      double U_old = U_new + 100;
+      int count = 0;
+      while ( ( U_old - U_new ) > ps.eps )
+      {
+        U_old = U_new;
+        placer.newton_integrate_velocities( parts, list, dt );
+        placer.diffusion( parts, list, dt );
+
+        if ( placer.has_good_direction( parts, list ) )
+        {
+          if ( count++ > Nh )
+          {
+            dt = std::min( dt_max, dt_inc * dt );
+            gamma = gamma * gamma_dec;
+          }
+        }
+        else
+        {
+          placer.reset_velocities( parts, list );
+          gamma = gamma0;
+          count = 0;
+          dt = dt * dt_dec;
+        }
+        placer.fire_integrate_velocities( parts, list, gamma );
+        placer.integrate_positions( parts, list, dt );
+        placer.compute_grads( parts, list, n );
+        U_new = placer.compute_cost( parts, list, n );
+//std::cout << "e(U):: " << U_old << "->" << U_new << std::endl;
+      }
+      res_avg += (res0 + placer.compute_cost( parts, list, n ))/num_times;
+    }
+//std::cout << "e(U)X " << std::endl;
+    
+    for ( auto ne : erased )
+      placer.addback_to_grid( ne );
+
+    for ( auto ne : leaves )
+    {
+      if ( !ntk.is_null( ne ) )
+        placer.addback_to_grid( ne );
+    }
+    return res_avg;
+  }
+
+  double evaluate( node const& nnew, node const& nold )
+  {
+    double res = std::numeric_limits<double>::max();
+    //res -= compute_cost_place( nold );
+    //res -= compute_cost_route( nold );
+    //res += compute_cost_replace( nnew, nold );
+    //res += compute_cost_reroute( nnew, nold );
+    return res;
+  }
+
+#pragma endregion evaluate
+
+  void print()
+  {    
+    for ( int x = 0; x < Nx; ++x )
+    {
+      printf("%4d/%4d|", x, Nx-1 );
+      for ( int y = Ny - 1; y >= 0; --y )
+      {
+        auto nodes = placer.copy_nodes( x, y );
+
+        for ( auto n : nodes )
+        {
+          auto q = placer.copy_positions( n );
+          std::cout << n << ":( " << q[0] << ", " << q[1] << ") ";
+        }
+      }
+      printf("\n");      
+    }
+  }
+
+  double compute_cost()
+  {
+    return placer.compute_cost();
+  }
+
+  double compute_hpwl()
+  {
+    return placer.compute_hpwl();
+  }
+
+  double compute_cost(int i)
+  {
+    return placer.compute_cost(i);
+  }
+
+  double copy_cost( node const n )
+  {
+    return placer.copy_cost( n );
+  }
+
+private:
+
+  placement_stats st;
+  placement_params ps;
+
+  /*! \brief Pointer to the network to be placed */
+  Ntk & ntk;
+
+  placer_t<Ntk, Nx, Ny> placer;
+
+  std::mt19937 gen; // mersenne_twister_engine seeded with rd()
+
+  /* events */
+  std::shared_ptr<typename network_events<Ntk>::add_event_type> add_event;
+  std::shared_ptr<typename network_events<Ntk>::modified_event_type> modified_event;
+  std::shared_ptr<typename network_events<Ntk>::delete_event_type> delete_event;
+};
+
+
+} // namespace mockturtle
+

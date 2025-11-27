@@ -1,0 +1,61 @@
+map -p
+write_verilog c17_tr.v
+read_genlib ../cell_libraries/asap7.genlib
+read_aiger c17.aig
+if -a
+resyn2
+read_aiger max.aig 
+resyn2rs
+if -a -K 6
+satlut
+lutpack
+mfs2
+&get; &satlut; &put
+&get; &if -a -K 6; &satlut; &put
+source -s abc.rc
+print
+show
+print_auto
+help
+print_gates
+double -h
+double
+if -g
+strash
+fraig
+read_aiger c17.aig 
+bdd -h
+&get
+&bdd
+source -s abc.rc
+read_genlib ../cell_libraries/asap7.genlib 
+map -h
+map -a
+emap -a
+emap -h
+help
+amap -h
+amap
+&nf -h
+&nf 
+&nf -a
+map -h
+map -D 0
+map -D 0.0
+map -D0.0
+map -D 1.0
+&nf -h
+&get
+&dch
+&put
+buffer
+upsize
+if -g
+clear
+if -g; if -g; if -g; ps
+read_aiger adder.aig 
+read_aiger bar.aig 
+read_aiger sin.aig 
+read_aiger max.aig 
+if -g; if -g; ps; map; ps
+read_aiger square.aig 

@@ -1,0 +1,81 @@
+#include <catch.hpp>
+
+#include <kitty/kitty.hpp>
+#include <kitty/static_truth_table.hpp>
+
+#include <mockturtle/algorithms/emap.hpp>
+#include <mockturtle/algorithms/klut_to_graph.hpp>
+#include <mockturtle/algorithms/node_resynthesis.hpp>
+#include <mockturtle/algorithms/node_resynthesis/xag_npn.hpp>
+#include <mockturtle/algorithms/simulation.hpp>
+#include <mockturtle/io/genlib_reader.hpp>
+#include <mockturtle/networks/aig.hpp>
+#include <mockturtle/networks/klut.hpp>
+#include <mockturtle/resynthesis/aig_syn.hpp>
+#include <mockturtle/resynthesis/algorithms/resynthesize.hpp>
+#include <mockturtle/resynthesis/analyzers/homo_pxx_analyzer.hpp>
+#include <mockturtle/resynthesis/power/node_simulator.hpp>
+#include <mockturtle/resynthesis/power/analyzers/power_analyzer.hpp>
+#include <mockturtle/resynthesis/placement/placement_analyzer.hpp>
+#include <mockturtle/resynthesis/database/homo_database.hpp>
+#include <mockturtle/resynthesis/database/mapped_list.hpp>
+#include <mockturtle/resynthesis/list_simulator.hpp>
+#include <mockturtle/resynthesis/networks/bindings.hpp>
+#include <mockturtle/resynthesis/networks/bound.hpp>
+#include <mockturtle/resynthesis/networks/mapped_to_bound.hpp>
+#include <mockturtle/resynthesis/power/analyzers/convo_analyzer.hpp>
+#include <mockturtle/resynthesis/timing/arrival_analyzer.hpp>
+#include <mockturtle/utils/tech_library.hpp>
+
+
+std::string const test_library = "GATE   and2    1.0 O=a*b;         PIN * INV 1   999 1.0 0.0 1.0 0.0\n"
+                                 "GATE   and3    1.5 O=a*b*c;       PIN * INV 1   999 3.0 0.0 3.0 0.0\n"
+                                 "GATE   lt2     1.0 O=(!a)*b;      PIN * INV 1   999 1.0 0.0 1.0 0.0\n"
+                                 "GATE   lt3     1.5 O=(!a)*(b*c);  PIN * INV 1   999 3.0 0.0 3.0 0.0\n"
+                                 "GATE   xor2    1.0 O=a^b;         PIN * INV 1   999 1.0 0.0 1.0 0.0\n"
+                                 "GATE   xor3    1.5 O=a^b^c;       PIN * INV 1   999 3.0 0.0 3.0 0.0";
+
+TEST_CASE( "Placement initialization", "[placement]" )
+{
+  std::vector<mockturtle::gate> gates;
+
+  std::istringstream in( test_library );
+  auto result = lorina::read_genlib( in, mockturtle::genlib_reader( gates ) );
+  CHECK( result == lorina::return_code::success );
+  using Ntk = mockturtle::bound_network;
+  Ntk bound( gates );
+  mockturtle::bindings binds( gates );
+
+  using signal = typename Ntk::signal;
+
+  /* Database construction from network */
+  signal const a = bound.create_pi();
+  signal const b = bound.create_pi();
+  signal const c = bound.create_pi();
+  signal const d = bound.create_pi();
+  signal const f1 = bound.create_node( { b, c },   "and2" )[0];
+  signal const f2 = bound.create_node( { c, d },   "and2" )[0];
+  signal const o1 = bound.create_node( { a, f1 },  "and2" )[0];
+  signal const o2 = bound.create_node( { d, f1 },  "and2" )[0];
+  signal const o3 = bound.create_node( { f1, f2 }, "and2" )[0];
+  signal const e1 = bound.create_node( { b, c },   "xor2" )[0];
+  signal const e2 = bound.create_node( { c, d },   "xor2" )[0];
+  signal const o4 = bound.create_node( { a, e1 },  "xor2" )[0];
+  signal const o5 = bound.create_node( { d, e1 },  "xor2" )[0];
+  signal const o6 = bound.create_node( { e1, e2 }, "xor2" )[0];
+  
+  bound.create_po( o1 );
+  bound.create_po( o2 );
+  bound.create_po( o3 );
+  bound.create_po( o4 );
+  bound.create_po( o5 );
+  bound.create_po( o6 );
+
+  mockturtle::placement::placement_analyzer<Ntk, 20, 20> place( bound );
+  place.print();
+  std::cout << place.compute_hpwl() << std::endl;
+  place.simulated_annealing();
+  std::cout << place.compute_hpwl() << std::endl;
+  place.print();
+  
+}

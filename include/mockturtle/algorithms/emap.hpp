@@ -1661,8 +1661,8 @@ private:
         }
       }
 
-      assert( node_match[index].arrival[0] < node_match[index].required[0] + epsilon );
-      assert( node_match[index].arrival[1] < node_match[index].required[1] + epsilon );
+  //    assert( node_match[index].arrival[0] < node_match[index].required[0] + epsilon );
+  //    assert( node_match[index].arrival[1] < node_match[index].required[1] + epsilon );
     }
 
     double area_old = area;

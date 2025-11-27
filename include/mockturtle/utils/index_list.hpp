@@ -599,6 +599,11 @@ public:
     }
   }
 
+  uint32_t po_at( uint32_t po_index ) const
+  {
+    return values.at( values.size() - num_pos() + po_index );
+  }
+
   void clear()
   {
     values.clear();

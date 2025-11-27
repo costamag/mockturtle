@@ -307,7 +307,6 @@ public:
   void run()
   {
     stopwatch t( st.time_total );
-
     ntk.foreach_node( [this]( auto node ) {
       const auto index = ntk.node_to_index( node );
 
@@ -1235,6 +1234,16 @@ private:
     }
   }
 
+  void add_one_cut( uint32_t index )
+  {
+    auto& cut = _cuts[index].add_cut( &index, &index ); /* fake iterator for emptyness */
+
+    if constexpr ( ComputeTruth )
+    {
+      cut->func_id = 1;
+    }
+  }
+
   void add_unit_cut( uint32_t index )
   {
     auto& cut = _cuts[index].add_cut( &index, &index + 1 );
@@ -1296,7 +1305,10 @@ public:
 
       if ( ntk.is_constant( node ) )
       {
-        cuts.add_zero_cut( index );
+        if( ntk.constant_value( node ) )
+          cuts.add_zero_cut( index );
+        else
+          cuts.add_one_cut( index );
       }
       else if ( ntk.is_ci( node ) )
       {
@@ -1319,7 +1331,6 @@ public:
   void compute_cuts( node<Ntk> const& n )
   {
     const auto index = ntk.node_to_index( n );
-
     if ( cuts.cuts( index ).size() > 0 )
       return;
 
@@ -1342,6 +1353,16 @@ public:
     cuts.add_zero_cut( ntk.node_to_index( ntk.get_node( ntk.get_constant( false ) ) ) );
     if ( ntk.get_node( ntk.get_constant( false ) ) != ntk.get_node( ntk.get_constant( true ) ) )
       cuts.add_zero_cut( ntk.node_to_index( ntk.get_node( ntk.get_constant( true ) ) ) );
+    ntk.foreach_ci( [&]( auto const& n ) {
+      cuts.add_unit_cut( ntk.node_to_index( n ) );
+    } );
+  }
+
+  void init_cuts2()
+  {
+    cuts.add_zero_cut( ntk.node_to_index( ntk.get_node( ntk.get_constant( false ) ) ) );
+    if ( ntk.get_node( ntk.get_constant( false ) ) != ntk.get_node( ntk.get_constant( true ) ) )
+      cuts.add_one_cut( ntk.node_to_index( ntk.get_node( ntk.get_constant( true ) ) ) );
     ntk.foreach_ci( [&]( auto const& n ) {
       cuts.add_unit_cut( ntk.node_to_index( n ) );
     } );
@@ -1534,7 +1555,6 @@ private:
         {
           new_cut->func_id = compute_truth_table( index, vcuts, new_cut );
         }
-
         cut_enumeration_update_cut<CutData>::apply( new_cut, cuts, ntk, ntk.index_to_node( index ) );
 
         rcuts.insert( new_cut );
