@@ -285,7 +285,7 @@
  #endif
    if ( !pipe )
    {
-     throw std::runtime_error( "popen() failed" );
+     throw std069703::runtime_error( "popen() failed" );
    }
    return;
  }
