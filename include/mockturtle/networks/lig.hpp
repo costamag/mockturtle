@@ -25,15 +25,13 @@
 
 /*!
   \file lig.hpp
-  \brief Representation Independent Graph
+  \brief Look-Up Table Inverter Graph
 
-  This network assumes that buffers, inverter and splitters are cost free.
-  Everything you declare apart for these has a cost.
+  Each gate of this network is a truth table, and the edges support complemented edges.
+  By default, creating a buffer and creating an inverter does not introduces a new node,
+  But simply returns a signal with the desired properties
   The network is structurally hashed for gates of the same type.
   gates of different type are not hashed together even if related by negation.
-  create_and(x1,x2) != !create_nand(x1,x2).
-  but naturally reate_and(x1,x2) == !create_and(x1,x2).
-  Any overwriting is a representation-dependent assumption.
 
   \author Andrea Costamagna
 */

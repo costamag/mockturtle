@@ -89,7 +89,7 @@ struct scg_resyn_static_params
 
   static constexpr int max_fanin_size = -1;
   static constexpr bool accept_worse{ false };
-  static constexpr bool on_the_fly{ true };
+  static constexpr bool on_the_fly{ false };
 
   static constexpr uint32_t nBest{ 2 };
 
@@ -271,7 +271,7 @@ public:
     kitty::static_truth_table<4u> tt;
     int i{0};
     std::string line;
-    std::ifstream fTts ("sky130.tts");
+    std::ifstream fTts ("mcnc2.tts");
     if (fTts.is_open())
     {
       while ( std::getline (fTts,line) )
@@ -286,7 +286,7 @@ public:
       printf("not found\n");
     }
 
-    std::ifstream fAreas ("sky130.area");
+    std::ifstream fAreas ("mcnc2.area");
     if (fAreas.is_open())
     {
       while ( std::getline (fAreas,line) )
@@ -301,7 +301,7 @@ public:
     }
 
 
-    std::ifstream fLists ("sky130.list");
+    std::ifstream fLists ("mcnc2.list");
     if (fLists.is_open())
     {
       while ( std::getline (fLists,line) )
@@ -342,12 +342,12 @@ public:
   {
     static_assert( static_params::copy_tts || std::is_same_v<typename std::iterator_traits<iterator_type>::value_type, typename static_params::node_type>, "iterator_type does not dereference to static_params::node_type" );
     
-  //  _fsupp.clear();
-  //  if ( max_size > 0 )
-  //  {
-  //    auto fsup = _supportor( target, care, begin, end, tts );
-  //    if( fsup ) _fsupp=*fsup;
-  //  }
+//    _fsupp.clear();
+//    if ( max_size > 0 )
+//    {
+//      auto fsup = _supportor( target, care, begin, end, tts );
+//      if( fsup ) _fsupp=*fsup;
+//    }
 
     ptts = &tts;
     on_off_sets[0] = ~target & care;
@@ -372,6 +372,57 @@ public:
       }
       ++begin;
     }
+    nZeros=divisors.size();
+
+    call_with_stopwatch( st.time_sort, [&]() {
+      std::sort( scored_divs.begin(), scored_divs.end() );
+    } );
+
+    return compute_function( max_size );
+  }
+
+  template<class iterator_type,
+           bool enabled = static_params::uniform_div_cost && !static_params::preserve_depth, typename = std::enable_if_t<enabled>>
+  std::optional<index_list_t> operator()( TT const& target, TT const& care, iterator_type begin, iterator_type end, typename static_params::truth_table_storage_type const& tts, double max_size, uint32_t iter )
+  {
+    static_assert( static_params::copy_tts || std::is_same_v<typename std::iterator_traits<iterator_type>::value_type, typename static_params::node_type>, "iterator_type does not dereference to static_params::node_type" );
+//    if( iter == 0 )
+//    {
+//      _supset.clear();
+//    }
+////
+    _fsupp.clear();
+    if ( max_size > 0 )
+    {
+      auto fsup = _supportor( target, care, begin, end, tts );
+      if( fsup ) _fsupp=*fsup;
+    }
+
+    ptts = &tts;
+    on_off_sets[0] = ~target & care;
+    on_off_sets[1] = target & care;
+
+    _uSPFD.init( target, care );
+
+    divisors.clear(); /* clear previous data and reserve 1 dummy node for constant */
+    scored_divs.clear();
+
+    while ( begin != end )
+    {
+      if constexpr ( static_params::copy_tts )
+      {
+        divisors.emplace_back( ( *ptts )[*begin] );
+        scored_divs.emplace_back( divisors.size()-1, _uSPFD.evaluate( get_div( divisors.size() - 1 ) ) );
+      }
+      else
+      {
+        divisors.emplace_back( *begin );
+        scored_divs.emplace_back( divisors.size()-1, _uSPFD.evaluate( get_div( divisors.size() - 1 ) ) );
+      }
+      ++begin;
+    }
+    nZeros=divisors.size();
+
 
     call_with_stopwatch( st.time_sort, [&]() {
       std::sort( scored_divs.begin(), scored_divs.end() );
@@ -414,11 +465,54 @@ public:
       }
       ++begin;
     }
+    nZeros=divisors.size();
+
 
     call_with_stopwatch( st.time_sort, [&]() {
       std::sort( scored_divs.begin(), scored_divs.end() );
     } );
     _idelays=idelays;
+    return compute_function( max_size );
+  }
+
+  template<class iterator_type,
+           bool enabled = static_params::uniform_div_cost && !static_params::preserve_depth, typename = std::enable_if_t<enabled>>
+  std::optional<index_list_t> operator()( TT const& target, TT const& care, iterator_type begin, iterator_type end, uint32_t nZero, typename static_params::truth_table_storage_type const& tts, double max_size )
+  {
+    static_assert( static_params::copy_tts || std::is_same_v<typename std::iterator_traits<iterator_type>::value_type, typename static_params::node_type>, "iterator_type does not dereference to static_params::node_type" );
+  //  _fsupp.clear();
+  //  if ( max_size > 0 )
+  //  {
+  //    auto fsup = _supportor( target, care, begin, end, tts );
+  //    if( fsup ) _fsupp=*fsup;
+  //  }
+    ptts = &tts;
+    on_off_sets[0] = ~target & care;
+    on_off_sets[1] = target & care;
+
+    _uSPFD.init( target, care );
+
+    divisors.clear();//resize( 1 ); /* clear previous data and reserve 1 dummy node for constant */
+    scored_divs.clear();
+
+    while ( begin != end )
+    {
+      if constexpr ( static_params::copy_tts )
+      {
+        divisors.emplace_back( ( *ptts )[*begin] );
+        scored_divs.emplace_back( divisors.size(), _uSPFD.evaluate( get_div( divisors.size() - 1 ) ) );
+      }
+      else
+      {
+        divisors.emplace_back( *begin );
+        scored_divs.emplace_back( divisors.size(), _uSPFD.evaluate( get_div( divisors.size() - 1 ) ) );
+      }
+      ++begin;
+    }
+
+    call_with_stopwatch( st.time_sort, [&]() {
+      std::sort( scored_divs.begin(), scored_divs.end() );
+    } );
     return compute_function( max_size );
   }
 
@@ -854,9 +948,11 @@ private:
 
     for( auto i{0}; i<4; ++i )
     {
+     // printf("%d ", perm[i]);
       if( perm[i]<vars.size() )
         leaves[i] = vars[perm[i]];
     }
+   // printf("\n");
     auto & db = _lib.get_database();
     index_list_t mapped_index_list = index_list;
 
@@ -1004,11 +1100,11 @@ private:
       std::vector<uint32_t> lits = {0,0,0,0,0};
       for( auto i{0}; i<4; ++i )
       {
-        //printf("p[%d]=%d\n", i, best_perm[i]);
+        //printf("p[%d]=%d ", i, best_perm[i]);
         lits[i+1] = lits0[best_perm[i]];
         //printf("V[%d]=%d\n", i, lits0[best_perm[i]]);
       }
-
+      //printf("\n");
       //printf( "try match %f %f\n", best_area, max_inserts );
       auto entry = _idlists[ best_key ];
       int type = 0;
@@ -1073,12 +1169,19 @@ private:
     if( aig.is_constant( aig.get_node(sig_out) ) )
       return std::nullopt;
 
+  //  scopt::emap2_params ps2;
+  //  ps2.cut_enumeration_ps.minimize_truth_table = true;
+  //  ps2.cut_enumeration_ps.cut_limit = 1;
+  //  ps2.cut_enumeration_ps.cut_limit = 1;
+  //  ps2.area_oriented_mapping = true;
+    scopt::emap2_stats st2;
+
     scopt::emap2_params ps2;
     ps2.cut_enumeration_ps.minimize_truth_table = true;
-    ps2.cut_enumeration_ps.cut_limit = 1;
-    ps2.cut_enumeration_ps.cut_limit = 1;
     ps2.area_oriented_mapping = true;
-    scopt::emap2_stats st2;
+    //ps2.skip_delay_round= true;
+    ps2.cut_enumeration_ps.cut_limit = 1;
+    ps2.required_time = std::numeric_limits<float>::max();
 
     scopt::scg_network scg = scopt::emap2_klut( aig, _tech_lib, ps2, &st2 );
 
@@ -1250,12 +1353,12 @@ private:
   std::optional<std::vector<uint32_t>> find_support()
   {
 
-  //  if( _fsupp.size() > 0 )
-  //  {
-  //    return _fsupp;
-  //  }
-  //
-  //  return std::nullopt;
+    if( _fsupp.size() > 0 )
+    {
+      return _fsupp;
+    }
+//  
+    return std::nullopt;
 
   //  if ( static_params::support_selection == support_selection_t::GREEDY )
   //  {
@@ -1263,16 +1366,31 @@ private:
   //    {
     for( int iter{0}; iter<4; iter++ )
     {
-        auto supp = find_support_greedy( 0 );
+        auto supp = find_support_greedy( 0, {} );
         if ( supp )
         {
           return *supp;
         }
     }
-    return std::nullopt;
+
+  //  auto supp = find_support_greedy( );
+  //  if ( supp )
+  //  {
+  //    return *supp;
+  //  }
+
+  //  for( int iter{0}; iter<4; iter++ )
+  //  {
+  //      auto supp = find_support_greedy( );
+  //      if ( supp )
+  //      {
+  //        return *supp;
+  //      }
+  //  }
+  //  return std::nullopt;
 
 
-  //      auto supp = find_support_greedy( 0 );
+  //      auto supp = find_support_greedy_fast();
   //      if ( supp )
   //      {
   //        return *supp;
@@ -1283,13 +1401,15 @@ private:
   //    }
   //    else
   //    {
-  //      auto supp = find_support_greedy( 0 );
-  //      if ( supp )
-  //      {
-  //        return *supp;
-  //      }
-  //    }
-  //    return std::nullopt;
+  // /      for( int i {0}; i<10;++i )
+  // /      {
+  // /      auto supp = find_support_greedy();
+  // /      if ( supp )
+  // /      {
+  // /        return *supp;
+  // /      }
+  // /      }
+  // /    return std::nullopt;
   //  }
   //  if ( static_params::support_selection == support_selection_t::NGREEDY )
   //  {
@@ -1303,16 +1423,16 @@ private:
   //    }
   //    else
   //    {
-    for( int iter{0}; iter<4; iter++ )
-    {
-        auto supp = find_support_ngreedy( 0 );
-        if ( supp )
-        {
-          return *supp;
-        }
-    }
+    //for( int iter{0}; iter<4; iter++ )
+//  {
+//      auto supp = find_support_senu( );
+//      if ( supp )
+//      {
+//        return *supp;
+//      }
+//  }
   //    }
-  ////    return std::nullopt;
+      return std::nullopt;
   //  }
   //  if ( static_params::support_selection == support_selection_t::PIVOT )
   //  {
@@ -1332,7 +1452,7 @@ private:
   }
 
   /*! \brief find support greedy */
-  std::optional<std::vector<uint32_t>> find_support_greedy( uint32_t start = 0, std::vector<uint32_t> supp0 = {} )
+  std::optional<std::vector<uint32_t>> find_support_greedy( uint32_t start = 0, std::vector<uint32_t> supp0 = {}, uint32_t nDivs=0 )
   {
     uint32_t cost, best_cost;
     std::vector<uint32_t> best_candidates;
@@ -1348,10 +1468,24 @@ private:
     /* add recomputation of the support */
     while ( !_uSPFD.is_covered() && supp.size() < static_params::max_support_size )
     {
+      uint32_t BEG=start;
+      uint32_t END=divisors.size();
+    //  if( nDivs > nZeros && supp.size() == 0 )
+    //  {
+    //    BEG = nZeros;
+    //    END = nDivs;
+    //  }
+    //  else
+    //  {
+    //    BEG = start;
+    //    END = nZeros;
+    //  }
+
+
       best_cost = std::numeric_limits<uint32_t>::max();
       if ( _uSPFD.is_saturated() )
         break;
-      for ( uint32_t iCnd{ start }; iCnd < divisors.size(); ++iCnd )
+      for ( uint32_t iCnd{ BEG }; iCnd < END; ++iCnd )
       {
         cost = _uSPFD.evaluate( get_div( iCnd ) );
         if ( cost < best_cost )
@@ -1384,17 +1518,291 @@ private:
  /*! \brief find support greedy */
  
   /*! \brief find support greedy */
-  std::optional<std::vector<uint32_t>> find_support_greedy_fast( uint32_t start = 0, std::vector<uint32_t> supp0 = {} )
+  std::optional<std::vector<uint32_t>> find_support_senu( )
+  {
+    std::vector<uint32_t> DxL { 2,2,2 };
+    _uSPFD.reset();
+
+    // level 0
+    std::vector<scored_div> sdivs0;
+    for( uint32_t v{0}; v<divisors.size(); ++v )
+    {
+      sdivs0.emplace_back( v, _uSPFD.evaluate( get_div( v ) ) );
+    }
+    std::sort( sdivs0.begin(), sdivs0.end() );
+
+
+    for( int i0{0}; i0<DxL[0]; i0++ )
+    {
+      //level 1
+      _uSPFD.reset();
+      _uSPFD.update( get_div( sdivs0[i0].div  ) );
+      // level 0
+      std::vector<scored_div> sdivs1;
+      for( uint32_t v{0}; v<divisors.size(); ++v )
+      {
+        sdivs1.emplace_back( v, _uSPFD.evaluate( get_div( v ) ) );
+      }
+      std::sort( sdivs1.begin(), sdivs1.end() );
+
+      for( int i1{0}; i1<DxL[1]; i1++ )
+      {
+        //level 1
+        _uSPFD.reset();
+        _uSPFD.update( get_div( sdivs0[i0].div ) );
+        _uSPFD.update( get_div( sdivs1[i1].div ) );
+        if( _uSPFD.is_covered() )// and not previously chosen!
+        {
+          std::vector<uint32_t> supp { sdivs0[i0].div, sdivs1[i1].div };
+          std::sort( supp.begin(), supp.end() );
+          if( _supset.find( supp )==_supset.end() )
+          {
+            _supset.insert( supp );
+            return supp;
+          }
+        }
+        std::vector<scored_div> sdivs2;
+        for( uint32_t v{0}; v<divisors.size(); ++v )
+        {
+          sdivs2.emplace_back( v, _uSPFD.evaluate( get_div( v ) ) );
+        }
+        std::sort( sdivs2.begin(), sdivs2.end() );
+
+        for( int i2{0}; i2<DxL[2]; i2++ )
+        {
+          //level 1
+          _uSPFD.reset();
+          _uSPFD.update( get_div( sdivs0[i0].div  ) );
+          _uSPFD.update( get_div( sdivs1[i1].div  ) );
+          _uSPFD.update( get_div( sdivs2[i2].div  ) );
+
+          if( _uSPFD.is_covered() )// and not previously chosen!
+          {
+            std::vector<uint32_t> supp { sdivs0[i0].div, sdivs1[i1].div, sdivs2[i2].div };
+            std::sort( supp.begin(), supp.end() );
+            if( _supset.find( supp )==_supset.end() )
+            {
+              _supset.insert( supp );
+              return supp;
+            }
+          }
+          for( uint32_t v{0}; v<divisors.size(); ++v )
+          {
+            if (_uSPFD.evaluate( get_div( v ) ) == 0 )
+            {
+              std::vector<uint32_t> supp { sdivs0[i0].div, sdivs1[i1].div, sdivs2[i2].div, v };
+              std::sort( supp.begin(), supp.end() );
+              if( _supset.find( supp )==_supset.end() )
+              {
+                _supset.insert( supp );
+                return supp;
+              }
+            }
+          }
+        }
+      }
+    }
+    return std::nullopt;
+
+
+//    for( uint32_t v{0}; v<divisors.size(); ++v )
+//    {
+//      std::cout << sdivs0[v].div << "," << sdivs0[v].score << " ";
+//    }
+//    std::cout << std::endl;
+//    return std::nullopt;
+
+//    for( int l{0}; l<nPerLev.size(); ++l ) //for each level
+//    {
+//      scored_divs.emplace_back( divisors.size(), _uSPFD.evaluate( get_div( divisors.size() - 1 ) ) );
+//      for( int d{0}; d<nPerLev[l]; ++d ) //go through the number of elements per level
+//      {
+//        // $$$
+//      }
+//    }
+//    while ( !_uSPFD.is_covered() && supp.size() < sizes.size() )
+//    {
+//      if ( _uSPFD.is_saturated() )
+//        break;
+//
+//
+//      for ( uint32_t iCnd{ BEG }; iCnd < END; ++iCnd )
+//      {
+//        cost = _uSPFD.evaluate( get_div( iCnd ) );
+//        if ( cost < best_cost )
+//        {
+//          best_cost = cost;
+//          best_candidates = { iCnd };
+//        }
+//        else if ( cost == best_cost )
+//        {
+//          best_candidates.push_back( iCnd );
+//        }
+//      }
+//      if ( best_candidates.size() == 0 )
+//        break;
+//
+//      std::uniform_int_distribution<> distrib( 0, best_candidates.size() - 1 );
+//      int idx = distrib( RIGRNG );
+//      supp.push_back( best_candidates[idx] );
+//      _uSPFD.update( get_div( best_candidates[idx] ) );
+//    }
+//
+//    if ( _uSPFD.is_covered() && supp.size() <= static_params::max_support_size )
+//    {
+//      std::sort( supp.begin(), supp.end() );
+//
+//      return supp;
+//    }
+//    return std::nullopt;
+  }
+
+
+//  std::optional<std::vector<uint32_t>> find_support_senu( )
+//  {
+//    std::vector<uint32_t> DxL { 2,2,2 };
+//    _uSPFD.reset();
+//
+//    // level 0
+//    std::vector<scored_div> sdivs0;
+//    for( uint32_t v{0}; v<divisors.size(); ++v )
+//    {
+//      sdivs0.emplace_back( v, _uSPFD.evaluate( get_div( v ) ) );
+//    }
+//    std::sort( sdivs0.begin(), sdivs0.end() );
+//
+//    for( int i0{0}; i0<DxL[0]; i0++ )
+//    {
+//      //level 1
+//      _uSPFD.reset();
+//      _uSPFD.update( get_div( sdivs0[i0].div  ) );
+//      // level 0
+//      std::vector<scored_div> sdivs1;
+//      for( uint32_t v{0}; v<divisors.size(); ++v )
+//      {
+//        sdivs1.emplace_back( v, _uSPFD.evaluate( get_div( v ) ) );
+//      }
+//      std::sort( sdivs1.begin(), sdivs1.end() );
+//
+//      for( int i1{0}; i1<DxL[1]; i1++ )
+//      {
+//        //level 1
+//        _uSPFD.reset();
+//        _uSPFD.update( get_div( sdivs0[i0].div ) );
+//        _uSPFD.update( get_div( sdivs1[i1].div ) );
+//        if( _uSPFD.is_covered() )// and not previously chosen!
+//        {
+//          std::vector<uint32_t> supp { sdivs0[i0].div, sdivs1[i1].div };
+//          std::sort( supp.begin(), supp.end() );
+//          if( _supset.find( supp )==_supset.end() )
+//          {
+//            _supset.insert( supp );
+//            return supp;
+//          }
+//        }
+//        std::vector<scored_div> sdivs2;
+//        for( uint32_t v{0}; v<divisors.size(); ++v )
+//        {
+//          sdivs2.emplace_back( v, _uSPFD.evaluate( get_div( v ) ) );
+//        }
+//        std::sort( sdivs2.begin(), sdivs2.end() );
+//
+//        for( int i2{0}; i2<DxL[2]; i2++ )
+//        {
+//          //level 1
+//          _uSPFD.reset();
+//          _uSPFD.update( get_div( sdivs0[i0].div  ) );
+//          _uSPFD.update( get_div( sdivs1[i1].div  ) );
+//          _uSPFD.update( get_div( sdivs2[i2].div  ) );
+//
+//          if( _uSPFD.is_covered() )// and not previously chosen!
+//          {
+//            std::vector<uint32_t> supp { sdivs0[i0].div, sdivs1[i1].div, sdivs2[i2].div };
+//            std::sort( supp.begin(), supp.end() );
+//            if( _supset.find( supp )==_supset.end() )
+//            {
+//              _supset.insert( supp );
+//              return supp;
+//            }
+//          }
+//          for( uint32_t v{0}; v<divisors.size(); ++v )
+//          {
+//            if (_uSPFD.evaluate( get_div( v ) ) == 0 )
+//            {
+//              std::vector<uint32_t> supp { sdivs0[i0].div, sdivs1[i1].div, sdivs2[i2].div, v };
+//              std::sort( supp.begin(), supp.end() );
+//              if( _supset.find( supp )==_supset.end() )
+//              {
+//                _supset.insert( supp );
+//                return supp;
+//              }
+//            }
+//          }
+//        }
+//      }
+//    }
+//    return std::nullopt;
+//
+//
+////    for( uint32_t v{0}; v<divisors.size(); ++v )
+////    {
+////      std::cout << sdivs0[v].div << "," << sdivs0[v].score << " ";
+////    }
+//    std::cout << std::endl;
+//    return std::nullopt;
+
+//    for( int l{0}; l<nPerLev.size(); ++l ) //for each level
+//    {
+//      scored_divs.emplace_back( divisors.size(), _uSPFD.evaluate( get_div( divisors.size() - 1 ) ) );
+//      for( int d{0}; d<nPerLev[l]; ++d ) //go through the number of elements per level
+//      {
+//        // $$$
+//      }
+//    }
+//    while ( !_uSPFD.is_covered() && supp.size() < sizes.size() )
+//    {
+//      if ( _uSPFD.is_saturated() )
+//        break;
+//
+//
+//      for ( uint32_t iCnd{ BEG }; iCnd < END; ++iCnd )
+//      {
+//        cost = _uSPFD.evaluate( get_div( iCnd ) );
+//        if ( cost < best_cost )
+//        {
+//          best_cost = cost;
+//          best_candidates = { iCnd };
+//        }
+//        else if ( cost == best_cost )
+//        {
+//          best_candidates.push_back( iCnd );
+//        }
+//      }
+//      if ( best_candidates.size() == 0 )
+//        break;
+//
+//      std::uniform_int_distribution<> distrib( 0, best_candidates.size() - 1 );
+//      int idx = distrib( RIGRNG );
+//      supp.push_back( best_candidates[idx] );
+//      _uSPFD.update( get_div( best_candidates[idx] ) );
+//    }
+//
+//    if ( _uSPFD.is_covered() && supp.size() <= static_params::max_support_size )
+//    {
+//      std::sort( supp.begin(), supp.end() );
+//
+//      return supp;
+//    }
+//    return std::nullopt;
+//  }
+
+  /*! \brief find support greedy */
+  std::optional<std::vector<uint32_t>> find_support_greedy_fast()
   {
     uint32_t cost, best_cost, best;
     std::vector<uint32_t> supp;
 
     _uSPFD.reset();
-    for ( auto x : supp0 )
-    {
-      _uSPFD.update( get_div( x ) );
-      supp.push_back( x );
-    }
 
     /* add recomputation of the support */
     while ( !_uSPFD.is_covered() && supp.size() < static_params::max_support_size )
@@ -1402,19 +1810,20 @@ private:
       best_cost = std::numeric_limits<uint32_t>::max();
       if ( _uSPFD.is_saturated() )
         break;
-      for ( uint32_t iCnd{ start }; iCnd < divisors.size(); ++iCnd )
+      for ( uint32_t iCnd{ 0 }; iCnd < scored_divs.size(); ++iCnd )
       {
-        cost = _uSPFD.evaluate( get_div( iCnd ) );
+        cost = _uSPFD.evaluate( get_div( scored_divs[iCnd].div ) );
         if ( cost < best_cost )
         {
           best_cost = cost;
-          best = iCnd ;
+          best = scored_divs[iCnd].div ;
         }
       }
-
+      //printf("best=%d\n",best);
       supp.push_back( best );
       _uSPFD.update( get_div( best) );
     }
+    //printf("done\n");
 
     if ( _uSPFD.is_covered() && supp.size() <= static_params::max_support_size )
     {
@@ -1755,6 +2164,7 @@ private:
   support_selector<TT, NTK, static_params::max_support_size> _supportor;
   std::vector<uint32_t> _fsupp;
   std::set<std::vector<uint32_t>> _supset;
+  uint32_t nZeros;
 
 
   uint32_t _sref{0};

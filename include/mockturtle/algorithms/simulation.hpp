@@ -195,6 +195,7 @@ public:
       patterns.emplace_back();
       kitty::create_random( patterns.back(), seed + i );
     }
+
   }
 
   /* copy constructors */

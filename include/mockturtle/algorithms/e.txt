@@ -1,0 +1,136 @@
+  void collect_divisors_rec( node const& n )
+  {
+    // skip visited nodes 
+    if ( ntk.visited( n ) == ntk.trav_id() )
+    {
+      return;
+    }
+    ntk.set_visited( n, ntk.trav_id() );
+
+    ntk.foreach_fanin( n, [&]( const auto& f ) {
+      collect_divisors_rec( ntk.get_node( f ) );
+    } );
+
+    // collect the internal nodes 
+    if ( ntk.value( n ) == 0 && n != 0 ) // ntk.fanout_size( n ) 
+    {
+      _divs.emplace_back( n );
+    }
+  }
+
+  bool collect_divisors( std::vector<node> & divs, std::vector<node> const& leaves, std::vector<node> const& mffc, node const& root )
+  {
+    auto max_delay = std::numeric_limits<float>::max();
+    if ( ps.preserve_depth )
+    {
+      max_delay = _required[root];
+    }
+
+    // add the leaves of the cuts to the divisors 
+    divs.clear();
+
+    ntk.incr_trav_id();
+    for ( const auto& l : leaves )
+    {
+      divs.emplace_back( l );
+      ntk.set_visited( l, ntk.trav_id() );
+    }
+
+    // mark nodes in the MFFC 
+    for ( const auto& t : mffc )
+    {
+      ntk.set_value( t, 1 );
+    }
+
+    // collect the cone (without MFFC) 
+    collect_divisors_rec( root );
+
+    // unmark the current MFFC 
+    for ( const auto& t : _mffc )
+    {
+      ntk.set_value( t, 0 );
+    }
+
+    /// check if the number of divisors is not exceeded 
+    if ( _divs.size() + _mffc.size() - _leaves.size() > ps.max_divisors - ps.max_pis )
+    {
+      return false;
+    }
+    uint32_t limit = ps.max_divisors - ps.max_pis - _mffc.size() + _leaves.size();
+
+    // explore the fanouts, which are not in the MFFC 
+    bool quit = false;
+    for ( auto i = 0u; i < _divs.size(); ++i )
+    {
+      auto const d = _divs.at( i );
+
+      if ( ntk.fanout_size( d ) > ps.skip_fanout_limit_for_divisors )
+      {
+        continue;
+      }
+      if ( _divs.size() >= limit )
+      {
+        break;
+      }
+
+      // if the fanout has all fanins in the set, add it 
+      ntk.foreach_fanout( d, [&]( node<Ntk> const& p ) {
+        if ( ntk.visited( p ) == ntk.trav_id() || ntk.level( p ) > max_depth )
+        {
+          return true; // next fanout 
+        }
+
+        bool all_fanins_visited = true;
+        ntk.foreach_fanin( p, [&]( const auto& g ) {
+          if ( ntk.visited( ntk.get_node( g ) ) != ntk.trav_id() )
+          {
+            all_fanins_visited = false;
+            return false; // terminate fanin-loop
+          }
+          return true; // next fanin
+        } );
+
+        if ( !all_fanins_visited )
+          return true; // next fanout
+
+        bool has_root_as_child = false;
+        ntk.foreach_fanin( p, [&]( const auto& g ) {
+          if ( ntk.get_node( g ) == root )
+          {
+            has_root_as_child = true;
+            return false; // terminate fanin-loop
+          }
+          return true; // next fanin
+        } );
+
+        if ( has_root_as_child )
+        {
+          return true; // next fanout
+        }
+
+        _divs.emplace_back( p );
+        ntk.set_visited( p, ntk.trav_id() );
+
+        // quit computing divisors if there are too many of them
+        if ( _divs.size() >= limit )
+        {
+          quit = true;
+          return false; // terminate fanout-loop
+        }
+
+        return true; // next fanout
+      } );
+
+      if ( quit )
+      {
+        break;
+      }
+    }
+
+    // note: different from the previous version, now we do not add MFFC nodes into _divs 
+    assert( root == _mffc.at( _mffc.size() - 1u ) );
+    // note: this assertion makes sure window_simulator does not go out of bounds 
+    assert( _divs.size() + _mffc.size() - _leaves.size() <= ps.max_divisors - ps.max_pis );
+
+    return true;
+  }

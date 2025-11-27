@@ -936,6 +936,11 @@ public:
     return ( _storage->nodes[n].data[0].h1 >> 31 ) & 1;
   }
 
+  bool is_function( node const& n ) const
+  {
+    return false;
+  }
+
   void substitute_node( node const& old_node, signal const& new_signal )
   {
     std::unordered_map<node, signal> old_to_new;

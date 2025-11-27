@@ -333,7 +333,8 @@ int main()
         db2_node_to_idx[scg.get_constant(true)] = db2_areas.size();
         db2_areas.push_back( g.area );
         db2_tts.push_back( ttcand );
-        existing[tt0]=(scg.get_constant(true));
+        
+        existing[ttcand]=(scg.get_constant(true));
       }
 
     }

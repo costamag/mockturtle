@@ -212,6 +212,11 @@ public:
     return n == 0;
   }
 
+  bool is_function( node const& n ) const
+  {
+    return false;
+  }
+
   bool is_ci( node const& n ) const
   {
     return _storage->nodes[n].data[1].h2 == 1;

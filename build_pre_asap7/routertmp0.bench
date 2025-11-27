@@ -1,0 +1,140 @@
+INPUT(n1)
+INPUT(n2)
+INPUT(n3)
+INPUT(n4)
+INPUT(n5)
+INPUT(n6)
+INPUT(n7)
+INPUT(n8)
+INPUT(n9)
+INPUT(n10)
+INPUT(n11)
+INPUT(n12)
+INPUT(n13)
+INPUT(n14)
+INPUT(n15)
+INPUT(n16)
+INPUT(n17)
+INPUT(n18)
+INPUT(n19)
+INPUT(n20)
+INPUT(n21)
+INPUT(n22)
+INPUT(n23)
+INPUT(n24)
+INPUT(n25)
+INPUT(n26)
+INPUT(n27)
+INPUT(n28)
+INPUT(n29)
+INPUT(n30)
+INPUT(n31)
+INPUT(n32)
+INPUT(n33)
+INPUT(n34)
+INPUT(n35)
+INPUT(n36)
+INPUT(n37)
+INPUT(n38)
+INPUT(n39)
+INPUT(n40)
+INPUT(n41)
+INPUT(n42)
+INPUT(n43)
+INPUT(n44)
+INPUT(n45)
+INPUT(n46)
+INPUT(n47)
+INPUT(n48)
+INPUT(n49)
+INPUT(n50)
+INPUT(n51)
+INPUT(n52)
+INPUT(n53)
+INPUT(n54)
+INPUT(n55)
+INPUT(n56)
+INPUT(n57)
+INPUT(n58)
+INPUT(n59)
+INPUT(n60)
+OUTPUT(po0)
+OUTPUT(po1)
+OUTPUT(po2)
+OUTPUT(po3)
+OUTPUT(po4)
+OUTPUT(po5)
+OUTPUT(po6)
+OUTPUT(po7)
+OUTPUT(po8)
+OUTPUT(po9)
+OUTPUT(po10)
+OUTPUT(po11)
+OUTPUT(po12)
+OUTPUT(po13)
+OUTPUT(po14)
+OUTPUT(po15)
+OUTPUT(po16)
+OUTPUT(po17)
+OUTPUT(po18)
+OUTPUT(po19)
+OUTPUT(po20)
+OUTPUT(po21)
+OUTPUT(po22)
+OUTPUT(po23)
+OUTPUT(po24)
+OUTPUT(po25)
+OUTPUT(po26)
+OUTPUT(po27)
+OUTPUT(po28)
+OUTPUT(po29)
+n0 = gnd
+n61 = LUT 0xa8a8a8a0a8a0a8a0 (n21, n18, n19, n17, n16, n15)
+n62 = LUT 0x8888888088808880 (n25, n24, n23, n22, n20, n61)
+n63 = LUT 0x8080800080008000 (n28, n30, n29, n27, n26, n62)
+n64 = LUT 0x0000000000000001 (n14, n13, n19, n17, n27, n23)
+n65 = LUT 0x8aaaaaaaaaaaaaae (n8, n10, n4, n9, n5, n2)
+n66 = LUT 0xfffe7ffffffeffff (n3, n8, n6, n7, n65, n1)
+n67 = LUT 0xffffffffffffff7f (n63, n64, n12, n11, n22, n66)
+n68 = LUT 0xa8a8a8a0a8a0a8a0 (n50, n48, n49, n47, n45, n46)
+n69 = LUT 0x8888888088808880 (n56, n54, n52, n53, n51, n68)
+n70 = LUT 0x8080800080008000 (n58, n60, n59, n57, n55, n69)
+n71 = LUT 0x0000000000000001 (n43, n44, n47, n49, n53, n52)
+n72 = LUT 0x0000000000000001 (n38, n36, n39, n37, n35, n33)
+n73 = LUT 0x00ff02ff02ff02ff (n72, n34, n32, n40, n1, n31)
+n74 = LUT 0x02022202 (n71, n57, n42, n73, n41)
+n75 = LUT 0x8000000000000000 (n37, n38, n33, n32, n35, n34)
+n76 = LUT 0x1d1f1f1f1f1f1f1f (n31, n1, n40, n39, n75, n36)
+n77 = LUT 0x5f1b5f1b1b1b5f1b (n66, n70, n10, n74, n42, n76)
+n78 = LUT 0x0f2f0f2f2f2f0f2f (n64, n22, n63, n12, n77, n11)
+n79 = LUT 0x04 (n67, n70, n74)
+po0 = LUT 0x2 (n67)
+po1 = LUT 0x2 (n78)
+po2 = LUT 0x2 (n79)
+po3 = gnd
+po4 = gnd
+po5 = gnd
+po6 = gnd
+po7 = gnd
+po8 = gnd
+po9 = gnd
+po10 = gnd
+po11 = gnd
+po12 = gnd
+po13 = gnd
+po14 = gnd
+po15 = gnd
+po16 = gnd
+po17 = gnd
+po18 = gnd
+po19 = gnd
+po20 = gnd
+po21 = gnd
+po22 = gnd
+po23 = gnd
+po24 = gnd
+po25 = gnd
+po26 = gnd
+po27 = gnd
+po28 = gnd
+po29 = gnd

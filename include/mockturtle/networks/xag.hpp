@@ -224,6 +224,11 @@ public:
     return true;
   }
 
+  bool is_function( node const& n ) const
+  {
+    return false;
+  }
+
   bool is_constant( node const& n ) const
   {
     return n == 0;

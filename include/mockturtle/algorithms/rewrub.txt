@@ -1,0 +1,1567 @@
+/* mockturtle: C++ logic network library
+ * Copyright (C) 2018-2023  EPFL
+ *
+ * Permission is hereby granted, free of charge, to any person
+ * obtaining a copy of this software and associated documentation
+ * files (the "Software"), to deal in the Software without
+ * restriction, including without limitation the rights to use,
+ * copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following
+ * conditions:
+ *
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+ * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+ * HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
+ */
+
+/*!
+  \file rewrub.hpp
+  \brief Inplace rewrub
+
+  \author Alessandro Tempia Calvino
+*/
+
+#pragma once
+
+#include "../traits.hpp"
+#include "../utils/cost_functions.hpp"
+#include "../utils/node_map.hpp"
+#include "../utils/stopwatch.hpp"
+#include "../views/color_view.hpp"
+#include "../views/depth_view.hpp"
+#include "../views/fanout_view.hpp"
+#include "../views/window_view.hpp"
+#include "cleanup.hpp"
+#include "cut_enumeration.hpp"
+#include "cut_enumeration/rewrite_cut.hpp"
+#include "detail/resub_utils.hpp"
+#include "reconv_cut.hpp"
+#include "simulation.hpp"
+
+#include <fmt/format.h>
+#include <kitty/dynamic_truth_table.hpp>
+#include <kitty/npn.hpp>
+#include <kitty/operations.hpp>
+#include <kitty/static_truth_table.hpp>
+
+namespace mockturtle
+{
+
+std::mt19937 RIGRNG(5);
+
+
+/*! \brief Parameters for Rewrite.
+ *
+ * The data structure `rewrub_params` holds configurable parameters with
+ * default arguments for `rewrub`.
+ */
+struct rewrub_params
+{
+  rewrub_params()
+  {
+    /* 0 < Cut limit < 16 */
+    cut_enumeration_ps.cut_limit = 8;
+    cut_enumeration_ps.minimize_truth_table = true;
+  }
+
+  /*! \brief Structural cut enumeration parameters. */
+  cut_enumeration_params cut_enumeration_ps{};
+
+  /*! \brief If true, candidates are only accepted if they do not increase logic depth. */
+  bool preserve_depth{ false };
+
+  /*! \brief Allow rewrub with multiple structures */
+  bool allow_multiple_structures{ true };
+
+  /*! \brief Allow zero-gain substitutions */
+  bool allow_zero_gain{ false };
+
+  /*! \brief Use satisfiability don't cares for optimization. */
+  bool use_dont_cares{ false };
+
+  /*! \brief Window size for don't cares calculation. */
+  uint32_t window_size{ 8u };
+
+  uint32_t max_trials{1};
+  uint32_t max_inserts{20};
+
+  /*! For functional cut selection */
+  uint32_t max_pis{8u};
+
+  /*! \brief Maximum fanout of a node to be considered as root. */
+  uint32_t skip_fanout_limit_for_roots{ 1000 };
+
+  /*! \brief Maximum fanout of a node to be considered as divisor. */
+  uint32_t skip_fanout_limit_for_divisors{ 100 };
+
+  /*! \brief Maximum number of divisors to consider. */
+  uint32_t max_divisors{ 150 };
+
+  /*! \brief Be verbose. */
+  bool verbose{ false };
+
+};
+
+/*! \brief Statistics for rewrub.
+ *
+ * The data structure `rewrub_stats` provides data collected by running
+ * `rewrub`.
+ */
+struct rewrub_stats
+{
+  /*! \brief Total runtime. */
+  stopwatch<>::duration time_total{ 0 };
+
+  /*! \brief Simulation runtime. */
+  stopwatch<>::duration time_sim{ 0 };
+
+  /*! \brief Simulation runtime. */
+  stopwatch<>::duration time_patgen {0};
+
+  /*! \brief Simulation runtime. */
+  stopwatch<>::duration time_divs{ 0 };
+
+  stopwatch<>::duration time_supp{ 0 };
+
+  /*! \brief Expected gain. */
+  uint32_t estimated_gain{ 0 };
+
+  /*! \brief Candidates */
+  uint32_t candidates{ 0 };
+
+  /*! \brief number of patterns */
+  uint32_t num_pats{ 0 };
+
+  /*! \brief number of resynthesis attempts */
+  uint32_t num_resyn{ 0 };
+
+  void report() const
+  {
+    std::cout << fmt::format( "[i] total time       = {:>5.2f} secs\n", to_seconds( time_total ) );
+  }
+};
+
+namespace detail
+{
+
+struct rewrub_collector_stats
+{
+  /*! \brief Total number of leaves. */
+  uint64_t num_total_leaves{ 0 };
+
+  /*! \brief Accumulated runtime for cut computation. */
+  stopwatch<>::duration time_cuts{ 0 };
+
+  /*! \brief Accumulated runtime for mffc computation. */
+  stopwatch<>::duration time_mffc{ 0 };
+
+  /*! \brief Accumulated runtime for divisor computation. */
+  stopwatch<>::duration time_divs{ 0 };
+
+  stopwatch<>::duration time_rand{ 0 };
+
+  stopwatch<>::duration time_supp{ 0 };
+
+  void report() const
+  {
+    // clang-format off
+    fmt::print( "[i] <DivCollector: rils_divisor_collector>\n" );
+    fmt::print( "[i]     #leaves = {:6d}\n", num_total_leaves );
+    fmt::print( "[i]     ======== Runtime ========\n" );
+    fmt::print( "[i]     reconv. cut : {:>5.2f} secs\n", to_seconds( time_cuts ) );
+    fmt::print( "[i]     MFFC        : {:>5.2f} secs\n", to_seconds( time_mffc ) );
+    fmt::print( "[i]     divs collect: {:>5.2f} secs\n", to_seconds( time_divs ) );
+    fmt::print( "[i]     divs collect: {:>5.2f} secs\n", to_seconds( time_rand ) );
+    fmt::print( "[i]     =========================\n\n" );
+    // clang-format on
+  }
+};
+
+template<class Ntk, class MffcMgr = detail::node_mffc_inside<Ntk>, typename MffcRes = uint32_t, typename cut_comp = detail::reconvergence_driven_cut_impl<Ntk>>
+class rewrub_divisor_collector
+{
+public:
+  using stats = rewrub_collector_stats;
+  using mffc_result_t = MffcRes;
+  using node = typename Ntk::node;
+
+  using cut_comp_parameters_type = typename cut_comp::parameters_type;
+  using cut_comp_statistics_type = typename cut_comp::statistics_type;
+
+public:
+  explicit rewrub_divisor_collector( Ntk const& ntk, rewrub_params const& ps, stats& st )
+      : ntk( ntk ), ps( ps ), st( st ), cuts( ntk, cut_comp_parameters_type{ ps.max_pis }, cuts_st )
+  {
+  }
+
+  bool run( node const& n, mffc_result_t& potential_gain )
+  {
+    /* skip nodes with many fanouts */
+    if ( ntk.fanout_size( n ) > ps.skip_fanout_limit_for_roots )
+    {
+      return false;
+    }
+
+    /* compute a reconvergence-driven cut */
+    leaves = call_with_stopwatch( st.time_cuts, [&]() {
+      return cuts.run( { n } ).first;
+    } );
+    st.num_total_leaves += leaves.size();
+
+    /* collect the MFFC */
+    MffcMgr mffc_mgr( ntk );
+    potential_gain = call_with_stopwatch( st.time_mffc, [&]() {
+      return mffc_mgr.run( n, leaves, mffc );
+    } );
+
+    /* collect the divisor nodes in the cut */
+    bool div_comp_success = call_with_stopwatch( st.time_divs, [&]() {
+      return collect_divisors( n );
+    } );
+
+    if ( !div_comp_success )
+    {
+      return false;
+    }
+
+    return true;
+  }
+
+private:
+  void collect_divisors_rec( node const& n )
+  {
+    /* skip visited nodes */
+    if ( ntk.visited( n ) == ntk.trav_id() )
+    {
+      return;
+    }
+    ntk.set_visited( n, ntk.trav_id() );
+
+    ntk.foreach_fanin( n, [&]( const auto& f ) {
+      collect_divisors_rec( ntk.get_node( f ) );
+    } );
+
+    /* collect the internal nodes */
+    if ( ntk.value( n ) == 0 && n != 0 ) /* ntk.fanout_size( n ) */
+    {
+      divs.emplace_back( n );
+    }
+  }
+
+  bool collect_divisors( node const& root )
+  {
+    auto max_depth = std::numeric_limits<uint32_t>::max();
+    if ( ps.preserve_depth )
+    {
+      max_depth = ntk.level( root ) - 1;
+    }
+    /* add the leaves of the cuts to the divisors */
+    divs.clear();
+
+    ntk.incr_trav_id();
+    for ( const auto& l : leaves )
+    {
+      divs.emplace_back( l );
+      ntk.set_visited( l, ntk.trav_id() );
+    }
+
+    /* mark nodes in the MFFC */
+    for ( const auto& t : mffc )
+    {
+      ntk.set_value( t, 1 );
+    }
+
+    /* collect the cone (without MFFC) */
+    collect_divisors_rec( root );
+
+    /* unmark the current MFFC */
+    for ( const auto& t : mffc )
+    {
+      ntk.set_value( t, 0 );
+    }
+
+    /* check if the number of divisors is not exceeded */
+    if ( divs.size() + mffc.size() - leaves.size() > ps.max_divisors - ps.max_pis )
+    {
+      return false;
+    }
+    uint32_t limit = ps.max_divisors - ps.max_pis - mffc.size() + leaves.size();
+
+    /* explore the fanouts, which are not in the MFFC */
+    bool quit = false;
+    for ( auto i = 0u; i < divs.size(); ++i )
+    {
+      auto const d = divs.at( i );
+
+      if ( ntk.fanout_size( d ) > ps.skip_fanout_limit_for_divisors )
+      {
+        continue;
+      }
+      if ( divs.size() >= limit )
+      {
+        break;
+      }
+
+      /* if the fanout has all fanins in the set, add it */
+      ntk.foreach_fanout( d, [&]( node const& p ) {
+        if ( ntk.visited( p ) == ntk.trav_id() || ntk.level( p ) > max_depth )
+        {
+          return true; /* next fanout */
+        }
+
+        bool all_fanins_visited = true;
+        ntk.foreach_fanin( p, [&]( const auto& g ) {
+          if ( ntk.visited( ntk.get_node( g ) ) != ntk.trav_id() )
+          {
+            all_fanins_visited = false;
+            return false; /* terminate fanin-loop */
+          }
+          return true; /* next fanin */
+        } );
+
+        if ( !all_fanins_visited )
+          return true; /* next fanout */
+
+        bool has_root_as_child = false;
+        ntk.foreach_fanin( p, [&]( const auto& g ) {
+          if ( ntk.get_node( g ) == root )
+          {
+            has_root_as_child = true;
+            return false; /* terminate fanin-loop */
+          }
+          return true; /* next fanin */
+        } );
+
+        if ( has_root_as_child )
+        {
+          return true; /* next fanout */
+        }
+
+        divs.emplace_back( p );
+        ntk.set_visited( p, ntk.trav_id() );
+
+        /* quit computing divisors if there are too many of them */
+        if ( divs.size() >= limit )
+        {
+          quit = true;
+          return false; /* terminate fanout-loop */
+        }
+
+        return true; /* next fanout */
+      } );
+
+      if ( quit )
+      {
+        break;
+      }
+    }
+
+    /* note: different from the previous version, now we do not add MFFC nodes into divs */
+    assert( root == mffc.at( mffc.size() - 1u ) );
+    /* note: this assertion makes sure window_simulator does not go out of bounds */
+    assert( divs.size() + mffc.size() - leaves.size() <= ps.max_divisors - ps.max_pis );
+
+    return true;
+  }
+
+private:
+  Ntk const& ntk;
+  rewrub_params ps;
+  stats& st;
+
+  cut_comp cuts;
+  cut_comp_statistics_type cuts_st;
+
+public:
+  std::vector<node> leaves;
+  std::vector<node> divs;
+  std::vector<node> mffc;
+};
+
+/*! \brief Prepare the three public data members `leaves`, `divs` and `mffc`
+ * to be ready for usage.
+ *
+ * `leaves`: sufficient support for all divisors
+ * `divs`: divisor nodes that can be used for resubstitution
+ * `mffc`: MFFC nodes which are needed to do simulation from
+ * `leaves`, through `divs` and `mffc` until the root node,
+ * but should be excluded from resubstitution.
+ * The last element of `mffc` is always the root node.
+ *
+ * `divs` and `mffc` are in topological order.
+ *
+ * \param MffcMgr Manager class to compute the potential gain if a
+ * resubstitution exists (number of MFFC nodes when the cost function is circuit size).
+ * \param MffcRes Typename of the return value of `MffcMgr`.
+ * \param cut_comp Manager class to compute reconvergence-driven cuts.
+ */
+
+template<class Ntk, class Library, class NodeCostFn>
+class rewrub_impl
+{  
+  /* Structural exploration */
+  static constexpr uint32_t num_vars = 4u;
+  static constexpr uint32_t max_window_size = 8u;
+  using network_cuts_t = dynamic_network_cuts<Ntk, num_vars, true, cut_enumeration_rewrite_cut>;
+  using cut_manager_t = detail::dynamic_cut_enumeration_impl<Ntk, num_vars, true, cut_enumeration_rewrite_cut>;
+  using cut_t = typename network_cuts_t::cut_t;
+  using node_data = typename Ntk::storage::element_type::node_type;
+  /* Functional exploration */
+  static constexpr uint32_t nVarsS = 10u;
+  static constexpr uint32_t nVarsB = 6u;
+  using TtS = kitty::static_truth_table<nVarsS>;
+  using TtB = kitty::static_truth_table<nVarsB>;
+  using DivCollector = detail::rewrub_divisor_collector<Ntk>;
+  using collector_st_t = typename DivCollector::stats;
+  using mffc_result_t = uint32_t;
+
+  template<class LTT, uint32_t CAP>
+  struct spfd_manager_t
+  {
+    spfd_manager_t(){}
+    
+    void init( LTT const& target, LTT const& careset )
+    {
+      care = careset;
+      safe_care = careset;
+      func[1] =  target & careset;
+      func[0] = ~target & careset;
+      reset();
+    }
+
+    void reset()
+    {
+      masks[0] = safe_care;
+      nMasks = 1;
+      nEdges = kitty::count_ones( func[1] ) * kitty::count_ones( func[0] );  
+      killed[0] = nEdges > 0 ? false : true;
+      nKills = nEdges > 0 ? 0 : 1;
+    }
+
+    void reset( LTT const& modified_care, bool complement )
+    {
+      masks[0] = complement ? safe_care & ~modified_care : safe_care & modified_care;
+      nMasks = 1;
+      nEdges = kitty::count_ones( func[1] & masks[0] ) * kitty::count_ones( func[0] & masks[0] );  
+      killed[0] = nEdges > 0 ? false : true;
+      nKills = nEdges > 0 ? 0 : 1;
+    }
+
+    bool update( LTT const& tt )
+    {
+      nEdges = 0;
+      for( uint32_t iMask{0}; iMask < nMasks; ++iMask )
+      {
+        if( killed[iMask] )
+        {
+          killed[nMasks+iMask] = true;
+          nKills++;
+        }
+        else
+        {
+          masks[nMasks+iMask] = masks[iMask] & tt;
+          masks[iMask] &= ~tt;
+
+          if( ( kitty::count_ones( masks[nMasks+iMask] & func[1] ) == 0 ) || ( kitty::count_ones( masks[nMasks+iMask] & func[0] ) == 0 ) )
+          {
+            killed[nMasks+iMask] = true;
+            nKills++;
+          }
+          else
+          {
+            killed[nMasks+iMask] = false;
+            nEdges += kitty::count_ones( func[1] & masks[nMasks+iMask] ) * kitty::count_ones( func[0] & masks[nMasks+iMask] );  
+          }
+
+          if( kitty::count_ones( masks[iMask] & func[1] ) == 0 || kitty::count_ones( masks[iMask] & func[0] ) == 0 )
+          {
+            killed[iMask] = true;
+            nKills++;
+          }
+          else
+          {
+            killed[iMask] = false;
+            nEdges += kitty::count_ones( func[1] & masks[iMask] ) * kitty::count_ones( func[0] & masks[iMask] );  
+          }
+        }
+      }
+      nMasks = nMasks * 2;
+      return true;
+    }
+
+    uint32_t evaluate( LTT const& tt )
+    {
+      uint32_t res=0;
+      for( auto iMask{0}; iMask<nMasks; ++iMask )
+      {
+        if( !killed[iMask] )
+        {
+          res+= kitty::count_ones( func[1] & masks[iMask] &  tt ) * kitty::count_ones( func[0] & masks[iMask] & tt );  
+          res+= kitty::count_ones( func[1] & masks[iMask] & ~tt ) * kitty::count_ones( func[0] & masks[iMask] & ~tt );  
+        }
+      }
+      return res;
+    } 
+
+    uint32_t evaluate( LTT const& tt1, LTT const& tt2 )
+    {
+      uint32_t res=0;
+      for( auto iMask{0}; iMask<nMasks; ++iMask )
+      {
+        if( !killed[iMask] )
+        {
+          res+= kitty::count_ones( func[1] & masks[iMask] &  tt1 & tt2 ) * kitty::count_ones( func[0] & masks[iMask] & tt1 & tt2 );  
+          res+= kitty::count_ones( func[1] & masks[iMask] & ~tt1 & tt2 ) * kitty::count_ones( func[0] & masks[iMask] & ~tt1 & tt2 );  
+          res+= kitty::count_ones( func[1] & masks[iMask] & ~tt1 &~tt2 ) * kitty::count_ones( func[0] & masks[iMask] & ~tt1 & ~tt2 );  
+          res+= kitty::count_ones( func[1] & masks[iMask] & tt1 & ~tt2 ) * kitty::count_ones( func[0] & masks[iMask] & tt1 &~tt2 );  
+        }
+      }
+      return res;
+    } 
+
+    uint32_t evaluate( LTT const& tt1, LTT const& tt2, LTT const& tt3 )
+    {
+      uint32_t res=0;
+      for( auto iMask{0}; iMask<nMasks; ++iMask )
+      {
+        if( !killed[iMask] )
+        {
+          res+= kitty::count_ones( func[1] & masks[iMask] &  tt1 &  tt2 &  tt3 ) * kitty::count_ones( func[0] & masks[iMask] &  tt1 &  tt2 &  tt3 );  
+          res+= kitty::count_ones( func[1] & masks[iMask] & ~tt1 &  tt2 &  tt3 ) * kitty::count_ones( func[0] & masks[iMask] & ~tt1 &  tt2 &  tt3 );  
+          res+= kitty::count_ones( func[1] & masks[iMask] & ~tt1 & ~tt2 &  tt3 ) * kitty::count_ones( func[0] & masks[iMask] & ~tt1 & ~tt2 &  tt3 );  
+          res+= kitty::count_ones( func[1] & masks[iMask] &  tt1 & ~tt2 &  tt3 ) * kitty::count_ones( func[0] & masks[iMask] &  tt1 & ~tt2 &  tt3 );  
+          res+= kitty::count_ones( func[1] & masks[iMask] &  tt1 &  tt2 & ~tt3 ) * kitty::count_ones( func[0] & masks[iMask] &  tt1 &  tt2 & ~tt3 );  
+          res+= kitty::count_ones( func[1] & masks[iMask] & ~tt1 &  tt2 & ~tt3 ) * kitty::count_ones( func[0] & masks[iMask] & ~tt1 &  tt2 & ~tt3 );  
+          res+= kitty::count_ones( func[1] & masks[iMask] & ~tt1 & ~tt2 & ~tt3 ) * kitty::count_ones( func[0] & masks[iMask] & ~tt1 & ~tt2 & ~tt3 );  
+          res+= kitty::count_ones( func[1] & masks[iMask] &  tt1 & ~tt2 & ~tt3 ) * kitty::count_ones( func[0] & masks[iMask] &  tt1 & ~tt2 & ~tt3 );  
+        }
+      }
+      return res;
+    } 
+
+    bool is_covered()
+    {
+      return nMasks <= nKills;
+    }
+
+    bool is_saturated()
+    {
+      return nMasks >= CAP;
+    }
+
+    std::array<LTT, CAP> masks;
+    std::array<bool, CAP> killed;
+    uint32_t nMasks;
+    uint32_t nKills;
+    uint32_t nEdges;
+    LTT care;
+    LTT safe_care;
+    std::array<LTT, 2u> func;
+  };
+
+public:
+  rewrub_impl( Ntk& ntk, Library&& library, rewrub_params const& ps, rewrub_stats& st, collector_st_t& collector_st, NodeCostFn const& cost_fn )
+      : ntk( ntk ), library( library ), ps( ps ), st( st ), cost_fn( cost_fn ), required( ntk, UINT32_MAX ), _sTts( ntk ), _bTts( ntk ), collector_st( collector_st )
+  {
+    add_event = ntk.events().register_add_event( [&]( const auto& n ) {
+      _sTts.resize();
+      _bTts.resize();
+      call_with_stopwatch( st.time_sim, [&]() {
+        simulate_node_static<Ntk, nVarsS>( ntk, n, _sTts, _sSim );
+        simulate_node_static<Ntk, nVarsB>( ntk, n, _bTts, _bSim );
+      } );
+    } );
+
+    register_events();
+    init();
+  }
+
+  ~rewrub_impl()
+  {
+    if constexpr ( has_level_v<Ntk> )
+    {
+      ntk.events().release_add_event( add_event );
+      ntk.events().release_modified_event( modified_event );
+      ntk.events().release_delete_event( delete_event );
+    }
+  }
+
+  void init() 
+  {
+    /* prepare simulation patterns */
+    call_with_stopwatch( st.time_patgen, [&]() {
+      _sSim = static_simulator<nVarsS>( ntk.num_pis() );
+      _bSim = static_simulator<nVarsB>( ntk.num_pis() );
+    } );
+    st.num_pats = _sSim.num_bits();
+    assert( _sSim.num_bits() > 0 );
+    assert( _bSim.num_bits() > 0 );
+
+    /* first simulation: the whole circuit; from 0 bits. */
+    call_with_stopwatch( st.time_sim, [&]() {
+      simulate_nodes_static<Ntk, nVarsS>( ntk, _sTts, _sSim );
+      simulate_nodes_static<Ntk, nVarsB>( ntk, _bTts, _bSim );
+    } );
+  }
+
+  void run()
+  {
+    stopwatch t( st.time_total );
+
+    ntk.incr_trav_id();
+
+    if ( ps.preserve_depth )
+    {
+      compute_required();
+    }
+
+    if ( ps.use_dont_cares )
+      perform_rewrubing_dc();
+    else
+      perform_rewrubing();
+
+    st.estimated_gain = _estimated_gain;
+    st.candidates = _candidates;
+  }
+
+private:
+  struct resynthesis_info_t
+  {
+    std::array<signal<Ntk>, num_vars> _leaves;
+    signal<Ntk> _signal;
+    int32_t _gain = -1;
+    uint32_t _level = UINT32_MAX;
+    bool _phase = false;
+  };
+
+  #pragma region support_selection
+  bool find_support_greedy( std::vector<uint32_t>& supp, node<Ntk>const& n, std::vector<node<Ntk>> const& divs, kitty::static_truth_table<nVarsS> const& care )
+  {
+    supp.clear();
+    _uSPFD.init( _sTts[n], care );
+
+    uint32_t cost, best_cost;
+    std::vector<uint32_t> best_candidates;
+
+    /* add recomputation of the support */
+    while( !_uSPFD.is_covered() && supp.size() < 4u )
+    {
+      best_cost = std::numeric_limits<uint32_t>::max();
+      if( _uSPFD.is_saturated() ) break;
+      for( uint32_t iCnd{0}; iCnd<divs.size(); ++iCnd )
+      {
+        cost = _uSPFD.evaluate( _sTts[divs[iCnd]] );
+        if( cost < best_cost  )
+        {
+          best_cost = cost;
+          best_candidates = {iCnd};
+        }
+        else if( cost == best_cost )
+        {
+          best_candidates.push_back( iCnd );
+        }
+      }
+      if( best_candidates.size() == 0 ) break;
+
+      std::uniform_int_distribution<> distrib(0, best_candidates.size()-1);
+      int idx = distrib(RIGRNG);
+      supp.push_back( best_candidates[idx] );
+      _uSPFD.update( _sTts[divs[best_candidates[idx]]] );
+    }
+
+    if( _uSPFD.is_covered() && supp.size() <= 4u )
+    {
+      std::sort( supp.begin(), supp.end() );
+      return true;
+    }
+    return false;
+  }
+  #pragma region support_selection
+
+  void check_tts( node<Ntk> const& n )
+  {
+    if ( !_bTts.has(n) )
+    {
+      call_with_stopwatch( st.time_sim, [&]() {
+        simulate_node_static<Ntk, nVarsS>( ntk, n, _sTts, _sSim );
+        simulate_node_static<Ntk, nVarsB>( ntk, n, _bTts, _bSim );
+      } );
+    }
+  }
+
+  template<class database_t>
+  void try_functional_rewriting( resynthesis_info_t& best, DivCollector& collector, mffc_result_t potential_gain, database_t& db, node<Ntk> n )
+  {
+    check_tts( n );
+    for ( auto const& d : collector.divs )
+    {
+      check_tts( d );
+    }
+
+    /* divisors found => extract cut */
+    kitty::static_truth_table<nVarsS> const care = _sSim.compute_constant( true );
+    printf("a\n");
+    
+    std::vector<uint32_t> supp;
+    for ( auto j = 0u; j < ps.max_trials; ++j )
+    {
+      supp.clear();
+      
+      bool found_func_support = call_with_stopwatch( st.time_supp, [&]() {
+        return find_support_greedy( supp, n, collector.divs, care );  
+      } );
+      if( found_func_support )
+      {
+        printf("b\n");
+        for( auto x : supp )
+          printf("%d ", x);
+        printf("\n");
+        printf("c\n");
+      }
+      else
+      {
+        printf("y\n");
+        break;
+      }
+    }
+
+    printf("z\n");
+  }
+
+  template<class database_t, class cut_data_t>
+  void try_structural_rewriting( resynthesis_info_t& best, cut_manager_t& cut_manager, cut_data_t & cuts, database_t db, node<Ntk> n )
+  {
+    printf("1\n");
+
+    std::array<signal<Ntk>, num_vars> leaves;
+    std::array<uint8_t, num_vars> permutation;
+    printf("1.a\n");
+    cut_manager.clear_cuts( n );
+    printf("1.b\n");
+    cut_manager.compute_cuts( n );
+    printf("2\n");
+
+    uint32_t cut_index = 0;
+    for ( auto& cut : cuts.cuts( ntk.node_to_index( n ) ) )
+    {
+      printf("3\n");
+      /* skip trivial cut */
+      if ( ( cut->size() == 1 && *cut->begin() == ntk.node_to_index( n ) ) )
+      {
+        ++cut_index;
+        continue;
+      }
+      printf("4\n");
+
+      /* Boolean matching */
+      auto config = kitty::exact_npn_canonization( cuts.truth_table( *cut ) );
+      auto tt_npn = std::get<0>( config );
+      auto neg = std::get<1>( config );
+      auto perm = std::get<2>( config );
+
+      auto const structures = library.get_supergates( tt_npn );
+
+      if ( structures == nullptr )
+      {
+        ++cut_index;
+        continue;
+      }
+
+      uint32_t negation = 0;
+      for ( auto j = 0u; j < num_vars; ++j )
+      {
+        permutation[perm[j]] = j;
+        negation |= ( ( neg >> perm[j] ) & 1 ) << j;
+      }
+
+      /* save output negation to apply */
+      bool phase = ( neg >> num_vars == 1 ) ? true : false;
+
+      {
+        auto j = 0u;
+        for ( auto const leaf : *cut )
+        {
+          leaves[permutation[j++]] = ntk.make_signal( ntk.index_to_node( leaf ) );
+        }
+
+        while ( j < num_vars )
+          leaves[permutation[j++]] = ntk.get_constant( false );
+      }
+
+      for ( auto j = 0u; j < num_vars; ++j )
+      {
+        if ( ( negation >> j ) & 1 )
+        {
+          leaves[j] = !leaves[j];
+        }
+      }
+
+      {
+        /* measure the MFFC contained in the cut */
+        int32_t mffc_size = measure_mffc_deref( n, cut );
+
+        for ( auto const& dag : *structures )
+        {
+          auto [nodes_added, level] = evaluate_entry( n, db.get_node( dag.root ), leaves );
+          int32_t gain = mffc_size - nodes_added;
+
+          /* discard if dag.root and n are the same */
+          if ( ntk.node_to_index( n ) == db.value( db.get_node( dag.root ) ) >> 1 )
+            continue;
+
+          /* discard if no gain */
+          if ( gain < 0 || ( !ps.allow_zero_gain && gain == 0 ) )
+            continue;
+
+          /* discard if level increases */
+          if constexpr ( has_level_v<Ntk> )
+          {
+            if ( ps.preserve_depth && level > required[n] )
+              continue;
+          }
+
+          if ( ( gain > best._gain ) || ( gain == best._gain && level < best._level ) )
+          {
+            ++_candidates;
+            best._gain = gain;
+            best._signal = dag.root;
+            best._leaves = leaves;
+            best._phase = phase;
+            best._level = level;
+          }
+
+          if ( !ps.allow_multiple_structures )
+            break;
+        }
+
+        /* restore contained MFFC */
+        measure_mffc_ref( n, cut );
+        ++cut_index;
+
+        if ( cut->size() == 0 || ( cut->size() == 1 && *cut->begin() != ntk.node_to_index( n ) ) )
+          break;
+      }
+    }
+  }
+
+  void perform_rewrubing()
+  {
+    /* Structural information */
+    /* initialize the cut manager */
+    cut_enumeration_stats cst;
+    network_cuts_t cuts( ntk.size() + ( ntk.size() >> 1 ) );
+    cut_manager_t cut_manager( ntk, ps.cut_enumeration_ps, cst, cuts );
+
+    /* initialize cuts for constant nodes and PIs */
+    cut_manager.init_cuts();
+
+    /* Functional information */
+    DivCollector collector( ntk, ps, collector_st );
+    /* compute cut, collect divisors, compute MFFC */
+
+    auto& db = library.get_database();
+
+    const auto size = ntk.size();
+    ntk.foreach_gate( [&]( auto const& n, auto i ) {
+      printf("%d\n", n);
+      if ( ntk.fanout_size( n ) == 0u || ntk.is_pi( n ) )
+        return;
+
+      resynthesis_info_t best;
+
+      /* update level for node */
+      if constexpr ( has_level_v<Ntk> )
+      {
+        if ( ps.preserve_depth )
+        {
+          uint32_t level = 0;
+          ntk.foreach_fanin( n, [&]( auto const& f ) {
+            level = std::max( level, ntk.level( ntk.get_node( f ) ) );
+          } );
+          ntk.set_level( n, level + 1 );
+          best._level = level + 1;
+        }
+      }
+
+      mffc_result_t potential_gain;
+      const auto collector_success = call_with_stopwatch( st.time_divs, [&]() {
+        return collector.run( n, potential_gain );
+      } );
+
+      /* structural rewriting */
+      printf("ac1\n");
+      try_structural_rewriting( best, cut_manager, cuts, db, n );
+      printf("ac2\n");
+
+      /* functional rewriting */
+      if( collector_success && ( potential_gain > best._gain ) )
+      {
+        try_functional_rewriting( best, collector, potential_gain, db, n );
+      }
+
+      printf("dd\n");
+      if ( best._gain > 0 || ( ps.allow_zero_gain && best._gain == 0 ) )
+      {
+        printf("d1\n");
+        /* replace node wth the new structure */
+        topo_view topo{ db, best._signal };
+        auto new_f = cleanup_dangling( topo, ntk, best._leaves.begin(), best._leaves.end() ).front();
+        printf("d2\n");
+
+        assert( n != ntk.get_node( new_f ) );
+
+        _estimated_gain += best._gain;
+        ntk.substitute_node_no_restrash( n, new_f ^ best._phase );
+        printf("d3\n");
+
+        if constexpr ( has_level_v<Ntk> )
+        {
+          /* propagate new required to leaves */
+          if ( ps.preserve_depth )
+          {
+            propagate_required_rec( ntk.node_to_index( n ), ntk.get_node( new_f ), size, required[n] );
+            printf("d4\n");
+            assert( ntk.level( ntk.get_node( new_f ) ) <= required[n] );
+            printf("d5\n");
+          }
+          printf("d6\n");
+        }
+        printf("d7\n");
+        clear_cuts_fanout_rec( cuts, cut_manager, ntk.get_node( new_f ) );
+        printf("d8\n");
+        node<Ntk> new_node = ntk.get_node( new_f );
+        simulate_node_static<Ntk, nVarsS>( ntk, new_node, _sTts, _sSim );
+        simulate_node_static<Ntk, nVarsB>( ntk, new_node, _bTts, _bSim );
+      }
+    } );
+      printf("dz\n");
+  }
+
+  void perform_rewrubing_dc()
+  {
+    /* initialize the cut manager */
+    cut_enumeration_stats cst;
+    network_cuts_t cuts( ntk.size() + ( ntk.size() >> 1 ) );
+    cut_manager_t cut_manager( ntk, ps.cut_enumeration_ps, cst, cuts );
+
+    /* initialize cuts for constant nodes and PIs */
+    cut_manager.init_cuts();
+
+    auto& db = library.get_database();
+
+    std::array<signal<Ntk>, num_vars> leaves;
+    std::array<signal<Ntk>, num_vars> best_leaves;
+    std::array<uint8_t, num_vars> permutation;
+    signal<Ntk> best_signal;
+
+    reconvergence_driven_cut_parameters rps;
+    rps.max_leaves = ps.window_size;
+    reconvergence_driven_cut_statistics rst;
+    detail::reconvergence_driven_cut_impl<Ntk, false, has_level_v<Ntk>> reconv_cuts( ntk, rps, rst );
+    unordered_node_map<kitty::static_truth_table<max_window_size>, Ntk> tts( ntk );
+
+    color_view<Ntk> color_ntk{ ntk };
+    std::array<uint32_t, num_vars> divisors;
+    for ( uint32_t i = 0; i < num_vars; ++i )
+    {
+      divisors[i] = i;
+    }
+
+    const auto size = ntk.size();
+    ntk.foreach_gate( [&]( auto const& n, auto i ) {
+      if ( ntk.fanout_size( n ) == 0u )
+        return;
+
+      int32_t best_gain = -1;
+      uint32_t best_level = UINT32_MAX;
+      bool best_phase = false;
+
+      /* update level for node */
+      if constexpr ( has_level_v<Ntk> )
+      {
+        if ( ps.preserve_depth )
+        {
+          uint32_t level = 0;
+          ntk.foreach_fanin( n, [&]( auto const& f ) {
+            level = std::max( level, ntk.level( ntk.get_node( f ) ) );
+          } );
+          ntk.set_level( n, level + 1 );
+          best_level = level + 1;
+        }
+      }
+
+      cut_manager.clear_cuts( n );
+      cut_manager.compute_cuts( n );
+
+      /* compute window */
+      std::vector<node<Ntk>> roots = { n };
+      auto const extended_leaves = reconv_cuts.run( roots ).first;
+      std::vector<node<Ntk>> gates{ collect_nodes( color_ntk, extended_leaves, roots ) };
+      window_view window_ntk{ color_ntk, extended_leaves, roots, gates };
+
+      default_simulator<kitty::static_truth_table<max_window_size>> sim;
+      tts.reset();
+      simulate_nodes_with_node_map<kitty::static_truth_table<max_window_size>>( window_ntk, tts, sim );
+
+      uint32_t cut_index = 0;
+      for ( auto& cut : cuts.cuts( ntk.node_to_index( n ) ) )
+      {
+        /* skip trivial cut */
+        if ( ( cut->size() == 1 && *cut->begin() == ntk.node_to_index( n ) ) )
+        {
+          ++cut_index;
+          continue;
+        }
+
+        /* Boolean matching */
+        auto config = kitty::exact_npn_canonization( cuts.truth_table( *cut ) );
+        auto tt_npn = std::get<0>( config );
+        auto neg = std::get<1>( config );
+        auto perm = std::get<2>( config );
+
+        kitty::static_truth_table<num_vars> care;
+
+        bool containment = true;
+        for ( auto const& l : *cut )
+        {
+          if ( color_ntk.color( ntk.index_to_node( l ) ) != color_ntk.current_color() )
+          {
+            containment = false;
+            break;
+          }
+        }
+
+        if ( containment )
+        {
+          /* compute care set */
+          for ( auto i = 0u; i < ( 1u << window_ntk.num_pis() ); ++i )
+          {
+            uint32_t entry{ 0u };
+            auto j = 0u;
+            for ( auto const& l : *cut )
+            {
+              entry |= kitty::get_bit( tts[l], i ) << j;
+              ++j;
+            }
+            kitty::set_bit( care, entry );
+          }
+        }
+        else
+        {
+          /* completely specified */
+          care = ~care;
+        }
+
+        auto const dc_npn = apply_npn_transformation( ~care, neg & ~( 1 << num_vars ), perm );
+        auto const structures = library.get_supergates( tt_npn, dc_npn, neg, perm );
+
+        if ( structures == nullptr )
+        {
+          ++cut_index;
+          continue;
+        }
+
+        uint32_t negation = 0;
+        for ( auto j = 0u; j < num_vars; ++j )
+        {
+          permutation[perm[j]] = j;
+          negation |= ( ( neg >> perm[j] ) & 1 ) << j;
+        }
+
+        /* save output negation to apply */
+        bool phase = ( neg >> num_vars == 1 ) ? true : false;
+
+        {
+          auto j = 0u;
+          for ( auto const leaf : *cut )
+          {
+            leaves[permutation[j++]] = ntk.make_signal( ntk.index_to_node( leaf ) );
+          }
+
+          while ( j < num_vars )
+            leaves[permutation[j++]] = ntk.get_constant( false );
+        }
+
+        for ( auto j = 0u; j < num_vars; ++j )
+        {
+          if ( ( negation >> j ) & 1 )
+          {
+            leaves[j] = !leaves[j];
+          }
+        }
+
+        {
+          /* measure the MFFC contained in the cut */
+          int32_t mffc_size = measure_mffc_deref( n, cut );
+
+          for ( auto const& dag : *structures )
+          {
+            auto [nodes_added, level] = evaluate_entry( n, db.get_node( dag.root ), leaves );
+            int32_t gain = mffc_size - nodes_added;
+
+            /* discard if dag.root and n are the same */
+            if ( ntk.node_to_index( n ) == db.value( db.get_node( dag.root ) ) >> 1 )
+              continue;
+
+            /* discard if no gain */
+            if ( gain < 0 || ( !ps.allow_zero_gain && gain == 0 ) )
+              continue;
+
+            /* discard if level increases */
+            if constexpr ( has_level_v<Ntk> )
+            {
+              if ( ps.preserve_depth && level > required[n] )
+                continue;
+            }
+
+            if ( ( gain > best_gain ) || ( gain == best_gain && level < best_level ) )
+            {
+              ++_candidates;
+              best_gain = gain;
+              best_signal = dag.root;
+              best_leaves = leaves;
+              best_phase = phase;
+              best_level = level;
+            }
+
+            if ( !ps.allow_multiple_structures )
+              break;
+          }
+
+          /* restore contained MFFC */
+          measure_mffc_ref( n, cut );
+          ++cut_index;
+
+          if ( cut->size() == 0 || ( cut->size() == 1 && *cut->begin() != ntk.node_to_index( n ) ) )
+            break;
+        }
+      }
+
+      if ( best_gain > 0 || ( ps.allow_zero_gain && best_gain == 0 ) )
+      {
+        /* replace node wth the new structure */
+        topo_view topo{ db, best_signal };
+        auto new_f = cleanup_dangling( topo, ntk, best_leaves.begin(), best_leaves.end() ).front();
+
+        assert( n != ntk.get_node( new_f ) );
+
+        _estimated_gain += best_gain;
+        ntk.substitute_node_no_restrash( n, new_f ^ best_phase );
+
+        if constexpr ( has_level_v<Ntk> )
+        {
+          /* propagate new required to leaves */
+          if ( ps.preserve_depth )
+          {
+            propagate_required_rec( ntk.node_to_index( n ), ntk.get_node( new_f ), size, required[n] );
+            assert( ntk.level( ntk.get_node( new_f ) ) <= required[n] );
+          }
+        }
+
+        clear_cuts_fanout_rec( cuts, cut_manager, ntk.get_node( new_f ) );
+      }
+    } );
+  }
+
+  int32_t measure_mffc_ref( node<Ntk> const& n, cut_t const* cut )
+  {
+    /* reference cut leaves */
+    for ( auto leaf : *cut )
+    {
+      ntk.incr_fanout_size( ntk.index_to_node( leaf ) );
+    }
+
+    int32_t mffc_size = static_cast<int32_t>( recursive_ref( n ) );
+
+    /* dereference leaves */
+    for ( auto leaf : *cut )
+    {
+      ntk.decr_fanout_size( ntk.index_to_node( leaf ) );
+    }
+
+    return mffc_size;
+  }
+
+  int32_t measure_mffc_deref( node<Ntk> const& n, cut_t const* cut )
+  {
+    /* reference cut leaves */
+    for ( auto leaf : *cut )
+    {
+      ntk.incr_fanout_size( ntk.index_to_node( leaf ) );
+    }
+
+    int32_t mffc_size = static_cast<int32_t>( recursive_deref( n ) );
+
+    /* dereference leaves */
+    for ( auto leaf : *cut )
+    {
+      ntk.decr_fanout_size( ntk.index_to_node( leaf ) );
+    }
+
+    return mffc_size;
+  }
+
+  uint32_t recursive_deref( node<Ntk> const& n )
+  {
+    /* terminate? */
+    if ( ntk.is_constant( n ) || ntk.is_pi( n ) )
+      return 0;
+
+    /* recursively collect nodes */
+    uint32_t value{ cost_fn( ntk, n ) };
+    ntk.foreach_fanin( n, [&]( auto const& s ) {
+      if ( ntk.decr_fanout_size( ntk.get_node( s ) ) == 0 )
+      {
+        value += recursive_deref( ntk.get_node( s ) );
+      }
+    } );
+    return value;
+  }
+
+  uint32_t recursive_ref( node<Ntk> const& n )
+  {
+    /* terminate? */
+    if ( ntk.is_constant( n ) || ntk.is_pi( n ) )
+      return 0;
+
+    /* recursively collect nodes */
+    uint32_t value{ cost_fn( ntk, n ) };
+    ntk.foreach_fanin( n, [&]( auto const& s ) {
+      if ( ntk.incr_fanout_size( ntk.get_node( s ) ) == 0 )
+      {
+        value += recursive_ref( ntk.get_node( s ) );
+      }
+    } );
+    return value;
+  }
+
+  inline std::pair<int32_t, uint32_t> evaluate_entry( node<Ntk> const& current_root, node<Ntk> const& n, std::array<signal<Ntk>, num_vars> const& leaves )
+  {
+    auto& db = library.get_database();
+    db.incr_trav_id();
+
+    return evaluate_entry_rec( current_root, n, leaves );
+  }
+
+  std::pair<int32_t, uint32_t> evaluate_entry_rec( node<Ntk> const& current_root, node<Ntk> const& n, std::array<signal<Ntk>, num_vars> const& leaves )
+  {
+    auto& db = library.get_database();
+    if ( db.is_pi( n ) || db.is_constant( n ) )
+      return { 0, 0 };
+    if ( db.visited( n ) == db.trav_id() )
+      return { 0, 0 };
+
+    db.set_visited( n, db.trav_id() );
+
+    int32_t area = 0;
+    uint32_t level = 0;
+    bool hashed = true;
+
+    std::array<signal<Ntk>, Ntk::max_fanin_size> node_data;
+    db.foreach_fanin( n, [&]( auto const& f, auto i ) {
+      node<Ntk> g = db.get_node( f );
+      if ( db.is_constant( g ) )
+      {
+        node_data[i] = f; /* ntk.get_costant( db.is_complemented( f ) ) */
+        return;
+      }
+      if ( db.is_pi( g ) )
+      {
+        node_data[i] = leaves[db.node_to_index( g ) - 1] ^ db.is_complemented( f );
+        if constexpr ( has_level_v<Ntk> )
+        {
+          level = std::max( level, ntk.level( ntk.get_node( leaves[db.node_to_index( g ) - 1] ) ) );
+        }
+        return;
+      }
+
+      auto [area_rec, level_rec] = evaluate_entry_rec( current_root, g, leaves );
+      area += area_rec;
+      level = std::max( level, level_rec );
+
+      /* check value */
+      if ( db.value( g ) < UINT32_MAX )
+      {
+        signal<Ntk> s;
+        s.data = static_cast<uint64_t>( db.value( g ) );
+        node_data[i] = s ^ db.is_complemented( f );
+      }
+      else
+      {
+        hashed = false;
+      }
+    } );
+
+    if ( hashed )
+    {
+      /* try hash */
+      /* AIG, XAG, MIG, and XMG are supported now */
+      std::optional<signal<Ntk>> val;
+      do
+      {
+        /* XAG */
+        if constexpr ( has_has_and_v<Ntk> && has_has_xor_v<Ntk> )
+        {
+          if ( db.is_and( n ) )
+            val = ntk.has_and( node_data[0], node_data[1] );
+          else
+            val = ntk.has_xor( node_data[0], node_data[1] );
+          break;
+        }
+
+        /* AIG */
+        if constexpr ( has_has_and_v<Ntk> )
+        {
+          val = ntk.has_and( node_data[0], node_data[1] );
+          break;
+        }
+
+        /* XMG */
+        if constexpr ( has_has_maj_v<Ntk> && has_has_xor3_v<Ntk> )
+        {
+          if ( db.is_maj( n ) )
+            val = ntk.has_maj( node_data[0], node_data[1], node_data[2] );
+          else
+            val = ntk.has_xor3( node_data[0], node_data[1], node_data[2] );
+          break;
+        }
+
+        /* MAJ */
+        if constexpr ( has_has_maj_v<Ntk> )
+        {
+          val = ntk.has_maj( node_data[0], node_data[1], node_data[2] );
+          break;
+        }
+        std::cerr << "[e] Only AIGs, XAGs, MAJs, and XMGs are currently supported \n";
+      } while ( false );
+
+      if ( val.has_value() )
+      {
+        /* bad condition (current root is contained in the DAG): return a very high cost */
+        if ( db.get_node( *val ) == current_root )
+          return { UINT32_MAX / 2, level + 1 };
+
+        /* annotate hashing info */
+        db.set_value( n, val->data );
+        return { area + ( ntk.fanout_size( ntk.get_node( *val ) ) > 0 ? 0 : cost_fn( ntk, n ) ), level + 1 };
+      }
+    }
+
+    db.set_value( n, UINT32_MAX );
+    return { area + cost_fn( ntk, n ), level + 1 };
+  }
+
+  void compute_required()
+  {
+    if constexpr ( has_level_v<Ntk> )
+    {
+      ntk.foreach_po( [&]( auto const& f ) {
+        required[f] = ntk.depth();
+      } );
+
+      for ( uint32_t index = ntk.size() - 1; index > ntk.num_pis(); index-- )
+      {
+        node<Ntk> n = ntk.index_to_node( index );
+        uint32_t req = required[n];
+
+        ntk.foreach_fanin( n, [&]( auto const& f ) {
+          required[f] = std::min( required[f], req - 1 );
+        } );
+      }
+    }
+  }
+
+  void propagate_required_rec( uint32_t root, node<Ntk> const& n, uint32_t size, uint32_t req )
+  {
+    if ( ntk.is_constant( n ) || ntk.is_pi( n ) )
+      return;
+
+    /* recursively update required time */
+    ntk.foreach_fanin( n, [&]( auto const& f ) {
+      auto const g = ntk.get_node( f );
+
+      /* recur if it is still a node to explore and to update */
+      if ( ntk.node_to_index( g ) > root && ( ntk.node_to_index( g ) >= size || required[g] > req ) )
+        propagate_required_rec( root, g, size, req - 1 );
+
+      /* update the required time */
+      if ( ntk.node_to_index( g ) < size )
+        required[g] = std::min( required[g], req - 1 );
+    } );
+  }
+
+  void clear_cuts_fanout_rec( network_cuts_t& cuts, cut_manager_t& cut_manager, node<Ntk> const& n )
+  {
+    ntk.foreach_fanout( n, [&]( auto const& g ) {
+      auto const index = ntk.node_to_index( g );
+      if ( cuts.cuts( index ).size() > 0 )
+      {
+        cut_manager.clear_cuts( g );
+        clear_cuts_fanout_rec( cuts, cut_manager, g );
+      }
+    } );
+  }
+
+private:
+  void register_events()
+  {
+    if constexpr ( has_level_v<Ntk> )
+    {
+      auto const update_level_of_new_node = [&]( const auto& n ) {
+        ntk.resize_levels();
+        update_node_level( n );
+      };
+
+      auto const update_level_of_existing_node = [&]( node<Ntk> const& n, const auto& old_children ) {
+        (void)old_children;
+        ntk.resize_levels();
+        update_node_level( n );
+      };
+
+      auto const update_level_of_deleted_node = [&]( node<Ntk> const& n ) {
+        ntk.set_level( n, -1 );
+      };
+
+      add_event = ntk.events().register_add_event( update_level_of_new_node );
+      modified_event = ntk.events().register_modified_event( update_level_of_existing_node );
+      delete_event = ntk.events().register_delete_event( update_level_of_deleted_node );
+    }
+  }
+
+  /* maybe it should be moved to depth_view */
+  void update_node_level( node<Ntk> const& n, bool top_most = true )
+  {
+    if constexpr ( has_level_v<Ntk> )
+    {
+      uint32_t curr_level = ntk.level( n );
+
+      uint32_t max_level = 0;
+      ntk.foreach_fanin( n, [&]( const auto& f ) {
+        auto const p = ntk.get_node( f );
+        auto const fanin_level = ntk.level( p );
+        if ( fanin_level > max_level )
+        {
+          max_level = fanin_level;
+        }
+      } );
+      ++max_level;
+
+      if ( curr_level != max_level )
+      {
+        ntk.set_level( n, max_level );
+
+        /* update only one more level */
+        if ( top_most )
+        {
+          ntk.foreach_fanout( n, [&]( const auto& p ) {
+            update_node_level( p, false );
+          } );
+        }
+      }
+    }
+  }
+
+private:
+  Ntk& ntk;
+  Library&& library;
+  rewrub_params const& ps;
+  rewrub_stats& st;
+  NodeCostFn cost_fn;
+
+  node_map<uint32_t, Ntk> required;
+
+  uint32_t _candidates{ 0 };
+  uint32_t _estimated_gain{ 0 };
+
+  /* simulation information */
+  incomplete_node_map<TtS, Ntk> _sTts;
+  incomplete_node_map<TtB, Ntk> _bTts;
+  static_simulator<nVarsS> _sSim;
+  static_simulator<nVarsB> _bSim;
+  collector_st_t& collector_st;
+  spfd_manager_t<TtS, 16u> _uSPFD;
+
+  /* events */
+  std::shared_ptr<typename network_events<Ntk>::add_event_type> add_event;
+  std::shared_ptr<typename network_events<Ntk>::modified_event_type> modified_event;
+  std::shared_ptr<typename network_events<Ntk>::delete_event_type> delete_event;
+};
+
+} /* namespace detail */
+
+/*! \brief Boolean resubstitution with structural information.
+ *
+ * This algorithm optimizes networks using precomputed network structures in a database.
+ * The algorithm performs structural and functional support selecton.
+ * The algorithm performs changes in-place and keeps the substituted structures dangling
+ * in the network.
+ *
+ * **Required network functions:**
+ * - `get_node`
+ * - `size`
+ * - `make_signal`
+ * - `foreach_gate`
+ * - `substitute_node`
+ * - `clear_visited`
+ * - `clear_values`
+ * - `fanout_size`
+ * - `set_value`
+ * - `foreach_node`
+ *
+ * \param ntk Input network (will be changed in-place)
+ * \param library Exact library containing pre-computed structures
+ * \param ps Rewrite params
+ * \param pst Rewrite statistics
+ * \param cost_fn Node cost function (a functor with signature `uint32_t(Ntk const&, node<Ntk> const&)`)
+ */
+template<class Ntk, class Library, class NodeCostFn = unit_cost<Ntk>>
+void rewrub( Ntk& ntk, Library&& library, rewrub_params const& ps = {}, rewrub_stats* pst = nullptr, NodeCostFn const& cost_fn = {} )
+{
+  static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
+  static_assert( has_get_node_v<Ntk>, "Ntk does not implement the get_node method" );
+  static_assert( has_size_v<Ntk>, "Ntk does not implement the size method" );
+  static_assert( has_make_signal_v<Ntk>, "Ntk does not implement the make_signal method" );
+  static_assert( has_foreach_gate_v<Ntk>, "Ntk does not implement the foreach_gate method" );
+  static_assert( has_substitute_node_v<Ntk>, "Ntk does not implement the substitute_node method" );
+  static_assert( has_clear_visited_v<Ntk>, "Ntk does not implement the clear_visited method" );
+  static_assert( has_clear_values_v<Ntk>, "Ntk does not implement the clear_values method" );
+  static_assert( has_fanout_size_v<Ntk>, "Ntk does not implement the fanout_size method" );
+  static_assert( has_set_value_v<Ntk>, "Ntk does not implement the set_value method" );
+  static_assert( has_foreach_node_v<Ntk>, "Ntk does not implement the foreach_node method" );
+
+  rewrub_stats st;
+  detail::rewrub_collector_stats collector_st;
+
+
+  using depth_view_t = depth_view<Ntk, NodeCostFn>;
+  depth_view_t depth_ntk{ ntk };
+  using fanout_view_t = fanout_view<depth_view_t>;
+  fanout_view_t fanout_view{ depth_ntk };
+
+  detail::rewrub_impl<fanout_view_t, Library, NodeCostFn> p( fanout_view, library, ps, st, collector_st, cost_fn );
+  p.run();
+
+
+  if ( ps.verbose )
+  {
+    st.report();
+  }
+
+  if ( pst )
+  {
+    *pst = st;
+  }
+
+  ntk = cleanup_dangling( ntk );
+}
+
+} /* namespace mockturtle */
