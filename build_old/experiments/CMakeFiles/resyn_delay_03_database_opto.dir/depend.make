@@ -1,2 +1,0 @@
-# Empty dependencies file for resyn_delay_03_database_opto.
-# This may be replaced when dependencies are built.
