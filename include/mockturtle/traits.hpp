@@ -630,6 +630,11 @@ struct has_create_node<Ntk, std::void_t<decltype( std::declval<Ntk>().create_nod
 };
 
 template<class Ntk>
+struct has_create_node<Ntk, std::void_t<decltype( std::declval<Ntk>().create_node( std::declval<std::vector<signal<Ntk>>>(), std::declval<unsigned int>() ) )>> : std::true_type
+{
+};
+
+template<class Ntk>
 inline constexpr bool has_create_node_v = has_create_node<Ntk>::value;
 #pragma endregion
 

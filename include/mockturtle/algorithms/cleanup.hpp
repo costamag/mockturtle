@@ -27,6 +27,7 @@
   \file cleanup.hpp
   \brief Cleans up networks
 
+  \author Andrea Costamagna
   \author Heinz Riener
   \author Mathias Soeken
   \author Siang-Yun (Sonia) Lee
@@ -650,6 +651,62 @@ template<class Ntk>
   detail::cleanup_luts_impl( ntk, dest, cis.begin(), cis.end(), old_to_new );
 
   detail::clone_outputs( ntk, dest, old_to_new );
+
+  return dest;
+}
+
+/*! \brief Cleans up LUT nodes.
+ *
+ * This method reconstructs a LUT network and optimizes LUTs when they do not
+ * depend on all their fanin, or when some of the fanin are constant inputs.
+ *
+ * Constant gate inputs will be propagated.
+ *
+   \verbatim embed:rst
+
+   .. note::
+
+      This method returns the cleaned up network as a return value.  It does
+      *not* modify the input network.
+   \endverbatim
+ *
+ * **Required network functions:**
+ * - `get_node`
+ * - `get_constant`
+ * - `foreach_pi`
+ * - `foreach_po`
+ * - `foreach_node`
+ * - `foreach_fanin`
+ * - `create_pi`
+ * - `create_po`
+ * - `create_node`
+ * - `create_not`
+ * - `is_constant`
+ * - `is_pi`
+ * - `is_complemented`
+ * - `node_function`
+ */
+template<class Ntk>
+[[nodiscard]] Ntk cleanup_mapped( Ntk const& ntk )
+{
+  static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
+  static_assert( has_get_node_v<Ntk>, "Ntk does not implement the get_node method" );
+  static_assert( has_get_constant_v<Ntk>, "Ntk does not implement the get_constant method" );
+  static_assert( has_foreach_pi_v<Ntk>, "Ntk does not implement the foreach_pi method" );
+  static_assert( has_foreach_po_v<Ntk>, "Ntk does not implement the foreach_po method" );
+  static_assert( has_foreach_node_v<Ntk>, "Ntk does not implement the foreach_node method" );
+  static_assert( has_foreach_fanin_v<Ntk>, "Ntk does not implement the foreach_fanin method" );
+  static_assert( has_create_pi_v<Ntk>, "Ntk does not implement the create_pi method" );
+  static_assert( has_create_po_v<Ntk>, "Ntk does not implement the create_po method" );
+  static_assert( has_create_node_v<Ntk>, "Ntk does not implement the create_node method" );
+  static_assert( has_create_not_v<Ntk>, "Ntk does not implement the create_not method" );
+  static_assert( has_is_constant_v<Ntk>, "Ntk does not implement the is_constant method" );
+  static_assert( has_constant_value_v<Ntk>, "Ntk does not implement the constant_value method" );
+  static_assert( has_is_pi_v<Ntk>, "Ntk does not implement the is_pi method" );
+  static_assert( has_is_complemented_v<Ntk>, "Ntk does not implement the is_complemented method" );
+  static_assert( has_node_function_v<Ntk>, "Ntk does not implement the node_function method" );
+
+  Ntk dest( ntk._storage->data.library, ntk );
 
   return dest;
 }

@@ -34,6 +34,7 @@
 #pragma once
 
 #include "../traits.hpp"
+#include "../utils/node_map.hpp"
 
 #include <fmt/format.h>
 
@@ -674,6 +675,141 @@ private:
 
 using large_xag_index_list = xag_index_list<true>;
 
+/*! \brief Index list for mapped networks.
+ *
+ * Small network represented as a list of literals. Supports mapped
+ * gates.  The list has the following 32-bit unsigned integer
+ * elements. 
+ * <ni=#inputs> <no=#outputs> <n1 = #fanins gate 1> <fanin 1> ... <fanin n1> <id gate 1> <n2 = #fanins gate 2> ... <output1> ...<output no>
+ * 
+ */
+struct mapped_index_list
+{
+public:
+  using element_type = uint32_t;
+
+public:
+  explicit mapped_index_list( uint32_t num_pis = 0, uint32_t num_pos = 0 )
+      : values( { num_pis, num_pos } )
+  {
+    next_index += num_pis;
+  }
+
+  explicit mapped_index_list( std::vector<element_type> const& values )
+      : values( std::begin( values ), std::end( values ) )
+  {}
+
+  template<class Ntk>
+  explicit mapped_index_list( Ntk& ntk, typename Ntk::node n, std::vector<typename Ntk::node> const& leaves )
+  {
+    unordered_node_map<element_type, Ntk> node_to_lit( ntk );
+    add_inputs( leaves.size() );
+    for( size_t i{0}; i < leaves.size(); ++i )
+    {
+      node_to_lit[leaves[i]] = i+2;
+    }
+    add_output( build_list_rec( ntk, n, node_to_lit ) );
+  }
+
+  template<class Ntk>
+  element_type build_list_rec( Ntk& ntk, typename Ntk::node n, unordered_node_map<element_type, Ntk>& node_to_lit )
+  {
+    if( node_to_lit.has( n ) )
+    {
+      return node_to_lit[n];
+    }
+    auto g = ntk.get_binding( n );
+    std::vector<element_type> children;
+    ntk.foreach_fanin( n, [&]( auto f ){
+      auto ni = ntk.get_node( f );
+      children.push_back( build_list_rec( ntk, n, node_to_lit ) );
+    } );
+    node_to_lit[n] = add_node( children, g.id );
+    return node_to_lit[n];
+  }
+
+  std::vector<element_type> raw() const
+  {
+    return values;
+  }
+
+  uint64_t size() const
+  {
+    return values.size();
+  }
+
+  uint64_t num_pis() const
+  {
+    return values.at( 0 );
+  }
+
+  uint64_t num_pos() const
+  {
+    return values.at( 1 );
+  }
+
+  template<typename Gate>
+  double compute_area( std::vector<Gate> const& gates ) const
+  {
+    double area{ 0 };
+    foreach_gate( [&]( auto children, auto id ){
+      area += gates[id].area;
+    } );
+    return area;
+  }
+
+  template<typename Fn>
+  void foreach_gate( Fn&& fn ) const
+  {
+    for ( uint64_t i = 2u; i < values.size() - num_pos(); i += values.at( i ) + 2 )
+    {
+      std::vector<element_type> children;
+      children.insert( children.begin(), values.begin() + i + 1, values.begin() + i + values.at( i ) + 1 );
+      fn( children, values.at( i + values.at( i ) + 1 ) );
+    }
+  }
+
+  template<typename Fn>
+  void foreach_po( Fn&& fn ) const
+  {
+    for ( uint64_t i = values.size() - num_pos(); i < values.size(); ++i )
+    {
+      fn( values.at( i ) );
+    }
+  }
+
+  void clear()
+  {
+    values.clear();
+    values.emplace_back( 0 );
+    values.emplace_back( 0 );
+  }
+
+  void add_inputs( uint32_t n = 1u )
+  {
+    values.at( 0u ) += n;
+    next_index += n;
+  }
+
+  element_type add_node( std::vector<element_type> const& lits, element_type id )
+  {
+    values.push_back( lits.size() );
+    values.insert( values.end(), lits.begin(), lits.end() );
+    values.push_back( id );
+    return next_index++;
+  }
+
+  void add_output( element_type lit )
+  {
+    values.at( 1u ) += 1;
+    values.push_back( lit );
+  }
+
+private:
+  std::vector<element_type> values;
+  element_type next_index = 2;
+};
+
 /*! \brief Generates a xag_index_list from a network
  *
  * The function requires `ntk` to consist of XOR and AND gates.
@@ -766,6 +902,118 @@ void encode( xag_index_list<separate_header>& indices, Ntk const& ntk )
   }
 }
 
+/*! \brief Generates a mapped_index_list from a network through recursion
+ *
+ * The function requires `ntk` to consist of mapped gates.
+ *
+ * **Required network functions:**
+ * - `foreach_fanin`
+ * - `foreach_gate`
+ * - `get_node`
+ * - `is_complemented`
+ * - `is_function`
+ * - `node_to_index`
+ * - `num_gates`
+ * - `num_pis`
+ * - `num_pos`
+ *
+ * \param indices A mapped index list
+ * \param ntk A logic network
+ */
+template<typename Ntk>
+void encode_rec( Ntk const& ntk, signal<Ntk> const& f, unordered_node_map<mapped_index_list::element_type, Ntk> & node_to_literal, mapped_index_list & list )
+{
+  assert( !ntk.is_complemented( f ) );
+  node<Ntk> n = ntk.get_node( f );
+  if( node_to_literal.has( n ) )
+  {
+    return;
+  }
+
+  std::vector<mapped_index_list::element_type> children;
+  ntk.foreach_fanin( n, [&]( auto fi, auto i ){
+    encode_rec( ntk, fi, node_to_literal, list );
+    children.push_back( node_to_literal[ntk.get_node( fi )] );
+  } );
+  node_to_literal[ n ] = list.add_node( children, ntk.get_binding( n ).id );
+  return;
+}
+
+/*! \brief Generates a mapped_index_list from a network
+ *
+ * The function requires `ntk` to consist of mapped gates.
+ *
+ * **Required network functions:**
+ * - `foreach_fanin`
+ * - `foreach_gate`
+ * - `get_node`
+ * - `is_complemented`
+ * - `is_function`
+ * - `node_to_index`
+ * - `num_gates`
+ * - `num_pis`
+ * - `num_pos`
+ *
+ * \param indices A mapped index list
+ * \param ntk A logic network
+ */
+template<typename Ntk>
+void encode( mapped_index_list& indices, Ntk const& ntk )
+{
+  static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
+  static_assert( has_foreach_fanin_v<Ntk>, "Ntk does not implement the foreach_fanin method" );
+  static_assert( has_foreach_gate_v<Ntk>, "Ntk does not implement the foreach_gate method" );
+  static_assert( has_get_node_v<Ntk>, "Ntk does not implement the get_node method" );
+  static_assert( has_is_complemented_v<Ntk>, "Ntk does not implement the is_complemented method" );
+  static_assert( has_is_function_v<Ntk>, "Ntk does not implement the is_maj method" );
+  static_assert( has_node_to_index_v<Ntk>, "Ntk does not implement the node_to_index method" );
+  static_assert( has_num_gates_v<Ntk>, "Ntk does not implement the num_gates method" );
+  static_assert( has_num_pis_v<Ntk>, "Ntk does not implement the num_pis method" );
+  static_assert( has_num_pos_v<Ntk>, "Ntk does not implement the num_pos method" );
+
+  using node = typename Ntk::node;
+  using signal = typename Ntk::signal;
+
+  ntk.foreach_pi( [&]( node const& n, uint64_t index ) {
+    if ( ntk.node_to_index( n ) != index + 2 )
+    {
+      fmt::print( "[e] network is not in normalized index order (violated by PI {})\n", index + 2 );
+      std::abort();
+    }
+  } );
+
+  /* inputs */
+  indices.add_inputs( ntk.num_pis() );
+
+  /* gates */
+  ntk.foreach_gate( [&]( node const& n, uint64_t index ) {
+    assert( ntk.is_function( n ) );
+    if ( ntk.node_to_index( n ) != ntk.num_pis() + index + 2 )
+    {
+      fmt::print( "[e] network is not in normalized index order (violated by node {})\n", ntk.node_to_index( n ) );
+      std::abort();
+    }
+  } );
+
+  unordered_node_map<mapped_index_list::element_type, Ntk> node_to_literal( ntk );
+  node_to_literal[ntk.get_node(ntk.get_constant( false ))] = 0;
+  node_to_literal[ntk.get_node(ntk.get_constant( true ))] = 1;
+
+  ntk.foreach_pi( [&]( auto n, auto i ){
+    node_to_literal[n] = ntk.pi_at( i );
+  } );
+
+  ntk.foreach_po( [&]( signal const& f ) {
+    encode_rec( ntk, f, node_to_literal, indices );
+  } );
+
+  /* outputs */
+  ntk.foreach_po( [&]( signal const& f ) {
+    indices.add_output( node_to_literal[ntk.get_node( f )] );
+  } );
+
+}
+
 /*! \brief Inserts a xag_index_list into an existing network
  *
  * **Required network functions:**
@@ -832,6 +1080,71 @@ void insert( Ntk& ntk, BeginIter begin, EndIter end, xag_index_list<separate_hea
   } );
 }
 
+/*! \brief Inserts a mapped_index_list into an existing network
+ *
+ * **Required network functions:**
+ * - `create_node`
+ * - `get_constant`
+ *
+ * \param ntk A mapped logic network with references to bindings
+ * \param begin Begin iterator of signal inputs
+ * \param end End iterator of signal inputs
+ * \param indices An index list
+ * \param fn Callback function
+ */
+template<bool useSignal = true, typename Ntk, typename BeginIter, typename EndIter, typename Fn>
+void insert( Ntk& ntk, BeginIter begin, EndIter end, mapped_index_list const& indices, Fn&& fn )
+{
+  static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
+  static_assert( has_create_node_v<Ntk>, "Ntk does not implement the create_node method" );
+  static_assert( has_get_constant_v<Ntk>, "Ntk does not implement the get_constant method" );
+
+  using node = typename Ntk::node;
+  using signal = typename Ntk::signal;
+
+  if constexpr ( useSignal )
+  {
+    static_assert( std::is_same_v<std::decay_t<typename std::iterator_traits<BeginIter>::value_type>, signal>, "BeginIter value_type must be Ntk signal type" );
+    static_assert( std::is_same_v<std::decay_t<typename std::iterator_traits<EndIter>::value_type>, signal>, "EndIter value_type must be Ntk signal type" );
+  }
+  else
+  {
+    static_assert( std::is_same_v<std::decay_t<typename std::iterator_traits<BeginIter>::value_type>, node>, "BeginIter value_type must be Ntk node type" );
+    static_assert( std::is_same_v<std::decay_t<typename std::iterator_traits<EndIter>::value_type>, node>, "EndIter value_type must be Ntk node type" );
+  }
+
+  assert( uint64_t( std::distance( begin, end ) ) == indices.num_pis() );
+
+  std::vector<signal> signals;
+  signals.emplace_back( ntk.get_constant( false ) );
+  signals.emplace_back( ntk.get_constant( true ) );
+
+  for ( auto it = begin; it != end; ++it )
+  {
+    if constexpr ( useSignal )
+    {
+      signals.push_back( *it );
+    }
+    else
+    {
+      signals.emplace_back( ntk.make_signal( *it ) );
+    }
+  }
+
+  indices.foreach_gate( [&]( std::vector<uint32_t> const& children, uint32_t identifier ) {
+    std::vector<signal> children_signals;
+    for( auto lit : children )
+    {
+      children_signals.push_back( signals[lit] );
+    }
+    signals.push_back( ntk.create_node( children_signals, identifier ) );
+  } );
+
+  indices.foreach_po( [&]( uint32_t lit ) {
+    fn( signals.at( lit ) );
+  } );
+}
+
 /*! \brief Converts an xag_index_list to a string
  *
  * \param indices An index list
@@ -867,6 +1180,51 @@ inline std::string to_index_list_string( xag_index_list<true> const& indices )
   } );
 
   s += "}";
+
+  return s;
+}
+
+/*! \brief Converts a mapped_index_list to a string
+ *
+ * \param indices An index list
+ * \return A string representation of the index list
+ */
+inline std::string to_index_list_string( mapped_index_list const& indices )
+{
+  auto s = fmt::format( "{{{}, {}", indices.num_pis(), indices.num_pos() );
+
+  indices.foreach_gate( [&]( std::vector<uint32_t> const& children, uint32_t id ) {
+    s += fmt::format( ", {}", children.size() );
+    for( uint32_t lit : children )
+    {
+      s += fmt::format( ", {}", lit );
+    } 
+    s += fmt::format( ", {}", id );
+  } );
+
+  indices.foreach_po( [&]( uint32_t lit ) {
+    s += fmt::format( ", {}", lit );
+  } );
+
+  s += "}";
+
+  return s;
+}
+
+/*! \brief Converts a mapped_index_list to a string
+ *
+ * \param indices An index list
+ * \return A string representation of the index list
+ */
+inline std::string to_raw_index_list_string( mapped_index_list const& indices )
+{
+  std::string s = "";
+
+  auto raw = indices.raw();
+  for( auto el : raw )
+  {
+    s += std::to_string( el ) + " ";
+  }
 
   return s;
 }
@@ -1058,6 +1416,11 @@ struct is_index_list<xag_index_list<false>> : std::true_type
 
 template<>
 struct is_index_list<mig_index_list> : std::true_type
+{
+};
+
+template<>
+struct is_index_list<mapped_index_list> : std::true_type
 {
 };
 

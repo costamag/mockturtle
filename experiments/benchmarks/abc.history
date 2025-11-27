@@ -1,0 +1,9 @@
+read_aiger c7552.aig 
+&get; &deepsyn -I 3 -J 10
+source -s abc.rc
+read_aiger c7752.aig
+read_aiger c7552.aig
+&deepsyn -h
+&get; &deepsyn -I 3 -J 10 -v;
+read_aiger RISC.aig 
+fraig -h
